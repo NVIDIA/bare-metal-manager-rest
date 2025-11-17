@@ -8,10 +8,17 @@ This directory contains GitHub Actions workflows for building and pushing Docker
 The primary workflow that orchestrates the entire build and push process.
 
 **Triggers:**
-- Push to `main`, `master`, or `develop` branches
-- Push of version tags (e.g., `v1.2.3`)
-- Pull requests to `main` or `master` (builds but does not push)
+- Push to `main`, `master`, or `develop` branches (builds and pushes)
+- Push to `feature/docker-build-push-nvcr` branch (builds only, does not push)
+- Push of version tags (e.g., `v1.2.3`) (builds and pushes)
+- Pull requests to `main` or `master` (builds only, does not push)
 - Manual trigger via workflow_dispatch
+
+**Build-Only Mode:**
+The workflow supports building without pushing to test Dockerfiles before secrets are configured. This happens automatically on:
+- Feature branches
+- Pull requests
+- Any branch that isn't main/master/develop or a tag
 
 ### 2. `prepare-build-info.yml` - Build Information Preparation
 Reusable workflow that generates version information and build metadata.
@@ -103,7 +110,19 @@ build-and-push:
 
 Images are pushed only when:
 - Event is NOT a pull request
-- Secrets are properly configured
+- Branch is `main`, `master`, `develop`, or a version tag
+- Secrets are properly configured (login step is skipped if secrets are missing)
+
+**Build-Only Mode (No Push):**
+The workflow automatically runs in build-only mode on:
+- Feature branches (like `feature/docker-build-push-nvcr`)
+- Pull requests
+- Any branch not in the allowed list
+
+This allows you to:
+- Test Dockerfiles before secrets are configured
+- Verify builds succeed in CI
+- See build logs and results in GitHub Actions
 
 To always build without pushing (dry run), set `push_enabled: false` in `main-build.yml`.
 
