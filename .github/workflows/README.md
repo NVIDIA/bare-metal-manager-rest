@@ -34,6 +34,12 @@ Reusable workflow that builds and pushes all Docker images.
 6. `carbide-site-agent`
 7. `carbide-rest-cert-manager`
 
+**Note:** This workflow uses production-optimized multi-stage Dockerfiles located in `docker/production/`. These Dockerfiles:
+- Build with `golang:1.25`
+- Use `alpine:latest` as the runtime base
+- Include security hardening (non-root user, minimal packages)
+- Produce smaller, production-ready images
+
 ## Required Secrets
 
 You must configure the following secrets in your GitHub repository:

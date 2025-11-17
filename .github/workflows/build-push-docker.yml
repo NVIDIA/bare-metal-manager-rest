@@ -67,8 +67,8 @@ jobs:
       - name: Build and Push carbide-rest-api
         uses: docker/build-push-action@v5
         with:
-          context: ./carbide-rest-api
-          file: ./carbide-rest-api/Dockerfile
+          context: .
+          file: ./docker/production/Dockerfile.carbide-rest-api
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
           tags: |
@@ -82,6 +82,8 @@ jobs:
             org.opencontainers.image.version=${{ inputs.version }}
             org.opencontainers.image.revision=${{ inputs.short_sha }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.url=${{ github.repositoryUrl }}
 
   # Build and push carbide-rest-db
   build-carbide-rest-db:
@@ -109,8 +111,8 @@ jobs:
       - name: Build and Push carbide-rest-db
         uses: docker/build-push-action@v5
         with:
-          context: ./carbide-rest-db
-          file: ./carbide-rest-db/Dockerfile
+          context: .
+          file: ./docker/production/Dockerfile.carbide-rest-db
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
           tags: |
@@ -124,6 +126,8 @@ jobs:
             org.opencontainers.image.version=${{ inputs.version }}
             org.opencontainers.image.revision=${{ inputs.short_sha }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.url=${{ github.repositoryUrl }}
 
   # Build and push carbide-rest-ipam
   build-carbide-rest-ipam:
@@ -151,8 +155,8 @@ jobs:
       - name: Build and Push carbide-rest-ipam
         uses: docker/build-push-action@v5
         with:
-          context: ./carbide-rest-ipam
-          file: ./carbide-rest-ipam/Dockerfile
+          context: .
+          file: ./docker/production/Dockerfile.carbide-rest-ipam
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
           tags: |
@@ -166,6 +170,8 @@ jobs:
             org.opencontainers.image.version=${{ inputs.version }}
             org.opencontainers.image.revision=${{ inputs.short_sha }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.url=${{ github.repositoryUrl }}
 
   # Build and push carbide-rest-site-manager
   build-carbide-rest-site-manager:
@@ -193,8 +199,8 @@ jobs:
       - name: Build and Push carbide-rest-site-manager
         uses: docker/build-push-action@v5
         with:
-          context: ./carbide-rest-site-manager
-          file: ./carbide-rest-site-manager/Dockerfile
+          context: .
+          file: ./docker/production/Dockerfile.carbide-rest-site-manager
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
           tags: |
@@ -208,6 +214,8 @@ jobs:
             org.opencontainers.image.version=${{ inputs.version }}
             org.opencontainers.image.revision=${{ inputs.short_sha }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.url=${{ github.repositoryUrl }}
 
   # Build and push carbide-rest-workflow
   build-carbide-rest-workflow:
@@ -235,8 +243,8 @@ jobs:
       - name: Build and Push carbide-rest-workflow
         uses: docker/build-push-action@v5
         with:
-          context: ./carbide-rest-workflow
-          file: ./carbide-rest-workflow/Dockerfile
+          context: .
+          file: ./docker/production/Dockerfile.carbide-rest-workflow
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
           tags: |
@@ -250,6 +258,8 @@ jobs:
             org.opencontainers.image.version=${{ inputs.version }}
             org.opencontainers.image.revision=${{ inputs.short_sha }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.url=${{ github.repositoryUrl }}
 
   # Build and push carbide-site-agent
   build-carbide-site-agent:
@@ -277,8 +287,8 @@ jobs:
       - name: Build and Push carbide-site-agent
         uses: docker/build-push-action@v5
         with:
-          context: ./carbide-site-agent
-          file: ./carbide-site-agent/Dockerfile
+          context: .
+          file: ./docker/production/Dockerfile.carbide-site-agent
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
           tags: |
@@ -292,6 +302,8 @@ jobs:
             org.opencontainers.image.version=${{ inputs.version }}
             org.opencontainers.image.revision=${{ inputs.short_sha }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.url=${{ github.repositoryUrl }}
 
   # Build and push carbide-rest-cert-manager (credsmgr)
   build-carbide-rest-cert-manager:
@@ -319,8 +331,8 @@ jobs:
       - name: Build and Push carbide-rest-cert-manager
         uses: docker/build-push-action@v5
         with:
-          context: ./carbide-rest-cert-manager
-          file: ./carbide-rest-cert-manager/docker/Dockerfile.credsmgr
+          context: .
+          file: ./docker/production/Dockerfile.carbide-rest-cert-manager
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
           tags: |
@@ -334,6 +346,8 @@ jobs:
             org.opencontainers.image.version=${{ inputs.version }}
             org.opencontainers.image.revision=${{ inputs.short_sha }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.url=${{ github.repositoryUrl }}
 
   # Build summary
   build-summary:
