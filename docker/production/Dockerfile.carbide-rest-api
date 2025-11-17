@@ -9,16 +9,12 @@
 # its affiliates is strictly prohibited.
 
 # Build stage
-FROM golang:1.25 AS builder
+FROM golang:1.25.1 AS builder
 
-# Set environment variables for private repos
-ENV GIT_TERMINAL_PROMPT=1
+# Set environment variables
 ENV CGO_ENABLED=0
 ENV GOOS=linux
 ENV GOARCH=amd64
-
-# Configure Go to use private repositories
-RUN go env -w GOPRIVATE="gitlab-master.nvidia.com"
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -30,7 +26,7 @@ WORKDIR /workspace
 
 # Copy go module files first for better caching
 COPY go.mod go.sum ./
-RUN --mount=type=secret,id=gitcreds,dst=/root/.netrc go mod download
+RUN go mod download
 
 # Copy necessary source files
 COPY carbide-rest-api/ ./carbide-rest-api/
@@ -40,6 +36,9 @@ COPY carbide-rest-db/ ./carbide-rest-db/
 COPY carbide-rest-api-schema/ ./carbide-rest-api-schema/
 COPY carbide-rest-workflow/ ./carbide-rest-workflow/
 COPY carbide-site-workflow/ ./carbide-site-workflow/
+COPY carbide-rest-cert-manager/ ./carbide-rest-cert-manager/
+COPY carbide-rest-ipam/ ./carbide-rest-ipam/
+COPY carbide-rest-site-manager/ ./carbide-rest-site-manager/
 
 # Build the application
 WORKDIR /workspace/carbide-rest-api
