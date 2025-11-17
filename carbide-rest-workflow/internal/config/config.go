@@ -57,6 +57,8 @@ const (
 	ConfigTemporalPort = "temporal.port"
 	// ConfigTemporalServerName specifies the server name for Temporal
 	ConfigTemporalServerName = "temporal.serverName"
+	// ConfigTemporalServerNameEnv specifies the env var to read server name for Temporal
+	ConfigTemporalServerNameEnv = "TEMPORAL_SERVER_NAME"
 
 	// ConfigTemporalNamespace specifies the namespace for Temporal
 	ConfigTemporalNamespace = "temporal.namespace"
@@ -166,6 +168,7 @@ func NewConfig() *Config {
 		c.setNotificationsSlackWebhookURL()
 	}
 
+	c.setTemporalServerName()
 	c.setTemporalNamespace()
 	c.setTemporalQueue()
 
@@ -266,6 +269,15 @@ func (c *Config) setNotificationsSlackWebhookURL() {
 		log.Err(err).Str("notifications.slack.webhookURLPath", c.GetNotificationsSlackWebhookURLPath()).Msg("failed to read Slack webhook URL from file")
 	} else {
 		c.v.Set(ConfigNotificationsSlackWebhookURL, string(webhookURLBytes))
+	}
+}
+
+// setTemporalServerName sets the server name for the temporal client
+func (c *Config) setTemporalServerName() {
+	// Check for env var override
+	tsn := os.Getenv(ConfigTemporalServerNameEnv)
+	if tsn != "" {
+		c.v.Set(ConfigTemporalServerName, tsn)
 	}
 }
 

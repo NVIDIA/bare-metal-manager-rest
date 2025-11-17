@@ -35,17 +35,37 @@ type TestDBConfig struct {
 
 // getTestDBParams returns the DB params for a test DB
 func getTestDBParams() TestDBConfig {
-	tdbcfg := TestDBConfig{
-		Host:     "localhost",
-		Port:     30432,
-		Name:     "forgetest",
-		User:     "postgres",
-		Password: "postgres",
+	host := os.Getenv("DB_HOST")
+	if host == "" {
+		host = "localhost"
+	}
+	
+	port := 30432
+	if portEnv := os.Getenv("DB_PORT"); portEnv != "" {
+		fmt.Sscanf(portEnv, "%d", &port)
+	}
+	
+	name := os.Getenv("DB_NAME")
+	if name == "" {
+		name = "forgetest"
+	}
+	
+	user := os.Getenv("DB_USER")
+	if user == "" {
+		user = "postgres"
+	}
+	
+	password := os.Getenv("DB_PASSWORD")
+	if password == "" {
+		password = "postgres"
 	}
 
-	if os.Getenv("CI") == "true" {
-		tdbcfg.Host = "postgres"
-		tdbcfg.Port = 5432
+	tdbcfg := TestDBConfig{
+		Host:     host,
+		Port:     port,
+		Name:     name,
+		User:     user,
+		Password: password,
 	}
 
 	return tdbcfg

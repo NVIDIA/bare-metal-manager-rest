@@ -233,9 +233,12 @@ func TestInitElektra(t *testing.T) {
 	} else {
 		log.Info().Msg("Elektra: Successfully initialized Elektra API")
 	}
-	err := simulateMountedSecretFile(bootstrap.ManagerAccess.Conf.EB.BootstrapSecret)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Elektra: simulateMountedSecretFile")
+	// Only simulate mounted secret file if bootstrap is not disabled
+	if !bootstrap.ManagerAccess.Conf.EB.DisableBootstrap {
+		err := simulateMountedSecretFile(bootstrap.ManagerAccess.Conf.EB.BootstrapSecret)
+		if err != nil {
+			log.Fatal().Err(err).Msg("Elektra: simulateMountedSecretFile")
+		}
 	}
 	// Initialize Elektra Managers
 	api.Init()
