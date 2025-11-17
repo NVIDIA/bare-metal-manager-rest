@@ -222,7 +222,7 @@ const file_common_carbide_proto_rawDesc = "" +
 	"\x05value\x18\x01 \x01(\tR\x05value\"\"\n" +
 	"\n" +
 	"Uint32List\x12\x14\n" +
-	"\x05items\x18\x01 \x03(\rR\x05itemsBKZIgithub.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/protob\x06proto3"
+	"\x05items\x18\x01 \x03(\rR\x05itemsBBZ@github.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/protob\x06proto3"
 
 var (
 	file_common_carbide_proto_rawDescOnce sync.Once

@@ -6394,7 +6394,7 @@ const file_measured_boot_carbide_proto_rawDesc = "" +
 	"Discovered\x10\x00\x12\x11\n" +
 	"\rPendingBundle\x10\x01\x12\f\n" +
 	"\bMeasured\x10\x02\x12\x13\n" +
-	"\x0fMeasuringFailed\x10\x03BKZIgithub.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/protob\x06proto3"
+	"\x0fMeasuringFailed\x10\x03BBZ@github.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/protob\x06proto3"
 
 var (
 	file_measured_boot_carbide_proto_rawDescOnce sync.Once

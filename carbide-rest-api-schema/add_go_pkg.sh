@@ -12,5 +12,5 @@
 
 for file in site-agent/workflows/v1/*.proto
 do
-	ed -s $file < <(printf '%s\n' 5i "option go_package = \"github.com/nvidia/carbide-rest-api-snapshot/carbide-rest-api-schema/proto\";" . wq)
+	ed -s $file < <(printf '%s\n' 5i "option go_package = \"github.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/proto\";" . wq)
 done

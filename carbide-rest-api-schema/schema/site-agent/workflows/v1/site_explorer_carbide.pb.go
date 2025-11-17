@@ -2098,7 +2098,7 @@ const file_site_explorer_carbide_proto_rawDesc = "" +
 	"\n" +
 	"PoweringOn\x10\x03\x12\n" +
 	"\n" +
-	"\x06Paused\x10\x04BKZIgithub.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/protob\x06proto3"
+	"\x06Paused\x10\x04BBZ@github.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/protob\x06proto3"
 
 var (
 	file_site_explorer_carbide_proto_rawDescOnce sync.Once
