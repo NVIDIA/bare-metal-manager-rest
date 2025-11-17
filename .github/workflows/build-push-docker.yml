@@ -25,11 +25,6 @@ on:
         required: false
         default: true
         type: boolean
-      secrets_available:
-        description: "Whether NVCR secrets are configured"
-        required: false
-        default: false
-        type: boolean
     secrets:
       NVCR_USERNAME:
         description: "NVIDIA Container Registry username (typically '$oauthtoken')"
@@ -69,22 +64,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to NVIDIA Container Registry
-        if: ${{ inputs.push_enabled && inputs.secrets_available }}
-        uses: docker/login-action@v3
-        with:
-          registry: nvcr.io
-          username: ${{ secrets.NVCR_USERNAME }}
-          password: ${{ secrets.NVCR_TOKEN }}
-
-      - name: Build and Push carbide-rest-api
+      - name: Build carbide-rest-api
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker/production/Dockerfile.carbide-rest-api
           platforms: linux/amd64
-          push: ${{ inputs.push_enabled && inputs.secrets_available }}
-          load: ${{ !inputs.push_enabled || !inputs.secrets_available }}
+          push: false
+          load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-rest-api:${{ inputs.short_sha }}
             ${{ inputs.target_registry }}/carbide-rest-api:${{ inputs.version }}
@@ -141,22 +128,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to NVIDIA Container Registry
-        if: ${{ inputs.push_enabled && inputs.secrets_available }}
-        uses: docker/login-action@v3
-        with:
-          registry: nvcr.io
-          username: ${{ secrets.NVCR_USERNAME }}
-          password: ${{ secrets.NVCR_TOKEN }}
-
-      - name: Build and Push carbide-rest-db
+      - name: Build carbide-rest-db
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker/production/Dockerfile.carbide-rest-db
           platforms: linux/amd64
-          push: ${{ inputs.push_enabled && inputs.secrets_available }}
-          load: ${{ !inputs.push_enabled || !inputs.secrets_available }}
+          push: false
+          load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-rest-db:${{ inputs.short_sha }}
             ${{ inputs.target_registry }}/carbide-rest-db:${{ inputs.version }}
@@ -213,22 +192,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to NVIDIA Container Registry
-        if: ${{ inputs.push_enabled && inputs.secrets_available }}
-        uses: docker/login-action@v3
-        with:
-          registry: nvcr.io
-          username: ${{ secrets.NVCR_USERNAME }}
-          password: ${{ secrets.NVCR_TOKEN }}
-
-      - name: Build and Push carbide-rest-ipam
+      - name: Build carbide-rest-ipam
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker/production/Dockerfile.carbide-rest-ipam
           platforms: linux/amd64
-          push: ${{ inputs.push_enabled && inputs.secrets_available }}
-          load: ${{ !inputs.push_enabled || !inputs.secrets_available }}
+          push: false
+          load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-rest-ipam:${{ inputs.short_sha }}
             ${{ inputs.target_registry }}/carbide-rest-ipam:${{ inputs.version }}
@@ -285,22 +256,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to NVIDIA Container Registry
-        if: ${{ inputs.push_enabled && inputs.secrets_available }}
-        uses: docker/login-action@v3
-        with:
-          registry: nvcr.io
-          username: ${{ secrets.NVCR_USERNAME }}
-          password: ${{ secrets.NVCR_TOKEN }}
-
-      - name: Build and Push carbide-rest-site-manager
+      - name: Build carbide-rest-site-manager
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker/production/Dockerfile.carbide-rest-site-manager
           platforms: linux/amd64
-          push: ${{ inputs.push_enabled && inputs.secrets_available }}
-          load: ${{ !inputs.push_enabled || !inputs.secrets_available }}
+          push: false
+          load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-rest-site-manager:${{ inputs.short_sha }}
             ${{ inputs.target_registry }}/carbide-rest-site-manager:${{ inputs.version }}
@@ -357,22 +320,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to NVIDIA Container Registry
-        if: ${{ inputs.push_enabled && inputs.secrets_available }}
-        uses: docker/login-action@v3
-        with:
-          registry: nvcr.io
-          username: ${{ secrets.NVCR_USERNAME }}
-          password: ${{ secrets.NVCR_TOKEN }}
-
-      - name: Build and Push carbide-rest-workflow
+      - name: Build carbide-rest-workflow
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker/production/Dockerfile.carbide-rest-workflow
           platforms: linux/amd64
-          push: ${{ inputs.push_enabled && inputs.secrets_available }}
-          load: ${{ !inputs.push_enabled || !inputs.secrets_available }}
+          push: false
+          load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-rest-workflow:${{ inputs.short_sha }}
             ${{ inputs.target_registry }}/carbide-rest-workflow:${{ inputs.version }}
@@ -429,22 +384,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to NVIDIA Container Registry
-        if: ${{ inputs.push_enabled && inputs.secrets_available }}
-        uses: docker/login-action@v3
-        with:
-          registry: nvcr.io
-          username: ${{ secrets.NVCR_USERNAME }}
-          password: ${{ secrets.NVCR_TOKEN }}
-
-      - name: Build and Push carbide-site-agent
+      - name: Build carbide-site-agent
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker/production/Dockerfile.carbide-site-agent
           platforms: linux/amd64
-          push: ${{ inputs.push_enabled && inputs.secrets_available }}
-          load: ${{ !inputs.push_enabled || !inputs.secrets_available }}
+          push: false
+          load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.short_sha }}
             ${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.version }}
@@ -502,22 +449,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to NVIDIA Container Registry
-        if: ${{ inputs.push_enabled && inputs.secrets_available }}
-        uses: docker/login-action@v3
-        with:
-          registry: nvcr.io
-          username: ${{ secrets.NVCR_USERNAME }}
-          password: ${{ secrets.NVCR_TOKEN }}
-
-      - name: Build and Push carbide-rest-cert-manager
+      - name: Build carbide-rest-cert-manager
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker/production/Dockerfile.carbide-rest-cert-manager
           platforms: linux/amd64
-          push: ${{ inputs.push_enabled && inputs.secrets_available }}
-          load: ${{ !inputs.push_enabled || !inputs.secrets_available }}
+          push: false
+          load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-rest-cert-manager:${{ inputs.short_sha }}
             ${{ inputs.target_registry }}/carbide-rest-cert-manager:${{ inputs.version }}

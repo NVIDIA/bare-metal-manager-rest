@@ -36,7 +36,5 @@ jobs:
       target_registry: ${{ needs.prepare.outputs.target_registry }}
       # Only push on main/master/develop branches or tags (not on PRs or feature branches)
       push_enabled: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/')) }}
-      # Check if NVCR secrets are configured
-      secrets_available: ${{ secrets.NVCR_TOKEN != '' }}
     secrets: inherit  # Pass all repository secrets to the reusable workflow
 
