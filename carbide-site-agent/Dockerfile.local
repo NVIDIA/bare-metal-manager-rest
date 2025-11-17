@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+#
+
+FROM golang:1.23 AS builder
+
+ENV GIT_TERMINAL_PROMPT=1
+RUN go env -w GOPRIVATE="gitlab-master.nvidia.com"
+
+WORKDIR /go/src
+
+# GIT_CREDENTIALS should contain username:token
+ARG GIT_CREDENTIALS
+
+RUN git config --global url."https://$GIT_CREDENTIALS@gitlab-master.nvidia.com/".insteadOf "https://gitlab-master.nvidia.com/"
+
+# Fetch and cache dependencies
+COPY ./go.mod ./
+COPY ./go.sum ./
+RUN --mount=type=secret,id=gitcreds,dst=/root/.netrc go mod download
+
+# Add source code
+COPY Makefile .
+# Copy the framework
+COPY pkg ./pkg
+# Copy the executable
+COPY cmd ./cmd
+
+RUN mkdir -p /usr/elektra
+
+RUN cd cmd/elektra && go build -ldflags "-extldflags '-static'" -o elektra && mv elektra /usr/elektra/elektra
+RUN cd cmd/elektractl && go build -ldflags "-extldflags '-static'" -o elektractl && mv elektractl /usr/elektra/elektractl
+RUN cd cmd/elektraserver && go build -ldflags "-extldflags '-static'" -o elektraserver && mv elektraserver /usr/elektra/elektraserver
+
+
+# Multi-Stage final build
+FROM alpine
+
+#RUN apk update && apk add bash && apk add curl
+RUN apk add --update --no-cache \
+      ca-certificates \
+      bash \
+      curl \
+      gcompat
+#RUN apk add sed attr dialog dialog-doc bash bash-doc bash-completion grep grep-doc
+#RUN apk add util-linux util-linux-doc pciutils usbutils binutils findutils readline &&
+
+
+# Retrieve the binary from the previous stage
+COPY --from=builder /usr/elektra/elektra /usr/local/bin/elektra
+COPY --from=builder /usr/elektra/elektractl /usr/local/bin/elektractl
+COPY --from=builder /usr/elektra/elektraserver /usr/local/bin/elektraserver
+
+COPY docker/entrypoint-local.sh /usr/local/bin/entrypoint.sh
+
+# Install kubectl
+RUN curl -LO https://dl.k8s.io/release/v1.23.0/bin/linux/amd64/kubectl
+RUN chmod u+x kubectl && mv kubectl /bin/kubectl && chmod +x /usr/local/bin/elektra && chmod +x /usr/local/bin/elektractl
+
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Start the entrypoint script
+# Set the elektra worker binary as the entrypoint of the container
+CMD ["/usr/local/bin/entrypoint.sh", "elektra"]

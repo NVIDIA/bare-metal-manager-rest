@@ -1,0 +1,179 @@
+---
+# NOTE: This ConfigMap will be updated by the deployment script with generated certificates
+# The script will run generate-certs.sh and populate the actual values
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: site-agent-bootstrap
+  namespace: carbide-site
+data:
+  site-uuid: "00000000-0000-0000-0000-000000000001"
+  otp: "PLACEHOLDER_WILL_BE_REPLACED_BY_DEPLOY_SCRIPT"
+  creds-url: "https://site-manager.carbide-system.svc.cluster.local:8100/v1/sitecreds"
+  cacert: "PLACEHOLDER_WILL_BE_REPLACED_BY_DEPLOY_SCRIPT"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: site-agent-temporal-certs
+  namespace: carbide-site
+type: Opaque
+data:
+  otp: ""
+  ca.crt: ""
+  tls.crt: ""
+  tls.key: ""
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: carbide-site-agent
+  namespace: carbide-site
+  labels:
+    app: elektra-site-agent
+spec:
+  clusterIP: None
+  ports:
+    - port: 9360
+      targetPort: 9360
+      name: metrics
+    - port: 8080
+      targetPort: 8080
+      name: http
+  selector:
+    app: elektra-site-agent
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: carbide-site-agent
+  namespace: carbide-site
+spec:
+  serviceName: carbide-site-agent
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elektra-site-agent
+  template:
+    metadata:
+      labels:
+        app: elektra-site-agent
+        tier: edge
+    spec:
+      serviceAccountName: elektra-site-agent
+      containers:
+        - name: carbide-site-agent
+          image: localhost:5000/carbide-site-agent:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9360
+              name: metrics
+            - containerPort: 8080
+              name: http
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: DB_ADDR
+              value: postgres.carbide-system.svc.cluster.local
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_DATABASE
+              value: elektra
+            - name: DB_USER
+              value: elektra
+            - name: DB_PASSWORD
+              value: elektra
+            - name: TEMPORAL_HOST
+              value: temporal.carbide-system.svc.cluster.local
+            - name: TEMPORAL_PORT
+              value: "7233"
+            - name: TEMPORAL_PUBLISH_NAMESPACE
+              value: default
+            - name: TEMPORAL_SUBSCRIBE_NAMESPACE
+              value: site-00000000-0000-0000-0000-000000000001
+            - name: TEMPORAL_PUBLISH_QUEUE
+              value: cloud-tasks
+            - name: TEMPORAL_SUBSCRIBE_QUEUE
+              value: site-tasks
+            - name: TEMPORAL_CERT_PATH
+              value: /etc/temporal-certs
+            - name: TEMPORAL_CERT
+              value: site-agent-temporal-certs
+            - name: TEMPORAL_SERVER
+              value: temporal.carbide-system.svc.cluster.local
+            - name: CLUSTER_ID
+              value: "00000000-0000-0000-0000-000000000001"
+            - name: ENABLE_TLS
+              value: "false"
+            - name: ENABLE_DEBUG
+              value: "true"
+            - name: DEV_MODE
+              value: "true"
+            - name: METRICS_PORT
+              value: "9360"
+            - name: BOOTSTRAP_SECRET
+              value: /etc/bootstrap/
+            - name: CARBIDE_ADDRESS
+              value: carbide-api.carbide-system.svc.cluster.local:11079
+            - name: CARBIDE_SEC_OPT
+              value: "0"
+          volumeMounts:
+            - name: bootstrap-secret
+              mountPath: /etc/bootstrap
+              readOnly: true
+            - name: temporal-certs
+              mountPath: /etc/temporal-certs
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
+      volumes:
+        - name: bootstrap-secret
+          configMap:
+            name: site-agent-bootstrap
+        - name: temporal-certs
+          secret:
+            secretName: site-agent-temporal-certs
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: elektra-site-agent
+  namespace: carbide-site
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: elektra-site-agent
+  namespace: carbide-site
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: elektra-site-agent
+  namespace: carbide-site
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: elektra-site-agent
+subjects:
+  - kind: ServiceAccount
+    name: elektra-site-agent
+    namespace: carbide-site
+

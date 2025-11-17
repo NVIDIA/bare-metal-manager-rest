@@ -1,0 +1,19 @@
+# Editor files
+.vscode*
+*.code-workspace
+
+# Build files
+/netrc.txt
+
+# Binaries
+/sitemgr
+
+# CI files
+coverage*
+/ci-reports
+
+# Generated files
+charts/cert-manager/templates/cert-manager.yaml
+test/manifests/cert-manager/templates/cert-manager.yaml
+
+.idea/

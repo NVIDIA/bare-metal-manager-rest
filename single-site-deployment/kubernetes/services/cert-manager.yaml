@@ -1,0 +1,108 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cert-manager
+  namespace: carbide-system
+  labels:
+    app: cert-manager
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: https
+  selector:
+    app: cert-manager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cert-manager
+  namespace: carbide-system
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: cert-manager
+  template:
+    metadata:
+      labels:
+        app: cert-manager
+        tier: security
+    spec:
+      containers:
+        # Vault sidecar for cert-manager
+        - name: vault
+          image: hashicorp/vault:1.15
+          ports:
+            - containerPort: 8200
+              name: vault
+          env:
+            - name: VAULT_DEV_ROOT_TOKEN_ID
+              value: root
+            - name: VAULT_DEV_LISTEN_ADDRESS
+              value: 0.0.0.0:8200
+          command: ["vault", "server", "-dev"]
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+        - name: credsmgr
+          image: localhost:5000/carbide-rest-cert-manager:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: https
+          env:
+            - name: VAULT_DEV_ROOT_TOKEN_ID
+              value: root
+            - name: VAULT_ADDR
+              value: http://localhost:8200
+            - name: FORGE_VAULT_INGRESS_URL
+              value: https://cert-manager.carbide-system.svc.cluster.local:8000
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          volumeMounts:
+            - name: vault-root-ca-certificate
+              mountPath: /vault/secrets/vault-root-ca-certificate
+              readOnly: true
+            - name: vault-root-ca-private-key
+              mountPath: /vault/secrets/vault-root-ca-private-key
+              readOnly: true
+            - name: vault-token
+              mountPath: /vault/secrets/token
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+              scheme: HTTPS
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: vault-root-ca-certificate
+          secret:
+            secretName: vault-root-ca-certificate
+        - name: vault-root-ca-private-key
+          secret:
+            secretName: vault-root-ca-private-key
+        - name: vault-token
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+

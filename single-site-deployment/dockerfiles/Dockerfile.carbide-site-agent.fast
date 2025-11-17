@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+#
+# Fast Dockerfile - Uses pre-built binaries and shared base runtime image
+
+FROM localhost:5000/carbide-base-runtime:latest
+
+# Copy pre-built binaries from build directory
+COPY build/binaries/elektra /usr/local/bin/elektra
+COPY build/binaries/elektractl /usr/local/bin/elektractl
+
+# Copy entrypoint script
+COPY carbide-site-agent/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+
+# Make all binaries executable
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/elektra /usr/local/bin/elektractl
+
+# Set the elektra worker binary as the entrypoint of the container
+CMD ["/usr/local/bin/entrypoint.sh", "elektra"]
+

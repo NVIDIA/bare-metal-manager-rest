@@ -1,0 +1,58 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrations
+  namespace: carbide-system
+spec:
+  template:
+    metadata:
+      labels:
+        app: db-migrations
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z postgres.carbide-system.svc.cluster.local 5432; do
+                echo "Waiting for postgres..."
+                sleep 2
+              done
+              echo "Postgres is ready"
+      containers:
+        - name: migrations
+          image: localhost:5000/carbide-rest-db:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Running database migrations..."
+              # Initialize migration tracking
+              /app/migrations db init || true
+              # Run migrations
+              /app/migrations db migrate
+              echo "Migrations complete"
+          env:
+            - name: PGHOST
+              value: postgres.carbide-system.svc.cluster.local
+            - name: PGPORT
+              value: "5432"
+            - name: PGUSER
+              value: forge
+            - name: PGPASSWORD
+              value: forge
+            - name: PGDATABASE
+              value: forge
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+

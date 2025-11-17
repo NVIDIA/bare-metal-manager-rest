@@ -1,0 +1,1012 @@
+{
+  "info": {
+    "name": "Forge Cloud API - Local Development",
+    "description": "API collection for testing Forge Cloud API in local kind cluster",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8388",
+      "type": "string"
+    },
+    {
+      "key": "orgName",
+      "value": "nvidia",
+      "type": "string"
+    },
+    {
+      "key": "keycloakUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "infraProviderId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "siteId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "registrationToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Authentication",
+      "item": [
+        {
+          "name": "Get Authentication Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.collectionVariables.set(\"token\", jsonData.access_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "testuser",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "testpass",
+                  "type": "text"
+                },
+                {
+                  "key": "grant_type",
+                  "value": "password",
+                  "type": "text"
+                },
+                {
+                  "key": "client_id",
+                  "value": "carbide-api",
+                  "type": "text"
+                },
+                {
+                  "key": "client_secret",
+                  "value": "carbide-secret-dev-only-do-not-use-in-prod",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/carbide/protocol/openid-connect/token",
+              "host": [
+                "{{keycloakUrl}}"
+              ],
+              "path": [
+                "realms",
+                "carbide",
+                "protocol",
+                "openid-connect",
+                "token"
+              ]
+            },
+            "description": "Get JWT token from Keycloak for API authentication"
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. API Info",
+      "item": [
+        {
+          "name": "Get API Metadata",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/metadata",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "metadata"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/user/current",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "user",
+                "current"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Infrastructure Provider",
+      "item": [
+        {
+          "name": "Get Current Infrastructure Provider",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.collectionVariables.set(\"infraProviderId\", jsonData.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/infrastructure-provider/current",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "infrastructure-provider",
+                "current"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Provider Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/infrastructure-provider/current/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "infrastructure-provider",
+                "current",
+                "stats"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Site Management",
+      "item": [
+        {
+          "name": "Create Site",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "pm.collectionVariables.set(\"siteId\", jsonData.id);",
+                  "pm.collectionVariables.set(\"registrationToken\", jsonData.registrationToken);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"my-local-site\",\n  \"description\": \"Local development site\",\n  \"location\": {\n    \"city\": \"Santa Clara\",\n    \"state\": \"CA\",\n    \"country\": \"USA\"\n  },\n  \"contact\": {\n    \"email\": \"admin@example.com\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/site",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "site"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List All Sites",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/site?infrastructureProviderId={{infraProviderId}}&pageNumber=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "site"
+              ],
+              "query": [
+                {
+                  "key": "infrastructureProviderId",
+                  "value": "{{infraProviderId}}"
+                },
+                {
+                  "key": "pageNumber",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Site Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/site/{{siteId}}?infrastructureProviderId={{infraProviderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "site",
+                "{{siteId}}"
+              ],
+              "query": [
+                {
+                  "key": "infrastructureProviderId",
+                  "value": "{{infraProviderId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Site",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Updated via API\",\n  \"serialConsoleHostname\": \"console.example.local\",\n  \"isSerialConsoleEnabled\": true,\n  \"serialConsoleIdleTimeout\": 300,\n  \"serialConsoleMaxSessionLength\": 3600\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/site/{{siteId}}?infrastructureProviderId={{infraProviderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "site",
+                "{{siteId}}"
+              ],
+              "query": [
+                {
+                  "key": "infrastructureProviderId",
+                  "value": "{{infraProviderId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Site Status History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/site/{{siteId}}/status-history?infrastructureProviderId={{infraProviderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "site",
+                "{{siteId}}",
+                "status-history"
+              ],
+              "query": [
+                {
+                  "key": "infrastructureProviderId",
+                  "value": "{{infraProviderId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Renew Registration Token",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"renewRegistrationToken\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/site/{{siteId}}?infrastructureProviderId={{infraProviderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "site",
+                "{{siteId}}"
+              ],
+              "query": [
+                {
+                  "key": "infrastructureProviderId",
+                  "value": "{{infraProviderId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Site",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/site/{{siteId}}?infrastructureProviderId={{infraProviderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "site",
+                "{{siteId}}"
+              ],
+              "query": [
+                {
+                  "key": "infrastructureProviderId",
+                  "value": "{{infraProviderId}}"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Machine Management",
+      "item": [
+        {
+          "name": "List Machines",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/machine?siteId={{siteId}}&infrastructureProviderId={{infraProviderId}}&pageNumber=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "machine"
+              ],
+              "query": [
+                {
+                  "key": "siteId",
+                  "value": "{{siteId}}"
+                },
+                {
+                  "key": "infrastructureProviderId",
+                  "value": "{{infraProviderId}}"
+                },
+                {
+                  "key": "pageNumber",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Machine Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/machine/:machineId?infrastructureProviderId={{infraProviderId}}&includeMetadata=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "machine",
+                ":machineId"
+              ],
+              "query": [
+                {
+                  "key": "infrastructureProviderId",
+                  "value": "{{infraProviderId}}"
+                },
+                {
+                  "key": "includeMetadata",
+                  "value": "true"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "machineId",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Machine Capabilities",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/machine-capability?siteId={{siteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "machine-capability"
+              ],
+              "query": [
+                {
+                  "key": "siteId",
+                  "value": "{{siteId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Machine",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"labels\": {\n    \"rack\": \"A1\",\n    \"row\": \"1\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/machine/:machineId",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "machine",
+                ":machineId"
+              ],
+              "variable": [
+                {
+                  "key": "machineId",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Expected Machines",
+      "item": [
+        {
+          "name": "Create Expected Machine",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"siteId\": \"{{siteId}}\",\n  \"bmcMacAddress\": \"00:1A:2B:3C:4D:5E\",\n  \"bmcUsername\": \"admin\",\n  \"bmcPassword\": \"admin123\",\n  \"chassisSerialNumber\": \"CHASSIS-001\",\n  \"labels\": {\n    \"rack\": \"A1\",\n    \"row\": \"1\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/expected-machine",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "expected-machine"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Expected Machines",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/expected-machine?siteId={{siteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "expected-machine"
+              ],
+              "query": [
+                {
+                  "key": "siteId",
+                  "value": "{{siteId}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Expected Machine",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/expected-machine/:expectedMachineId?includeRelation=Sku",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "expected-machine",
+                ":expectedMachineId"
+              ],
+              "query": [
+                {
+                  "key": "includeRelation",
+                  "value": "Sku"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "expectedMachineId",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. IP Block Management",
+      "item": [
+        {
+          "name": "Create IP Block",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Primary Network Block\",\n  \"description\": \"Main IP block for site networking\",\n  \"siteId\": \"{{siteId}}\",\n  \"routingType\": \"DatacenterOnly\",\n  \"prefix\": \"10.0.0.0\",\n  \"prefixLength\": 16,\n  \"protocolVersion\": \"IPv4\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/ipblock",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "ipblock"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List IP Blocks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/ipblock?infrastructureProviderId={{infraProviderId}}&siteId={{siteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "ipblock"
+              ],
+              "query": [
+                {
+                  "key": "infrastructureProviderId",
+                  "value": "{{infraProviderId}}"
+                },
+                {
+                  "key": "siteId",
+                  "value": "{{siteId}}"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Instance Types",
+      "item": [
+        {
+          "name": "Create Instance Type",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"standard.large\",\n  \"description\": \"Standard large instance\",\n  \"siteId\": \"{{siteId}}\",\n  \"machineCapabilities\": [\n    {\n      \"type\": \"CPU\",\n      \"name\": \"Intel Xeon\",\n      \"count\": 2\n    },\n    {\n      \"type\": \"Memory\",\n      \"name\": \"DDR4\",\n      \"capacity\": \"32GB\",\n      \"count\": 4\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/instance/type",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "instance",
+                "type"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Instance Types",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/instance/type?siteId={{siteId}}&infrastructureProviderId={{infraProviderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "instance",
+                "type"
+              ],
+              "query": [
+                {
+                  "key": "siteId",
+                  "value": "{{siteId}}"
+                },
+                {
+                  "key": "infrastructureProviderId",
+                  "value": "{{infraProviderId}}"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Audit Logs",
+      "item": [
+        {
+          "name": "List Audit Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/audit?pageNumber=1&pageSize=20&orderBy=TIMESTAMP_DESC",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "audit"
+              ],
+              "query": [
+                {
+                  "key": "pageNumber",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                },
+                {
+                  "key": "orderBy",
+                  "value": "TIMESTAMP_DESC"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Failed Audit Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v2/org/{{orgName}}/carbide/audit?failedOnly=true&pageNumber=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v2",
+                "org",
+                "{{orgName}}",
+                "carbide",
+                "audit"
+              ],
+              "query": [
+                {
+                  "key": "failedOnly",
+                  "value": "true"
+                },
+                {
+                  "key": "pageNumber",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+

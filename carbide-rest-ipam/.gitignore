@@ -1,0 +1,14 @@
+# Editor files
+.vscode*
+*.code-workspace
+
+# Binaries
+/bin
+
+# CI files
+coverage*
+/ci-reports
+
+.idea
+coverage.out
+bin

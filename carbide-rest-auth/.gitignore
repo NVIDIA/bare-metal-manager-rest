@@ -1,0 +1,11 @@
+# Editor files
+.vscode*
+*.code-workspace
+.idea/
+
+# CI files
+coverage*
+/ci-reports
+
+# env files
+netrc.txt

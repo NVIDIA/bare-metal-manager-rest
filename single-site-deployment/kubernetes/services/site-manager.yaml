@@ -1,0 +1,71 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: site-manager
+  namespace: carbide-system
+  labels:
+    app: site-manager
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8100
+      targetPort: 8100
+      name: https
+  selector:
+    app: site-manager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: site-manager
+  namespace: carbide-system
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: site-manager
+  template:
+    metadata:
+      labels:
+        app: site-manager
+        tier: api
+    spec:
+      serviceAccountName: site-manager
+      containers:
+        - name: site-manager
+          image: localhost:5000/carbide-rest-site-manager:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/app/sitemgr"]
+          args:
+            - --listen-port=8100
+            - --creds-manager-url=https://cert-manager.carbide-system.svc.cluster.local:8000
+            - --ingress-host=sitemanager.carbide.local
+            - --namespace=carbide-system
+          ports:
+            - containerPort: 8100
+              name: https
+          env:
+            - name: SITE_MANAGER_NS
+              value: carbide-system
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8100
+              scheme: HTTPS
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8100
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 5

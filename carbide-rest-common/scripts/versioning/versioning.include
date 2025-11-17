@@ -1,0 +1,10 @@
+version_bump_level?=patch
+new_version?=""
+
+.PHONY: version version-tag
+
+version:
+	$(CLOUD_COMMON_SCRIPTS_PATH)/versioning/update-version.sh --bump-level $(version_bump_level) --new-version $(new_version)
+
+version-tag:
+	$(CLOUD_COMMON_SCRIPTS_PATH)/versioning/version-tag.sh

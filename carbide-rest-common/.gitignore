@@ -1,0 +1,16 @@
+# Editor files
+.vscode*
+*.code-workspace
+
+# Build files
+netrc.txt
+
+# Binaries
+/migrations
+
+# CI files
+coverage*
+/ci-reports
+
+.idea*
+.DS_Store

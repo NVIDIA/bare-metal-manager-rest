@@ -1,0 +1,121 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloud-api
+  namespace: carbide-system
+  labels:
+    app: cloud-api
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8388
+      targetPort: 8388
+      name: http
+    - port: 9360
+      targetPort: 9360
+      name: metrics
+  selector:
+    app: cloud-api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloud-api
+  namespace: carbide-system
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: cloud-api
+  template:
+    metadata:
+      labels:
+        app: cloud-api
+        tier: api
+    spec:
+      containers:
+        - name: cloud-api
+          image: localhost:5000/carbide-rest-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8388
+              name: http
+            - containerPort: 9360
+              name: metrics
+          env:
+            - name: DB_HOST
+              value: postgres.carbide-system.svc.cluster.local
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: forge
+            - name: DB_USER
+              value: forge
+            - name: DB_PASSWORD
+              value: forge
+            - name: TEMPORAL_HOST
+              value: temporal.carbide-system.svc.cluster.local
+            - name: TEMPORAL_PORT
+              value: "7233"
+            - name: TEMPORAL_SERVERNAME
+              value: temporal.carbide-system.svc.cluster.local
+            - name: TEMPORAL_NAMESPACE
+              value: default
+            - name: TEMPORAL_QUEUE
+              value: cloud-tasks
+            - name: TEMPORAL_ENCRYPTIONKEY
+              value: dev-encryption-key-12345678901234567890123456789012
+            - name: TEMPORAL_TLS_ENABLED
+              value: "false"
+            - name: KEYCLOAK_ENABLED
+              value: "true"
+            - name: KEYCLOAK_BASEURL
+              value: http://keycloak.carbide-system.svc.cluster.local:8080
+            - name: KEYCLOAK_EXTERNALBASEURL
+              value: http://localhost:8080
+            - name: KEYCLOAK_REALM
+              value: carbide
+            - name: KEYCLOAK_CLIENTID
+              value: carbide-api
+            - name: KEYCLOAK_CLIENTSECRET
+              value: carbide-secret-dev-only-do-not-use-in-prod
+            - name: KEYCLOAK_SERVICEACCOUNT
+              value: "true"
+            - name: SITEMANAGER_ENABLED
+              value: "true"
+            - name: SITEMANAGER_SVCENDPOINT
+              value: https://site-manager.carbide-system.svc.cluster.local:8100/v1/site
+            - name: TEMPORAL_CERT_PATH
+              value: /var/secrets/temporal/certs
+            - name: METRICS_ENABLED
+              value: "true"
+            - name: METRICS_PORT
+              value: "9360"
+          volumeMounts:
+            - name: temporal-certs
+              mountPath: /var/secrets/temporal/certs
+              readOnly: true
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8388
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8388
+            initialDelaySeconds: 10
+            periodSeconds: 5
+      volumes:
+        - name: temporal-certs
+          emptyDir: {}
+

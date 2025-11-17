@@ -1,0 +1,397 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ *
+ * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+ * property and proprietary rights in and to this material, related
+ * documentation and any modifications thereto. Any use, reproduction,
+ * disclosure or distribution of this material and related documentation
+ * without an express license agreement from NVIDIA CORPORATION or
+ * its affiliates is strictly prohibited.
+ */
+
+package activity
+
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/mock"
+	tmocks "go.temporal.io/sdk/mocks"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+
+	cwssaws "github.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/schema/site-agent/workflows/v1"
+	cClient "github.com/NVIDIA/carbide-rest-api/carbide-site-workflow/pkg/grpc/client"
+)
+
+func TestManageInstance_UpdateInstanceConfigOnSite(t *testing.T) {
+	mockCarbide := cClient.NewMockCarbideClient()
+
+	carbideAtomicClient := cClient.NewCarbideAtomicClient(&cClient.CarbideClientConfig{})
+	carbideAtomicClient.SwapClient(mockCarbide)
+
+	ipxeScript := "#!ipxe"
+	userData := "echo"
+
+	labelKey := "key1"
+	labelValue := "value1"
+
+	type fields struct {
+		CarbideAtomicClient *cClient.CarbideAtomicClient
+	}
+	type args struct {
+		ctx     context.Context
+		request *cwssaws.InstanceConfigUpdateRequest
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "test Instance update success",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.InstanceConfigUpdateRequest{
+					InstanceId: &cwssaws.UUID{Value: uuid.NewString()},
+					Metadata: &cwssaws.Metadata{
+						Name:        "updated_name",
+						Description: "updated_description",
+						Labels: []*cwssaws.Label{
+							{
+								Key:   labelKey,
+								Value: &labelValue,
+							},
+						},
+					},
+					Config: &cwssaws.InstanceConfig{
+						Os: &cwssaws.OperatingSystem{
+							RunProvisioningInstructionsOnEveryBoot: true,
+							Variant: &cwssaws.OperatingSystem_Ipxe{
+								Ipxe: &cwssaws.IpxeOperatingSystem{
+									IpxeScript: ipxeScript,
+									UserData:   &userData,
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm := NewManageInstance(tt.fields.CarbideAtomicClient)
+			err := mm.UpdateInstanceOnSite(tt.args.ctx, tt.args.request)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestManageInstance_CreateInstanceOnSiteOnSite(t *testing.T) {
+	mockCarbide := cClient.NewMockCarbideClient()
+
+	carbideAtomicClient := cClient.NewCarbideAtomicClient(&cClient.CarbideClientConfig{})
+	carbideAtomicClient.SwapClient(mockCarbide)
+
+	ipxeScript := "#!ipxe"
+	userData := "echo"
+
+	labelKey := "key1"
+	labelValue := "value1"
+
+	type fields struct {
+		CarbideAtomicClient *cClient.CarbideAtomicClient
+	}
+	type args struct {
+		ctx     context.Context
+		request *cwssaws.InstanceAllocationRequest
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "test create Instance success",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.InstanceAllocationRequest{
+					MachineId: &cwssaws.MachineId{Id: uuid.NewString()},
+					Metadata: &cwssaws.Metadata{
+						Name:        "new_name",
+						Description: "new_description",
+						Labels: []*cwssaws.Label{
+							{
+								Key:   labelKey,
+								Value: &labelValue,
+							},
+						},
+					},
+					Config: &cwssaws.InstanceConfig{
+						Os: &cwssaws.OperatingSystem{
+							RunProvisioningInstructionsOnEveryBoot: true,
+							Variant: &cwssaws.OperatingSystem_Ipxe{
+								Ipxe: &cwssaws.IpxeOperatingSystem{
+									IpxeScript: ipxeScript,
+									UserData:   &userData,
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm := NewManageInstance(tt.fields.CarbideAtomicClient)
+			err := mm.CreateInstanceOnSite(tt.args.ctx, tt.args.request)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestManageInstance_RebootInstanceOnSiteOnSite(t *testing.T) {
+	mockCarbide := cClient.NewMockCarbideClient()
+
+	carbideAtomicClient := cClient.NewCarbideAtomicClient(&cClient.CarbideClientConfig{})
+	carbideAtomicClient.SwapClient(mockCarbide)
+
+	type fields struct {
+		CarbideAtomicClient *cClient.CarbideAtomicClient
+	}
+	type args struct {
+		ctx     context.Context
+		request *cwssaws.InstancePowerRequest
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "test reboot Instance success",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.InstancePowerRequest{
+					MachineId: &cwssaws.MachineId{Id: uuid.NewString()},
+					Operation: cwssaws.InstancePowerRequest_POWER_RESET,
+				},
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm := NewManageInstance(tt.fields.CarbideAtomicClient)
+			err := mm.RebootInstanceOnSite(tt.args.ctx, tt.args.request)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestManageInstanceInventory_DiscoverInstanceInventory(t *testing.T) {
+	mockCarbide := cClient.NewMockCarbideClient()
+
+	carbideAtomicClient := cClient.NewCarbideAtomicClient(&cClient.CarbideClientConfig{})
+	carbideAtomicClient.SwapClient(mockCarbide)
+
+	wid := "test-workflow-id"
+	wrun := &tmocks.WorkflowRun{}
+	wrun.On("GetID").Return(wid)
+
+	type fields struct {
+		siteID               uuid.UUID
+		carbideAtomicClient  *cClient.CarbideAtomicClient
+		temporalPublishQueue string
+		sitePageSize         int
+		cloudPageSize        int
+	}
+	type args struct {
+		wantTotalItems int
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+	}{
+		{
+			name: "test collecting and publishing instance inventory, empty inventory",
+			fields: fields{
+				siteID:               uuid.New(),
+				carbideAtomicClient:  carbideAtomicClient,
+				temporalPublishQueue: "test-queue",
+				sitePageSize:         100,
+				cloudPageSize:        25,
+			},
+			args: args{
+				wantTotalItems: 0,
+			},
+		},
+		{
+			name: "test collecting and publishing instance inventory, normal inventory",
+			fields: fields{
+				siteID:               uuid.New(),
+				carbideAtomicClient:  carbideAtomicClient,
+				temporalPublishQueue: "test-queue",
+				sitePageSize:         100,
+				cloudPageSize:        25,
+			},
+			args: args{
+				wantTotalItems: 195,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tc := &tmocks.Client{}
+			tc.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
+				mock.AnythingOfType("string"), mock.AnythingOfType("uuid.UUID"), mock.Anything).Return(wrun, nil)
+			tc.AssertNumberOfCalls(t, "ExecuteWorkflow", 0)
+
+			manageInstance := NewManageInstanceInventory(ManageInventoryConfig{
+				SiteID:                tt.fields.siteID,
+				CarbideAtomicClient:   tt.fields.carbideAtomicClient,
+				TemporalPublishClient: tc,
+				TemporalPublishQueue:  tt.fields.temporalPublishQueue,
+				SitePageSize:          tt.fields.sitePageSize,
+				CloudPageSize:         tt.fields.cloudPageSize,
+			})
+
+			ctx := context.Background()
+			ctx = context.WithValue(ctx, "wantCount", tt.args.wantTotalItems)
+
+			totalPages := tt.args.wantTotalItems / tt.fields.cloudPageSize
+			if tt.args.wantTotalItems%tt.fields.cloudPageSize > 0 {
+				totalPages++
+			}
+
+			err := manageInstance.DiscoverInstanceInventory(ctx)
+			assert.NoError(t, err)
+
+			if tt.args.wantTotalItems == 0 {
+				tc.AssertNumberOfCalls(t, "ExecuteWorkflow", 1)
+			} else {
+				tc.AssertNumberOfCalls(t, "ExecuteWorkflow", totalPages)
+			}
+
+			inventory, ok := tc.Calls[0].Arguments[4].(*cwssaws.InstanceInventory)
+			assert.True(t, ok)
+
+			if tt.args.wantTotalItems == 0 {
+				assert.Equal(t, 0, len(inventory.Instances))
+			} else {
+				assert.Equal(t, tt.fields.cloudPageSize, len(inventory.Instances))
+			}
+
+			assert.Equal(t, cwssaws.InventoryStatus_INVENTORY_STATUS_SUCCESS, inventory.InventoryStatus)
+			assert.Equal(t, totalPages, int(inventory.InventoryPage.TotalPages))
+			assert.Equal(t, 1, int(inventory.InventoryPage.CurrentPage))
+			assert.Equal(t, tt.fields.cloudPageSize, int(inventory.InventoryPage.PageSize))
+			assert.Equal(t, tt.args.wantTotalItems, int(inventory.InventoryPage.TotalItems))
+			assert.Equal(t, tt.args.wantTotalItems, len(inventory.InventoryPage.ItemIds))
+		})
+	}
+}
+
+func TestManageInstance_DeleteInstanceOnSite(t *testing.T) {
+	mockCarbide := cClient.NewMockCarbideClient()
+
+	carbideAtomicClient := cClient.NewCarbideAtomicClient(&cClient.CarbideClientConfig{})
+	carbideAtomicClient.SwapClient(mockCarbide)
+
+	type fields struct {
+		CarbideAtomicClient *cClient.CarbideAtomicClient
+	}
+	type args struct {
+		ctx     context.Context
+		request *cwssaws.InstanceReleaseRequest
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "test delete Instance success",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.InstanceReleaseRequest{
+					Id: &cwssaws.UUID{Value: uuid.NewString()},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "test delete Instance with nil ID failure",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.InstanceReleaseRequest{
+					Id: nil,
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "test delete Instance with empty non-nil ID failure",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.InstanceReleaseRequest{
+					Id: &cwssaws.UUID{Value: ""},
+				},
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm := NewManageInstance(tt.fields.CarbideAtomicClient)
+			err := mm.DeleteInstanceOnSite(tt.args.ctx, tt.args.request)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}

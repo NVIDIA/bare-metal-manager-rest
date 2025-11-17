@@ -1,0 +1,42 @@
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Build artifacts
+/tmp/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak
+*.pre-rewrite
+
+# Go workspace sum (optional - can be regenerated)
+# go.work.sum
+
+# API Test Results
+single-site-deployment/test-api-results/
+
+# all python cache
+__pycache__/
+**__pycache__**
+
+build/
+

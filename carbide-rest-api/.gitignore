@@ -1,0 +1,20 @@
+# Editor files
+.vscode*
+*.code-workspace
+
+# Certs
+certs*
+
+# Secrets
+/netrc.txt
+
+# Binaries
+/api
+
+# CI files
+coverage*
+/ci-reports
+
+
+.idea*
+.DS_Store

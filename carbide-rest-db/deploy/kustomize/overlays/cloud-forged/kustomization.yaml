@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+#
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+bases:
+  - ../../base
+namespace: cloud-db
+resources:
+  - configmap.yaml
+
+patchesStrategicMerge:
+  - job.yaml
+
+images:
+  - name: cloud-db
+    newName: nvcr.io/nvidian/nvforge-devel/cloud-db
+    newTag: v0.1.43
+
+patches:
+  - target:
+      kind: Job
+      name: cloud-db-migration-0.1.43
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/env
+        value:
+          - name: PGUSER
+            valueFrom:
+              secretKeyRef:
+                name: forge.forge-pg-cluster.credentials
+                key: username
+          - name: PGPASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: forge.forge-pg-cluster.credentials
+                key: password
+          - name: DBNAME
+            valueFrom:
+              configMapKeyRef:
+                name: cloud-db-config
+                key: dbName
+          - name: PGHOST
+            valueFrom:
+              configMapKeyRef:
+                name: cloud-db-config
+                key: dbHost
+          - name: PGPORT
+            valueFrom:
+              configMapKeyRef:
+                name: cloud-db-config
+                key: dbPort
+      - op: replace
+        path: /spec/template/spec/containers/0/command
+        value: ['sh', '-c', 'echo "PGUSER: $PGUSER"; echo "DBNAME: $DBNAME"; echo "DB URL: postgres://$PGUSER:****@${PGHOST}:${PGPORT}/${DBNAME}"; if [ -z "$PGUSER" ] || [ -z "$PGPASSWORD" ] || [ -z "$DBNAME" ]; then echo "PGUSER, PGPASSWORD or DBNAME is not set" && exit 1; else exec /usr/local/bin/migrate.sh; fi']

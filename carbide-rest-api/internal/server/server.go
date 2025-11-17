@@ -1,0 +1,255 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ *
+ * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+ * property and proprietary rights in and to this material, related
+ * documentation and any modifications thereto. Any use, reproduction,
+ * disclosure or distribution of this material and related documentation
+ * without an express license agreement from NVIDIA CORPORATION or
+ * its affiliates is strictly prohibited.
+ */
+
+package server
+
+import (
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	handler "github.com/NVIDIA/carbide-rest-api/carbide-rest-auth/pkg/api"
+
+	"github.com/NVIDIA/carbide-rest-api/carbide-rest-api/pkg/middleware"
+	cconfig "github.com/NVIDIA/carbide-rest-api/carbide-rest-common/pkg/config"
+	cerr "github.com/NVIDIA/carbide-rest-api/carbide-rest-common/pkg/util"
+
+	"github.com/getsentry/sentry-go"
+	sentryZerolog "github.com/getsentry/sentry-go/zerolog"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	zlogadapter "logur.dev/adapter/zerolog"
+	"logur.dev/logur"
+
+	echoPrometheus "github.com/labstack/echo-contrib/echoprometheus"
+	echo "github.com/labstack/echo/v4"
+	echoMiddleware "github.com/labstack/echo/v4/middleware"
+
+	tsdkClient "go.temporal.io/sdk/client"
+	tsdkConverter "go.temporal.io/sdk/converter"
+
+	cdb "github.com/NVIDIA/carbide-rest-api/carbide-rest-db/pkg/db"
+
+	"github.com/NVIDIA/carbide-rest-api/carbide-rest-api/internal/config"
+	"github.com/NVIDIA/carbide-rest-api/carbide-rest-api/pkg/api"
+	"github.com/NVIDIA/carbide-rest-api/carbide-rest-common/pkg/otelecho"
+
+	sc "github.com/NVIDIA/carbide-rest-api/carbide-rest-api/pkg/client/site"
+	authn "github.com/NVIDIA/carbide-rest-api/carbide-rest-auth/pkg/authentication"
+	otprop "go.opentelemetry.io/contrib/propagators/ot"
+	"go.opentelemetry.io/otel"
+	"go.temporal.io/sdk/contrib/opentelemetry"
+	"go.temporal.io/sdk/interceptor"
+
+	// Imports for API doc generation
+	_ "github.com/NVIDIA/carbide-rest-api/carbide-rest-api/pkg/api/model"
+)
+
+func InitTemporalClients(tConfig *config.TemporalConfig) (tsdkClient.Client, tsdkClient.NamespaceClient, error) {
+	var tc tsdkClient.Client
+	var tnc tsdkClient.NamespaceClient
+
+	tLogger := logur.LoggerToKV(zlogadapter.New(zerolog.New(os.Stderr)))
+
+	var (
+		tInterceptors []interceptor.ClientInterceptor
+		err           error
+	)
+	if os.Getenv("LS_SERVICE_NAME") != "" {
+		otelInterceptor, serr := opentelemetry.NewTracingInterceptor(opentelemetry.TracerOptions{TextMapPropagator: otel.GetTextMapPropagator()})
+		if serr != nil {
+			log.Panic().Err(serr).Msg("unable to get otelInterceptor")
+		}
+		tInterceptors = append(tInterceptors, otelInterceptor)
+	}
+
+	tOptions := tsdkClient.Options{
+		HostPort: fmt.Sprintf("%v:%v", tConfig.Host, tConfig.Port),
+		// This client connects to `cloud` namespace
+		Namespace: tConfig.Namespace,
+		ConnectionOptions: tsdkClient.ConnectionOptions{
+			TLS: tConfig.ClientTLSCfg,
+		},
+		DataConverter: tsdkConverter.NewCompositeDataConverter(
+			tsdkConverter.NewNilPayloadConverter(),
+			tsdkConverter.NewByteSlicePayloadConverter(),
+			tsdkConverter.NewProtoJSONPayloadConverterWithOptions(tsdkConverter.ProtoJSONPayloadConverterOptions{
+				AllowUnknownFields: true,
+			}),
+			tsdkConverter.NewProtoPayloadConverter(),
+			tsdkConverter.NewJSONPayloadConverter(),
+		),
+		Interceptors: tInterceptors,
+		Logger:       tLogger,
+	}
+
+	log.Info().Msg("creating Temporal client")
+	tc, err = tsdkClient.NewLazyClient(tOptions)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to create Temporal client")
+		return nil, nil, err
+	}
+
+	log.Info().Msg("creating Temporal namespace client")
+	tnc, err = tsdkClient.NewNamespaceClient(tOptions)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to create Temporal Namespace client")
+		return nil, nil, err
+	}
+
+	return tc, tnc, err
+}
+
+func InitAPIServer(cfg *config.Config, dbSession *cdb.Session, tc tsdkClient.Client, tnc tsdkClient.NamespaceClient, scp *sc.ClientPool) *echo.Echo {
+	e := echo.New()
+	e.HideBanner = true
+	e.HTTPErrorHandler = cerr.DefaultHTTPErrorHandler
+
+	// Add header read timeout to prevent SLOWLORIS attacks
+	e.Server.ReadHeaderTimeout = 3 * time.Second
+
+	// General middlewares
+	e.Use(echoMiddleware.Recover())
+
+	// Custom middlewares
+	e.Use(middleware.CORS())
+
+	// Secure middleware configures echo with secure headers
+	e.Use(middleware.Secure())
+
+	svcName := os.Getenv("LS_SERVICE_NAME")
+	if svcName != "" {
+		e.Use(otelecho.Middleware(svcName, otelecho.WithSkipper(skipHB), otelecho.WithPropagators(otprop.OT{})))
+	} else {
+		log.Warn().Msg("failed to get Lightstep service name, skipping OTel middleware")
+	}
+
+	// Sentry middleware
+	sentryDSN := os.Getenv("SENTRY_DSN")
+	if sentryDSN != "" {
+		// Initialize Sentry
+		err := sentry.Init(sentry.ClientOptions{
+			Dsn: sentryDSN,
+			BeforeSend: func(event *sentry.Event, hint *sentry.EventHint) *sentry.Event {
+				// Modify or filter events before sending them to Sentry
+				return event
+			},
+			Debug:            true,
+			AttachStacktrace: true,
+		})
+		if err != nil {
+			log.Error().Err(err).Msg("Sentry initialization failed")
+		} else {
+			defer sentry.Flush(2 * time.Second)
+
+			// Configure Zerolog to use Sentry as a writer
+			sentryWriter, err := sentryZerolog.New(sentryZerolog.Config{
+				ClientOptions: sentry.ClientOptions{
+					Dsn: sentryDSN,
+				},
+				Options: sentryZerolog.Options{
+					Levels:          []zerolog.Level{zerolog.ErrorLevel, zerolog.FatalLevel, zerolog.PanicLevel},
+					WithBreadcrumbs: true,
+					FlushTimeout:    3 * time.Second,
+				},
+			})
+			if err != nil {
+				log.Error().Err(err).Msg("failed to create Sentry writer")
+			} else {
+				defer sentryWriter.Close()
+
+				// Use Sentry writer in Zerolog
+				log.Logger = zerolog.New(zerolog.MultiLevelWriter(os.Stderr, sentryWriter))
+			}
+		}
+	} else {
+		log.Warn().Msg("failed to get Sentry DSN, skipping Sentry middleware")
+	}
+
+	// Routes
+	// Common routes are service oriented e.g. health
+	commonAPIRoutes := api.NewSystemAPIRoutes()
+	for _, commonAPIRoute := range commonAPIRoutes {
+		// Register route
+		e.Add(commonAPIRoute.Method, commonAPIRoute.Path, commonAPIRoute.Handler.Handle)
+	}
+
+	// Versioned routes
+	// Add middlewares for versioned group
+	v2Group := e.Group("/v2")
+	// Add logging
+	v2Group.Use(middleware.Logger())
+
+	// Add middleware to use for audit
+	if noAudit := os.Getenv("NO_AUDIT"); !strings.EqualFold(noAudit, "true") {
+		v2Group.Use(middleware.AuditBody(dbSession))
+		v2Group.Use(middleware.AuditLog(dbSession))
+	}
+
+	jwtOriginConfig := cfg.GetOrInitJWTOriginConfig()
+	if jwtOriginConfig == nil {
+		log.Panic().Msg("JWT origin config not initialized, cannot initialize auth middleware")
+	}
+
+	keycloakConfig, _ := cfg.GetOrInitKeycloakConfig()
+	payloadEncryptionConfig := cconfig.NewPayloadEncryptionConfig(cfg.GetTemporalEncryptionKey())
+
+	// Wrap the auth middleware to check readiness (optional, can be removed if panic is sufficient)
+	v2Group.Use(authn.Auth(dbSession, tc, jwtOriginConfig, payloadEncryptionConfig, keycloakConfig))
+
+	v2APIRoutes := api.NewV2APIRoutes(dbSession, tc, tnc, scp, cfg)
+	for _, v2APIRoute := range v2APIRoutes {
+		v2Group.Add(v2APIRoute.Method, v2APIRoute.Path, v2APIRoute.Handler.Handle)
+	}
+	if keycloakConfig != nil {
+		log.Info().Msg("Registering Keycloak auth routes")
+		authGroup := e.Group("/auth")
+		authAPIRoutes := handler.NewAuthRoutes(keycloakConfig)
+		for _, authnzAPIRoute := range authAPIRoutes {
+			log.Info().Str("method", authnzAPIRoute.Method).Str("path", authnzAPIRoute.Path).Msg("Registering auth route")
+			authGroup.Add(authnzAPIRoute.Method, authnzAPIRoute.Path, authnzAPIRoute.Handler.Handle)
+		}
+		log.Info().Msg("Keycloak auth routes registered successfully")
+	} else {
+		log.Warn().Msg("Keycloak not configured, skipping auth routes registration")
+	}
+
+	return e
+}
+
+func InitMetricsServer(e *echo.Echo) *echo.Echo {
+	ep := echo.New()
+	ep.HideBanner = true
+
+	conf := echoPrometheus.MiddlewareConfig{
+		Subsystem: "forge_api",
+		Skipper:   api.MetricsURLSkipper,
+	}
+
+	p := echoPrometheus.NewMiddlewareWithConfig(conf)
+	// Scrape metrics from Main Server
+	e.Use(p)
+	// Setup metrics endpoint at another server
+	ep.GET("/metrics", echoPrometheus.NewHandler())
+
+	return ep
+}
+
+// Skips tracing for the health routes to avoid flooding the trace
+func skipHB(c echo.Context) bool {
+	if os.Getenv("LS_TRACE_SYSTEM_ROUTES") == "true" {
+		return false
+	}
+
+	return api.IsSystemRoute(c.Path())
+}

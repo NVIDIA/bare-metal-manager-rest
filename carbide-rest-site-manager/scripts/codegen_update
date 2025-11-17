@@ -1,0 +1,38 @@
+#! /usr/bin/env sh
+set -eu -o pipefail
+K8S_VERSION=${FORGE_K8S_VERSION:-"1.28.0"}
+
+setup_tools() {
+  apk add --no-cache \
+      bash \
+      git \
+      jq
+
+  # Install tools in a temp directory to avoid triggering project go.mod resolution
+  export GOBIN=/usr/local/bin
+  cd /tmp
+  
+  # Use release tag format that matches Kubernetes version
+  tag="release-${K8S_VERSION%.*}" && \
+      go install "k8s.io/code-generator/cmd/client-gen@${tag}" && \
+      go install "k8s.io/code-generator/cmd/defaulter-gen@${tag}" && \
+      go install "k8s.io/code-generator/cmd/lister-gen@${tag}" && \
+      go install "k8s.io/code-generator/cmd/informer-gen@${tag}" && \
+      go install "k8s.io/code-generator/cmd/deepcopy-gen@${tag}"
+}
+
+main() {
+  export repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+  export GOPATH=/go
+  export GOPROXY=${GOPROXY:-https://proxy.golang.org,direct}
+  
+  # Install tools without triggering go.mod dependency resolution
+  setup_tools
+  
+  # Change to scripts directory for sourcing gen_code.bash
+  cd "${repo_root}/scripts"
+  
+  # Source and run gen_code
+  /bin/bash -c "source ./gen_code.bash && gen_code"
+}
+main "$@"
