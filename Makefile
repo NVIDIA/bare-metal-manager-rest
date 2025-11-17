@@ -58,6 +58,16 @@ test: postgres-up
 	TEMPORAL_SERVER_NAME=test-temporal \
 	TEMPORAL_NAMESPACE=test-namespace \
 	TEMPORAL_QUEUE=test-queue \
+	TEMPORAL_HOST=localhost \
+	TEMPORAL_PORT=7233 \
+	TEMPORAL_PUBLISH_QUEUE=test-publish-queue \
+	TEMPORAL_SUBSCRIBE_QUEUE=test-subscribe-queue \
+	TEMPORAL_PUBLISH_NAMESPACE=test-publish-namespace \
+	CLUSTER_ID=00000000-0000-0000-0000-000000000000 \
+	METRICS_PORT=9090 \
+	POD_NAME=test-pod-0 \
+	POD_NAMESPACE=default \
+	DISABLE_BOOTSTRAP=true \
 	CGO_ENABLED=1 go test ./... -race -p 1
 
 # Clean test - stops existing container and starts fresh before running tests
@@ -72,6 +82,16 @@ test-clean: postgres-down postgres-up
 	TEMPORAL_SERVER_NAME=test-temporal \
 	TEMPORAL_NAMESPACE=test-namespace \
 	TEMPORAL_QUEUE=test-queue \
+	TEMPORAL_HOST=localhost \
+	TEMPORAL_PORT=7233 \
+	TEMPORAL_PUBLISH_QUEUE=test-publish-queue \
+	TEMPORAL_SUBSCRIBE_QUEUE=test-subscribe-queue \
+	TEMPORAL_PUBLISH_NAMESPACE=test-publish-namespace \
+	CLUSTER_ID=00000000-0000-0000-0000-000000000000 \
+	METRICS_PORT=9090 \
+	POD_NAME=test-pod-0 \
+	POD_NAMESPACE=default \
+	DISABLE_BOOTSTRAP=true \
 	CGO_ENABLED=1 go test ./... -race -p 1 --count=1
 	@echo ""
 	@echo "Tests completed!"

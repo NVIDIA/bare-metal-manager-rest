@@ -29,6 +29,11 @@ import (
 func TestCarbideVpc(t *testing.T) {
 	TestInitElektra(t)
 	grpcClient := testElektra.manager.API.Carbide.GetGRPCClient()
+	
+	// Skip test if gRPC client is not available (requires running Carbide API server)
+	if grpcClient == nil {
+		t.Skip("Skipping integration test - Carbide API server not available")
+	}
 
 	var vpc *wflows.Vpc
 
@@ -130,6 +135,11 @@ func TestCarbideVpc(t *testing.T) {
 func TestCarbideSubnet(t *testing.T) {
 	TestInitElektra(t)
 	grpcClient := testElektra.manager.API.Carbide.GetGRPCClient()
+	
+	// Skip test if gRPC client is not available (requires running Carbide API server)
+	if grpcClient == nil {
+		t.Skip("Skipping integration test - Carbide API server not available")
+	}
 
 	// Send a request to the GRPC server
 	gw := "10.0.1.1"

@@ -38,6 +38,9 @@ const (
 // Fill the datastructure to intialize the database
 func newDBConfig(db *conftypes.DBConfig) {
 	db.Server = os.Getenv("DB_ADDR")
+	if db.Server == "" {
+		db.Server = os.Getenv("DB_HOST")
+	}
 	if os.Getenv("CI") == "true" {
 		db.Server = "postgres"
 	}
@@ -57,6 +60,9 @@ func newDBConfig(db *conftypes.DBConfig) {
 	db.Password = url.QueryEscape(password)
 
 	db.Name = os.Getenv("DB_DATABASE")
+	if db.Name == "" {
+		db.Name = os.Getenv("DB_NAME")
+	}
 	if db.Name == "" {
 		panic("db.Name not specified")
 	}

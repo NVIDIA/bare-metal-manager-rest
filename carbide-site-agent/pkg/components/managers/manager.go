@@ -122,19 +122,30 @@ func (Managers *Manager) Init() {
 		Name:      "version",
 		Help:      "version of the elektra_site_agent",
 	}, []string{"build_version", "build_date"})
-	prometheus.MustRegister(versionGauge)
-	// set the value once, since it does not change
-	versionGauge.WithLabelValues(metadata.Version, metadata.BuildTime).Set(1)
+	// Ignore error if already registered (happens in tests)
+	if err := prometheus.Register(versionGauge); err != nil {
+		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+			ManagerAccess.Data.EB.Log.Warn().Err(err).Msg("Failed to register version metric")
+		}
+	} else {
+		// set the value once, since it does not change
+		versionGauge.WithLabelValues(metadata.Version, metadata.BuildTime).Set(1)
+	}
 	// register health status metric
-	prometheus.MustRegister(
-		prometheus.NewCounterFunc(prometheus.CounterOpts{
-			Namespace: "elektra_site_agent",
-			Name:      "health_status",
-			Help:      "health status of the elektra_site_agent",
-		},
-			func() float64 {
-				return float64(ManagerAccess.Data.EB.HealthStatus.Load())
-			}))
+	healthCounter := prometheus.NewCounterFunc(prometheus.CounterOpts{
+		Namespace: "elektra_site_agent",
+		Name:      "health_status",
+		Help:      "health status of the elektra_site_agent",
+	},
+		func() float64 {
+			return float64(ManagerAccess.Data.EB.HealthStatus.Load())
+		})
+	// Ignore error if already registered (happens in tests)
+	if err := prometheus.Register(healthCounter); err != nil {
+		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+			ManagerAccess.Data.EB.Log.Warn().Err(err).Msg("Failed to register health status metric")
+		}
+	}
 	ManagerAccess.Data.EB.HealthStatus.Store(uint64(computils.CompUnhealthy))
 
 	Managers.Orchestrator().Init()

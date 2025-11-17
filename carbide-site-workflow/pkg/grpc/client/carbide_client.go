@@ -283,7 +283,15 @@ func (cac *CarbideAtomicClient) SwapClient(newClient *CarbideClient) *CarbideCli
 
 // GetClient returns the current version of Carbide client from the atomic value
 func (cac *CarbideAtomicClient) GetClient() *CarbideClient {
-	return cac.value.Load().(*CarbideClient)
+	val := cac.value.Load()
+	if val == nil {
+		return nil
+	}
+	client, ok := val.(*CarbideClient)
+	if !ok {
+		return nil
+	}
+	return client
 }
 
 // CheckAndReloadCerts continuously monitors the TLS certificates for changes.
