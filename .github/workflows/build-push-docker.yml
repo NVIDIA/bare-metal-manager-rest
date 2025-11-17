@@ -25,6 +25,13 @@ on:
         required: false
         default: true
         type: boolean
+    secrets:
+      NVCR_USERNAME:
+        description: "NVIDIA Container Registry username (typically '$oauthtoken')"
+        required: true
+      NVCR_TOKEN:
+        description: "NVIDIA Container Registry API token"
+        required: true
 
 # Required secrets (must be configured in GitHub repository settings):
 # - NVCR_USERNAME: NVIDIA Container Registry username (typically '$oauthtoken')
@@ -58,7 +65,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to NVIDIA Container Registry
-        if: ${{ inputs.push_enabled && secrets.NVCR_TOKEN != '' }}
+        if: ${{ inputs.push_enabled }}
         uses: docker/login-action@v3
         with:
           registry: nvcr.io
@@ -103,7 +110,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to NVIDIA Container Registry
-        if: ${{ inputs.push_enabled && secrets.NVCR_TOKEN != '' }}
+        if: ${{ inputs.push_enabled }}
         uses: docker/login-action@v3
         with:
           registry: nvcr.io
@@ -148,7 +155,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to NVIDIA Container Registry
-        if: ${{ inputs.push_enabled && secrets.NVCR_TOKEN != '' }}
+        if: ${{ inputs.push_enabled }}
         uses: docker/login-action@v3
         with:
           registry: nvcr.io
@@ -193,7 +200,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to NVIDIA Container Registry
-        if: ${{ inputs.push_enabled && secrets.NVCR_TOKEN != '' }}
+        if: ${{ inputs.push_enabled }}
         uses: docker/login-action@v3
         with:
           registry: nvcr.io
@@ -238,7 +245,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to NVIDIA Container Registry
-        if: ${{ inputs.push_enabled && secrets.NVCR_TOKEN != '' }}
+        if: ${{ inputs.push_enabled }}
         uses: docker/login-action@v3
         with:
           registry: nvcr.io
@@ -283,7 +290,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to NVIDIA Container Registry
-        if: ${{ inputs.push_enabled && secrets.NVCR_TOKEN != '' }}
+        if: ${{ inputs.push_enabled }}
         uses: docker/login-action@v3
         with:
           registry: nvcr.io
@@ -328,7 +335,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to NVIDIA Container Registry
-        if: ${{ inputs.push_enabled && secrets.NVCR_TOKEN != '' }}
+        if: ${{ inputs.push_enabled }}
         uses: docker/login-action@v3
         with:
           registry: nvcr.io
