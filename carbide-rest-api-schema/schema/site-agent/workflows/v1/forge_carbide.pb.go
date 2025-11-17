@@ -34214,7 +34214,7 @@ const file_forge_carbide_proto_rawDesc = "" +
 	"\x17ResetHostReprovisioning\x12\x11.common.MachineId\x1a\x16.google.protobuf.Empty\x12L\n" +
 	"\x11CopyBfbToDpuRshim\x12\x1f.forge.CopyBfbToDpuRshimRequest\x1a\x16.google.protobuf.Empty\x12H\n" +
 	"\x0fGetPowerOptions\x12\x19.forge.PowerOptionRequest\x1a\x1a.forge.PowerOptionResponse\x12P\n" +
-	"\x11UpdatePowerOption\x12\x1f.forge.PowerOptionUpdateRequest\x1a\x1a.forge.PowerOptionResponseBKZIgithub.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/protob\x06proto3"
+	"\x11UpdatePowerOption\x12\x1f.forge.PowerOptionUpdateRequest\x1a\x1a.forge.PowerOptionResponseBBZ@github.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/protob\x06proto3"
 
 var (
 	file_forge_carbide_proto_rawDescOnce sync.Once

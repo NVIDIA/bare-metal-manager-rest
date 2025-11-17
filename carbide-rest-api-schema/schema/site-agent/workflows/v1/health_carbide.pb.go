@@ -317,7 +317,7 @@ const file_health_carbide_proto_rawDesc = "" +
 	"\x12HealthProbeSuccess\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\x06target\x18\x02 \x01(\tH\x00R\x06target\x88\x01\x01B\t\n" +
-	"\a_targetBKZIgithub.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/protob\x06proto3"
+	"\a_targetBBZ@github.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/protob\x06proto3"
 
 var (
 	file_health_carbide_proto_rawDescOnce sync.Once

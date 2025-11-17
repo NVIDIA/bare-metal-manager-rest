@@ -15,7 +15,7 @@ import "google/protobuf/duration.proto";
 
 package site_explorer;
 
-option go_package = "github.com/nvidia/carbide-rest-api-snapshot/carbide-rest-api-schema/proto";
+option go_package = "github.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/proto";
 
 // Data that we gathered about a particular endpoint during site exploration
 message EndpointExplorationReport {

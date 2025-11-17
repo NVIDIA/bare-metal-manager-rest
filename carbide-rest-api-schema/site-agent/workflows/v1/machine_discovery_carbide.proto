@@ -13,7 +13,7 @@ syntax = "proto3";
 
 package machine_discovery;
 
-option go_package = "github.com/nvidia/carbide-rest-api-snapshot/carbide-rest-api-schema/proto";
+option go_package = "github.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/proto";
 
 // Carries information about a host that was discovered by the Forge system
 message DiscoveryInfo {

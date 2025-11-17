@@ -17,7 +17,7 @@ import "workflow.proto";
 import "forge_carbide.proto";
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/nvidia/carbide-rest-api-snapshot/carbide-rest-api-schema/proto";
+option go_package = "github.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/proto";
 
 // NetworkSecurityGroupInventory - inventory info for all NetworkSecurityGroups periodically collected
 message NetworkSecurityGroupInventory {

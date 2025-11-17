@@ -1,0 +1,85 @@
+name: Prepare Build Information
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: "Runner type for the job"
+        required: false
+        default: "ubuntu-latest"
+        type: string
+    outputs:
+      version:
+        description: "Version number generated from git describe"
+        value: ${{ jobs.prepare.outputs.version }}
+      short_sha:
+        description: "Short SHA (7 characters) of the current commit"
+        value: ${{ jobs.prepare.outputs.short_sha }}
+      full_sha:
+        description: "Full SHA of the current commit"
+        value: ${{ jobs.prepare.outputs.full_sha }}
+      target_registry:
+        description: "Target NVCR registry path"
+        value: ${{ jobs.prepare.outputs.target_registry }}
+
+jobs:
+  prepare:
+    name: Prepare Build Environment
+    runs-on: ${{ inputs.runner }}
+
+    outputs:
+      version: ${{ steps.generate-version.outputs.version }}
+      short_sha: ${{ steps.generate-version.outputs.short_sha }}
+      full_sha: ${{ steps.generate-version.outputs.full_sha }}
+      target_registry: ${{ steps.generate-version.outputs.target_registry }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for accurate git describe
+          submodules: recursive
+
+      - name: Generate version and build information
+        id: generate-version
+        run: |
+          # Generate version number using git describe
+          # If on a tag, use the tag name; otherwise generate from git history
+          if [ -n "${{ github.ref_type == 'tag' && github.ref_name || '' }}" ]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            VERSION=$(git describe --tags --first-parent --always --long 2>/dev/null || echo "v0.0.0-0-g$(git rev-parse --short HEAD)")
+          fi
+          
+          # Generate short and full SHA
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          FULL_SHA=$(git rev-parse HEAD)
+          
+          # Set target registry - replace with your NVCR org/team
+          # Format: nvcr.io/<org>/<project>
+          target_registry="nvcr.io/your-org/carbide"
+          
+          # Output all variables
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+          echo "full_sha=$FULL_SHA" >> $GITHUB_OUTPUT
+          echo "target_registry=$target_registry" >> $GITHUB_OUTPUT
+          
+          # Print for logs
+          echo "Generated build information:"
+          echo "  VERSION: $VERSION"
+          echo "  SHORT_SHA: $SHORT_SHA"
+          echo "  FULL_SHA: $FULL_SHA"
+          echo "  TARGET_REGISTRY: $target_registry"
+
+      - name: Generate build summary
+        run: |
+          echo "# Build Information Generated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Version Details" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: \`${{ steps.generate-version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Short SHA**: \`${{ steps.generate-version.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Full SHA**: \`${{ steps.generate-version.outputs.full_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target Registry**: \`${{ steps.generate-version.outputs.target_registry }}\`" >> $GITHUB_STEP_SUMMARY
+

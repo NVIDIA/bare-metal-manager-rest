@@ -406,7 +406,7 @@ const file_infiniband_partition_proto_rawDesc = "" +
 	"status_msg\x18\x02 \x01(\tR\tstatusMsg\x128\n" +
 	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x127\n" +
 	"\rib_partitions\x18\x04 \x03(\v2\x12.forge.IBPartitionR\fibPartitions\x12B\n" +
-	"\x0einventory_page\x18\x05 \x01(\v2\x1b.workflows.v1.InventoryPageR\rinventoryPageBKZIgithub.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/protob\x06proto3"
+	"\x0einventory_page\x18\x05 \x01(\v2\x1b.workflows.v1.InventoryPageR\rinventoryPageBBZ@github.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/protob\x06proto3"
 
 var (
 	file_infiniband_partition_proto_rawDescOnce sync.Once

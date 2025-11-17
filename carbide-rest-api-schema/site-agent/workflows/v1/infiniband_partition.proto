@@ -19,7 +19,7 @@ import "workflow.proto";
 import "common_carbide.proto";
 import "forge_carbide.proto";
 
-option go_package = "github.com/nvidia/carbide-rest-api-snapshot/carbide-rest-api-schema/proto";
+option go_package = "github.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/proto";
 
 // CreateInfiniBandPartitionRequest - request parameters for InfiniBandPartition creation
 message CreateInfiniBandPartitionRequest {

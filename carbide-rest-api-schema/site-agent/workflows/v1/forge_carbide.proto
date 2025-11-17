@@ -21,7 +21,7 @@ import "machine_discovery_carbide.proto";
 import "measured_boot_carbide.proto";
 import "site_explorer_carbide.proto";
 
-option go_package = "github.com/nvidia/carbide-rest-api-snapshot/carbide-rest-api-schema/proto";
+option go_package = "github.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/proto";
 
 package forge;
 

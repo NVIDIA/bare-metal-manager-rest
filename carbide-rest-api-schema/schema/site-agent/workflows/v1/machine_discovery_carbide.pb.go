@@ -1330,7 +1330,7 @@ const file_machine_discovery_carbide_proto_rawDesc = "" +
 	"\aAARCH64\x10\x00\x12\n" +
 	"\n" +
 	"\x06X86_64\x10\x01\x12\v\n" +
-	"\aUNKNOWN\x10\x02BKZIgithub.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/protob\x06proto3"
+	"\aUNKNOWN\x10\x02BBZ@github.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema/protob\x06proto3"
 
 var (
 	file_machine_discovery_carbide_proto_rawDescOnce sync.Once

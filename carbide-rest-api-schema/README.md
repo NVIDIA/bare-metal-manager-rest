@@ -14,6 +14,6 @@ Not all objects/methods changed in proto is actively used by Cloud. But we pull 
 
 Incorporate the Go module using:
 
-    go get github.com/nvidia/carbide-rest-api-snapshot/carbide-rest-api-schema
+    go get github.com/NVIDIA/carbide-rest-api/carbide-rest-api-schema
 
 The Cloud Workflow Schema has semantic versioning e.g. v0.0.33. Specific versions should be pulled in as needed.
