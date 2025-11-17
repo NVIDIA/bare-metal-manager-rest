@@ -28,10 +28,10 @@ on:
     secrets:
       NVCR_USERNAME:
         description: "NVIDIA Container Registry username (typically '$oauthtoken')"
-        required: true
+        required: false
       NVCR_TOKEN:
         description: "NVIDIA Container Registry API token"
-        required: true
+        required: false
 
 # Required secrets (must be configured in GitHub repository settings):
 # - NVCR_USERNAME: NVIDIA Container Registry username (typically '$oauthtoken')
