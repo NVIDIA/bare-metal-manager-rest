@@ -79,6 +79,7 @@ jobs:
           file: ./docker/production/Dockerfile.carbide-rest-api
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
+          load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-rest-api:${{ inputs.short_sha }}
             ${{ inputs.target_registry }}/carbide-rest-api:${{ inputs.version }}
@@ -92,6 +93,32 @@ jobs:
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
+
+      - name: Extract binary from image
+        run: |
+          mkdir -p artifacts
+          docker create --name temp-container ${{ inputs.target_registry }}/carbide-rest-api:${{ inputs.short_sha }}
+          docker cp temp-container:/app/api artifacts/api
+          docker rm temp-container
+          chmod +x artifacts/api
+
+      - name: Export Docker image
+        run: |
+          docker save ${{ inputs.target_registry }}/carbide-rest-api:${{ inputs.short_sha }} | gzip > artifacts/carbide-rest-api-${{ inputs.short_sha }}.tar.gz
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: carbide-rest-api-binary-${{ inputs.short_sha }}
+          path: artifacts/api
+          retention-days: 30
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: carbide-rest-api-image-${{ inputs.short_sha }}
+          path: artifacts/carbide-rest-api-${{ inputs.short_sha }}.tar.gz
+          retention-days: 30
 
   # Build and push carbide-rest-db
   build-carbide-rest-db:
@@ -124,6 +151,7 @@ jobs:
           file: ./docker/production/Dockerfile.carbide-rest-db
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
+          load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-rest-db:${{ inputs.short_sha }}
             ${{ inputs.target_registry }}/carbide-rest-db:${{ inputs.version }}
@@ -137,6 +165,32 @@ jobs:
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
+
+      - name: Extract binary from image
+        run: |
+          mkdir -p artifacts
+          docker create --name temp-container ${{ inputs.target_registry }}/carbide-rest-db:${{ inputs.short_sha }}
+          docker cp temp-container:/app/migrations artifacts/migrations
+          docker rm temp-container
+          chmod +x artifacts/migrations
+
+      - name: Export Docker image
+        run: |
+          docker save ${{ inputs.target_registry }}/carbide-rest-db:${{ inputs.short_sha }} | gzip > artifacts/carbide-rest-db-${{ inputs.short_sha }}.tar.gz
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: carbide-rest-db-binary-${{ inputs.short_sha }}
+          path: artifacts/migrations
+          retention-days: 30
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: carbide-rest-db-image-${{ inputs.short_sha }}
+          path: artifacts/carbide-rest-db-${{ inputs.short_sha }}.tar.gz
+          retention-days: 30
 
   # Build and push carbide-rest-ipam
   build-carbide-rest-ipam:
@@ -169,6 +223,7 @@ jobs:
           file: ./docker/production/Dockerfile.carbide-rest-ipam
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
+          load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-rest-ipam:${{ inputs.short_sha }}
             ${{ inputs.target_registry }}/carbide-rest-ipam:${{ inputs.version }}
@@ -182,6 +237,32 @@ jobs:
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
+
+      - name: Extract binary from image
+        run: |
+          mkdir -p artifacts
+          docker create --name temp-container ${{ inputs.target_registry }}/carbide-rest-ipam:${{ inputs.short_sha }}
+          docker cp temp-container:/app/ipam-server artifacts/ipam-server
+          docker rm temp-container
+          chmod +x artifacts/ipam-server
+
+      - name: Export Docker image
+        run: |
+          docker save ${{ inputs.target_registry }}/carbide-rest-ipam:${{ inputs.short_sha }} | gzip > artifacts/carbide-rest-ipam-${{ inputs.short_sha }}.tar.gz
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: carbide-rest-ipam-binary-${{ inputs.short_sha }}
+          path: artifacts/ipam-server
+          retention-days: 30
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: carbide-rest-ipam-image-${{ inputs.short_sha }}
+          path: artifacts/carbide-rest-ipam-${{ inputs.short_sha }}.tar.gz
+          retention-days: 30
 
   # Build and push carbide-rest-site-manager
   build-carbide-rest-site-manager:
@@ -214,6 +295,7 @@ jobs:
           file: ./docker/production/Dockerfile.carbide-rest-site-manager
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
+          load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-rest-site-manager:${{ inputs.short_sha }}
             ${{ inputs.target_registry }}/carbide-rest-site-manager:${{ inputs.version }}
@@ -227,6 +309,32 @@ jobs:
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
+
+      - name: Extract binary from image
+        run: |
+          mkdir -p artifacts
+          docker create --name temp-container ${{ inputs.target_registry }}/carbide-rest-site-manager:${{ inputs.short_sha }}
+          docker cp temp-container:/app/sitemgr artifacts/sitemgr
+          docker rm temp-container
+          chmod +x artifacts/sitemgr
+
+      - name: Export Docker image
+        run: |
+          docker save ${{ inputs.target_registry }}/carbide-rest-site-manager:${{ inputs.short_sha }} | gzip > artifacts/carbide-rest-site-manager-${{ inputs.short_sha }}.tar.gz
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: carbide-rest-site-manager-binary-${{ inputs.short_sha }}
+          path: artifacts/sitemgr
+          retention-days: 30
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: carbide-rest-site-manager-image-${{ inputs.short_sha }}
+          path: artifacts/carbide-rest-site-manager-${{ inputs.short_sha }}.tar.gz
+          retention-days: 30
 
   # Build and push carbide-rest-workflow
   build-carbide-rest-workflow:
@@ -259,6 +367,7 @@ jobs:
           file: ./docker/production/Dockerfile.carbide-rest-workflow
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
+          load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-rest-workflow:${{ inputs.short_sha }}
             ${{ inputs.target_registry }}/carbide-rest-workflow:${{ inputs.version }}
@@ -272,6 +381,32 @@ jobs:
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
+
+      - name: Extract binary from image
+        run: |
+          mkdir -p artifacts
+          docker create --name temp-container ${{ inputs.target_registry }}/carbide-rest-workflow:${{ inputs.short_sha }}
+          docker cp temp-container:/app/workflow artifacts/workflow
+          docker rm temp-container
+          chmod +x artifacts/workflow
+
+      - name: Export Docker image
+        run: |
+          docker save ${{ inputs.target_registry }}/carbide-rest-workflow:${{ inputs.short_sha }} | gzip > artifacts/carbide-rest-workflow-${{ inputs.short_sha }}.tar.gz
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: carbide-rest-workflow-binary-${{ inputs.short_sha }}
+          path: artifacts/workflow
+          retention-days: 30
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: carbide-rest-workflow-image-${{ inputs.short_sha }}
+          path: artifacts/carbide-rest-workflow-${{ inputs.short_sha }}.tar.gz
+          retention-days: 30
 
   # Build and push carbide-site-agent
   build-carbide-site-agent:
@@ -304,6 +439,7 @@ jobs:
           file: ./docker/production/Dockerfile.carbide-site-agent
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
+          load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.short_sha }}
             ${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.version }}
@@ -317,6 +453,33 @@ jobs:
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
+
+      - name: Extract binaries from image
+        run: |
+          mkdir -p artifacts
+          docker create --name temp-container ${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.short_sha }}
+          docker cp temp-container:/app/elektra artifacts/elektra
+          docker cp temp-container:/app/elektractl artifacts/elektractl
+          docker rm temp-container
+          chmod +x artifacts/elektra artifacts/elektractl
+
+      - name: Export Docker image
+        run: |
+          docker save ${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.short_sha }} | gzip > artifacts/carbide-site-agent-${{ inputs.short_sha }}.tar.gz
+
+      - name: Upload binary artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: carbide-site-agent-binaries-${{ inputs.short_sha }}
+          path: artifacts/elektra*
+          retention-days: 30
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: carbide-site-agent-image-${{ inputs.short_sha }}
+          path: artifacts/carbide-site-agent-${{ inputs.short_sha }}.tar.gz
+          retention-days: 30
 
   # Build and push carbide-rest-cert-manager (credsmgr)
   build-carbide-rest-cert-manager:
@@ -349,6 +512,7 @@ jobs:
           file: ./docker/production/Dockerfile.carbide-rest-cert-manager
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
+          load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-rest-cert-manager:${{ inputs.short_sha }}
             ${{ inputs.target_registry }}/carbide-rest-cert-manager:${{ inputs.version }}
@@ -362,6 +526,32 @@ jobs:
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
+
+      - name: Extract binary from image
+        run: |
+          mkdir -p artifacts
+          docker create --name temp-container ${{ inputs.target_registry }}/carbide-rest-cert-manager:${{ inputs.short_sha }}
+          docker cp temp-container:/app/credsmgr artifacts/credsmgr
+          docker rm temp-container
+          chmod +x artifacts/credsmgr
+
+      - name: Export Docker image
+        run: |
+          docker save ${{ inputs.target_registry }}/carbide-rest-cert-manager:${{ inputs.short_sha }} | gzip > artifacts/carbide-rest-cert-manager-${{ inputs.short_sha }}.tar.gz
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: carbide-rest-cert-manager-binary-${{ inputs.short_sha }}
+          path: artifacts/credsmgr
+          retention-days: 30
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: carbide-rest-cert-manager-image-${{ inputs.short_sha }}
+          path: artifacts/carbide-rest-cert-manager-${{ inputs.short_sha }}.tar.gz
+          retention-days: 30
 
   # Build summary
   build-summary:
