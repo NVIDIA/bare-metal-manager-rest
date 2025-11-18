@@ -15,6 +15,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -26,13 +27,32 @@ import (
 )
 
 func testTxGetTestSession(t *testing.T) *Session {
-	host := "localhost"
-	port := 30432
-	if os.Getenv("CI") == "true" {
-		host = "postgres"
-		port = 5432
+	host := os.Getenv("DB_HOST")
+	if host == "" {
+		host = "localhost"
 	}
-	dbSession, err := NewSession(host, port, "postgres", "postgres", "postgres", "")
+
+	port := 30432
+	if portEnv := os.Getenv("DB_PORT"); portEnv != "" {
+		fmt.Sscanf(portEnv, "%d", &port)
+	}
+
+	user := os.Getenv("DB_USER")
+	if user == "" {
+		user = "postgres"
+	}
+
+	password := os.Getenv("DB_PASSWORD")
+	if password == "" {
+		password = "postgres"
+	}
+
+	name := os.Getenv("DB_NAME")
+	if name == "" {
+		name = "postgres"
+	}
+
+	dbSession, err := NewSession(host, port, name, user, password, "")
 	assert.Nil(t, err)
 	dbSession.DB.AddQueryHook(bundebug.NewQueryHook(
 		bundebug.WithEnabled(false),
