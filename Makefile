@@ -50,18 +50,32 @@ postgres-restart: postgres-down postgres-up
 test: postgres-up
 	@echo "Building elektraserver for site agent tests..."
 	@cd carbide-site-agent/cmd/elektraserver && go build -race -o ../bin/elektraserver && cd ../../..
-	@echo "Starting elektraserver..."
-	@./carbide-site-agent/cmd/bin/elektraserver -tout=100 & echo $$! > elektra_server.pid
+	@echo "Starting elektraserver on 127.0.0.1:11079..."
+	@./carbide-site-agent/cmd/bin/elektraserver -tout=100 > elektra_server.log 2>&1 & echo $$! > elektra_server.pid
+	@echo "Elektraserver started with PID `cat elektra_server.pid`"
+	@sleep 1
+	@if ps -p `cat elektra_server.pid` > /dev/null 2>&1; then \
+		echo "Process is running"; \
+	else \
+		echo "ERROR: Process failed to start!"; \
+		cat elektra_server.log; \
+		rm -f elektra_server.pid; \
+		exit 1; \
+	fi
 	@echo "Waiting for elektraserver to be ready..."
 	@for i in $$(seq 1 30); do \
-		if nc -z localhost 11079 2>/dev/null; then \
+		if nc -z 127.0.0.1 11079 2>/dev/null; then \
+			echo "Port 11079 is open, waiting for server to fully initialize..."; \
+			sleep 3; \
 			echo "Elektraserver is ready!"; \
 			break; \
 		fi; \
 		if [ $$i -eq 30 ]; then \
 			echo "ERROR: Elektraserver failed to start within 30 seconds"; \
+			echo "=== Server logs ==="; \
+			cat elektra_server.log 2>/dev/null || echo "No log file"; \
 			kill `cat elektra_server.pid` 2>/dev/null || true; \
-			rm -f elektra_server.pid; \
+			rm -f elektra_server.pid elektra_server.log; \
 			exit 1; \
 		fi; \
 		sleep 1; \
@@ -92,11 +106,13 @@ test: postgres-up
 	CGO_ENABLED=1 go test ./... -race -p 1; then \
 		echo "Tests passed"; \
 		kill `cat elektra_server.pid` 2>/dev/null || true; \
-		rm -f elektra_server.pid; \
+		rm -f elektra_server.pid elektra_server.log; \
 	else \
 		echo "Tests failed"; \
+		echo "=== Server logs ==="; \
+		cat elektra_server.log 2>/dev/null || echo "No log file"; \
 		kill `cat elektra_server.pid` 2>/dev/null || true; \
-		rm -f elektra_server.pid; \
+		rm -f elektra_server.pid elektra_server.log; \
 		exit 1; \
 	fi
 
@@ -104,18 +120,32 @@ test: postgres-up
 test-clean: postgres-down postgres-up
 	@echo "Building elektraserver for site agent tests..."
 	@cd carbide-site-agent/cmd/elektraserver && go build -race -o ../bin/elektraserver && cd ../../..
-	@echo "Starting elektraserver..."
-	@./carbide-site-agent/cmd/bin/elektraserver -tout=100 & echo $$! > elektra_server.pid
+	@echo "Starting elektraserver on 127.0.0.1:11079..."
+	@./carbide-site-agent/cmd/bin/elektraserver -tout=100 > elektra_server.log 2>&1 & echo $$! > elektra_server.pid
+	@echo "Elektraserver started with PID `cat elektra_server.pid`"
+	@sleep 1
+	@if ps -p `cat elektra_server.pid` > /dev/null 2>&1; then \
+		echo "Process is running"; \
+	else \
+		echo "ERROR: Process failed to start!"; \
+		cat elektra_server.log; \
+		rm -f elektra_server.pid; \
+		exit 1; \
+	fi
 	@echo "Waiting for elektraserver to be ready..."
 	@for i in $$(seq 1 30); do \
-		if nc -z localhost 11079 2>/dev/null; then \
+		if nc -z 127.0.0.1 11079 2>/dev/null; then \
+			echo "Port 11079 is open, waiting for server to fully initialize..."; \
+			sleep 3; \
 			echo "Elektraserver is ready!"; \
 			break; \
 		fi; \
 		if [ $$i -eq 30 ]; then \
 			echo "ERROR: Elektraserver failed to start within 30 seconds"; \
+			echo "=== Server logs ==="; \
+			cat elektra_server.log 2>/dev/null || echo "No log file"; \
 			kill `cat elektra_server.pid` 2>/dev/null || true; \
-			rm -f elektra_server.pid; \
+			rm -f elektra_server.pid elektra_server.log; \
 			exit 1; \
 		fi; \
 		sleep 1; \
@@ -147,12 +177,14 @@ test-clean: postgres-down postgres-up
 		echo ""; \
 		echo "Tests completed!"; \
 		kill `cat elektra_server.pid` 2>/dev/null || true; \
-		rm -f elektra_server.pid; \
+		rm -f elektra_server.pid elektra_server.log; \
 	else \
 		echo ""; \
 		echo "Tests failed!"; \
+		echo "=== Server logs ==="; \
+		cat elektra_server.log 2>/dev/null || echo "No log file"; \
 		kill `cat elektra_server.pid` 2>/dev/null || true; \
-		rm -f elektra_server.pid; \
+		rm -f elektra_server.pid elektra_server.log; \
 		exit 1; \
 	fi
 

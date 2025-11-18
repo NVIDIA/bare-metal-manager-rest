@@ -55,20 +55,52 @@ jobs:
       
       - name: Start elektraserver
         run: |
-          ./carbide-site-agent/cmd/bin/elektraserver -tout=330 &
+          echo "Starting elektraserver on 127.0.0.1:11079..."
+          ./carbide-site-agent/cmd/bin/elektraserver -tout=330 > elektra_server.log 2>&1 &
           echo $! > elektra_server.pid
+          echo "Elektraserver started with PID $(cat elektra_server.pid)"
+          sleep 1
+          if ps -p $(cat elektra_server.pid) > /dev/null; then
+            echo "Process is running"
+          else
+            echo "ERROR: Process failed to start!"
+            cat elektra_server.log
+            exit 1
+          fi
       
       - name: Wait for elektraserver to be ready
         run: |
           echo "Waiting for elektraserver to be ready..."
           for i in $(seq 1 30); do
             if nc -z 127.0.0.1 11079 2>/dev/null; then
-              echo "Elektraserver is ready on 127.0.0.1:11079!"
-              exit 0
+              echo "Port 11079 is open, verifying gRPC server is responding..."
+              # Give the server a moment to fully initialize after port opens
+              sleep 2
+              # Try to connect with grpcurl to verify server is actually responding
+              if command -v grpcurl >/dev/null 2>&1; then
+                if grpcurl -plaintext -max-time 5 127.0.0.1:11079 list >/dev/null 2>&1; then
+                  echo "Elektraserver is ready and responding to gRPC requests!"
+                  exit 0
+                else
+                  echo "Port is open but server not responding to gRPC yet, waiting... (attempt $i)"
+                fi
+              else
+                # Fallback: if grpcurl not available, just wait a bit longer after port opens
+                echo "grpcurl not available, waiting 3 more seconds after port opened..."
+                sleep 3
+                echo "Elektraserver port is ready on 127.0.0.1:11079!"
+                exit 0
+              fi
             fi
             if [ $i -eq 30 ]; then
               echo "ERROR: Elektraserver failed to start within 30 seconds"
+              echo "Checking if process is still running..."
               if [ -f elektra_server.pid ]; then
+                if ps -p $(cat elektra_server.pid) > /dev/null; then
+                  echo "Process is running but not responding"
+                else
+                  echo "Process has died"
+                fi
                 kill $(cat elektra_server.pid) 2>/dev/null || true
                 rm elektra_server.pid
               fi
@@ -108,8 +140,13 @@ jobs:
         if: always()
         run: |
           if [ -f elektra_server.pid ]; then
+            echo "Stopping elektraserver..."
             kill $(cat elektra_server.pid) 2>/dev/null || true
             rm elektra_server.pid
+          fi
+          if [ -f elektra_server.log ]; then
+            echo "=== Elektraserver logs ==="
+            cat elektra_server.log
           fi
 
   # Step 2: Prepare build information
