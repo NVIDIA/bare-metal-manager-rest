@@ -162,25 +162,33 @@ func (bs *BoostrapAPI) Init() {
 		return
 	}
 
-	prometheus.MustRegister(
-		prometheus.NewCounterFunc(prometheus.CounterOpts{
-			Namespace: "elektra_site_agent",
-			Name:      MetricCredDnloadAttempt,
-			Help:      "Credentials download attempted for Site Agent",
-		},
-			func() float64 {
-				return float64(ManagerAccess.Data.EB.Managers.Bootstrap.State.DownloadAttempted.Load())
-			}))
+	attemptCounter := prometheus.NewCounterFunc(prometheus.CounterOpts{
+		Namespace: "elektra_site_agent",
+		Name:      MetricCredDnloadAttempt,
+		Help:      "Credentials download attempted for Site Agent",
+	},
+		func() float64 {
+			return float64(ManagerAccess.Data.EB.Managers.Bootstrap.State.DownloadAttempted.Load())
+		})
+	if err := prometheus.Register(attemptCounter); err != nil {
+		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+			ManagerAccess.Data.EB.Log.Warn().Err(err).Msg("Failed to register credentials download attempt metric")
+		}
+	}
 
-	prometheus.MustRegister(
-		prometheus.NewCounterFunc(prometheus.CounterOpts{
-			Namespace: "elektra_site_agent",
-			Name:      MetricCredDnloadSucc,
-			Help:      "Credentials download succeeded for Site Agent",
-		},
-			func() float64 {
-				return float64(ManagerAccess.Data.EB.Managers.Bootstrap.State.DownloadSucceeded.Load())
-			}))
+	succCounter := prometheus.NewCounterFunc(prometheus.CounterOpts{
+		Namespace: "elektra_site_agent",
+		Name:      MetricCredDnloadSucc,
+		Help:      "Credentials download succeeded for Site Agent",
+	},
+		func() float64 {
+			return float64(ManagerAccess.Data.EB.Managers.Bootstrap.State.DownloadSucceeded.Load())
+		})
+	if err := prometheus.Register(succCounter); err != nil {
+		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+			ManagerAccess.Data.EB.Log.Warn().Err(err).Msg("Failed to register credentials download success metric")
+		}
+	}
 
 	err := newBootstrapConfig(ManagerAccess.Conf.EB.BootstrapSecret)
 	if err != nil {

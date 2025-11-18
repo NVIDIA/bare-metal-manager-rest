@@ -1,4 +1,4 @@
-.PHONY: test postgres-up postgres-down postgres-restart test-clean build docker-build
+.PHONY: test postgres-up postgres-down postgres-restart test-clean build docker-build clean
 
 # Build configuration
 BUILD_DIR := build/binaries
@@ -48,12 +48,19 @@ postgres-restart: postgres-down postgres-up
 # Run tests with race detector, sequential execution, and no test caching
 # Automatically starts PostgreSQL if needed
 test: postgres-up
-	DB_NAME=forgetest \
+	@echo "Building elektraserver for site agent tests..."
+	@cd carbide-site-agent/cmd/elektraserver && go build -race -o ../bin/elektraserver && cd ../../..
+	@echo "Starting elektraserver..."
+	@./carbide-site-agent/cmd/bin/elektraserver -tout=100 & echo $$! > elektra_server.pid
+	@echo "Running tests..."
+	@if DB_NAME=forgetest \
 	DB_USER=$(POSTGRES_USER) \
 	DB_PASSWORD=$(POSTGRES_PASSWORD) \
 	DB_HOST=localhost \
 	DB_PORT=$(POSTGRES_PORT) \
 	NO_DB_PASSWORD_OK=false \
+	CARBIDE_ADDRESS=localhost:11079 \
+	CARBIDE_SEC_OPT=0 \
 	TEMPORAL_TLS_ENABLED=false \
 	TEMPORAL_SERVER_NAME=test-temporal \
 	TEMPORAL_NAMESPACE=test-namespace \
@@ -68,16 +75,32 @@ test: postgres-up
 	POD_NAME=test-pod-0 \
 	POD_NAMESPACE=default \
 	DISABLE_BOOTSTRAP=true \
-	CGO_ENABLED=1 go test ./... -race -p 1
+	CGO_ENABLED=1 go test ./... -race -p 1; then \
+		echo "Tests passed"; \
+		kill `cat elektra_server.pid` 2>/dev/null || true; \
+		rm -f elektra_server.pid; \
+	else \
+		echo "Tests failed"; \
+		kill `cat elektra_server.pid` 2>/dev/null || true; \
+		rm -f elektra_server.pid; \
+		exit 1; \
+	fi
 
 # Clean test - stops existing container and starts fresh before running tests
 test-clean: postgres-down postgres-up
-	DB_NAME=forgetest \
+	@echo "Building elektraserver for site agent tests..."
+	@cd carbide-site-agent/cmd/elektraserver && go build -race -o ../bin/elektraserver && cd ../../..
+	@echo "Starting elektraserver..."
+	@./carbide-site-agent/cmd/bin/elektraserver -tout=100 & echo $$! > elektra_server.pid
+	@echo "Running tests..."
+	@if DB_NAME=forgetest \
 	DB_USER=$(POSTGRES_USER) \
 	DB_PASSWORD=$(POSTGRES_PASSWORD) \
 	DB_HOST=localhost \
 	DB_PORT=$(POSTGRES_PORT) \
 	NO_DB_PASSWORD_OK=false \
+	CARBIDE_ADDRESS=localhost:11079 \
+	CARBIDE_SEC_OPT=0 \
 	TEMPORAL_TLS_ENABLED=false \
 	TEMPORAL_SERVER_NAME=test-temporal \
 	TEMPORAL_NAMESPACE=test-namespace \
@@ -92,9 +115,18 @@ test-clean: postgres-down postgres-up
 	POD_NAME=test-pod-0 \
 	POD_NAMESPACE=default \
 	DISABLE_BOOTSTRAP=true \
-	CGO_ENABLED=1 go test ./... -race -p 1 --count=1
-	@echo ""
-	@echo "Tests completed!"
+	CGO_ENABLED=1 go test ./... -race -p 1 --count=1; then \
+		echo ""; \
+		echo "Tests completed!"; \
+		kill `cat elektra_server.pid` 2>/dev/null || true; \
+		rm -f elektra_server.pid; \
+	else \
+		echo ""; \
+		echo "Tests failed!"; \
+		kill `cat elektra_server.pid` 2>/dev/null || true; \
+		rm -f elektra_server.pid; \
+		exit 1; \
+	fi
 
 # Build all Go binaries
 build:
@@ -240,4 +272,15 @@ docker-build: build
 	@echo "========================================"
 	@echo ""
 	@docker images --filter "reference=$(IMAGE_REGISTRY)/*"
+
+# Clean up test artifacts and stop any running test servers
+clean:
+	@echo "Cleaning up test artifacts..."
+	@if [ -f elektra_server.pid ]; then \
+		kill `cat elektra_server.pid` 2>/dev/null || true; \
+		rm -f elektra_server.pid; \
+		echo "Stopped elektraserver"; \
+	fi
+	@rm -f elektra_server.pid
+	@echo "Cleanup complete"
 

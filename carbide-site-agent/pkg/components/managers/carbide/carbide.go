@@ -28,15 +28,19 @@ const (
 func (carbide *API) Init() {
 	ManagerAccess.Data.EB.Log.Info().Msg("Carbide: Initializing the carbide")
 
-	prometheus.MustRegister(
-		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
-			Namespace: "elektra_site_agent",
-			Name:      MetricCarbideStatus,
-			Help:      "Carbide gRPC health status",
-		},
-			func() float64 {
-				return float64(ManagerAccess.Data.EB.Managers.Carbide.State.HealthStatus.Load())
-			}))
+	statusGauge := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Namespace: "elektra_site_agent",
+		Name:      MetricCarbideStatus,
+		Help:      "Carbide gRPC health status",
+	},
+		func() float64 {
+			return float64(ManagerAccess.Data.EB.Managers.Carbide.State.HealthStatus.Load())
+		})
+	if err := prometheus.Register(statusGauge); err != nil {
+		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+			ManagerAccess.Data.EB.Log.Warn().Err(err).Msg("Failed to register carbide health status metric")
+		}
+	}
 	ManagerAccess.Data.EB.Managers.Carbide.State.HealthStatus.Store(uint64(computils.CompNotKnown))
 
 	// initialize workflow metrics

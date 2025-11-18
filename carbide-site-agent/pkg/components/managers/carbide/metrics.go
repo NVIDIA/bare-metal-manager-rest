@@ -41,7 +41,11 @@ func makeGrpcClientMetrics() client.Metrics {
 			},
 			[]string{"grpc_method", "grpc_status_code"}),
 	}
-	prometheus.MustRegister(metrics.responseLatency)
+	if err := prometheus.Register(metrics.responseLatency); err != nil {
+		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+			ManagerAccess.Data.EB.Log.Warn().Err(err).Msg("Failed to register gRPC client latency metric")
+		}
+	}
 	return metrics
 }
 
@@ -65,7 +69,11 @@ func newWorkflowMetrics() carbidetypes.WorkflowMetrics {
 			},
 			[]string{"activity", "status"}),
 	}
-	prometheus.MustRegister(metrics.latency)
+	if err := prometheus.Register(metrics.latency); err != nil {
+		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+			ManagerAccess.Data.EB.Log.Warn().Err(err).Msg("Failed to register workflow latency metric")
+		}
+	}
 	return metrics
 }
 

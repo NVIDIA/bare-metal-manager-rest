@@ -47,6 +47,17 @@ jobs:
           go-version: '1.23'
           cache: true
       
+      - name: Build elektraserver for site agent tests
+        run: |
+          cd carbide-site-agent/cmd/elektraserver
+          go build -race -o ../bin/elektraserver
+          cd ../../..
+      
+      - name: Start elektraserver
+        run: |
+          ./carbide-site-agent/cmd/bin/elektraserver -tout=330 &
+          echo $! > elektra_server.pid
+      
       - name: Run tests
         env:
           DB_NAME: forgetest
@@ -55,6 +66,8 @@ jobs:
           DB_HOST: localhost
           DB_PORT: 30432
           NO_DB_PASSWORD_OK: false
+          CARBIDE_ADDRESS: localhost:11079
+          CARBIDE_SEC_OPT: 0
           TEMPORAL_TLS_ENABLED: false
           TEMPORAL_SERVER_NAME: test-temporal
           TEMPORAL_NAMESPACE: test-namespace
@@ -71,6 +84,14 @@ jobs:
           DISABLE_BOOTSTRAP: true
           CGO_ENABLED: 1
         run: go test ./... -race -p 1
+      
+      - name: Stop elektraserver
+        if: always()
+        run: |
+          if [ -f elektra_server.pid ]; then
+            kill $(cat elektra_server.pid) 2>/dev/null || true
+            rm elektra_server.pid
+          fi
 
   # Step 2: Prepare build information
   prepare:

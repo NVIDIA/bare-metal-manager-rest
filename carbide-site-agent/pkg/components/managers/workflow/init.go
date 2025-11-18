@@ -34,36 +34,48 @@ const (
 func (wflow *API) Init() {
 	ManagerAccess.Data.EB.Log.Info().Msg("Workflow: Initializing the workflow")
 
-	prometheus.MustRegister(
-		prometheus.NewCounterFunc(prometheus.CounterOpts{
-			Namespace: "elektra_site_agent",
-			Name:      MetricTemporalConnStatus,
-			Help:      "temporal health status of the elektra_site_agent",
-		},
-			func() float64 {
-				return float64(ManagerAccess.Data.EB.Managers.Workflow.State.HealthStatus.Load())
-			}))
+	statusCounter := prometheus.NewCounterFunc(prometheus.CounterOpts{
+		Namespace: "elektra_site_agent",
+		Name:      MetricTemporalConnStatus,
+		Help:      "temporal health status of the elektra_site_agent",
+	},
+		func() float64 {
+			return float64(ManagerAccess.Data.EB.Managers.Workflow.State.HealthStatus.Load())
+		})
+	if err := prometheus.Register(statusCounter); err != nil {
+		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+			ManagerAccess.Data.EB.Log.Warn().Err(err).Msg("Failed to register temporal status metric")
+		}
+	}
 	ManagerAccess.Data.EB.Managers.Workflow.State.HealthStatus.Store(uint64(computils.CompUnhealthy))
 
-	prometheus.MustRegister(
-		prometheus.NewCounterFunc(prometheus.CounterOpts{
-			Namespace: "elektra_site_agent",
-			Name:      MetricTemporalConnAttempted,
-			Help:      "temporal connection attempted of elektra_site_agent",
-		},
-			func() float64 {
-				return float64(ManagerAccess.Data.EB.Managers.Workflow.State.ConnectionAttempted.Load())
-			}))
+	attemptedCounter := prometheus.NewCounterFunc(prometheus.CounterOpts{
+		Namespace: "elektra_site_agent",
+		Name:      MetricTemporalConnAttempted,
+		Help:      "temporal connection attempted of elektra_site_agent",
+	},
+		func() float64 {
+			return float64(ManagerAccess.Data.EB.Managers.Workflow.State.ConnectionAttempted.Load())
+		})
+	if err := prometheus.Register(attemptedCounter); err != nil {
+		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+			ManagerAccess.Data.EB.Log.Warn().Err(err).Msg("Failed to register temporal connection attempted metric")
+		}
+	}
 
-	prometheus.MustRegister(
-		prometheus.NewCounterFunc(prometheus.CounterOpts{
-			Namespace: "elektra_site_agent",
-			Name:      MetricTemporalConnSucc,
-			Help:      "temporal connection succeded of elektra_site_agent",
-		},
-			func() float64 {
-				return float64(ManagerAccess.Data.EB.Managers.Workflow.State.ConnectionSucc.Load())
-			}))
+	succCounter := prometheus.NewCounterFunc(prometheus.CounterOpts{
+		Namespace: "elektra_site_agent",
+		Name:      MetricTemporalConnSucc,
+		Help:      "temporal connection succeded of elektra_site_agent",
+	},
+		func() float64 {
+			return float64(ManagerAccess.Data.EB.Managers.Workflow.State.ConnectionSucc.Load())
+		})
+	if err := prometheus.Register(succCounter); err != nil {
+		if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+			ManagerAccess.Data.EB.Log.Warn().Err(err).Msg("Failed to register temporal connection succeeded metric")
+		}
+	}
 }
 
 // GetState - handle http request
