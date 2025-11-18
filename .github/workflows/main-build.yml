@@ -70,10 +70,7 @@ jobs:
           POD_NAMESPACE: default
           DISABLE_BOOTSTRAP: true
           CGO_ENABLED: 1
-        run: |
-          # Run tests excluding known failing workflow tests with OpenTelemetry metrics issues
-          go test ./... -race -p 1 \
-            -skip='TestVpcWorkflows|TestSubnetWorkflows|TestSSHKeyGroupWorkflows|TestInstanceWorkflows|TestInfiniBandPartitionWorkflows|TestCarbideVpc|TestCarbideSubnet|TestCarbideClientReinitializationOnCertRenewal'
+        run: go test ./... -race -p 1
 
   # Step 2: Prepare build information
   prepare:

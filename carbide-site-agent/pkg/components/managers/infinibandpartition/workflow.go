@@ -128,9 +128,7 @@ func (ibpm *ibpWorkflowMetadata) Response() interface{} {
 
 // Statistics - InfiniBandPartition Stats
 func (ibpm *ibpWorkflowMetadata) Statistics() *workflowtypes.MgrState {
-	// Todo: Add stats here
-	//return ManagerAccess.Data.EB.Managers.Workflow.InfiniBandPartitionState
-	return &workflowtypes.MgrState{}
+	return ManagerAccess.Data.EB.Managers.Workflow.InfiniBandPartitionState
 }
 
 // Workflows - Temporal registration
