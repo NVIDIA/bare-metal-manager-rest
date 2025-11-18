@@ -153,3 +153,65 @@ func TestInitDB(t *testing.T) *db.Session {
 	))
 	return dbSession
 }
+
+// CleanupTestDB cleans up all test tables to ensure test isolation
+// This should be called at the start of each test that modifies the database
+func CleanupTestDB(t *testing.T, dbSession *db.Session) {
+	t.Helper()
+	ctx := context.Background()
+	
+	// Truncate all tables in the correct order to avoid foreign key constraint violations
+	// Note: This list should match the tables used in tests
+	tables := []string{
+		"ssh_key_group_instance_associations",
+		"ssh_key_associations",
+		"ssh_keys",
+		"ssh_key_groups",
+		"infiniband_interfaces",
+		"infiniband_partitions",
+		"interfaces",
+		"machine_interfaces",
+		"machine_capabilities",
+		"machine_instance_types",
+		"status_details",
+		"instances",
+		"machines",
+		"subnets",
+		"vpc_prefixes",
+		"vpcs",
+		"tenant_sites",
+		"ip_blocks",
+		"allocation_constraints",
+		"allocations",
+		"domains",
+		"network_security_groups",
+		"sites",
+		"tenant_accounts",
+		"operating_system_site_associations",
+		"operating_systems",
+		"instance_types",
+		"users",
+		"tenants",
+		"infrastructure_providers",
+		"audit_entries",
+		"fabrics",
+		"skus",
+	}
+	
+	for _, table := range tables {
+		_, err := dbSession.DB.ExecContext(ctx, fmt.Sprintf("TRUNCATE TABLE %s CASCADE", table))
+		if err != nil {
+			// Ignore errors for tables that don't exist yet
+			// This makes the helper more robust for partial schemas
+			if testing.Verbose() {
+				t.Logf("Warning: Failed to truncate table %s: %v", table, err)
+			}
+		}
+	}
+	
+	// Also clean up the IPAM prefixes table if it exists
+	_, err := dbSession.DB.ExecContext(ctx, "TRUNCATE TABLE prefixes CASCADE")
+	if err != nil && testing.Verbose() {
+		t.Logf("Warning: Failed to truncate prefixes table: %v", err)
+	}
+}

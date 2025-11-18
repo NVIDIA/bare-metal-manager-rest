@@ -52,6 +52,20 @@ test: postgres-up
 	@cd carbide-site-agent/cmd/elektraserver && go build -race -o ../bin/elektraserver && cd ../../..
 	@echo "Starting elektraserver..."
 	@./carbide-site-agent/cmd/bin/elektraserver -tout=100 & echo $$! > elektra_server.pid
+	@echo "Waiting for elektraserver to be ready..."
+	@for i in $$(seq 1 30); do \
+		if nc -z localhost 11079 2>/dev/null; then \
+			echo "Elektraserver is ready!"; \
+			break; \
+		fi; \
+		if [ $$i -eq 30 ]; then \
+			echo "ERROR: Elektraserver failed to start within 30 seconds"; \
+			kill `cat elektra_server.pid` 2>/dev/null || true; \
+			rm -f elektra_server.pid; \
+			exit 1; \
+		fi; \
+		sleep 1; \
+	done
 	@echo "Running tests..."
 	@if DB_NAME=forgetest \
 	DB_USER=$(POSTGRES_USER) \
@@ -92,6 +106,20 @@ test-clean: postgres-down postgres-up
 	@cd carbide-site-agent/cmd/elektraserver && go build -race -o ../bin/elektraserver && cd ../../..
 	@echo "Starting elektraserver..."
 	@./carbide-site-agent/cmd/bin/elektraserver -tout=100 & echo $$! > elektra_server.pid
+	@echo "Waiting for elektraserver to be ready..."
+	@for i in $$(seq 1 30); do \
+		if nc -z localhost 11079 2>/dev/null; then \
+			echo "Elektraserver is ready!"; \
+			break; \
+		fi; \
+		if [ $$i -eq 30 ]; then \
+			echo "ERROR: Elektraserver failed to start within 30 seconds"; \
+			kill `cat elektra_server.pid` 2>/dev/null || true; \
+			rm -f elektra_server.pid; \
+			exit 1; \
+		fi; \
+		sleep 1; \
+	done
 	@echo "Running tests..."
 	@if DB_NAME=forgetest \
 	DB_USER=$(POSTGRES_USER) \

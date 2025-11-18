@@ -58,6 +58,25 @@ jobs:
           ./carbide-site-agent/cmd/bin/elektraserver -tout=330 &
           echo $! > elektra_server.pid
       
+      - name: Wait for elektraserver to be ready
+        run: |
+          echo "Waiting for elektraserver to be ready..."
+          for i in $(seq 1 30); do
+            if nc -z localhost 11079 2>/dev/null; then
+              echo "Elektraserver is ready!"
+              exit 0
+            fi
+            if [ $i -eq 30 ]; then
+              echo "ERROR: Elektraserver failed to start within 30 seconds"
+              if [ -f elektra_server.pid ]; then
+                kill $(cat elektra_server.pid) 2>/dev/null || true
+                rm elektra_server.pid
+              fi
+              exit 1
+            fi
+            sleep 1
+          done
+      
       - name: Run tests
         env:
           DB_NAME: forgetest
