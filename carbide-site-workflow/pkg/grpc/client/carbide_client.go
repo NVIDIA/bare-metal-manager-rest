@@ -200,18 +200,33 @@ func NewCarbideClient(config *CarbideClientConfig) (client *CarbideClient, err e
 	client.carbide = wflows.NewForgeClient(client.conn)
 	log.Info().Msg("CarbideClient: client created")
 
-	// Check the version of the server
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Duration(5000)*time.Millisecond))
-	defer cancel()
-	_, err = client.carbide.Version(ctx, &wflows.VersionRequest{})
-	if err != nil {
-		log.Error().Err(err).Msg("CarbideClient: failed to get version from server")
-		return nil, fmt.Errorf("CarbideClient: failed to get version from server: %w", err)
+	// Check the version of the server with retry logic
+	// This is especially useful during test initialization when the server might be starting up
+	maxRetries := 5
+	retryDelay := 500 * time.Millisecond
+	var lastErr error
+	
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			log.Debug().Int("attempt", attempt+1).Msg("CarbideClient: retrying connection to server")
+			time.Sleep(retryDelay)
+			retryDelay *= 2 // Exponential backoff
+		}
+		
+		ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Duration(5000)*time.Millisecond))
+		_, lastErr = client.carbide.Version(ctx, &wflows.VersionRequest{})
+		cancel()
+		
+		if lastErr == nil {
+			log.Info().Msg("CarbideClient: successfully connected to server")
+			return client, nil
+		}
+		
+		log.Debug().Err(lastErr).Int("attempt", attempt+1).Msg("CarbideClient: failed to get version from server, will retry")
 	}
-
-	log.Info().Msg("CarbideClient: successfully connected to server")
-
-	return client, nil
+	
+	log.Error().Err(lastErr).Msg("CarbideClient: failed to get version from server after all retries")
+	return nil, fmt.Errorf("CarbideClient: failed to get version from server after %d attempts: %w", maxRetries, lastErr)
 }
 
 // CarbideClient is the data structure for the client

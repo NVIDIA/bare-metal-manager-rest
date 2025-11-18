@@ -32,7 +32,8 @@ import (
 
 var (
 	// DefaultPort is the default port that the server listens at
-	DefaultPort = ":11079"
+	// Use explicit IPv4 address to avoid IPv4/IPv6 resolution issues in tests
+	DefaultPort = "127.0.0.1:11079"
 	// DefaultVpcId is the default VPC ID for testing
 	DefaultVpcId = "00000000-0000-4000-8000-000000000000"
 	// DefaultNetworkSegmentId is the default NetworkSegment ID for testing

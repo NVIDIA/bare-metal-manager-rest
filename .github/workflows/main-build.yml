@@ -62,8 +62,8 @@ jobs:
         run: |
           echo "Waiting for elektraserver to be ready..."
           for i in $(seq 1 30); do
-            if nc -z localhost 11079 2>/dev/null; then
-              echo "Elektraserver is ready!"
+            if nc -z 127.0.0.1 11079 2>/dev/null; then
+              echo "Elektraserver is ready on 127.0.0.1:11079!"
               exit 0
             fi
             if [ $i -eq 30 ]; then
@@ -85,7 +85,7 @@ jobs:
           DB_HOST: localhost
           DB_PORT: 30432
           NO_DB_PASSWORD_OK: false
-          CARBIDE_ADDRESS: localhost:11079
+          CARBIDE_ADDRESS: 127.0.0.1:11079
           CARBIDE_SEC_OPT: 0
           TEMPORAL_TLS_ENABLED: false
           TEMPORAL_SERVER_NAME: test-temporal

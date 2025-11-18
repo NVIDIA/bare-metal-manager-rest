@@ -27,7 +27,7 @@ vet:
 test:
 	cd ./cmd/elektraserver; go build -race -o ../bin/elektraserver; cd ../..
 	./cmd/bin/elektraserver -tout=100 & echo $$! > elektra_server.pid
-	if CARBIDE_ADDRESS=localhost:11079 CARBIDE_SEC_OPT=0 go test -v -race ./pkg/...; then echo "Tests passed"; else echo "Tests failed"; fi
+	if CARBIDE_ADDRESS=127.0.0.1:11079 CARBIDE_SEC_OPT=0 go test -v -race ./pkg/...; then echo "Tests passed"; else echo "Tests failed"; fi
 	kill `cat elektra_server.pid`; rm elektra_server.pid
 
 test-ci:
@@ -35,12 +35,12 @@ test-ci:
 	go install github.com/boumenot/gocover-cobertura@latest
 	cd ./cmd/elektraserver; go build -race -o ../bin/elektraserver; cd ../..
 	./cmd/bin/elektraserver -tout=330 & echo $$! > elektra_server.pid
-	if CARBIDE_ADDRESS=localhost:11079 CARBIDE_SEC_OPT=0 go test -v -race -p 1 ./pkg/... -coverpkg=./... -coverprofile=coverage.txt 2>&1 | tee report.tmp; then cat report.tmp | go-junit-report > report.xml; go tool cover -func coverage.txt; gocover-cobertura < coverage.txt > coverage.xml; kill `cat elektra_server.pid`; rm elektra_server.pid; else kill `cat elektra_server.pid`; rm elektra_server.pid; exit 1; fi
+	if CARBIDE_ADDRESS=127.0.0.1:11079 CARBIDE_SEC_OPT=0 go test -v -race -p 1 ./pkg/... -coverpkg=./... -coverprofile=coverage.txt 2>&1 | tee report.tmp; then cat report.tmp | go-junit-report > report.xml; go tool cover -func coverage.txt; gocover-cobertura < coverage.txt > coverage.xml; kill `cat elektra_server.pid`; rm elektra_server.pid; else kill `cat elektra_server.pid`; rm elektra_server.pid; exit 1; fi
 
 coverage:
 	cd ./cmd/elektraserver; go build -race -o ../bin/elektraserver; cd ../..
 	./cmd/bin/elektraserver -tout=40 & echo $$! > elektra_server.pid
-	if CARBIDE_ADDRESS=localhost:11079 CARBIDE_SEC_OPT=0 go test -v ./pkg/... -coverpkg=./pkg/... -coverprofile=coverage.txt -covermode=count; then go tool cover -html=coverage.txt -o coverage.html; kill `cat elektra_server.pid`; rm elektra_server.pid; else kill `cat elektra_server.pid`; rm elektra_server.pid; exit 1; fi
+	if CARBIDE_ADDRESS=127.0.0.1:11079 CARBIDE_SEC_OPT=0 go test -v ./pkg/... -coverpkg=./pkg/... -coverprofile=coverage.txt -covermode=count; then go tool cover -html=coverage.txt -o coverage.html; kill `cat elektra_server.pid`; rm elektra_server.pid; else kill `cat elektra_server.pid`; rm elektra_server.pid; exit 1; fi
 
 lint:
 	golangci-lint run --issues-exit-code 0 --out-format code-climate | jq .

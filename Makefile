@@ -73,7 +73,7 @@ test: postgres-up
 	DB_HOST=localhost \
 	DB_PORT=$(POSTGRES_PORT) \
 	NO_DB_PASSWORD_OK=false \
-	CARBIDE_ADDRESS=localhost:11079 \
+	CARBIDE_ADDRESS=127.0.0.1:11079 \
 	CARBIDE_SEC_OPT=0 \
 	TEMPORAL_TLS_ENABLED=false \
 	TEMPORAL_SERVER_NAME=test-temporal \
@@ -127,7 +127,7 @@ test-clean: postgres-down postgres-up
 	DB_HOST=localhost \
 	DB_PORT=$(POSTGRES_PORT) \
 	NO_DB_PASSWORD_OK=false \
-	CARBIDE_ADDRESS=localhost:11079 \
+	CARBIDE_ADDRESS=127.0.0.1:11079 \
 	CARBIDE_SEC_OPT=0 \
 	TEMPORAL_TLS_ENABLED=false \
 	TEMPORAL_SERVER_NAME=test-temporal \
