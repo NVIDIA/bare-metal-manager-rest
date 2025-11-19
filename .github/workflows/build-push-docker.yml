@@ -64,13 +64,21 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Login to NVCR
+        if: inputs.push_enabled
+        uses: docker/login-action@v3
+        with:
+          registry: nvcr.io
+          username: ${{ secrets.NVCR_USERNAME }}
+          password: ${{ secrets.NVCR_TOKEN }}
+
       - name: Build carbide-rest-api
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker/production/Dockerfile.carbide-rest-api
           platforms: linux/amd64
-          push: false
+          push: ${{ inputs.push_enabled }}
           load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-rest-api:${{ inputs.short_sha }}
@@ -85,6 +93,7 @@ jobs:
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
+
 
       - name: Extract binary from image
         run: |
@@ -128,13 +137,21 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Login to NVCR
+        if: inputs.push_enabled
+        uses: docker/login-action@v3
+        with:
+          registry: nvcr.io
+          username: ${{ secrets.NVCR_USERNAME }}
+          password: ${{ secrets.NVCR_TOKEN }}
+
       - name: Build carbide-rest-db
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker/production/Dockerfile.carbide-rest-db
           platforms: linux/amd64
-          push: false
+          push: ${{ inputs.push_enabled }}
           load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-rest-db:${{ inputs.short_sha }}
@@ -149,6 +166,7 @@ jobs:
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
+
 
       - name: Extract binary from image
         run: |
@@ -192,13 +210,21 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Login to NVCR
+        if: inputs.push_enabled
+        uses: docker/login-action@v3
+        with:
+          registry: nvcr.io
+          username: ${{ secrets.NVCR_USERNAME }}
+          password: ${{ secrets.NVCR_TOKEN }}
+
       - name: Build carbide-rest-ipam
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker/production/Dockerfile.carbide-rest-ipam
           platforms: linux/amd64
-          push: false
+          push: ${{ inputs.push_enabled }}
           load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-rest-ipam:${{ inputs.short_sha }}
@@ -213,6 +239,7 @@ jobs:
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
+
 
       - name: Extract binary from image
         run: |
@@ -256,13 +283,21 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Login to NVCR
+        if: inputs.push_enabled
+        uses: docker/login-action@v3
+        with:
+          registry: nvcr.io
+          username: ${{ secrets.NVCR_USERNAME }}
+          password: ${{ secrets.NVCR_TOKEN }}
+
       - name: Build carbide-rest-site-manager
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker/production/Dockerfile.carbide-rest-site-manager
           platforms: linux/amd64
-          push: false
+          push: ${{ inputs.push_enabled }}
           load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-rest-site-manager:${{ inputs.short_sha }}
@@ -277,6 +312,7 @@ jobs:
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
+
 
       - name: Extract binary from image
         run: |
@@ -320,13 +356,21 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Login to NVCR
+        if: inputs.push_enabled
+        uses: docker/login-action@v3
+        with:
+          registry: nvcr.io
+          username: ${{ secrets.NVCR_USERNAME }}
+          password: ${{ secrets.NVCR_TOKEN }}
+
       - name: Build carbide-rest-workflow
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker/production/Dockerfile.carbide-rest-workflow
           platforms: linux/amd64
-          push: false
+          push: ${{ inputs.push_enabled }}
           load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-rest-workflow:${{ inputs.short_sha }}
@@ -341,6 +385,7 @@ jobs:
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
+
 
       - name: Extract binary from image
         run: |
@@ -384,13 +429,21 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Login to NVCR
+        if: inputs.push_enabled
+        uses: docker/login-action@v3
+        with:
+          registry: nvcr.io
+          username: ${{ secrets.NVCR_USERNAME }}
+          password: ${{ secrets.NVCR_TOKEN }}
+
       - name: Build carbide-site-agent
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker/production/Dockerfile.carbide-site-agent
           platforms: linux/amd64
-          push: false
+          push: ${{ inputs.push_enabled }}
           load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.short_sha }}
@@ -405,6 +458,7 @@ jobs:
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
+
 
       - name: Extract binaries from image
         run: |
@@ -449,13 +503,21 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Login to NVCR
+        if: inputs.push_enabled
+        uses: docker/login-action@v3
+        with:
+          registry: nvcr.io
+          username: ${{ secrets.NVCR_USERNAME }}
+          password: ${{ secrets.NVCR_TOKEN }}
+
       - name: Build carbide-rest-cert-manager
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker/production/Dockerfile.carbide-rest-cert-manager
           platforms: linux/amd64
-          push: false
+          push: ${{ inputs.push_enabled }}
           load: true
           tags: |
             ${{ inputs.target_registry }}/carbide-rest-cert-manager:${{ inputs.short_sha }}
@@ -470,6 +532,7 @@ jobs:
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
+
 
       - name: Extract binary from image
         run: |
