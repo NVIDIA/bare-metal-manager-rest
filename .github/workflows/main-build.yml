@@ -80,9 +80,12 @@ jobs:
           --health-retries 5
 
       # Temporal service - available to all test runners
-      # Uses internal SQLite database for simplicity (no external DB dependency)
+      # Uses SQLite database for simplicity (no external DB dependency)
       temporal:
         image: temporalio/auto-setup:1.24.2
+        env:
+          DB: sqlite
+          SKIP_DEFAULT_NAMESPACE_CREATION: false
         ports:
           - 7233:7233
         options: >-
@@ -183,9 +186,12 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-      # Temporal service - uses internal SQLite database for simplicity
+      # Temporal service - uses SQLite database for simplicity
       temporal:
         image: temporalio/auto-setup:1.24.2
+        env:
+          DB: sqlite
+          SKIP_DEFAULT_NAMESPACE_CREATION: false
         ports:
           - 7233:7233
         options: >-
