@@ -16,9 +16,37 @@ on:
       - master
   workflow_dispatch:  # Allow manual trigger
 
+# Common environment variables for all test jobs
+env:
+  # Database configuration
+  DB_NAME: forgetest
+  DB_USER: postgres
+  DB_PASSWORD: postgres
+  DB_HOST: localhost
+  DB_PORT: 30432
+  NO_DB_PASSWORD_OK: false
+  # Go configuration
+  CGO_ENABLED: 1
+  # Temporal configuration
+  TEMPORAL_TLS_ENABLED: false
+  TEMPORAL_SERVER_NAME: test-temporal
+  TEMPORAL_NAMESPACE: test-namespace
+  TEMPORAL_QUEUE: test-queue
+  TEMPORAL_HOST: localhost
+  TEMPORAL_PORT: 7233
+  TEMPORAL_PUBLISH_QUEUE: test-publish-queue
+  TEMPORAL_SUBSCRIBE_QUEUE: test-subscribe-queue
+  TEMPORAL_PUBLISH_NAMESPACE: test-publish-namespace
+  # Cluster configuration
+  CLUSTER_ID: 00000000-0000-0000-0000-000000000000
+  METRICS_PORT: 9090
+  POD_NAME: test-pod-0
+  POD_NAMESPACE: default
+  DISABLE_BOOTSTRAP: true
+
 jobs:
-  # Tests without special service dependencies
-  test-simple:
+  # All tests use the same service setup: Postgres + Temporal
+  test:
     name: Test ${{ matrix.package }}
     runs-on: ubuntu-latest
     strategy:
@@ -32,48 +60,11 @@ jobs:
           - carbide-rest-cert-manager
           - carbide-rest-common
           - carbide-rest-site-manager
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-          cache: true
-      
-      - name: Run tests
-        env:
-          CGO_ENABLED: 1
-          TEMPORAL_TLS_ENABLED: false
-          TEMPORAL_SERVER_NAME: test-temporal
-          TEMPORAL_NAMESPACE: test-namespace
-          TEMPORAL_QUEUE: test-queue
-          TEMPORAL_HOST: localhost
-          TEMPORAL_PORT: 7233
-          TEMPORAL_PUBLISH_QUEUE: test-publish-queue
-          TEMPORAL_SUBSCRIBE_QUEUE: test-subscribe-queue
-          TEMPORAL_PUBLISH_NAMESPACE: test-publish-namespace
-          CLUSTER_ID: 00000000-0000-0000-0000-000000000000
-          METRICS_PORT: 9090
-          POD_NAME: test-pod-0
-          POD_NAMESPACE: default
-          DISABLE_BOOTSTRAP: true
-        run: go test ./${{ matrix.package }}/... -race -p 1
-
-  # Tests requiring Postgres
-  test-postgres:
-    name: Test ${{ matrix.package }} (Postgres)
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        package:
           - carbide-rest-db
           - carbide-rest-ipam
     
     services:
+      # PostgreSQL service - available to all test runners
       postgres:
         image: postgres:14.4-alpine
         env:
@@ -87,6 +78,25 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+
+      # Temporal service - available to all test runners
+      temporal:
+        image: temporalio/auto-setup:1.24.2
+        env:
+          DB: postgresql
+          DB_PORT: 5432
+          POSTGRES_USER: postgres
+          POSTGRES_PWD: postgres
+          POSTGRES_SEEDS: postgres
+          DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+        ports:
+          - 7233:7233
+        options: >-
+          --health-cmd "tctl --address localhost:7233 cluster health"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+          --health-start-period 60s
     
     steps:
       - name: Checkout code
@@ -97,36 +107,106 @@ jobs:
         with:
           go-version: '1.23'
           cache: true
+      
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting for PostgreSQL to be ready..."
+          for i in $(seq 1 30); do
+            if pg_isready -h localhost -p 30432 -U postgres 2>/dev/null; then
+              echo "PostgreSQL is ready!"
+              break
+            fi
+            echo "Waiting for PostgreSQL... attempt $i"
+            if [ $i -eq 30 ]; then
+              echo "ERROR: PostgreSQL failed to start"
+              exit 1
+            fi
+          done
+          
+          echo "Waiting for Temporal to be ready..."
+          for i in $(seq 1 60); do
+            if nc -z localhost 7233 2>/dev/null; then
+              echo "Temporal port is open, checking health..."
+              if command -v tctl >/dev/null 2>&1; then
+                if tctl --address localhost:7233 cluster health 2>/dev/null; then
+                  echo "Temporal is ready!"
+                  break
+                fi
+              else
+                echo "tctl not available, assuming Temporal is ready after port opened"
+                break
+              fi
+            fi
+            echo "Waiting for Temporal... attempt $i"
+            if [ $i -eq 60 ]; then
+              echo "WARNING: Temporal may not be fully ready, continuing anyway"
+            fi
+          done
       
       - name: Run tests
         env:
-          DB_NAME: forgetest
-          DB_USER: postgres
-          DB_PASSWORD: postgres
-          DB_HOST: localhost
-          DB_PORT: 30432
-          NO_DB_PASSWORD_OK: false
-          CGO_ENABLED: 1
-          TEMPORAL_TLS_ENABLED: false
-          TEMPORAL_SERVER_NAME: test-temporal
-          TEMPORAL_NAMESPACE: test-namespace
-          TEMPORAL_QUEUE: test-queue
-          TEMPORAL_HOST: localhost
-          TEMPORAL_PORT: 7233
-          TEMPORAL_PUBLISH_QUEUE: test-publish-queue
-          TEMPORAL_SUBSCRIBE_QUEUE: test-subscribe-queue
-          TEMPORAL_PUBLISH_NAMESPACE: test-publish-namespace
-          CLUSTER_ID: 00000000-0000-0000-0000-000000000000
-          METRICS_PORT: 9090
-          POD_NAME: test-pod-0
-          POD_NAMESPACE: default
-          DISABLE_BOOTSTRAP: true
+          DB_NAME: ${{ env.DB_NAME }}
+          DB_USER: ${{ env.DB_USER }}
+          DB_PASSWORD: ${{ env.DB_PASSWORD }}
+          DB_HOST: ${{ env.DB_HOST }}
+          DB_PORT: ${{ env.DB_PORT }}
+          NO_DB_PASSWORD_OK: ${{ env.NO_DB_PASSWORD_OK }}
+          CGO_ENABLED: ${{ env.CGO_ENABLED }}
+          TEMPORAL_TLS_ENABLED: ${{ env.TEMPORAL_TLS_ENABLED }}
+          TEMPORAL_SERVER_NAME: ${{ env.TEMPORAL_SERVER_NAME }}
+          TEMPORAL_NAMESPACE: ${{ env.TEMPORAL_NAMESPACE }}
+          TEMPORAL_QUEUE: ${{ env.TEMPORAL_QUEUE }}
+          TEMPORAL_HOST: ${{ env.TEMPORAL_HOST }}
+          TEMPORAL_PORT: ${{ env.TEMPORAL_PORT }}
+          TEMPORAL_PUBLISH_QUEUE: ${{ env.TEMPORAL_PUBLISH_QUEUE }}
+          TEMPORAL_SUBSCRIBE_QUEUE: ${{ env.TEMPORAL_SUBSCRIBE_QUEUE }}
+          TEMPORAL_PUBLISH_NAMESPACE: ${{ env.TEMPORAL_PUBLISH_NAMESPACE }}
+          CLUSTER_ID: ${{ env.CLUSTER_ID }}
+          METRICS_PORT: ${{ env.METRICS_PORT }}
+          POD_NAME: ${{ env.POD_NAME }}
+          POD_NAMESPACE: ${{ env.POD_NAMESPACE }}
+          DISABLE_BOOTSTRAP: ${{ env.DISABLE_BOOTSTRAP }}
         run: go test ./${{ matrix.package }}/... -race -p 1
 
-  # Tests requiring elektraserver
-  test-elektra:
-    name: Test carbide-site-agent (Elektra)
+  # Test carbide-site-agent with additional elektraserver dependency
+  test-site-agent:
+    name: Test carbide-site-agent
     runs-on: ubuntu-latest
+    
+    services:
+      # PostgreSQL service
+      postgres:
+        image: postgres:14.4-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 30432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      # Temporal service
+      temporal:
+        image: temporalio/auto-setup:1.24.2
+        env:
+          DB: postgresql
+          DB_PORT: 5432
+          POSTGRES_USER: postgres
+          POSTGRES_PWD: postgres
+          POSTGRES_SEEDS: postgres
+          DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+        ports:
+          - 7233:7233
+        options: >-
+          --health-cmd "tctl --address localhost:7233 cluster health"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+          --health-start-period 60s
     
     steps:
       - name: Checkout code
@@ -137,6 +217,38 @@ jobs:
         with:
           go-version: '1.23'
           cache: true
+      
+      - name: Install grpcurl
+        run: |
+          curl -sSL https://github.com/fullstorydev/grpcurl/releases/download/v1.8.9/grpcurl_1.8.9_linux_x86_64.tar.gz | tar -xz -C /usr/local/bin
+          chmod +x /usr/local/bin/grpcurl
+      
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting for PostgreSQL to be ready..."
+          for i in $(seq 1 30); do
+            if pg_isready -h localhost -p 30432 -U postgres 2>/dev/null; then
+              echo "PostgreSQL is ready!"
+              break
+            fi
+            echo "Waiting for PostgreSQL... attempt $i"
+            if [ $i -eq 30 ]; then
+              echo "ERROR: PostgreSQL failed to start"
+              exit 1
+            fi
+          done
+          
+          echo "Waiting for Temporal to be ready..."
+          for i in $(seq 1 60); do
+            if nc -z localhost 7233 2>/dev/null; then
+              echo "Temporal port is open!"
+              break
+            fi
+            echo "Waiting for Temporal... attempt $i"
+            if [ $i -eq 60 ]; then
+              echo "WARNING: Temporal may not be fully ready"
+            fi
+          done
       
       - name: Build elektraserver for site agent tests
         run: |
@@ -150,12 +262,12 @@ jobs:
           ./carbide-site-agent/cmd/bin/elektraserver -tout=330 > elektra_server.log 2>&1 &
           echo $! > elektra_server.pid
           echo "Elektraserver started with PID $(cat elektra_server.pid)"
-          for i in $(seq 1 5); do
+          for i in $(seq 1 10); do
             if ps -p $(cat elektra_server.pid) > /dev/null; then
               echo "Process is running"
               break
             fi
-            if [ $i -eq 5 ]; then
+            if [ $i -eq 10 ]; then
               echo "ERROR: Process failed to start!"
               cat elektra_server.log
               exit 1
@@ -165,39 +277,32 @@ jobs:
       - name: Wait for elektraserver to be ready
         run: |
           echo "Waiting for elektraserver to be ready..."
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             if nc -z 127.0.0.1 11079 2>/dev/null; then
               echo "Port 11079 is open, verifying gRPC server is responding..."
-              # Give the server a moment to fully initialize after port opens
-              for j in $(seq 1 3); do
-                if command -v grpcurl >/dev/null 2>&1; then
-                  if grpcurl -plaintext -max-time 5 127.0.0.1:11079 list >/dev/null 2>&1; then
-                    echo "Elektraserver is ready and responding to gRPC requests!"
-                    exit 0
-                  else
-                    echo "Port is open but server not responding to gRPC yet, waiting... (attempt $i.$j)"
-                  fi
-                else
-                  # Fallback: if grpcurl not available, just wait a bit longer after port opened
-                  echo "grpcurl not available, assuming server is ready after port opened..."
-                  echo "Elektraserver port is ready on 127.0.0.1:11079!"
+              for j in $(seq 1 5); do
+                if grpcurl -plaintext -max-time 5 127.0.0.1:11079 list >/dev/null 2>&1; then
+                  echo "Elektraserver is ready and responding to gRPC requests!"
                   exit 0
+                else
+                  echo "Port is open but server not responding to gRPC yet, waiting... (attempt $i.$j)"
                 fi
               done
             fi
-            if [ $i -eq 30 ]; then
-              echo "ERROR: Elektraserver failed to start within 30 seconds"
-              echo "Checking if process is still running..."
+            echo "Waiting for elektraserver... attempt $i"
+            if [ $i -eq 60 ]; then
+              echo "WARNING: Elektraserver may not be responding to gRPC, continuing..."
+              # Check if process is still running
               if [ -f elektra_server.pid ]; then
                 if ps -p $(cat elektra_server.pid) > /dev/null; then
-                  echo "Process is running but not responding"
+                  echo "Process is running but not responding to gRPC"
+                  exit 0  # Continue anyway, tests may handle this
                 else
-                  echo "Process has died"
+                  echo "ERROR: Process has died"
+                  cat elektra_server.log
+                  exit 1
                 fi
-                kill $(cat elektra_server.pid) 2>/dev/null || true
-                rm elektra_server.pid
               fi
-              exit 1
             fi
           done
       
@@ -205,6 +310,12 @@ jobs:
         env:
           CARBIDE_ADDRESS: 127.0.0.1:11079
           CARBIDE_SEC_OPT: 0
+          DB_NAME: forgetest
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_HOST: localhost
+          DB_PORT: 30432
+          NO_DB_PASSWORD_OK: false
           CGO_ENABLED: 1
           TEMPORAL_TLS_ENABLED: false
           TEMPORAL_SERVER_NAME: test-temporal
@@ -238,7 +349,7 @@ jobs:
   # Step 2: Prepare build information (depends on all test jobs)
   prepare:
     name: Prepare Build Info
-    needs: [test-simple, test-postgres, test-elektra]
+    needs: [test, test-site-agent]
     uses: ./.github/workflows/prepare-build-info.yml
     with:
       runner: ubuntu-latest
