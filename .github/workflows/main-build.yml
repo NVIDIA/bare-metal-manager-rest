@@ -80,12 +80,15 @@ jobs:
           --health-retries 5
 
       # Temporal service - available to all test runners
-      # Uses SQLite database for simplicity (no external DB dependency)
+      # Uses PostgreSQL (connects via docker network alias 'postgres')
       temporal:
         image: temporalio/auto-setup:1.24.2
         env:
-          DB: sqlite
-          SKIP_DEFAULT_NAMESPACE_CREATION: false
+          DB: postgres12
+          DB_PORT: 5432
+          POSTGRES_USER: postgres
+          POSTGRES_PWD: postgres
+          POSTGRES_SEEDS: postgres
         ports:
           - 7233:7233
         options: >-
@@ -186,12 +189,15 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-      # Temporal service - uses SQLite database for simplicity
+      # Temporal service - uses PostgreSQL (connects via docker network alias 'postgres')
       temporal:
         image: temporalio/auto-setup:1.24.2
         env:
-          DB: sqlite
-          SKIP_DEFAULT_NAMESPACE_CREATION: false
+          DB: postgres12
+          DB_PORT: 5432
+          POSTGRES_USER: postgres
+          POSTGRES_PWD: postgres
+          POSTGRES_SEEDS: postgres
         ports:
           - 7233:7233
         options: >-
