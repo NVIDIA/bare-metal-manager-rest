@@ -78,25 +78,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
-      # Temporal service - available to all test runners
-      # Uses PostgreSQL (connects via docker network alias 'postgres')
-      temporal:
-        image: temporalio/auto-setup:1.24.2
-        env:
-          DB: postgres12
-          DB_PORT: 5432
-          POSTGRES_USER: postgres
-          POSTGRES_PWD: postgres
-          POSTGRES_SEEDS: postgres
-        ports:
-          - 7233:7233
-        options: >-
-          --health-cmd "tctl --address localhost:7233 cluster health"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 30
-          --health-start-period 60s
     
     steps:
       - name: Checkout code
@@ -107,6 +88,18 @@ jobs:
         with:
           go-version: '1.23'
           cache: true
+
+      - name: Download Temporalite
+        run: |
+          TEMPORALITE_VERSION=1.3.2
+          curl -sSL -o temporalite.tar.gz https://github.com/temporalio/temporalite/releases/download/v${TEMPORALITE_VERSION}/temporalite_${TEMPORALITE_VERSION}_linux_amd64.tar.gz
+          tar -xzf temporalite.tar.gz temporalite
+          chmod +x temporalite
+
+      - name: Start Temporalite
+        run: |
+          ./temporalite start --ephemeral --ip 0.0.0.0 --port 7233 --namespace default > temporalite.log 2>&1 &
+          echo $! > temporalite.pid
       
       - name: Wait for services to be ready
         run: |
@@ -123,25 +116,15 @@ jobs:
             fi
           done
           
-          echo "Waiting for Temporal to be ready..."
+          echo "Waiting for Temporalite to be ready..."
           for i in $(seq 1 60); do
             if nc -z localhost 7233 2>/dev/null; then
-              echo "Temporal port is open, checking health..."
-              if command -v tctl >/dev/null 2>&1; then
-                if tctl --address localhost:7233 cluster health 2>/dev/null; then
-                  echo "Temporal is ready!"
-                  break
-                fi
-              else
-                echo "tctl not available, assuming Temporal is ready after port opened"
-                break
-              fi
+              echo "Temporalite is ready!"
+              exit 0
             fi
-            echo "Waiting for Temporal... attempt $i"
-            if [ $i -eq 60 ]; then
-              echo "WARNING: Temporal may not be fully ready, continuing anyway"
-            fi
+            sleep 1
           done
+          echo "WARNING: Temporalite port did not open in time"
       
       - name: Run tests
         env:
@@ -168,6 +151,19 @@ jobs:
           DISABLE_BOOTSTRAP: ${{ env.DISABLE_BOOTSTRAP }}
         run: go test ./${{ matrix.package }}/... -race -p 1
 
+      - name: Stop Temporalite
+        if: always()
+        run: |
+          if [ -f temporalite.pid ]; then
+            echo "Stopping Temporalite..."
+            kill $(cat temporalite.pid) 2>/dev/null || true
+            rm temporalite.pid
+          fi
+          if [ -f temporalite.log ]; then
+            echo "=== Temporalite logs ==="
+            cat temporalite.log
+          fi
+
   # Test carbide-site-agent with additional elektraserver dependency
   test-site-agent:
     name: Test carbide-site-agent
@@ -188,24 +184,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
-      # Temporal service - uses PostgreSQL (connects via docker network alias 'postgres')
-      temporal:
-        image: temporalio/auto-setup:1.24.2
-        env:
-          DB: postgres12
-          DB_PORT: 5432
-          POSTGRES_USER: postgres
-          POSTGRES_PWD: postgres
-          POSTGRES_SEEDS: postgres
-        ports:
-          - 7233:7233
-        options: >-
-          --health-cmd "tctl --address localhost:7233 cluster health"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 30
-          --health-start-period 60s
     
     steps:
       - name: Checkout code
@@ -221,6 +199,18 @@ jobs:
         run: |
           curl -sSL https://github.com/fullstorydev/grpcurl/releases/download/v1.8.9/grpcurl_1.8.9_linux_x86_64.tar.gz | tar -xz -C /usr/local/bin
           chmod +x /usr/local/bin/grpcurl
+
+      - name: Download Temporalite
+        run: |
+          TEMPORALITE_VERSION=1.3.2
+          curl -sSL -o temporalite.tar.gz https://github.com/temporalio/temporalite/releases/download/v${TEMPORALITE_VERSION}/temporalite_${TEMPORALITE_VERSION}_linux_amd64.tar.gz
+          tar -xzf temporalite.tar.gz temporalite
+          chmod +x temporalite
+
+      - name: Start Temporalite
+        run: |
+          ./temporalite start --ephemeral --ip 0.0.0.0 --port 7233 --namespace default > temporalite.log 2>&1 &
+          echo $! > temporalite.pid
       
       - name: Wait for services to be ready
         run: |
@@ -237,17 +227,15 @@ jobs:
             fi
           done
           
-          echo "Waiting for Temporal to be ready..."
+          echo "Waiting for Temporalite to be ready..."
           for i in $(seq 1 60); do
             if nc -z localhost 7233 2>/dev/null; then
-              echo "Temporal port is open!"
-              break
+              echo "Temporalite is ready!"
+              exit 0
             fi
-            echo "Waiting for Temporal... attempt $i"
-            if [ $i -eq 60 ]; then
-              echo "WARNING: Temporal may not be fully ready"
-            fi
+            sleep 1
           done
+          echo "WARNING: Temporalite port did not open in time"
       
       - name: Build elektraserver for site agent tests
         run: |
@@ -331,6 +319,19 @@ jobs:
           POD_NAMESPACE: default
           DISABLE_BOOTSTRAP: true
         run: go test ./carbide-site-agent/... -race -p 1
+
+      - name: Stop Temporalite
+        if: always()
+        run: |
+          if [ -f temporalite.pid ]; then
+            echo "Stopping Temporalite..."
+            kill $(cat temporalite.pid) 2>/dev/null || true
+            rm temporalite.pid
+          fi
+          if [ -f temporalite.log ]; then
+            echo "=== Temporalite logs ==="
+            cat temporalite.log
+          fi
       
       - name: Stop elektraserver
         if: always()
