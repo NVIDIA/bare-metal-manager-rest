@@ -17,10 +17,61 @@ on:
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
-  # Step 1: Run unit tests
-  test:
-    name: Run Unit Tests
+  # Tests without special service dependencies
+  test-simple:
+    name: Test ${{ matrix.package }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - carbide-rest-api
+          - carbide-rest-workflow
+          - carbide-site-workflow
+          - carbide-rest-auth
+          - carbide-rest-cert-manager
+          - carbide-rest-common
+          - carbide-rest-site-manager
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+      
+      - name: Run tests
+        env:
+          CGO_ENABLED: 1
+          TEMPORAL_TLS_ENABLED: false
+          TEMPORAL_SERVER_NAME: test-temporal
+          TEMPORAL_NAMESPACE: test-namespace
+          TEMPORAL_QUEUE: test-queue
+          TEMPORAL_HOST: localhost
+          TEMPORAL_PORT: 7233
+          TEMPORAL_PUBLISH_QUEUE: test-publish-queue
+          TEMPORAL_SUBSCRIBE_QUEUE: test-subscribe-queue
+          TEMPORAL_PUBLISH_NAMESPACE: test-publish-namespace
+          CLUSTER_ID: 00000000-0000-0000-0000-000000000000
+          METRICS_PORT: 9090
+          POD_NAME: test-pod-0
+          POD_NAMESPACE: default
+          DISABLE_BOOTSTRAP: true
+        run: go test ./${{ matrix.package }}/... -race -p 1
+
+  # Tests requiring Postgres
+  test-postgres:
+    name: Test ${{ matrix.package }} (Postgres)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - carbide-rest-db
+          - carbide-rest-ipam
     
     services:
       postgres:
@@ -47,6 +98,46 @@ jobs:
           go-version: '1.23'
           cache: true
       
+      - name: Run tests
+        env:
+          DB_NAME: forgetest
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_HOST: localhost
+          DB_PORT: 30432
+          NO_DB_PASSWORD_OK: false
+          CGO_ENABLED: 1
+          TEMPORAL_TLS_ENABLED: false
+          TEMPORAL_SERVER_NAME: test-temporal
+          TEMPORAL_NAMESPACE: test-namespace
+          TEMPORAL_QUEUE: test-queue
+          TEMPORAL_HOST: localhost
+          TEMPORAL_PORT: 7233
+          TEMPORAL_PUBLISH_QUEUE: test-publish-queue
+          TEMPORAL_SUBSCRIBE_QUEUE: test-subscribe-queue
+          TEMPORAL_PUBLISH_NAMESPACE: test-publish-namespace
+          CLUSTER_ID: 00000000-0000-0000-0000-000000000000
+          METRICS_PORT: 9090
+          POD_NAME: test-pod-0
+          POD_NAMESPACE: default
+          DISABLE_BOOTSTRAP: true
+        run: go test ./${{ matrix.package }}/... -race -p 1
+
+  # Tests requiring elektraserver
+  test-elektra:
+    name: Test carbide-site-agent (Elektra)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+      
       - name: Build elektraserver for site agent tests
         run: |
           cd carbide-site-agent/cmd/elektraserver
@@ -59,14 +150,17 @@ jobs:
           ./carbide-site-agent/cmd/bin/elektraserver -tout=330 > elektra_server.log 2>&1 &
           echo $! > elektra_server.pid
           echo "Elektraserver started with PID $(cat elektra_server.pid)"
-          sleep 1
-          if ps -p $(cat elektra_server.pid) > /dev/null; then
-            echo "Process is running"
-          else
-            echo "ERROR: Process failed to start!"
-            cat elektra_server.log
-            exit 1
-          fi
+          for i in $(seq 1 5); do
+            if ps -p $(cat elektra_server.pid) > /dev/null; then
+              echo "Process is running"
+              break
+            fi
+            if [ $i -eq 5 ]; then
+              echo "ERROR: Process failed to start!"
+              cat elektra_server.log
+              exit 1
+            fi
+          done
       
       - name: Wait for elektraserver to be ready
         run: |
@@ -75,22 +169,21 @@ jobs:
             if nc -z 127.0.0.1 11079 2>/dev/null; then
               echo "Port 11079 is open, verifying gRPC server is responding..."
               # Give the server a moment to fully initialize after port opens
-              sleep 2
-              # Try to connect with grpcurl to verify server is actually responding
-              if command -v grpcurl >/dev/null 2>&1; then
-                if grpcurl -plaintext -max-time 5 127.0.0.1:11079 list >/dev/null 2>&1; then
-                  echo "Elektraserver is ready and responding to gRPC requests!"
-                  exit 0
+              for j in $(seq 1 3); do
+                if command -v grpcurl >/dev/null 2>&1; then
+                  if grpcurl -plaintext -max-time 5 127.0.0.1:11079 list >/dev/null 2>&1; then
+                    echo "Elektraserver is ready and responding to gRPC requests!"
+                    exit 0
+                  else
+                    echo "Port is open but server not responding to gRPC yet, waiting... (attempt $i.$j)"
+                  fi
                 else
-                  echo "Port is open but server not responding to gRPC yet, waiting... (attempt $i)"
+                  # Fallback: if grpcurl not available, just wait a bit longer after port opened
+                  echo "grpcurl not available, assuming server is ready after port opened..."
+                  echo "Elektraserver port is ready on 127.0.0.1:11079!"
+                  exit 0
                 fi
-              else
-                # Fallback: if grpcurl not available, just wait a bit longer after port opens
-                echo "grpcurl not available, waiting 3 more seconds after port opened..."
-                sleep 3
-                echo "Elektraserver port is ready on 127.0.0.1:11079!"
-                exit 0
-              fi
+              done
             fi
             if [ $i -eq 30 ]; then
               echo "ERROR: Elektraserver failed to start within 30 seconds"
@@ -106,19 +199,13 @@ jobs:
               fi
               exit 1
             fi
-            sleep 1
           done
       
       - name: Run tests
         env:
-          DB_NAME: forgetest
-          DB_USER: postgres
-          DB_PASSWORD: postgres
-          DB_HOST: localhost
-          DB_PORT: 30432
-          NO_DB_PASSWORD_OK: false
           CARBIDE_ADDRESS: 127.0.0.1:11079
           CARBIDE_SEC_OPT: 0
+          CGO_ENABLED: 1
           TEMPORAL_TLS_ENABLED: false
           TEMPORAL_SERVER_NAME: test-temporal
           TEMPORAL_NAMESPACE: test-namespace
@@ -133,8 +220,7 @@ jobs:
           POD_NAME: test-pod-0
           POD_NAMESPACE: default
           DISABLE_BOOTSTRAP: true
-          CGO_ENABLED: 1
-        run: go test ./... -race -p 1
+        run: go test ./carbide-site-agent/... -race -p 1
       
       - name: Stop elektraserver
         if: always()
@@ -149,10 +235,10 @@ jobs:
             cat elektra_server.log
           fi
 
-  # Step 2: Prepare build information
+  # Step 2: Prepare build information (depends on all test jobs)
   prepare:
     name: Prepare Build Info
-    needs: test
+    needs: [test-simple, test-postgres, test-elektra]
     uses: ./.github/workflows/prepare-build-info.yml
     with:
       runner: ubuntu-latest
@@ -172,4 +258,3 @@ jobs:
       # Only push on main/master/develop branches or tags (not on PRs or feature branches)
       push_enabled: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/tags/')) }}
     secrets: inherit  # Pass all repository secrets to the reusable workflow
-
