@@ -80,15 +80,9 @@ jobs:
           --health-retries 5
 
       # Temporal service - available to all test runners
+      # Uses internal SQLite database for simplicity (no external DB dependency)
       temporal:
         image: temporalio/auto-setup:1.24.2
-        env:
-          DB: postgresql
-          DB_PORT: 5432
-          POSTGRES_USER: postgres
-          POSTGRES_PWD: postgres
-          POSTGRES_SEEDS: postgres
-          DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
         ports:
           - 7233:7233
         options: >-
@@ -189,16 +183,9 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-      # Temporal service
+      # Temporal service - uses internal SQLite database for simplicity
       temporal:
         image: temporalio/auto-setup:1.24.2
-        env:
-          DB: postgresql
-          DB_PORT: 5432
-          POSTGRES_USER: postgres
-          POSTGRES_PWD: postgres
-          POSTGRES_SEEDS: postgres
-          DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
         ports:
           - 7233:7233
         options: >-
