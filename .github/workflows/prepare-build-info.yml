@@ -57,7 +57,7 @@ jobs:
           
           # Set target registry - replace with your NVCR org/team
           # Format: nvcr.io/<org>/<project>
-          target_registry="nvcr.io/your-org/carbide"
+          target_registry="nvcr.io/0837451325059433/carbide-dev"
           
           # Output all variables
           echo "version=$VERSION" >> $GITHUB_OUTPUT
