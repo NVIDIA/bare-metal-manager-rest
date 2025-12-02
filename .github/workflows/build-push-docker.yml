@@ -108,18 +108,26 @@ jobs:
           docker save ${{ inputs.target_registry }}/carbide-rest-api:${{ inputs.short_sha }} | gzip > artifacts/carbide-rest-api-${{ inputs.short_sha }}.tar.gz
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-rest-api-binary-${{ inputs.short_sha }}
+          name: carbide-rest-api-binary
+          display-name: carbide-rest-api-binary
+          description: Carbide REST API binary
+          version: ${{ inputs.version }}
           path: artifacts/api
-          retention-days: 30
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
 
       - name: Upload Docker image artifact
-        uses: actions/upload-artifact@v4
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-rest-api-image-${{ inputs.short_sha }}
+          name: carbide-rest-api-image
+          display-name: carbide-rest-api-image
+          description: Carbide REST API image
+          version: ${{ inputs.version }}
           path: artifacts/carbide-rest-api-${{ inputs.short_sha }}.tar.gz
-          retention-days: 30
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
 
   # Build and push carbide-rest-db
   build-carbide-rest-db:
@@ -181,18 +189,26 @@ jobs:
           docker save ${{ inputs.target_registry }}/carbide-rest-db:${{ inputs.short_sha }} | gzip > artifacts/carbide-rest-db-${{ inputs.short_sha }}.tar.gz
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-rest-db-binary-${{ inputs.short_sha }}
+          name: carbide-rest-db-binary
+          display-name: carbide-rest-db-binary
+          description: Carbide REST DB binary
+          version: ${{ inputs.version }}
           path: artifacts/migrations
-          retention-days: 30
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
 
       - name: Upload Docker image artifact
-        uses: actions/upload-artifact@v4
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-rest-db-image-${{ inputs.short_sha }}
+          name: carbide-rest-db-image
+          display-name: carbide-rest-db-image
+          description: Carbide REST DB image
+          version: ${{ inputs.version }}
           path: artifacts/carbide-rest-db-${{ inputs.short_sha }}.tar.gz
-          retention-days: 30
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
 
   # Build and push carbide-rest-ipam
   build-carbide-rest-ipam:
@@ -254,18 +270,26 @@ jobs:
           docker save ${{ inputs.target_registry }}/carbide-rest-ipam:${{ inputs.short_sha }} | gzip > artifacts/carbide-rest-ipam-${{ inputs.short_sha }}.tar.gz
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-rest-ipam-binary-${{ inputs.short_sha }}
+          name: carbide-rest-ipam-binary
+          display-name: carbide-rest-ipam-binary
+          description: Carbide REST IPAM binary
+          version: ${{ inputs.version }}
           path: artifacts/ipam-server
-          retention-days: 30
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
 
       - name: Upload Docker image artifact
-        uses: actions/upload-artifact@v4
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-rest-ipam-image-${{ inputs.short_sha }}
+          name: carbide-rest-ipam-image
+          display-name: carbide-rest-ipam-image
+          description: Carbide REST IPAM image
+          version: ${{ inputs.version }}
           path: artifacts/carbide-rest-ipam-${{ inputs.short_sha }}.tar.gz
-          retention-days: 30
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
 
   # Build and push carbide-rest-site-manager
   build-carbide-rest-site-manager:
@@ -327,18 +351,26 @@ jobs:
           docker save ${{ inputs.target_registry }}/carbide-rest-site-manager:${{ inputs.short_sha }} | gzip > artifacts/carbide-rest-site-manager-${{ inputs.short_sha }}.tar.gz
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-rest-site-manager-binary-${{ inputs.short_sha }}
+          name: carbide-rest-site-manager-binary
+          display-name: carbide-rest-site-manager-binary
+          description: Carbide REST Site Manager binary
+          version: ${{ inputs.version }}
           path: artifacts/sitemgr
-          retention-days: 30
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
 
       - name: Upload Docker image artifact
-        uses: actions/upload-artifact@v4
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-rest-site-manager-image-${{ inputs.short_sha }}
+          name: carbide-rest-site-manager-image
+          display-name: carbide-rest-site-manager-image
+          description: Carbide REST Site Manager image
+          version: ${{ inputs.version }}
           path: artifacts/carbide-rest-site-manager-${{ inputs.short_sha }}.tar.gz
-          retention-days: 30
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
 
   # Build and push carbide-rest-workflow
   build-carbide-rest-workflow:
@@ -400,18 +432,26 @@ jobs:
           docker save ${{ inputs.target_registry }}/carbide-rest-workflow:${{ inputs.short_sha }} | gzip > artifacts/carbide-rest-workflow-${{ inputs.short_sha }}.tar.gz
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-rest-workflow-binary-${{ inputs.short_sha }}
+          name: carbide-rest-workflow-binary
+          display-name: carbide-rest-workflow-binary
+          description: Carbide REST Workflow binary
+          version: ${{ inputs.version }}
           path: artifacts/workflow
-          retention-days: 30
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
 
       - name: Upload Docker image artifact
-        uses: actions/upload-artifact@v4
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-rest-workflow-image-${{ inputs.short_sha }}
+          name: carbide-rest-workflow-image
+          display-name: carbide-rest-workflow-image
+          description: Carbide REST Workflow image
+          version: ${{ inputs.version }}
           path: artifacts/carbide-rest-workflow-${{ inputs.short_sha }}.tar.gz
-          retention-days: 30
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
 
   # Build and push carbide-site-agent
   build-carbide-site-agent:
@@ -474,18 +514,26 @@ jobs:
           docker save ${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.short_sha }} | gzip > artifacts/carbide-site-agent-${{ inputs.short_sha }}.tar.gz
 
       - name: Upload binary artifacts
-        uses: actions/upload-artifact@v4
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-site-agent-binaries-${{ inputs.short_sha }}
-          path: artifacts/elektra*
-          retention-days: 30
+          name: carbide-site-agent-binaries
+          display-name: carbide-site-agent-binaries
+          description: Carbide Site Agent binaries
+          version: ${{ inputs.version }}
+          path: artifacts/elektractl
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
 
       - name: Upload Docker image artifact
-        uses: actions/upload-artifact@v4
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-site-agent-image-${{ inputs.short_sha }}
+          name: carbide-site-agent-image
+          display-name: carbide-site-agent-image
+          description: Carbide Site Agent image
+          version: ${{ inputs.version }}
           path: artifacts/carbide-site-agent-${{ inputs.short_sha }}.tar.gz
-          retention-days: 30
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
 
   # Build and push carbide-rest-cert-manager (credsmgr)
   build-carbide-rest-cert-manager:
@@ -547,18 +595,26 @@ jobs:
           docker save ${{ inputs.target_registry }}/carbide-rest-cert-manager:${{ inputs.short_sha }} | gzip > artifacts/carbide-rest-cert-manager-${{ inputs.short_sha }}.tar.gz
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-rest-cert-manager-binary-${{ inputs.short_sha }}
+          name: carbide-rest-cert-manager-binary
+          display-name: carbide-rest-cert-manager-binary
+          description: Carbide REST Cert Manager binary
+          version: ${{ inputs.version }}
           path: artifacts/credsmgr
-          retention-days: 30
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
 
       - name: Upload Docker image artifact
-        uses: actions/upload-artifact@v4
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-rest-cert-manager-image-${{ inputs.short_sha }}
+          name: carbide-rest-cert-manager-image
+          display-name: carbide-rest-cert-manager-image
+          description: Carbide REST Cert Manager image
+          version: ${{ inputs.version }}
           path: artifacts/carbide-rest-cert-manager-${{ inputs.short_sha }}.tar.gz
-          retention-days: 30
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
 
   # Build summary
   build-summary:
