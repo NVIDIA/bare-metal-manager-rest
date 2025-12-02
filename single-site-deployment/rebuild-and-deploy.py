@@ -30,7 +30,6 @@ SERVICES = [
     ("carbide-rest-api", "Dockerfile.carbide-rest-api.fast"),
     ("carbide-rest-workflow", "Dockerfile.carbide-rest-workflow.fast"),
     ("carbide-rest-site-manager", "Dockerfile.carbide-rest-site-manager.fast"),
-    ("carbide-rest-ipam", "Dockerfile.carbide-rest-ipam.fast"),
     ("carbide-site-agent", "Dockerfile.carbide-site-agent.fast"),
     ("carbide-rest-db", "Dockerfile.carbide-rest-db.fast"),
     ("carbide-rest-cert-manager", "Dockerfile.carbide-rest-cert-manager.fast"),
@@ -778,7 +777,6 @@ def deploy_services():
     # First deploy services without site-manager
     services_first = [
         "cert-manager.yaml",
-        "ipam.yaml",
         "cloud-api.yaml",
         "workflow.yaml",
     ]

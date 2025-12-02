@@ -22,11 +22,6 @@ data:
     CREATE USER elektra WITH PASSWORD 'elektra';
     GRANT ALL PRIVILEGES ON DATABASE elektra TO elektra;
     
-    -- Create IPAM Database
-    CREATE DATABASE goipam WITH ENCODING 'UTF8';
-    CREATE USER goipam WITH PASSWORD 'goipam';
-    GRANT ALL PRIVILEGES ON DATABASE goipam TO goipam;
-    
     -- Create Keycloak Database
     CREATE DATABASE keycloak WITH ENCODING 'UTF8';
     CREATE USER keycloak WITH PASSWORD 'keycloak';

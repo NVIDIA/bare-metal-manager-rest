@@ -118,7 +118,6 @@ fi
 build_image "carbide-rest-api" "$DOCKERFILE_DIR/Dockerfile.carbide-rest-api.fast"
 build_image "carbide-rest-workflow" "$DOCKERFILE_DIR/Dockerfile.carbide-rest-workflow.fast"
 build_image "carbide-rest-site-manager" "$DOCKERFILE_DIR/Dockerfile.carbide-rest-site-manager.fast"
-build_image "carbide-rest-ipam" "$DOCKERFILE_DIR/Dockerfile.carbide-rest-ipam.fast"
 build_image "carbide-site-agent" "$DOCKERFILE_DIR/Dockerfile.carbide-site-agent.fast"
 build_image "carbide-rest-db" "$DOCKERFILE_DIR/Dockerfile.carbide-rest-db.fast"
 build_image "carbide-rest-cert-manager" "$DOCKERFILE_DIR/Dockerfile.carbide-rest-cert-manager.fast"

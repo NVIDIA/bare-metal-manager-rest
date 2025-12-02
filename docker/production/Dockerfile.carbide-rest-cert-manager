@@ -49,34 +49,18 @@ RUN VERSION=$(cat VERSION 2>/dev/null || echo "dev") && \
         ./cmd/credsmgr
 
 # Final stage
-FROM alpine:latest
-
-# Install runtime dependencies
-RUN apk add --no-cache \
-    ca-certificates \
-    tzdata
-
-# Create non-root user
-RUN addgroup -g 1000 appuser && \
-    adduser -D -u 1000 -G appuser appuser
+FROM nvcr.io/nvidia/distroless/go:v3.2.1 AS final
 
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /app/credsmgr /app/credsmgr
-
-# Set ownership
-RUN chown -R appuser:appuser /app
+COPY --from=builder --chown=nonroot:nonroot /app/credsmgr /app/credsmgr
 
 # Switch to non-root user
-USER appuser
+USER nonroot
 
 # Expose port
 EXPOSE 8080
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD ["/app/credsmgr", "health"] || exit 1
 
 # Run the application
 ENTRYPOINT ["/app/credsmgr"]
