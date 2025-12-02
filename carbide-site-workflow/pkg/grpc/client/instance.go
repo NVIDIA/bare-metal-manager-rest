@@ -49,7 +49,7 @@ type InstanceInterface interface {
 // DEPRECATED: use GetAllInstances instead
 func (instance *compute) GetInstance(ctx context.Context, request *wflows.InstanceSearchQuery) (response *wflows.InstanceList, err error) {
 	log.Info().Interface("request", request).Msg("GetInstance: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-GetInstance")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-GetInstance")
 	defer span.End()
 
 	response, err = instance.carbide.FindInstances(ctx, request)
@@ -63,7 +63,7 @@ func (instance *compute) GetInstance(ctx context.Context, request *wflows.Instan
 
 func (instance *compute) GetAllInstances(ctx context.Context, request *wflows.InstanceSearchFilter, pageSize int) (response *wflows.InstanceList, err error) {
 	log.Info().Interface("request", request).Msg("GetAllInstances: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-GetAllInstances")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-GetAllInstances")
 	defer span.End()
 
 	if request == nil {
@@ -91,7 +91,7 @@ func (instance *compute) GetAllInstances(ctx context.Context, request *wflows.In
 
 func (instance *compute) FindInstanceIDs(ctx context.Context, request *wflows.InstanceSearchFilter) (response *wflows.InstanceIdList, err error) {
 	log.Info().Interface("request", request).Msg("FindInstanceIDs: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-FindInstanceIDs")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-FindInstanceIDs")
 	defer span.End()
 
 	if request == nil {
@@ -107,7 +107,7 @@ func (instance *compute) FindInstanceIDs(ctx context.Context, request *wflows.In
 
 func (instance *compute) FindInstancesByIDs(ctx context.Context, request *wflows.InstancesByIdsRequest) (response *wflows.InstanceList, err error) {
 	log.Info().Interface("request", request).Msg("FindInstancesByIDs: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-FindInstancesByIDs")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-FindInstancesByIDs")
 	defer span.End()
 
 	if request == nil {
@@ -124,7 +124,7 @@ func (instance *compute) FindInstancesByIDs(ctx context.Context, request *wflows
 
 func (instance *compute) CreateInstance(ctx context.Context, request *wflows.CreateInstanceRequest) (response *wflows.Instance, err error) {
 	log.Info().Interface("request", request).Msg("CreateInstance: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-CreateInstance")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-CreateInstance")
 	defer span.End()
 
 	// Validations
@@ -181,7 +181,7 @@ func (instance *compute) CreateInstance(ctx context.Context, request *wflows.Cre
 
 func (instance *compute) DeleteInstance(ctx context.Context, request *wflows.DeleteInstanceRequest) (response *wflows.InstanceReleaseResult, err error) {
 	log.Info().Interface("request", request).Msg("DeleteInstance: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-DeleteInstance")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-DeleteInstance")
 	defer span.End()
 
 	// Validations

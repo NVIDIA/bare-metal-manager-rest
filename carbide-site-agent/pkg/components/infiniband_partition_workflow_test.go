@@ -218,26 +218,26 @@ func TestInfiniBandPartitionWorkflows(t *testing.T) {
 	wflowGrpcFail = 0
 	wflowGrpcSucc = 1
 
-	_, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(context.Background(), "CreateInfiniBandPartitionTestSuite")
+	_, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(context.Background(), "CreateInfiniBandPartitionTestSuite")
 	suite.Run(t, new(CreateInfiniBandPartitionTestSuite))
 	span.End()
 
 	// failures has multiple tries
-	_, span = otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(context.Background(), "CreateInfiniBandPartitionFailureTestSuite")
+	_, span = otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(context.Background(), "CreateInfiniBandPartitionFailureTestSuite")
 	wflowGrpcFail += 7
 	wflowActFail++
 	wflowPubFail++
 	suite.Run(t, new(CreateInfiniBandPartitionFailureTestSuite))
 	span.End()
 
-	_, span = otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(context.Background(), "UpdateInfiniBandPartitionTestSuite")
+	_, span = otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(context.Background(), "UpdateInfiniBandPartitionTestSuite")
 	wflowGrpcSucc++
 	wflowActSucc++
 	wflowPubSucc++
 	suite.Run(t, new(UpdateInfiniBandPartitionTestSuite))
 	span.End()
 
-	_, span = otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(context.Background(), "DeleteInfiniBandPartitionTestSuite")
+	_, span = otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(context.Background(), "DeleteInfiniBandPartitionTestSuite")
 	wflowGrpcSucc++
 	wflowActSucc++
 	wflowPubSucc++

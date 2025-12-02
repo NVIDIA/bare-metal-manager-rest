@@ -177,7 +177,7 @@ func NewCarbideClient(config *CarbideClientConfig) (client *CarbideClient, err e
 	if config.ClientMetrics != nil {
 		streamInterceptors = append(streamInterceptors, newGrpcStreamMetricsInterceptor(config.ClientMetrics))
 	}
-	if os.Getenv("LS_SERVICE_NAME") != "" {
+	if os.Getenv("OTEL_SERVICE_NAME") != "" {
 		handler := otelgrpc.NewClientHandler(otelgrpc.WithPropagators(otel.GetTextMapPropagator()))
 		client.dialOpts = append(client.dialOpts, grpc.WithStatsHandler(handler))
 	}

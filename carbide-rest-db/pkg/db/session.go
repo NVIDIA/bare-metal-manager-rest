@@ -56,8 +56,8 @@ func NewSession(host string, port int, dbName string, user string, password stri
 	// Uncomment to see all queries
 	// bundebug.NewQueryHook(bundebug.WithVerbose(true))
 
-	// if lighstep is configured, add otel hooks
-	if os.Getenv("LS_SERVICE_NAME") != "" {
+	// if OTEL is configured, add otel hooks
+	if os.Getenv("OTEL_SERVICE_NAME") != "" {
 		db.AddQueryHook(bunotel.NewQueryHook(
 			bunotel.WithDBName(dbName),
 			bunotel.WithFormattedQueries(true),

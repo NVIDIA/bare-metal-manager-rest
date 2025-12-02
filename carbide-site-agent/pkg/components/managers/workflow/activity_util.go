@@ -82,7 +82,7 @@ func doActivity(ctx context.Context, ResourceVer uint64, ResourceID string,
 	activityType := wflowMd.ActivityType()
 	resourceType := wflowMd.ResourceType()
 
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "Actv-"+activityType+"-"+resourceType)
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "Actv-"+activityType+"-"+resourceType)
 	span.SetAttributes(attribute.String("activityType", activityType))
 	span.SetAttributes(attribute.String("resourceType", resourceType))
 	span.SetAttributes(attribute.String("resourceID", ResourceID))

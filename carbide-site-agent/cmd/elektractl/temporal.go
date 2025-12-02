@@ -89,7 +89,7 @@ func createTemporalClient() (*TemporalClient, error) {
 	var clientInterceptors []interceptor.ClientInterceptor
 	var workerInterceptors []interceptor.WorkerInterceptor
 
-	if os.Getenv("LS_SERVICE_NAME") != "" {
+	if os.Getenv("OTEL_SERVICE_NAME") != "" {
 		otelInterceptor, err := opentelemetry.NewTracingInterceptor(opentelemetry.TracerOptions{TextMapPropagator: otel.GetTextMapPropagator()})
 		if err != nil {
 			Elog.Error().Err(err).Msg("unable to get otelInterceptor")

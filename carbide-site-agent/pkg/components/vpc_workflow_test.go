@@ -278,7 +278,7 @@ func TestVpcWorkflows(t *testing.T) {
 	wflowPubFail = 0
 	wflowPubSucc = 0
 
-	_, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(context.Background(), "CreateVpcTestSuite")
+	_, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(context.Background(), "CreateVpcTestSuite")
 	carbide.ManagerAccess.Data.EB.Managers.Carbide.State.GrpcFail.Store(0)
 	carbide.ManagerAccess.Data.EB.Managers.Carbide.State.GrpcSucc.Store(0)
 	wflowGrpcFail = 0
@@ -288,7 +288,7 @@ func TestVpcWorkflows(t *testing.T) {
 	suite.Run(t, new(CreateVpcTestSuite))
 	span.End()
 
-	_, span = otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(context.Background(), "CreateVpcFailureTestSuite")
+	_, span = otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(context.Background(), "CreateVpcFailureTestSuite")
 	// failures has multiple tries
 	wflowGrpcSucc++
 	wflowActSucc++
@@ -296,14 +296,14 @@ func TestVpcWorkflows(t *testing.T) {
 	suite.Run(t, new(CreateVpcFailureTestSuite))
 	span.End()
 
-	_, span = otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(context.Background(), "GetVpcTestSuite")
+	_, span = otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(context.Background(), "GetVpcTestSuite")
 	wflowGrpcSucc++
 	wflowActSucc++
 	wflowPubSucc++
 	suite.Run(t, new(GetVpcTestSuite))
 	span.End()
 
-	_, span = otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(context.Background(), "DeleteVpcTestSuite")
+	_, span = otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(context.Background(), "DeleteVpcTestSuite")
 	wflowGrpcSucc++
 	wflowActSucc++
 	wflowPubSucc++

@@ -302,7 +302,7 @@ func (bs *BoostrapAPI) DownloadAndStoreCreds(otpOverride []byte) error {
 	bw.DownloadAttempted.Inc()
 
 	ctx := context.Background()
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "Bootstrap")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "Bootstrap")
 	defer span.End()
 
 	// Proceed to download credentials with the updated OTP
@@ -356,7 +356,7 @@ func saveToFile(credsResponse *bootstraptypes.SiteCredsResponse) error {
 
 // StoreCredentials for updating secrets
 func (bs *BoostrapAPI) storeCredentials(ctx context.Context, credsResponse *bootstraptypes.SiteCredsResponse) error {
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "Bootstrap-store")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "Bootstrap-store")
 	defer span.End()
 	if credsResponse == nil {
 		return fmt.Errorf("Bootstrap: credsResponse is nil")
@@ -416,7 +416,7 @@ func (bs *BoostrapAPI) downloadCredentials(ctx context.Context) (*bootstraptypes
 		return nil, err
 	}
 	log.Info().Msgf("Bootstrap: body %v", string(m))
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "Bootstrap-client")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "Bootstrap-client")
 	span.SetAttributes(attribute.String("url", bCfg.CredsURL))
 	defer span.End()
 

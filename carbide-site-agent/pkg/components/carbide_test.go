@@ -56,7 +56,7 @@ func TestCarbideVpc(t *testing.T) {
 			switch tc.descr {
 			case "create":
 				ctx := context.Background()
-				ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideTest-CreateVPC")
+				ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideTest-CreateVPC")
 
 				createRequest := &wflows.Vpc{
 					Name:                 "test-vpc",
@@ -82,7 +82,7 @@ func TestCarbideVpc(t *testing.T) {
 				t.Log("GRPCResponse", response)
 			case "get":
 				ctx := context.Background()
-				ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideTest-VpcSearchQuery")
+				ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideTest-VpcSearchQuery")
 				resq, err := grpcClient.Networks().GetAllVPCs(ctx, &wflows.VpcSearchFilter{}, utils.CarbideApiPageSize)
 				span.End()
 				carbide.ManagerAccess.API.Carbide.UpdateGRPCClientState(err)
@@ -104,7 +104,7 @@ func TestCarbideVpc(t *testing.T) {
 				t.Log("GRPCResponse", response)
 			case "delete":
 				ctx := context.Background()
-				ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideTest-DeleteVPC")
+				ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideTest-DeleteVPC")
 				response, err := grpcClient.Networks().DeleteVPC(ctx, vpc.Id.Value)
 				span.End()
 				carbide.ManagerAccess.API.Carbide.UpdateGRPCClientState(err)
@@ -185,7 +185,7 @@ func TestCarbideSubnet(t *testing.T) {
 					},
 				}
 				ctx := context.Background()
-				ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideTest-CreateNetworkSegment")
+				ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideTest-CreateNetworkSegment")
 				response, err := grpcClient.Networks().CreateNetworkSegment(ctx, v)
 				span.End()
 				if err != nil {
@@ -197,7 +197,7 @@ func TestCarbideSubnet(t *testing.T) {
 				t.Log("GRPCResponse", response)
 			case "get":
 				ctx := context.Background()
-				ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideTest-GetNetworkSegment")
+				ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideTest-GetNetworkSegment")
 				response, err := grpcClient.Networks().GetNetworkSegment(ctx, created.Id)
 				span.End()
 				if err != nil {
@@ -220,7 +220,7 @@ func TestCarbideSubnet(t *testing.T) {
 					NetworkSegmentId: created.Id,
 				}
 				ctx := context.Background()
-				ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideTest-DeleteNetworkSegment")
+				ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideTest-DeleteNetworkSegment")
 				response, err := grpcClient.Networks().DeleteNetworkSegment(ctx, v)
 				span.End()
 				if err != nil {

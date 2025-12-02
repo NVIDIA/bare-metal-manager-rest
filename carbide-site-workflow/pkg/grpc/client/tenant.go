@@ -40,7 +40,7 @@ type TenantInterface interface {
 
 func (tenant *compute) CreateTenant(ctx context.Context, request *wflows.CreateTenantRequest) (response *wflows.CreateTenantResponse, err error) {
 	log.Info().Interface("request", request).Msg("CreateTenant: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-CreateTenant")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-CreateTenant")
 	defer span.End()
 
 	if request == nil {
@@ -68,7 +68,7 @@ func (tenant *compute) CreateTenant(ctx context.Context, request *wflows.CreateT
 
 func (tenant *compute) UpdateTenant(ctx context.Context, request *wflows.UpdateTenantRequest) (response *wflows.UpdateTenantResponse, err error) {
 	log.Info().Interface("request", request).Msg("UpdateTenant: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-UpdateTenant")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-UpdateTenant")
 	defer span.End()
 
 	if request == nil {
@@ -96,7 +96,7 @@ func (tenant *compute) UpdateTenant(ctx context.Context, request *wflows.UpdateT
 
 func (tenant *compute) FindTenantOrganizationIDs(ctx context.Context, request *wflows.TenantSearchFilter) (response *wflows.TenantOrganizationIdList, err error) {
 	log.Info().Interface("request", request).Msg("FindTenantOrganizationIDs: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-FindTenantOrganizationIDs")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-FindTenantOrganizationIDs")
 	defer span.End()
 
 	if request == nil {
@@ -112,7 +112,7 @@ func (tenant *compute) FindTenantOrganizationIDs(ctx context.Context, request *w
 
 func (tenant *compute) FindTenantsByOrganizationIDs(ctx context.Context, request *wflows.TenantByOrganizationIdsRequest) (response *wflows.TenantList, err error) {
 	log.Info().Interface("request", request).Msg("FindTenantsByOrganizationIDs: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-FindTenantsByOrganizationIDs")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-FindTenantsByOrganizationIDs")
 	defer span.End()
 
 	if request == nil {

@@ -180,7 +180,7 @@ func main() {
 
 	var tInterceptors []interceptor.ClientInterceptor
 
-	if os.Getenv("LS_SERVICE_NAME") != "" {
+	if os.Getenv("OTEL_SERVICE_NAME") != "" {
 		otelInterceptor, err := opentelemetry.NewTracingInterceptor(opentelemetry.TracerOptions{TextMapPropagator: otel.GetTextMapPropagator()})
 		if err != nil {
 			log.Panic().Err(err).Msg("unable to get otelInterceptor")

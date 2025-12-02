@@ -34,7 +34,7 @@ type OperatingSystemInterface interface {
 // CreateOsImage creates a new OS image
 func (osi *compute) CreateOsImage(ctx context.Context, request *wflows.OsImageAttributes) (*wflows.OsImage, error) {
 	log.Info().Interface("request", request).Msg("CreateOsImage: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-CreateOsImage")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-CreateOsImage")
 	defer span.End()
 
 	// Validate the request
@@ -51,7 +51,7 @@ func (osi *compute) CreateOsImage(ctx context.Context, request *wflows.OsImageAt
 // UpdateOsImage updates an existing OS image
 func (osi *compute) UpdateOsImage(ctx context.Context, request *wflows.OsImageAttributes) (*wflows.OsImage, error) {
 	log.Info().Interface("request", request).Msg("UpdateOsImage: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-UpdateOsImage")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-UpdateOsImage")
 	defer span.End()
 
 	// Validate the request
@@ -68,7 +68,7 @@ func (osi *compute) UpdateOsImage(ctx context.Context, request *wflows.OsImageAt
 // DeleteOsImage deletes an existing OS image
 func (osi *compute) DeleteOsImage(ctx context.Context, request *wflows.DeleteOsImageRequest) (*wflows.DeleteOsImageResponse, error) {
 	log.Info().Interface("request", request).Msg("DeleteOsImage: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-DeleteOsImage")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-DeleteOsImage")
 	defer span.End()
 
 	// Validate the request
@@ -85,7 +85,7 @@ func (osi *compute) DeleteOsImage(ctx context.Context, request *wflows.DeleteOsI
 // GetOsImage retrieves an existing OS image
 func (osi *compute) GetOsImage(ctx context.Context, request *wflows.UUID) (response *wflows.OsImage, err error) {
 	log.Info().Interface("request", request).Msg("GetOsImage: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-GetOsImage")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-GetOsImage")
 	defer span.End()
 
 	// Validate the request
@@ -102,7 +102,7 @@ func (osi *compute) GetOsImage(ctx context.Context, request *wflows.UUID) (respo
 // ListOsImage retrieves a list of OS images
 func (osi *compute) ListOsImage(ctx context.Context, request *wflows.ListOsImageRequest) (*wflows.ListOsImageResponse, error) {
 	log.Info().Interface("request", request).Msg("ListOsImage: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-ListOsImage")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-ListOsImage")
 	defer span.End()
 
 	// Validate the request

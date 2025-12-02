@@ -38,7 +38,7 @@ type VPCInterface interface {
 // CreateVPC creates a VPC
 func (vpc *network) CreateVPC(ctx context.Context, request *wflows.Vpc) (response *wflows.Vpc, err error) {
 	log.Info().Interface("request", request).Msg("CreateVPC: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-CreateVPC")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-CreateVPC")
 	defer span.End()
 
 	// Validate the request
@@ -63,7 +63,7 @@ func (vpc *network) CreateVPC(ctx context.Context, request *wflows.Vpc) (respons
 // DEPRECATED: use GetAllVPCs instead
 func (vpc *network) GetVPC(ctx context.Context, request *wflows.VpcSearchQuery) (response *wflows.VpcList, err error) {
 	log.Info().Interface("request", request).Msg("GetVPC: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-GetVPC")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-GetVPC")
 	defer span.End()
 
 	response, err = vpc.carbide.FindVpcs(ctx, request)
@@ -80,7 +80,7 @@ func (vpc *network) GetVPC(ctx context.Context, request *wflows.VpcSearchQuery) 
 // DEPRECATED: use GetAllVPCs instead
 func (vpc *network) ListVPCs(ctx context.Context) (response *wflows.VpcList, err error) {
 	log.Info().Msg("ListVPCs: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-ListVPCs")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-ListVPCs")
 	defer span.End()
 
 	carbiderequest := &wflows.VpcSearchQuery{
@@ -97,7 +97,7 @@ func (vpc *network) ListVPCs(ctx context.Context) (response *wflows.VpcList, err
 
 func (vpc *network) GetAllVPCs(ctx context.Context, request *wflows.VpcSearchFilter, pageSize int) (response *wflows.VpcList, err error) {
 	log.Info().Interface("request", request).Msg("GetAllVPCs: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-GetAllVPCs")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-GetAllVPCs")
 	defer span.End()
 
 	if request == nil {
@@ -125,7 +125,7 @@ func (vpc *network) GetAllVPCs(ctx context.Context, request *wflows.VpcSearchFil
 
 func (vpc *network) FindVPCIDs(ctx context.Context, request *wflows.VpcSearchFilter) (response *wflows.VpcIdList, err error) {
 	log.Info().Interface("request", request).Msg("FindVPCIDs: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-FindVPCIDs")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-FindVPCIDs")
 	defer span.End()
 
 	if request == nil {
@@ -142,7 +142,7 @@ func (vpc *network) FindVPCIDs(ctx context.Context, request *wflows.VpcSearchFil
 
 func (vpc *network) FindVPCsByIDs(ctx context.Context, request *wflows.VpcsByIdsRequest) (response *wflows.VpcList, err error) {
 	log.Info().Interface("request", request).Msg("FindVPCsByIDs: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-FindVPCsByIDs")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-FindVPCsByIDs")
 	defer span.End()
 
 	if request == nil {
@@ -160,7 +160,7 @@ func (vpc *network) FindVPCsByIDs(ctx context.Context, request *wflows.VpcsByIds
 // DeleteVPC deletes a VPC
 func (vpc *network) DeleteVPC(ctx context.Context, id string) (response *wflows.VpcDeletionResult, err error) {
 	log.Info().Str("id", id).Msg("DeleteVPC: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-DeleteVPC")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-DeleteVPC")
 	defer span.End()
 
 	// Validate the request

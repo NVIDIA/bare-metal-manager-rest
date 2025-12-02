@@ -41,7 +41,7 @@ type InfiniBandPartitionInterface interface {
 // CreateInfiniBandPartition creates a InfiniBandPartition
 func (ibp *network) CreateInfiniBandPartition(ctx context.Context, request *wflows.CreateInfiniBandPartitionRequest) (response *wflows.IBPartition, err error) {
 	log.Info().Interface("request", request).Msg("CreateInfiniBandPartition: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-CreateInfiniBandPartition")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-CreateInfiniBandPartition")
 	defer span.End()
 
 	// Validate the request
@@ -67,7 +67,7 @@ func (ibp *network) CreateInfiniBandPartition(ctx context.Context, request *wflo
 // DeleteInfiniBandPartition deletes a InfiniBandPartition
 func (ibp *network) DeleteInfiniBandPartition(ctx context.Context, request *wflows.DeleteInfiniBandPartitionRequest) (response *wflows.IBPartitionDeletionResult, err error) {
 	log.Info().Interface("request", request).Msg("DeleteInfiniBandPartition: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-DeleteInfiniBandPartition")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-DeleteInfiniBandPartition")
 	defer span.End()
 
 	// Validate the request
@@ -89,7 +89,7 @@ func (ibp *network) DeleteInfiniBandPartition(ctx context.Context, request *wflo
 // DEPRECATED: use GetAllInfiniBandPartitions instead
 func (ibp *network) GetInfiniBandPartition(ctx context.Context, request *wflows.GetInfiniBandPartitionRequest) (response *wflows.IBPartitionList, err error) {
 	log.Info().Interface("request", request).Msg("GetInfiniBandPartition: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-GetInfiniBandPartition")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-GetInfiniBandPartition")
 	defer span.End()
 
 	// Validate the request
@@ -121,7 +121,7 @@ func (ibp *network) GetInfiniBandPartition(ctx context.Context, request *wflows.
 // DEPRECATED: use GetAllInfiniBandPartitions instead
 func (ibp *network) ListInfiniBandPartition(ctx context.Context) (response *wflows.IBPartitionList, err error) {
 	log.Info().Msg("ListInfiniBandPartition: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-ListInfiniBandPartition")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-ListInfiniBandPartition")
 	defer span.End()
 
 	carbiderequest := &wflows.IBPartitionQuery{}
@@ -136,7 +136,7 @@ func (ibp *network) ListInfiniBandPartition(ctx context.Context) (response *wflo
 
 func (ibp *network) GetAllInfiniBandPartitions(ctx context.Context, request *wflows.IBPartitionSearchFilter, pageSize int) (response *wflows.IBPartitionList, err error) {
 	log.Info().Interface("request", request).Msg("GetAllInfiniBandPartitions: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-GetAllInfiniBandPartitions")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-GetAllInfiniBandPartitions")
 	defer span.End()
 
 	if request == nil {
@@ -170,7 +170,7 @@ func (ibp *network) GetAllInfiniBandPartitions(ctx context.Context, request *wfl
 
 func (ibp *network) FindInfinibandPartitionIDs(ctx context.Context, request *wflows.IBPartitionSearchFilter) (response *wflows.IBPartitionIdList, err error) {
 	log.Info().Interface("request", request).Msg("FindInfinibandPartitionIDs: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-FindInfinibandPartitionIDs")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-FindInfinibandPartitionIDs")
 	defer span.End()
 
 	if request == nil {
@@ -187,7 +187,7 @@ func (ibp *network) FindInfinibandPartitionIDs(ctx context.Context, request *wfl
 
 func (ibp *network) FindInfinibandPartitionsByIDs(ctx context.Context, request *wflows.IBPartitionsByIdsRequest) (response *wflows.IBPartitionList, err error) {
 	log.Info().Interface("request", request).Msg("FindInfinibandPartitionsByIDs: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-FindInfinibandPartitionsByIDs")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-FindInfinibandPartitionsByIDs")
 	defer span.End()
 
 	if request == nil {

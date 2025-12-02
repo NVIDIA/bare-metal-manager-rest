@@ -232,26 +232,26 @@ func TestSubnetWorkflows(t *testing.T) {
 	wflowGrpcFail = 0
 	wflowGrpcSucc = 1
 
-	_, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(context.Background(), "CreateSubnetTestSuite")
+	_, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(context.Background(), "CreateSubnetTestSuite")
 	suite.Run(t, new(CreateSubnetTestSuite))
 	span.End()
 
 	// failures has multiple tries
-	_, span = otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(context.Background(), "CreateSubnetFailureTestSuite")
+	_, span = otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(context.Background(), "CreateSubnetFailureTestSuite")
 	wflowGrpcFail += 7
 	wflowActFail++
 	wflowPubFail++
 	suite.Run(t, new(CreateSubnetFailureTestSuite))
 	span.End()
 
-	_, span = otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(context.Background(), "UpdateSubnetTestSuite")
+	_, span = otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(context.Background(), "UpdateSubnetTestSuite")
 	wflowGrpcSucc++
 	wflowActSucc++
 	wflowPubSucc++
 	suite.Run(t, new(UpdateSubnetTestSuite))
 	span.End()
 
-	_, span = otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(context.Background(), "DeleteSubnetTestSuite")
+	_, span = otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(context.Background(), "DeleteSubnetTestSuite")
 	wflowGrpcSucc++
 	wflowActSucc++
 	wflowPubSucc++

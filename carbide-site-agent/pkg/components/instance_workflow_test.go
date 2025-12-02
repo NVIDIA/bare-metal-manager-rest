@@ -342,33 +342,33 @@ func TestInstanceWorkflows(t *testing.T) {
 		},
 		Status: &wflows.InstanceStatus{},
 	}
-	_, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(context.Background(), "CreateDeprecatedInstanceTestSuite")
+	_, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(context.Background(), "CreateDeprecatedInstanceTestSuite")
 	suite.Run(t, new(CreateDeprecatedInstanceTestSuite))
 	span.End()
 
 	// Failure triggers multiple retries
-	_, span = otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(context.Background(), "CreateDeprecatedInstanceFailureTestSuite")
+	_, span = otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(context.Background(), "CreateDeprecatedInstanceFailureTestSuite")
 	wflowGrpcSucc++
 	wflowActSucc++
 	wflowPubFail++
 	suite.Run(t, new(CreateDeprecatedInstanceFailureTestSuite))
 	span.End()
 
-	_, span = otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(context.Background(), "DeprecatedRebootTestSuite")
+	_, span = otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(context.Background(), "DeprecatedRebootTestSuite")
 	wflowGrpcSucc++
 	wflowActSucc++
 	wflowPubSucc++
 	suite.Run(t, new(DeprecatedRebootTestSuite))
 	span.End()
 
-	_, span = otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(context.Background(), "DeprecatedRebootFailureTestSuite")
+	_, span = otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(context.Background(), "DeprecatedRebootFailureTestSuite")
 	wflowGrpcFail += 7
 	wflowActFail++
 	wflowPubSucc++
 	suite.Run(t, new(DeprecatedRebootFailureTestSuite))
 	span.End()
 
-	_, span = otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(context.Background(), "DeleteInstanceTestSuite")
+	_, span = otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(context.Background(), "DeleteInstanceTestSuite")
 	wflowGrpcSucc++
 	wflowActSucc++
 	wflowPubSucc++

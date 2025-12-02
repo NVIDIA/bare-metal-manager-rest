@@ -23,7 +23,7 @@ import (
 
 func (instance *compute) RebootInstance(ctx context.Context, resourceRequest *wflows.RebootInstanceRequest) (result *wflows.InstancePowerResult, err error) {
 	log.Info().Interface("request", resourceRequest).Msg("RebootInstance: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-RebootInstance")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-RebootInstance")
 	defer span.End()
 
 	// Validations

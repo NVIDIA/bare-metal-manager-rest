@@ -42,7 +42,7 @@ type SSHKeyGroupInterface interface {
 // CreateSSHKeyGroup creates a SSHKeyGroup
 func (skg *compute) CreateSSHKeyGroup(ctx context.Context, request *wflows.CreateSSHKeyGroupRequest) (response *wflows.CreateTenantKeysetResponse, err error) {
 	log.Info().Interface("request", request).Msg("CreateSSHKeyGroup: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-CreateSSHKeyGroup")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-CreateSSHKeyGroup")
 	defer span.End()
 
 	// Validate the request
@@ -73,7 +73,7 @@ func (skg *compute) CreateSSHKeyGroup(ctx context.Context, request *wflows.Creat
 // DEPRECATED: use GetAllSSHKeyGroups instead
 func (skg *compute) GetSSHKeyGroup(ctx context.Context, request *wflows.GetSSHKeyGroup) (response *wflows.TenantKeySetList, err error) {
 	log.Info().Interface("request", request).Msg("GetSSHKeyGroup: received GetSSHKeyGroup request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-GetSSHKeyGroup")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-GetSSHKeyGroup")
 	defer span.End()
 
 	// Validate the request
@@ -103,7 +103,7 @@ func (skg *compute) GetSSHKeyGroup(ctx context.Context, request *wflows.GetSSHKe
 // DEPRECATED: use GetAllSSHKeyGroups instead
 func (skg *compute) GetAllSSHKeyGroupsOld(ctx context.Context) (response *wflows.TenantKeySetList, err error) {
 	log.Info().Interface("request", "SSHKeyGroup Inventory").Msg("GetAllSSHKeyGroups: received GetAllSSHKeyGroups request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-GetSSHKeyGroup")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-GetSSHKeyGroup")
 	defer span.End()
 
 	// Create the request
@@ -120,7 +120,7 @@ func (skg *compute) GetAllSSHKeyGroupsOld(ctx context.Context) (response *wflows
 
 func (skg *compute) GetAllSSHKeyGroups(ctx context.Context, request *wflows.TenantKeysetSearchFilter, pageSize int) (response *wflows.TenantKeySetList, err error) {
 	log.Info().Interface("request", request).Msg("GetAllSSHKeyGroups: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-GetAllSSHKeyGroups")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-GetAllSSHKeyGroups")
 	defer span.End()
 
 	if request == nil {
@@ -154,7 +154,7 @@ func (skg *compute) GetAllSSHKeyGroups(ctx context.Context, request *wflows.Tena
 
 func (skg *compute) FindSSHKeyGroupIDs(ctx context.Context, request *wflows.TenantKeysetSearchFilter) (response *wflows.TenantKeysetIdList, err error) {
 	log.Info().Interface("request", request).Msg("FindSSHKeyGroupIDs: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-FindSSHKeyGroupIDs")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-FindSSHKeyGroupIDs")
 	defer span.End()
 
 	if request == nil {
@@ -171,7 +171,7 @@ func (skg *compute) FindSSHKeyGroupIDs(ctx context.Context, request *wflows.Tena
 
 func (skg *compute) FindSSHKeyGroupsByIDs(ctx context.Context, request *wflows.TenantKeysetsByIdsRequest) (response *wflows.TenantKeySetList, err error) {
 	log.Info().Interface("request", request).Msg("FindSSHKeyGroupsByIDs: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-FindSSHKeyGroupsByIDs")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-FindSSHKeyGroupsByIDs")
 	defer span.End()
 
 	if request == nil {
@@ -189,7 +189,7 @@ func (skg *compute) FindSSHKeyGroupsByIDs(ctx context.Context, request *wflows.T
 // UpdateSSHKeyGroup updates a SSHKeyGroup
 func (skg *compute) UpdateSSHKeyGroup(ctx context.Context, request *wflows.UpdateSSHKeyGroupRequest) (response *wflows.UpdateTenantKeysetResponse, err error) {
 	log.Info().Interface("request", request).Msg("UpdateSSHKeyGroup: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-UpdateSSHKeyGroup")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-UpdateSSHKeyGroup")
 	defer span.End()
 
 	// Validate the request
@@ -239,7 +239,7 @@ func (skg *compute) UpdateSSHKeyGroup(ctx context.Context, request *wflows.Updat
 // DeleteSSHKeyGroup deletes a SSHKeyGroup
 func (skg *compute) DeleteSSHKeyGroup(ctx context.Context, request *wflows.DeleteSSHKeyGroupRequest) (response *wflows.DeleteTenantKeysetResponse, err error) {
 	log.Info().Interface("Request", request).Msg("DeleteSSHKeyGroup: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-DeleteSSHKeyGroup")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-DeleteSSHKeyGroup")
 	defer span.End()
 
 	// Validate the request

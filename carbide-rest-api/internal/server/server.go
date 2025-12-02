@@ -65,7 +65,7 @@ func InitTemporalClients(tConfig *config.TemporalConfig) (tsdkClient.Client, tsd
 		tInterceptors []interceptor.ClientInterceptor
 		err           error
 	)
-	if os.Getenv("LS_SERVICE_NAME") != "" {
+	if os.Getenv("OTEL_SERVICE_NAME") != "" {
 		otelInterceptor, serr := opentelemetry.NewTracingInterceptor(opentelemetry.TracerOptions{TextMapPropagator: otel.GetTextMapPropagator()})
 		if serr != nil {
 			log.Panic().Err(serr).Msg("unable to get otelInterceptor")
@@ -127,11 +127,11 @@ func InitAPIServer(cfg *config.Config, dbSession *cdb.Session, tc tsdkClient.Cli
 	// Secure middleware configures echo with secure headers
 	e.Use(middleware.Secure())
 
-	svcName := os.Getenv("LS_SERVICE_NAME")
+	svcName := os.Getenv("OTEL_SERVICE_NAME")
 	if svcName != "" {
 		e.Use(otelecho.Middleware(svcName, otelecho.WithSkipper(skipHB), otelecho.WithPropagators(otprop.OT{})))
 	} else {
-		log.Warn().Msg("failed to get Lightstep service name, skipping OTel middleware")
+		log.Warn().Msg("OTEL_SERVICE_NAME not set, skipping OTel middleware")
 	}
 
 	// Sentry middleware
@@ -247,7 +247,7 @@ func InitMetricsServer(e *echo.Echo) *echo.Echo {
 
 // Skips tracing for the health routes to avoid flooding the trace
 func skipHB(c echo.Context) bool {
-	if os.Getenv("LS_TRACE_SYSTEM_ROUTES") == "true" {
+	if os.Getenv("OTEL_TRACE_SYSTEM_ROUTES") == "true" {
 		return false
 	}
 

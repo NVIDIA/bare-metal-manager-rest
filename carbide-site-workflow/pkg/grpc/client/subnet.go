@@ -61,7 +61,7 @@ type SubnetInterface interface {
 
 func (sub *network) CreateNetworkSegment(ctx context.Context, request *wflows.CreateSubnetRequest) (response *wflows.NetworkSegment, err error) {
 	log.Info().Interface("request", request).Msg("CreateNetworkSegment: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-CreateNetworkSegment")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-CreateNetworkSegment")
 	defer span.End()
 
 	// Validations
@@ -118,7 +118,7 @@ func (sub *network) CreateNetworkSegment(ctx context.Context, request *wflows.Cr
 // DEPRECATED: use GetAllNetworkSegments instead
 func (sub *network) GetNetworkSegmentDeprecated(ctx context.Context, ID *wflows.UUID) (response *wflows.NetworkSegmentList, err error) {
 	log.Info().Interface("request", ID).Msg("GetNetworkSegment: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-GetNetworkSegment")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-GetNetworkSegment")
 	defer span.End()
 
 	// Carbide request
@@ -132,7 +132,7 @@ func (sub *network) GetNetworkSegmentDeprecated(ctx context.Context, ID *wflows.
 
 func (sub *network) GetAllNetworkSegments(ctx context.Context, request *wflows.NetworkSegmentSearchFilter, pageSize int) (response *wflows.NetworkSegmentList, err error) {
 	log.Info().Interface("request", request).Msg("GetAllNetworkSegments: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-GetAllNetworkSegments")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-GetAllNetworkSegments")
 	defer span.End()
 
 	if request == nil {
@@ -166,7 +166,7 @@ func (sub *network) GetAllNetworkSegments(ctx context.Context, request *wflows.N
 
 func (sub *network) GetNetworkSegment(ctx context.Context, request *wflows.UUID) (response *wflows.NetworkSegment, err error) {
 	log.Info().Interface("request", request).Msg("GetAllNetworkSegments: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-GetAllNetworkSegments")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-GetAllNetworkSegments")
 	defer span.End()
 
 	list, err := sub.carbide.FindNetworkSegmentsByIds(ctx, &wflows.NetworkSegmentsByIdsRequest{NetworkSegmentsIds: []*wflows.UUID{request}})
@@ -193,7 +193,7 @@ func (sub *network) GetNetworkSegment(ctx context.Context, request *wflows.UUID)
 
 func (sub *network) FindNetworkSegmentIds(ctx context.Context, request *wflows.NetworkSegmentSearchFilter) (response *wflows.NetworkSegmentIdList, err error) {
 	log.Info().Interface("request", request).Msg("FindNetworkSegmentIDs: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-FindNetworkSegmentIDs")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-FindNetworkSegmentIDs")
 	defer span.End()
 
 	if request == nil {
@@ -210,7 +210,7 @@ func (sub *network) FindNetworkSegmentIds(ctx context.Context, request *wflows.N
 
 func (sub *network) FindNetworkSegmentsByIds(ctx context.Context, request *wflows.NetworkSegmentsByIdsRequest) (response *wflows.NetworkSegmentList, err error) {
 	log.Info().Interface("request", request).Msg("FindNetworkSegmentsByIDs: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-FindNetworkSegmentsByIDs")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-FindNetworkSegmentsByIDs")
 	defer span.End()
 
 	if request == nil {
@@ -228,7 +228,7 @@ func (sub *network) FindNetworkSegmentsByIds(ctx context.Context, request *wflow
 // This function is not currently supported
 // func (sub *network) UpdateNetworkSegment(ctx context.Context, TransactionID *wflows.TransactionID, request *wflows.UpdateSubnetRequest) (result *wflows.NetworkSegmentUpdateResult, err error) {
 // 	log.Info().Interface("request", request).Msg("UpdateNetworkSegment: received request")
-// 	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-UpdateNetworkSegment")
+// 	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-UpdateNetworkSegment")
 // 	defer span.End()
 
 // 	// Validations
@@ -252,7 +252,7 @@ func (sub *network) FindNetworkSegmentsByIds(ctx context.Context, request *wflow
 
 func (sub *network) DeleteNetworkSegment(ctx context.Context, request *wflows.DeleteSubnetRequest) (response *wflows.NetworkSegmentDeletionResult, err error) {
 	log.Info().Interface("request", request).Msg("DeleteNetworkSegment: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-DeleteNetworkSegment")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-DeleteNetworkSegment")
 	defer span.End()
 
 	// Validations

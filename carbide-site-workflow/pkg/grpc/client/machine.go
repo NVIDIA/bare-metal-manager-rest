@@ -37,7 +37,7 @@ type MachineInterface interface {
 // DEPRECATED: use GetAllMachines instead
 func (machine *compute) GetMachine(ctx context.Context, request *wflows.MachineSearchQuery) (response *wflows.MachineList, err error) {
 	log.Info().Interface("request", request).Msg("GetMachine: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-GetMachine")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-GetMachine")
 	defer span.End()
 
 	response, err = machine.carbide.FindMachines(ctx, request)
@@ -52,7 +52,7 @@ func (machine *compute) GetMachine(ctx context.Context, request *wflows.MachineS
 
 func (machine *compute) GetAllMachines(ctx context.Context, request *wflows.MachineSearchConfig, pageSize int) (response *wflows.MachineList, err error) {
 	log.Info().Interface("request", request).Msg("GetAllMachines: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-GetAllMachines")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-GetAllMachines")
 	defer span.End()
 
 	if request == nil {
@@ -80,7 +80,7 @@ func (machine *compute) GetAllMachines(ctx context.Context, request *wflows.Mach
 
 func (machine *compute) FindMachineIDs(ctx context.Context, request *wflows.MachineSearchConfig) (response *wflows.MachineIdList, err error) {
 	log.Info().Interface("request", request).Msg("FindMachineIDs: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-FindMachineIDs")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-FindMachineIDs")
 	defer span.End()
 
 	if request == nil {
@@ -97,7 +97,7 @@ func (machine *compute) FindMachineIDs(ctx context.Context, request *wflows.Mach
 
 func (machine *compute) FindMachinesByIDs(ctx context.Context, request *wflows.MachinesByIdsRequest) (response *wflows.MachineList, err error) {
 	log.Info().Interface("request", request).Msg("FindMachinesByIDs: received request")
-	ctx, span := otel.Tracer(os.Getenv("LS_SERVICE_NAME")).Start(ctx, "CarbideClient-FindMachinesByIDs")
+	ctx, span := otel.Tracer(os.Getenv("OTEL_SERVICE_NAME")).Start(ctx, "CarbideClient-FindMachinesByIDs")
 	defer span.End()
 
 	if request == nil {
