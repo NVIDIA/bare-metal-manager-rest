@@ -52,35 +52,18 @@ RUN VERSION=$(cat VERSION 2>/dev/null || echo "dev") && \
         ./cmd/api
 
 # Final stage
-FROM alpine:latest
-
-# Install runtime dependencies
-RUN apk add --no-cache \
-    ca-certificates \
-    tzdata
-
-# Create non-root user for security
-RUN addgroup -g 1000 appuser && \
-    adduser -D -u 1000 -G appuser appuser
+FROM nvcr.io/nvidia/distroless/go:v3.2.1 AS final
 
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /app/api /app/api
-
-# Create necessary directories
-RUN mkdir -p /var/secrets/temporal/certs && \
-    chown -R appuser:appuser /app /var/secrets
+COPY --from=builder --chown=nonroot:nonroot /app/api /app/api
 
 # Switch to non-root user
-USER appuser
+USER nonroot
 
 # Expose application port
 EXPOSE 8388
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD ["/app/api", "health"] || exit 1
 
 # Run the application
 ENTRYPOINT ["/app/api"]

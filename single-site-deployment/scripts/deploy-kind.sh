@@ -83,7 +83,6 @@ declare -a IMAGES=(
     "carbide-rest-api"
     "carbide-rest-workflow"
     "carbide-rest-site-manager"
-    "carbide-rest-ipam"
     "carbide-site-agent"
     "carbide-rest-db"
     "carbide-rest-cert-manager"
@@ -130,10 +129,6 @@ echo -e "${YELLOW}Step 7: Deploying core services${NC}"
 
 echo "  Deploying Cert Manager (Vault)..."
 kubectl apply -f "$K8S_DIR/services/cert-manager.yaml"
-sleep 5
-
-echo "  Deploying IPAM Service..."
-kubectl apply -f "$K8S_DIR/services/ipam.yaml"
 sleep 5
 
 echo "  Deploying Cloud API..."

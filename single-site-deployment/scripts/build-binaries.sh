@@ -103,12 +103,6 @@ build_binary "carbide-rest-site-manager" \
     "sitemgr" \
     "github.com/nvidia/carbide-rest-api-snapshot/carbide-rest-site-manager/pkg/metadata"
 
-build_binary "carbide-rest-ipam" \
-    "carbide-rest-ipam" \
-    "cmd/server" \
-    "ipam-server" \
-    ""
-
 build_binary "carbide-site-agent (elektra)" \
     "carbide-site-agent" \
     "cmd/elektra" \

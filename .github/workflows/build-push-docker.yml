@@ -210,87 +210,6 @@ jobs:
           ngc-path: 0837451325059433/carbide-dev
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
-  # Build and push carbide-rest-ipam
-  build-carbide-rest-ipam:
-    name: Build carbide-rest-ipam
-    runs-on: ${{ inputs.runner }}
-
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to NVCR
-        if: inputs.push_enabled
-        uses: docker/login-action@v3
-        with:
-          registry: nvcr.io
-          username: ${{ secrets.NVCR_USERNAME }}
-          password: ${{ secrets.NVCR_TOKEN }}
-
-      - name: Build carbide-rest-ipam
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./docker/production/Dockerfile.carbide-rest-ipam
-          platforms: linux/amd64
-          push: ${{ inputs.push_enabled }}
-          load: true
-          tags: |
-            ${{ inputs.target_registry }}/carbide-rest-ipam:${{ inputs.short_sha }}
-            ${{ inputs.target_registry }}/carbide-rest-ipam:${{ inputs.version }}
-            ${{ inputs.target_registry }}/carbide-rest-ipam:latest
-          cache-from: type=gha,scope=carbide-rest-ipam
-          cache-to: type=gha,mode=max,scope=carbide-rest-ipam
-          labels: |
-            org.opencontainers.image.title=carbide-rest-ipam
-            org.opencontainers.image.version=${{ inputs.version }}
-            org.opencontainers.image.revision=${{ inputs.short_sha }}
-            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
-            org.opencontainers.image.source=${{ github.repositoryUrl }}
-            org.opencontainers.image.url=${{ github.repositoryUrl }}
-
-
-      - name: Extract binary from image
-        run: |
-          mkdir -p artifacts
-          docker create --name temp-container ${{ inputs.target_registry }}/carbide-rest-ipam:${{ inputs.short_sha }}
-          docker cp temp-container:/app/ipam-server artifacts/ipam-server
-          docker rm temp-container
-          chmod +x artifacts/ipam-server
-
-      - name: Export Docker image
-        run: |
-          docker save ${{ inputs.target_registry }}/carbide-rest-ipam:${{ inputs.short_sha }} | gzip > artifacts/carbide-rest-ipam-${{ inputs.short_sha }}.tar.gz
-
-      - name: Upload binary artifact
-        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
-        with:
-          name: carbide-rest-ipam-binary
-          display-name: carbide-rest-ipam-binary
-          description: Carbide REST IPAM binary
-          version: ${{ inputs.version }}
-          path: artifacts/ipam-server
-          ngc-path: 0837451325059433/carbide-dev
-          ngc-key: ${{ secrets.NVCR_TOKEN }}
-
-      - name: Upload Docker image artifact
-        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
-        with:
-          name: carbide-rest-ipam-image
-          display-name: carbide-rest-ipam-image
-          description: Carbide REST IPAM image
-          version: ${{ inputs.version }}
-          path: artifacts/carbide-rest-ipam-${{ inputs.short_sha }}.tar.gz
-          ngc-path: 0837451325059433/carbide-dev
-          ngc-key: ${{ secrets.NVCR_TOKEN }}
-
   # Build and push carbide-rest-site-manager
   build-carbide-rest-site-manager:
     name: Build carbide-rest-site-manager
@@ -623,7 +542,6 @@ jobs:
     needs:
       - build-carbide-rest-api
       - build-carbide-rest-db
-      - build-carbide-rest-ipam
       - build-carbide-rest-site-manager
       - build-carbide-rest-workflow
       - build-carbide-site-agent
@@ -649,16 +567,14 @@ jobs:
           echo "## Images Built" >> $GITHUB_STEP_SUMMARY
           echo "1. \`carbide-rest-api:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "2. \`carbide-rest-db:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "3. \`carbide-rest-ipam:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "4. \`carbide-rest-site-manager:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "5. \`carbide-rest-workflow:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "6. \`carbide-site-agent:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "7. \`carbide-rest-cert-manager:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "3. \`carbide-rest-site-manager:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "4. \`carbide-rest-workflow:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "5. \`carbide-site-agent:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "6. \`carbide-rest-cert-manager:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Job Status" >> $GITHUB_STEP_SUMMARY
           echo "- carbide-rest-api: \`${{ needs.build-carbide-rest-api.result }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- carbide-rest-db: \`${{ needs.build-carbide-rest-db.result }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- carbide-rest-ipam: \`${{ needs.build-carbide-rest-ipam.result }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- carbide-rest-site-manager: \`${{ needs.build-carbide-rest-site-manager.result }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- carbide-rest-workflow: \`${{ needs.build-carbide-rest-workflow.result }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- carbide-site-agent: \`${{ needs.build-carbide-site-agent.result }}\`" >> $GITHUB_STEP_SUMMARY

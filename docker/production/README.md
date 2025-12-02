@@ -6,19 +6,18 @@ This directory contains multi-stage Dockerfiles optimized for production deploym
 
 ### Multi-Stage Builds
 - **Build Stage**: `golang:1.25` - Full Go toolchain for compilation
-- **Runtime Stage**: `alpine:latest` - Minimal runtime environment
+- **Runtime Stage**: `nvcr.io/nvidia/distroless/go:v3.2.1` - Minimal distroless runtime environment
 
 ### Optimizations
 - Static compilation with CGO disabled
 - Strip debug symbols (`-w -s` flags)
-- Minimal base image for reduced attack surface
+- Minimal distroless base image for reduced attack surface
 - Non-root user execution for security
-- Health checks included
 - Proper signal handling
 
 ### Security Improvements
-- Non-root user (`appuser:1000`)
-- No unnecessary packages
+- Non-root user (`nonroot` from distroless)
+- Minimal distroless image with no shell or package manager
 - CA certificates included
 - Timezone data for proper logging
 
@@ -26,11 +25,10 @@ This directory contains multi-stage Dockerfiles optimized for production deploym
 
 1. **Dockerfile.carbide-rest-api** - REST API server
 2. **Dockerfile.carbide-rest-db** - Database migrations
-3. **Dockerfile.carbide-rest-ipam** - IPAM server
-4. **Dockerfile.carbide-rest-site-manager** - Site manager service
-5. **Dockerfile.carbide-rest-workflow** - Workflow service
-6. **Dockerfile.carbide-rest-cert-manager** - Certificate manager
-7. **Dockerfile.carbide-site-agent** - Site agent (elektra)
+3. **Dockerfile.carbide-rest-site-manager** - Site manager service
+4. **Dockerfile.carbide-rest-workflow** - Workflow service
+5. **Dockerfile.carbide-rest-cert-manager** - Certificate manager
+6. **Dockerfile.carbide-site-agent** - Site agent (elektra)
 
 ## Building Images
 
@@ -81,7 +79,6 @@ These production images are significantly smaller than development images:
 |-------|-----------------|
 | carbide-rest-api | ~20-30 MB |
 | carbide-rest-db | ~25-35 MB |
-| carbide-rest-ipam | ~20-30 MB |
 | carbide-rest-site-manager | ~20-30 MB |
 | carbide-rest-workflow | ~20-30 MB |
 | carbide-site-agent | ~35-45 MB |
@@ -115,16 +112,6 @@ docker run \
   carbide-rest-api:latest
 ```
 
-## Health Checks
-
-All images include health checks that run every 30 seconds:
-
-```bash
-docker ps
-```
-
-The STATUS column will show "healthy" or "unhealthy".
-
 ## Troubleshooting
 
 ### Build Failures
@@ -150,17 +137,10 @@ If VERSION file is missing, the build will use "dev" as the version.
 ### Runtime Issues
 
 #### Permission Denied
-Images run as non-root user (UID 1000). Ensure mounted volumes have correct permissions:
+Images run as non-root user (nonroot). Ensure mounted volumes have correct permissions:
 
 ```bash
-chown -R 1000:1000 /path/to/volume
-```
-
-#### Health Check Failures
-Check if the health endpoint is accessible:
-
-```bash
-docker exec <container-id> /app/<binary> health
+chown -R 65532:65532 /path/to/volume
 ```
 
 ### Image Inspection
@@ -179,13 +159,13 @@ docker run --rm carbide-rest-api:latest --version
 
 | Feature | Development | Production |
 |---------|-------------|------------|
-| Base Image | golang:1.24-alpine | golang:1.25 + alpine:latest |
+| Base Image | golang:1.24-alpine | golang:1.25 + distroless |
 | Build Tools | Included | Build stage only |
-| User | root | appuser (UID 1000) |
+| User | root | nonroot |
 | Debug Symbols | Included | Stripped (-w -s) |
 | CGO | Enabled (some) | Disabled |
 | Size | Larger | Minimal |
-| Health Checks | Optional | Included |
+| Shell | Available | None (distroless) |
 
 ## GitHub Actions Integration
 
@@ -219,8 +199,8 @@ To update Go version:
 ## Security Notes
 
 These images:
-- Run as non-root user (UID 1000)
-- Have minimal attack surface (alpine:latest)
+- Run as non-root user (nonroot from distroless)
+- Have minimal attack surface (distroless - no shell or package manager)
 - Include only necessary CA certificates
 - Use static compilation (no dynamic linking vulnerabilities)
 - Strip debug symbols to reduce information disclosure

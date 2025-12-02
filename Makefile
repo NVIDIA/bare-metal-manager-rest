@@ -112,13 +112,6 @@ build:
 		./cmd/sitemgr
 	@echo "[SUCCESS]"
 	@echo ""
-	@echo "Building: carbide-rest-ipam"
-	@cd carbide-rest-ipam && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-		-ldflags "-extldflags '-static'" \
-		-o ../$(BUILD_DIR)/ipam-server \
-		./cmd/server
-	@echo "[SUCCESS]"
-	@echo ""
 	@echo "Building: carbide-site-agent (elektra)"
 	@cd carbide-site-agent && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 		-ldflags "-extldflags '-static'" \
@@ -184,13 +177,6 @@ docker-build: build
 	@docker build \
 		-t $(IMAGE_REGISTRY)/carbide-rest-site-manager:$(IMAGE_TAG) \
 		-f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-manager.fast \
-		.
-	@echo "[SUCCESS]"
-	@echo ""
-	@echo "Building: carbide-rest-ipam"
-	@docker build \
-		-t $(IMAGE_REGISTRY)/carbide-rest-ipam:$(IMAGE_TAG) \
-		-f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-ipam.fast \
 		.
 	@echo "[SUCCESS]"
 	@echo ""

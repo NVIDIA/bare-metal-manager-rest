@@ -67,44 +67,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/*
 
 # Final stage
-FROM alpine:latest
-
-# Install runtime dependencies
-RUN apk add --no-cache \
-    ca-certificates \
-    bash \
-    curl \
-    gcompat \
-    tzdata
-
-# Create non-root user
-RUN addgroup -g 1000 appuser && \
-    adduser -D -u 1000 -G appuser appuser
+FROM nvcr.io/nvidia/distroless/go:v3.2.1 AS final
 
 WORKDIR /app
 
 # Copy binaries from builder
-COPY --from=builder /app/elektra /app/elektra
-COPY --from=builder /app/elektractl /app/elektractl
-COPY --from=builder /app/kubectl /usr/local/bin/kubectl
-
-# Copy runtime scripts and configs
-COPY carbide-site-agent/docker/entrypoint.sh /app/entrypoint.sh
-
-# Make everything executable
-RUN chmod +x /app/elektra /app/elektractl /usr/local/bin/kubectl /app/entrypoint.sh && \
-    chown -R appuser:appuser /app
+COPY --from=builder --chown=nonroot:nonroot /app/elektra /app/elektra
+COPY --from=builder --chown=nonroot:nonroot /app/elektractl /app/elektractl
+COPY --from=builder --chown=nonroot:nonroot /app/kubectl /usr/local/bin/kubectl
 
 # Switch to non-root user
-USER appuser
+USER nonroot
 
 # Expose port
 EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD ["/app/elektra", "health"] || exit 1
-
-# Run via entrypoint script
-ENTRYPOINT ["/app/entrypoint.sh", "elektra"]
+# Run the application
+ENTRYPOINT ["/app/elektra"]
 
