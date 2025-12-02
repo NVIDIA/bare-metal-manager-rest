@@ -542,7 +542,6 @@ jobs:
     needs:
       - build-carbide-rest-api
       - build-carbide-rest-db
-      - build-carbide-rest-ipam
       - build-carbide-rest-site-manager
       - build-carbide-rest-workflow
       - build-carbide-site-agent
@@ -568,16 +567,14 @@ jobs:
           echo "## Images Built" >> $GITHUB_STEP_SUMMARY
           echo "1. \`carbide-rest-api:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "2. \`carbide-rest-db:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "3. \`carbide-rest-ipam:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "4. \`carbide-rest-site-manager:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "5. \`carbide-rest-workflow:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "6. \`carbide-site-agent:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "7. \`carbide-rest-cert-manager:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "3. \`carbide-rest-site-manager:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "4. \`carbide-rest-workflow:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "5. \`carbide-site-agent:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "6. \`carbide-rest-cert-manager:${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Job Status" >> $GITHUB_STEP_SUMMARY
           echo "- carbide-rest-api: \`${{ needs.build-carbide-rest-api.result }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- carbide-rest-db: \`${{ needs.build-carbide-rest-db.result }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- carbide-rest-ipam: \`${{ needs.build-carbide-rest-ipam.result }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- carbide-rest-site-manager: \`${{ needs.build-carbide-rest-site-manager.result }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- carbide-rest-workflow: \`${{ needs.build-carbide-rest-workflow.result }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- carbide-site-agent: \`${{ needs.build-carbide-site-agent.result }}\`" >> $GITHUB_STEP_SUMMARY
