@@ -60,5 +60,5 @@ COPY --from=builder --chown=nonroot:nonroot /app/migrations /app/migrations
 USER nonroot
 
 # Run migrations
-ENTRYPOINT ["/app/migrations"]
+CMD ["/app/migrations", "db", "init_migrate"]
 
