@@ -39,6 +39,9 @@ COPY carbide-rest-cert-manager/ ./carbide-rest-cert-manager/
 COPY carbide-rest-ipam/ ./carbide-rest-ipam/
 COPY carbide-rest-site-manager/ ./carbide-rest-site-manager/
 
+# Create Temporal certs directory
+RUN mkdir -p /var/secrets/temporal/certs
+
 # Build the workflow service
 WORKDIR /workspace/carbide-rest-workflow
 RUN VERSION=$(cat VERSION 2>/dev/null || echo "dev") && \
@@ -51,17 +54,12 @@ RUN VERSION=$(cat VERSION 2>/dev/null || echo "dev") && \
 # Final stage
 FROM nvcr.io/nvidia/distroless/go:v3.2.1 AS final
 
-WORKDIR /app
+# Copy the binary from the builder stage
+COPY --from=builder /app/workflow /usr/local/bin/workflow
 
-# Copy binary from builder
-COPY --from=builder --chown=nonroot:nonroot /app/workflow /app/workflow
+# Copy Temporal certs directory
+COPY --from=builder /var/secrets/temporal/certs /var/secrets/temporal/certs
 
-# Switch to non-root user
-USER nonroot
-
-# Expose port
-EXPOSE 8080
-
-# Run the application
-ENTRYPOINT ["/app/workflow"]
+# Set the binary as the entrypoint of the container
+ENTRYPOINT ["/usr/local/bin/workflow"]
 

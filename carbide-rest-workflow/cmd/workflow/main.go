@@ -180,7 +180,7 @@ func main() {
 
 	var tInterceptors []interceptor.ClientInterceptor
 
-	if os.Getenv("LS_SERVICE_NAME") != "" {
+	if cfg.GetTracingEnabled() {
 		otelInterceptor, err := opentelemetry.NewTracingInterceptor(opentelemetry.TracerOptions{TextMapPropagator: otel.GetTextMapPropagator()})
 		if err != nil {
 			log.Panic().Err(err).Msg("unable to get otelInterceptor")
@@ -370,9 +370,6 @@ func main() {
 		userManager := userActivity.NewManageUser(dbSession, cfg)
 		w.RegisterActivity(&userManager)
 	}
-
-	// NOTE: Telemetry disabled due to ServiceNow acquisition of LightStep
-	// core.StartOTELDaemon(core.NewDefaultContext(context.Background()))
 
 	// Serve health endpoint
 	go func() {

@@ -22,7 +22,7 @@ coverage:
 	go tool cover -func ./ci-reports/coverage.txt
 
 build:
-	go build ./cmd/workflow
+	go build -ldflags "-extldflags '-static'" ./cmd/workflow
 
 build-test-site-agent:
 	go build -o testsiteagent ./test/siteagent
