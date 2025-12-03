@@ -18,12 +18,11 @@ coverage:
 	go test -race ./... -coverpkg=./... -coverprofile ./ci-reports/coverage.txt
 	go tool cover -func ./ci-reports/coverage.txt
 
-# omit -race because of https://github.com/golang/go/issues/63276
 build:
-	go build -ldflags "-extldflags '-static'" ./cmd/credsmgr
+	CGO_ENABLED=0 go build -ldflags "-extldflags '-static'" ./cmd/credsmgr
 
 build-local:
-	go build -race ./cmd/credsmgr
+	go build -ldflags "-extldflags '-static'" ./cmd/credsmgr
 
 run:
 	./credsmgr

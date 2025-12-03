@@ -15,7 +15,6 @@ package core
 import (
 	"context"
 
-	// "github.com/lightstep/otel-launcher-go/launcher" // Removed due to compatibility issues
 	"go.opentelemetry.io/otel"
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
@@ -28,10 +27,9 @@ func init() {
 }
 
 // StartOTELDaemon starts a go routine that waits on the provided context to quit and then shuts down the daemon
-// NOTE: Lightstep launcher has been disabled due to compatibility issues with newer OTel collector
-// Standard OpenTelemetry configuration should be used instead via environment variables
 func StartOTELDaemon(ctx context.Context) {
 	log := GetLogger(ctx)
-	log.Infof("OTEL daemon startup - lightstep launcher disabled, use standard OTel env configuration")
-	// TODO: Implement standard OpenTelemetry setup without lightstep if needed
+
+	// Ignore this is most likely disabled
+	log.Infof("Skipping OTEL startup - not supported")
 }

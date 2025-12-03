@@ -93,7 +93,6 @@ func NewServer(ctx context.Context, o Options) (*Server, error) {
 // Start starts the server
 func (s *Server) Start(ctx context.Context) {
 	log := core.GetLogger(ctx)
-	core.StartOTELDaemon(ctx)
 
 	_, err := s.appService.Start(ctx)
 	if err != nil {
