@@ -21,6 +21,12 @@ on:
       target_registry:
         description: "Target NVCR registry path"
         value: ${{ jobs.prepare.outputs.target_registry }}
+      branch_name:
+        description: "Sanitized branch name for use in image tags"
+        value: ${{ jobs.prepare.outputs.branch_name }}
+      is_main_branch:
+        description: "Whether the current branch is main"
+        value: ${{ jobs.prepare.outputs.is_main_branch }}
 
 jobs:
   prepare:
@@ -32,6 +38,8 @@ jobs:
       short_sha: ${{ steps.generate-version.outputs.short_sha }}
       full_sha: ${{ steps.generate-version.outputs.full_sha }}
       target_registry: ${{ steps.generate-version.outputs.target_registry }}
+      branch_name: ${{ steps.generate-version.outputs.branch_name }}
+      is_main_branch: ${{ steps.generate-version.outputs.is_main_branch }}
 
     steps:
       - name: Checkout code
@@ -59,11 +67,25 @@ jobs:
           # Format: nvcr.io/<org>/<project>
           target_registry="nvcr.io/0837451325059433/carbide-dev"
           
+          # Get branch name and sanitize it for use in image tags
+          # Replace slashes and other invalid characters with dashes
+          BRANCH_NAME="${{ github.ref_name }}"
+          BRANCH_NAME=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9._-]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
+          
+          # Check if this is the main branch
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            IS_MAIN_BRANCH="true"
+          else
+            IS_MAIN_BRANCH="false"
+          fi
+          
           # Output all variables
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
           echo "full_sha=$FULL_SHA" >> $GITHUB_OUTPUT
           echo "target_registry=$target_registry" >> $GITHUB_OUTPUT
+          echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "is_main_branch=$IS_MAIN_BRANCH" >> $GITHUB_OUTPUT
           
           # Print for logs
           echo "Generated build information:"
@@ -71,6 +93,8 @@ jobs:
           echo "  SHORT_SHA: $SHORT_SHA"
           echo "  FULL_SHA: $FULL_SHA"
           echo "  TARGET_REGISTRY: $target_registry"
+          echo "  BRANCH_NAME: $BRANCH_NAME"
+          echo "  IS_MAIN_BRANCH: $IS_MAIN_BRANCH"
 
       - name: Generate build summary
         run: |
@@ -81,5 +105,7 @@ jobs:
           echo "- **Short SHA**: \`${{ steps.generate-version.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Full SHA**: \`${{ steps.generate-version.outputs.full_sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch**: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch Name (sanitized)**: \`${{ steps.generate-version.outputs.branch_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Is Main Branch**: \`${{ steps.generate-version.outputs.is_main_branch }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Target Registry**: \`${{ steps.generate-version.outputs.target_registry }}\`" >> $GITHUB_STEP_SUMMARY
 
