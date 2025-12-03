@@ -12,7 +12,7 @@
 FROM golang:1.24-alpine AS builder
 
 ENV GIT_TERMINAL_PROMPT=1
-RUN go env -w GOPRIVATE="gitlab-master.nvidia.com"
+RUN go env -w GOPRIVATE="github.com/NVIDIA"
 
 RUN apk add --no-cache \
       bash \
@@ -37,21 +37,20 @@ COPY pkg ./pkg
 COPY internal ./internal
 COPY VERSION ./VERSION
 
-# Build App
-RUN make build
-
-# Multi-Stage final build
-FROM alpine
-
-RUN apk add --update --no-cache \
-      ca-certificates
-
-WORKDIR /usr/local
-
-COPY --from=builder /go/src/workflow /usr/local/bin/workflow
-
 # Create Temporal certs directory
 RUN mkdir -p /var/secrets/temporal/certs
 
-# Set the system worker binary as the entrypoint of the container
-CMD ["workflow"]
+# Build App
+RUN CGO_ENABLED=0 go build -ldflags "-extldflags '-static'" ./cmd/workflow
+
+# Multi-Stage production build
+FROM nvcr.io/nvidia/distroless/go:v3.2.1 AS final
+
+# Copy the binary from the builder stage
+COPY --from=builder /go/src/workflow /app/workflow
+
+# Copy Temporal certs directory
+COPY --from=builder /var/secrets/temporal/certs /var/secrets/temporal/certs
+
+# Set the binary as the entrypoint of the container
+ENTRYPOINT ["/app/workflow"]

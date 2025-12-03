@@ -11,17 +11,16 @@
 
 bases:
   - ../../base
+
 namespace: cloud-workflow
+
 resources:
   - configmap.yaml
+
 patchesStrategicMerge:
   - deployment.yaml
+
 images:
   - name: cloud-workflow
     newName: localhost:5001/forge-cloud-workflow
     newTag: v0.0.1
-secretGenerator:
-- name: otel-lightstep
-  namespace: cloud-workflow
-  envs:
-  - otel.env

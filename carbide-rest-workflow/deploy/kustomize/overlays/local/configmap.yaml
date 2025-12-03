@@ -34,12 +34,12 @@ data:
       serverName: server.temporal.nvidia.com
       namespace: cloud
       queue: cloud
-      encryptionKey: forge-cloud
       tls:
         enabled: true
         certPath: /var/secrets/temporal/certs/client-cloud/tls.crt
         keyPath: /var/secrets/temporal/certs/client-cloud/tls.key
         caPath: /var/secrets/temporal/certs/client-cloud/ca.crt
+      encryptionKey: "local"
 
     siteManager:
       svcEndpoint: "https://sitemgr.cloud-site-manager:8100/v1/site"
@@ -47,3 +47,7 @@ data:
     metrics:
       enabled: true
       port: 9360
+
+    tracing:
+      enabled: false
+      serviceName: cloud-workflow

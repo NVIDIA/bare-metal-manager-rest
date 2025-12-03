@@ -36,8 +36,6 @@ const (
 	// ConfigLogLevel specifies the log level
 	ConfigLogLevel = "log.level"
 
-	// TODO: Add TLS support
-
 	// ConfigDBHost specifies the host of the database
 	ConfigDBHost = "db.host"
 	// ConfigDBPort specifies the port of the database
@@ -70,8 +68,8 @@ const (
 
 	// ConfigTemporalEncryptionKey specifies the data encryption key for Temporal
 	ConfigTemporalEncryptionKey = "temporal.encryptionKey"
-	// ConfigTemporalEncryptionKeyEnv specifies the env var containing data encryption key for Temporal
-	ConfigTemporalEncryptionKeyEnv = "TEMPORAL_ENCRYPTION_KEY"
+	// ConfigTemporalEncryptionKeyPath specifies the path for file containing data encryption key for Temporal
+	ConfigTemporalEncryptionKeyPath = "temporal.encryptionKeyPath"
 
 	// ConfigTemporalTlsEnabled specifies if TLS should be used with Temporal
 	ConfigTemporalTlsEnabled = "temporal.tls.enabled"
@@ -97,6 +95,11 @@ const (
 	ConfigMetricsEnabled = "metrics.enabled"
 	// ConfigMetricsPort specifies the port for Prometheus metrics
 	ConfigMetricsPort = "metrics.port"
+
+	// ConfigTracingEnabled is a feature flag for tracing
+	ConfigTracingEnabled = "tracing.enabled"
+	// ConfigTracingServiceName specifies the service name for tracing
+	ConfigTracingServiceName = "tracing.serviceName"
 )
 
 // Maintain a global config object
@@ -142,6 +145,8 @@ func NewConfig() *Config {
 	c.v.SetDefault(ConfigMetricsEnabled, true)
 	c.v.SetDefault(ConfigMetricsPort, 9360)
 
+	c.v.SetDefault(ConfigTracingEnabled, false)
+
 	c.v.AutomaticEnv()
 	c.v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	c.v.SetConfigFile(c.GetPathToConfig())
@@ -169,9 +174,14 @@ func NewConfig() *Config {
 	c.setTemporalNamespace()
 	c.setTemporalQueue()
 
-	if os.Getenv(ConfigTemporalEncryptionKeyEnv) != "" {
-		c.SetTemporalEncryptionKey(os.Getenv(ConfigTemporalEncryptionKeyEnv))
+	if c.GetTemporalEncryptionKey() == "" {
+		if c.GetTemporalEncryptionKeyPath() != "" {
+			c.SetTemporalEncryptionKey()
+		} else {
+			log.Panic().Msg("temporal encryption key or encryption key path config must be specified")
+		}
 	}
+
 	// Validate config
 	c.Validate()
 
@@ -222,10 +232,6 @@ func (c *Config) Validate() {
 
 	if c.GetTemporalQueue() == "" {
 		log.Panic().Msg("temporal queue config must be specified")
-	}
-
-	if c.GetTemporalEncryptionKey() == "" {
-		log.Error().Msg("temporal encryption key config was not specified, arguments won't be encrypted")
 	}
 
 	if c.GetNgcAPIBaseURL() == "" {
@@ -421,14 +427,32 @@ func (c *Config) SetTemporalCaPath(value string) {
 	c.v.Set(ConfigTemporalCaPath, value)
 }
 
+// GetTemporalEncryptionKeyPath returns the path for file containing data encryption key for Temporal
+func (c *Config) GetTemporalEncryptionKeyPath() string {
+	return c.v.GetString(ConfigTemporalEncryptionKeyPath)
+}
+
+// SetTemporalEncryptionKeyPath sets the path for file containing data encryption key for Temporal
+func (c *Config) SetTemporalEncryptionKeyPath(value string) {
+	c.v.Set(ConfigTemporalEncryptionKeyPath, value)
+}
+
 // GetTemporalEncryptionKey returns the encryption key for Temporal
 func (c *Config) GetTemporalEncryptionKey() string {
 	return c.v.GetString(ConfigTemporalEncryptionKey)
 }
 
 // SetTemporalEncryptionKey sets the encryption key for Temporal
-func (c *Config) SetTemporalEncryptionKey(value string) {
-	c.v.Set(ConfigTemporalEncryptionKey, value)
+func (c *Config) SetTemporalEncryptionKey() {
+	log.Warn().Str("temporal.encryptionKeyPath", c.GetTemporalEncryptionKeyPath()).Msg("setting Temporal encryption key by reading from file")
+
+	encryptionKeyBytes, err := os.ReadFile(c.GetTemporalEncryptionKeyPath())
+	if err != nil {
+		log.Panic().Err(err).Msgf("failed to read encryption key file: %s", err)
+	}
+	encryptionKey := strings.TrimSpace(string(encryptionKeyBytes))
+
+	c.v.Set(ConfigTemporalEncryptionKey, encryptionKey)
 }
 
 // GetNgcAPIBaseURL returns the base url for the ngc api
@@ -474,6 +498,16 @@ func (c *Config) GetMetricsEnabled() bool {
 // GetMetricsPort gets the port for Metrics
 func (c *Config) GetMetricsPort() int {
 	return c.v.GetInt(ConfigMetricsPort)
+}
+
+// GetTracingEnabled gets the enabled field for tracing
+func (c *Config) GetTracingEnabled() bool {
+	return c.v.GetBool(ConfigTracingEnabled)
+}
+
+// GetTracingServiceName gets the service name for tracing
+func (c *Config) GetTracingServiceName() string {
+	return c.v.GetString(ConfigTracingServiceName)
 }
 
 // WatchSecretFilePaths starts watching secret files for changes.

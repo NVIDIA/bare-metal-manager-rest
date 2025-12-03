@@ -12,7 +12,7 @@
 FROM golang:1.23-alpine AS builder
 
 ENV GIT_TERMINAL_PROMPT=1
-RUN go env -w GOPRIVATE="gitlab-master.nvidia.com"
+RUN go env -w GOPRIVATE="github.com/NVIDIA"
 
 RUN apk add --no-cache \
       bash \
