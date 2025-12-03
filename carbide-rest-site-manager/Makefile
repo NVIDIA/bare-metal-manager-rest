@@ -26,10 +26,10 @@ codegen-update:
 	docker run --rm -v $(PWD):/go/src/gitlab-master.nvidia.com/nvmetal/cloud-site-manager golang:1.23-alpine sh -c "cd /go/src/gitlab-master.nvidia.com/nvmetal/cloud-site-manager/scripts && ./codegen_update"
 
 build:
-	go build -race -ldflags "-extldflags '-static'" ./cmd/sitemgr
+	go build -ldflags "-extldflags '-static'" ./cmd/sitemgr
 
 build-local:
-	go build -race ./cmd/sitemgr
+	go build ./cmd/sitemgr
 
 run:
 	./sitemgr

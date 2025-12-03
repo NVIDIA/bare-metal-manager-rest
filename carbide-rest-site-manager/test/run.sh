@@ -96,10 +96,10 @@ get_cloud_cert() {
   RES=$(kubectl exec -it nettools-pod -- bash -c "$CMD")
   DNS="$(echo $RES | xargs | awk -F"\r" '{ print $1 }')"
   echo "DNS is $DNS"
-  if [ "$DNS" = 'DNS:server.cloud.temporal.forge.nvidia.com' ]; then
+  if [ "$DNS" = 'DNS:server.cloud.temporal.nvidia.com' ]; then
     echo "Success"
   else
-    echo "FAIL Expected DNS:server.cloud.temporal.forge.nvidia.com, got $DNS"
+    echo "FAIL Expected DNS:server.cloud.temporal.nvidia.com, got $DNS"
     return 1
   fi
 
@@ -154,13 +154,8 @@ setup_ca() {
 }
 
 update_cert_manager() {
-  LSIP=$(ifconfig en0 | grep netmask | awk '{print $2}')
-  LSEP=$(echo -n "${LSIP}:8360" | base64)
-  kubectl patch secret otel-lightstep -n cert-manager -p="{\"data\":{\"OTEL_EXPORTER_OTLP_SPAN_ENDPOINT\": \"$LSEP\"}}" -v=1
   kubectl scale deployment credsmgr -n cert-manager --replicas=0
-  sleep 1
   kubectl scale deployment credsmgr -n cert-manager --replicas=1
-  sleep 5
 }
 
 main() {
@@ -183,15 +178,14 @@ main() {
   tc_banner "deploy csm"
   kubectl create ns "${NS}"
   kubectl create secret -n "${NS}" docker-registry csm-image-pull-secret --from-file=.dockerconfigjson=$HOME/.docker/config.json
-  LSIP=$(ifconfig en0 | grep netmask | awk '{print $2}')
-  OTEL_EXPORTER_OTLP_SPAN_ENDPOINT="${LSIP}:8360" kubectl apply -k "${cur_dir}/../kustomize/site-manager/overlays/local"
+  kubectl apply -k "${cur_dir}/../kustomize/site-manager/overlays/local"
 
   tc_banner "verify csm ready"
   verify_csm_ready
 
   tc_banner "set up test pod"
   setup_test_pod
-  
+
   tc_banner "fetch and install ca cert in test pod"
   fetch_ca_cert
 

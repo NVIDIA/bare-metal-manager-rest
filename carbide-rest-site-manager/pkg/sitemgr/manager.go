@@ -96,7 +96,6 @@ func NewSiteManager(ctx context.Context, o Options) (*SiteMgr, error) {
 }
 
 func newSiteManager(ctx context.Context, o Options, c crdclient.Interface) (*SiteMgr, error) {
-
 	s := &SiteMgr{
 		Options: o,
 		certClient: &http.Client{
@@ -136,7 +135,6 @@ func newSiteManager(ctx context.Context, o Options, c crdclient.Interface) (*Sit
 
 // Start starts the manager
 func (s *SiteMgr) Start(ctx context.Context) {
-	core.StartOTELDaemon(ctx)
 	l, err := s.appService.Start(ctx)
 	if err != nil {
 		log.Fatalf("failed to start appService: %v", err)

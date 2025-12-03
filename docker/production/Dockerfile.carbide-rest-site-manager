@@ -60,7 +60,7 @@ COPY --from=builder --chown=nonroot:nonroot /app/sitemgr /app/sitemgr
 USER nonroot
 
 # Expose port
-EXPOSE 8080
+EXPOSE 8100
 
 # Run the application
 ENTRYPOINT ["/app/sitemgr"]
