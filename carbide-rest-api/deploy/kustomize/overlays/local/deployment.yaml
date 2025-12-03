@@ -24,13 +24,7 @@ spec:
             - name: cloud-db-auth
               mountPath: /var/secrets/db/auth/
               readOnly: true
-            - name: ssa-client-secret
-              mountPath: /var/secrets/ssa/
-              readOnly: true
       volumes:
         - name: cloud-db-auth
           secret:
             secretName: cloud-db-auth
-        - name: ssa-client-secret
-          secret:
-            secretName: ssa-client-secret

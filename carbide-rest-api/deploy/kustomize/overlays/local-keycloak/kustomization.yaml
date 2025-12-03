@@ -11,18 +11,17 @@
 
 bases:
   - ../../base
+
 namespace: cloud-api
+
 resources:
   - configmap.yaml
+
 patchesStrategicMerge:
   - deployment.yaml
   - service.yaml
+
 images:
   - name: cloud-api
     newName: localhost:5001/forge-cloud-api
     newTag: v0.0.1
-secretGenerator:
-  - name: otel-lightstep
-    namespace: cloud-api
-    envs:
-    - otel.env

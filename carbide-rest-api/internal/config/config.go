@@ -42,14 +42,16 @@ const (
 	// ConfigFilePathEnv specifies the environment variable name for the config file path
 	ConfigFilePathEnv = "CONFIG_FILE_PATH"
 
-	// ConfigDevMode specifies if the service is running in dev mode
-	ConfigDevMode = "env.dev"
+	// ConfigEnvDev specifies if the service is running in development mode
+	ConfigEnvDev = "env.dev"
+	// ConfigEnvDisconnected specifies if the service is running in disconnected mode
+	ConfigEnvDisconnected = "env.disconnected"
+
 	// ConfigLogLevel specifies the log level
 	ConfigLogLevel = "log.level"
-	// ConfigJwksURL specifies the url to the jwks endpoint
-	ConfigJwksURL = "jwks.url"
 
-	// TODO: Add TLS support
+	// ConfigSentryDSN is the DSN for Sentry
+	ConfigSentryDSN = "log.sentry.dsn"
 
 	// ConfigDBHost specifies the host of the database
 	ConfigDBHost = "db.host"
@@ -84,8 +86,8 @@ const (
 	ConfigTemporalCaPath = "temporal.tls.caPath"
 	// ConfigTemporalEncryptionKey specifies the data encryption key for Temporal
 	ConfigTemporalEncryptionKey = "temporal.encryptionKey"
-	// ConfigTemporalEncryptionKeyEnv specifies the env var containing data encryption key for Temporal
-	ConfigTemporalEncryptionKeyEnv = "TEMPORAL_ENCRYPTION_KEY"
+	// ConfigTemporalEncryptionKeyPath specifies the path for file containing data encryption key for Temporal
+	ConfigTemporalEncryptionKeyPath = "temporal.encryptionKeyPath"
 
 	// ConfigSiteManagerEnabled is a feature flag for site manager
 	ConfigSiteManagerEnabled = "siteManager.enabled"
@@ -99,6 +101,11 @@ const (
 	ConfigMetricsEnabled = "metrics.enabled"
 	// ConfigMetricsPort specifies the port for Prometheus metrics
 	ConfigMetricsPort = "metrics.port"
+
+	// ConfigTracingEnabled is a feature flag for tracing
+	ConfigTracingEnabled = "tracing.enabled"
+	// ConfigTracingServiceName is the name of the tracing service
+	ConfigTracingServiceName = "tracing.serviceName"
 
 	// ConfigKeycloakEnabled is a feature flag for Keycloak authentication
 	ConfigKeycloakEnabled = "keycloak.enabled"
@@ -154,7 +161,7 @@ func NewConfig() *Config {
 
 	// Set defaults
 	c.v.SetDefault(ConfigLogLevel, "info")
-	c.v.SetDefault(ConfigDevMode, false)
+	c.v.SetDefault(ConfigEnvDev, false)
 
 	// Set config file
 	// Check environment variable. If not set, use default
@@ -174,6 +181,8 @@ func NewConfig() *Config {
 
 	c.v.SetDefault(ConfigMetricsEnabled, true)
 	c.v.SetDefault(ConfigMetricsPort, 9360)
+
+	c.v.SetDefault(ConfigTracingEnabled, false)
 
 	// SiteConfig default phone home url
 	c.v.SetDefault(ConfigSitePhoneHomeUrl, "http://localhost")
@@ -216,8 +225,10 @@ func NewConfig() *Config {
 		log.Info().Bool("keycloak.enabled", c.GetKeycloakEnabled()).Msg("Keycloak is disabled")
 	}
 
-	if os.Getenv(ConfigTemporalEncryptionKeyEnv) != "" {
-		c.SetTemporalEncryptionKey(os.Getenv(ConfigTemporalEncryptionKeyEnv))
+	if c.GetTemporalEncryptionKey() == "" {
+		if c.GetTemporalEncryptionKeyPath() != "" {
+			c.SetTemporalEncryptionKeyFromFile()
+		}
 	}
 
 	// Validate config
@@ -427,10 +438,19 @@ func (c *Config) GetPathToConfig() string {
 	return c.v.GetString(ConfigFilePath)
 }
 
-// GetDevMode returns if the service is running in dev mode
-func (c *Config) GetDevMode() bool {
-	s := c.v.GetBool(ConfigDevMode)
-	return s
+// GetEnvDev returns if the service is running in development mode
+func (c *Config) GetEnvDev() bool {
+	return c.v.GetBool(ConfigEnvDev)
+}
+
+// GetEnvDisconnected returns if the service is running in disconnected mode
+func (c *Config) GetEnvDisconnected() bool {
+	return c.v.GetBool(ConfigEnvDisconnected)
+}
+
+// GetSentryDSN returns the DSN for Sentry
+func (c *Config) GetSentryDSN() string {
+	return c.v.GetString(ConfigSentryDSN)
 }
 
 // GetDBHost returns the host of the database
@@ -525,6 +545,16 @@ func (c *Config) SetTemporalCaPath(value string) {
 	c.v.Set(ConfigTemporalCaPath, value)
 }
 
+// GetTemporalEncryptionKeyPath returns the path for file containing encryption key for Temporal
+func (c *Config) GetTemporalEncryptionKeyPath() string {
+	return c.v.GetString(ConfigTemporalEncryptionKeyPath)
+}
+
+// SetTemporalEncryptionKeyPath sets the path for file containing encryption key for Temporal
+func (c *Config) SetTemporalEncryptionKeyPath(value string) {
+	c.v.Set(ConfigTemporalEncryptionKeyPath, value)
+}
+
 // GetTemporalEncryptionKey returns the encryption key for Temporal
 func (c *Config) GetTemporalEncryptionKey() string {
 	return c.v.GetString(ConfigTemporalEncryptionKey)
@@ -533,6 +563,19 @@ func (c *Config) GetTemporalEncryptionKey() string {
 // SetTemporalEncryptionKey sets the encryption key for Temporal
 func (c *Config) SetTemporalEncryptionKey(value string) {
 	c.v.Set(ConfigTemporalEncryptionKey, value)
+}
+
+// SetTemporalEncryptionKeyFromFile reads and sets the encryption key for Temporal from file
+func (c *Config) SetTemporalEncryptionKeyFromFile() {
+	log.Warn().Str("temporal.encryptionKeyPath", c.GetTemporalEncryptionKeyPath()).Msg("setting Temporal encryption key by reading from file")
+
+	encryptionKeyBytes, err := os.ReadFile(c.GetTemporalEncryptionKeyPath())
+	if err != nil {
+		log.Panic().Err(err).Msgf("failed to read encryption key file: %s", err)
+	}
+	encryptionKey := strings.TrimSpace(string(encryptionKeyBytes))
+
+	c.v.Set(ConfigTemporalEncryptionKey, encryptionKey)
 }
 
 // ValidateSiteConfig validates Site configs
@@ -581,6 +624,16 @@ func (c *Config) GetMetricsEnabled() bool {
 // GetZincSearchPort gets the port for Metrics
 func (c *Config) GetMetricsPort() int {
 	return c.v.GetInt(ConfigMetricsPort)
+}
+
+// GetTracingEnabled gets the enabled field for tracing
+func (c *Config) GetTracingEnabled() bool {
+	return c.v.GetBool(ConfigTracingEnabled)
+}
+
+// GetTracingServiceName gets the service name for tracing
+func (c *Config) GetTracingServiceName() string {
+	return c.v.GetString(ConfigTracingServiceName)
 }
 
 // Keycloak configuration methods

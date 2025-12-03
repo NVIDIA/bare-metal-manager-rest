@@ -55,7 +55,7 @@ import (
 	_ "github.com/NVIDIA/carbide-rest-api/carbide-rest-api/pkg/api/model"
 )
 
-func InitTemporalClients(tConfig *config.TemporalConfig) (tsdkClient.Client, tsdkClient.NamespaceClient, error) {
+func InitTemporalClients(tcfg *config.TemporalConfig, tracingEnabled bool) (tsdkClient.Client, tsdkClient.NamespaceClient, error) {
 	var tc tsdkClient.Client
 	var tnc tsdkClient.NamespaceClient
 
@@ -65,7 +65,8 @@ func InitTemporalClients(tConfig *config.TemporalConfig) (tsdkClient.Client, tsd
 		tInterceptors []interceptor.ClientInterceptor
 		err           error
 	)
-	if os.Getenv("LS_SERVICE_NAME") != "" {
+
+	if tracingEnabled {
 		otelInterceptor, serr := opentelemetry.NewTracingInterceptor(opentelemetry.TracerOptions{TextMapPropagator: otel.GetTextMapPropagator()})
 		if serr != nil {
 			log.Panic().Err(serr).Msg("unable to get otelInterceptor")
@@ -74,11 +75,11 @@ func InitTemporalClients(tConfig *config.TemporalConfig) (tsdkClient.Client, tsd
 	}
 
 	tOptions := tsdkClient.Options{
-		HostPort: fmt.Sprintf("%v:%v", tConfig.Host, tConfig.Port),
+		HostPort: fmt.Sprintf("%v:%v", tcfg.Host, tcfg.Port),
 		// This client connects to `cloud` namespace
-		Namespace: tConfig.Namespace,
+		Namespace: tcfg.Namespace,
 		ConnectionOptions: tsdkClient.ConnectionOptions{
-			TLS: tConfig.ClientTLSCfg,
+			TLS: tcfg.ClientTLSCfg,
 		},
 		DataConverter: tsdkConverter.NewCompositeDataConverter(
 			tsdkConverter.NewNilPayloadConverter(),
@@ -127,15 +128,17 @@ func InitAPIServer(cfg *config.Config, dbSession *cdb.Session, tc tsdkClient.Cli
 	// Secure middleware configures echo with secure headers
 	e.Use(middleware.Secure())
 
-	svcName := os.Getenv("LS_SERVICE_NAME")
-	if svcName != "" {
-		e.Use(otelecho.Middleware(svcName, otelecho.WithSkipper(skipHB), otelecho.WithPropagators(otprop.OT{})))
-	} else {
-		log.Warn().Msg("failed to get Lightstep service name, skipping OTel middleware")
+	if cfg.GetTracingEnabled() {
+		svcName := cfg.GetTracingServiceName()
+		if svcName != "" {
+			e.Use(otelecho.Middleware(svcName, otelecho.WithSkipper(skipTracingRoutes), otelecho.WithPropagators(otprop.OT{})))
+		} else {
+			log.Warn().Msg("failed to get Tracing Service Name, skipping OTel middleware")
+		}
 	}
 
 	// Sentry middleware
-	sentryDSN := os.Getenv("SENTRY_DSN")
+	sentryDSN := cfg.GetSentryDSN()
 	if sentryDSN != "" {
 		// Initialize Sentry
 		err := sentry.Init(sentry.ClientOptions{
@@ -173,7 +176,7 @@ func InitAPIServer(cfg *config.Config, dbSession *cdb.Session, tc tsdkClient.Cli
 			}
 		}
 	} else {
-		log.Warn().Msg("failed to get Sentry DSN, skipping Sentry middleware")
+		log.Warn().Msg("Sentry DSN is not configured, skipping Sentry middleware")
 	}
 
 	// Routes
@@ -245,11 +248,7 @@ func InitMetricsServer(e *echo.Echo) *echo.Echo {
 	return ep
 }
 
-// Skips tracing for the health routes to avoid flooding the trace
-func skipHB(c echo.Context) bool {
-	if os.Getenv("LS_TRACE_SYSTEM_ROUTES") == "true" {
-		return false
-	}
-
+// skipTracingRoutes returns true if the route should be skipped for tracing
+func skipTracingRoutes(c echo.Context) bool {
 	return api.IsSystemRoute(c.Path())
 }

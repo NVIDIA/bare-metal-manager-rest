@@ -20,7 +20,6 @@ import (
 
 	tClient "go.temporal.io/sdk/client"
 
-	"github.com/NVIDIA/carbide-rest-api/carbide-rest-cert-manager/pkg/core"
 	cdb "github.com/NVIDIA/carbide-rest-api/carbide-rest-db/pkg/db"
 
 	"github.com/NVIDIA/carbide-rest-api/carbide-rest-api/internal/config"
@@ -81,7 +80,8 @@ func main() {
 	if err != nil {
 		log.Panic().Err(err).Msg("failed to get Temporal config")
 	}
-	tc, tnc, err := capis.InitTemporalClients(tcfg)
+
+	tc, tnc, err := capis.InitTemporalClients(tcfg, cfg.GetTracingEnabled())
 
 	if err != nil {
 		log.Panic().Err(err).Msg("failed to create Temporal clients")
@@ -111,9 +111,6 @@ func main() {
 			ep.Logger.Fatal(ep.Start(mconfig.GetListenAddr()))
 		}()
 	}
-
-	// Start otel exporter
-	core.StartOTELDaemon(core.NewDefaultContext(context.Background()))
 
 	// Start main server
 	log.Info().Msg("starting API server")
