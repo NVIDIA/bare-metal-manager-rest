@@ -40,14 +40,17 @@ COPY carbide-rest-cert-manager/ ./carbide-rest-cert-manager/
 COPY carbide-rest-ipam/ ./carbide-rest-ipam/
 COPY carbide-rest-site-manager/ ./carbide-rest-site-manager/
 
+# Create Temporal certs directory
+RUN mkdir -p /var/secrets/temporal/certs
+
 # Build the application
 WORKDIR /workspace/carbide-rest-api
 RUN VERSION=$(cat VERSION 2>/dev/null || echo "dev") && \
     BUILD_TIME=$(date +"%Y-%m-%d %H:%M:%S") && \
     go build \
         -ldflags "-extldflags '-static' -w -s \
-                  -X 'gitlab-master.nvidia.com/nvmetal/cloud-api/pkg/metadata.Version=${VERSION}' \
-                  -X 'gitlab-master.nvidia.com/nvmetal/cloud-api/pkg/metadata.BuildTime=${BUILD_TIME}'" \
+                  -X 'github.com/NVIDIA/carbide-rest-api/carbide-rest-api/pkg/metadata.Version=${VERSION}' \
+                  -X 'github.com/NVIDIA/carbide-rest-api/carbide-rest-api/pkg/metadata.BuildTime=${BUILD_TIME}'" \
         -o /app/api \
         ./cmd/api
 
@@ -58,6 +61,9 @@ WORKDIR /app
 
 # Copy binary from builder
 COPY --from=builder --chown=nonroot:nonroot /app/api /app/api
+
+# Copy Temporal certs directory
+COPY --from=builder /var/secrets/temporal/certs /var/secrets/temporal/certs
 
 # Switch to non-root user
 USER nonroot
