@@ -46,25 +46,12 @@ RUN VERSION=$(cat VERSION 2>/dev/null || echo "dev") && \
     BUILD_TIME=$(date +"%Y-%m-%d %H:%M:%S") && \
     go build \
         -ldflags "-extldflags '-static' -w -s \
-                  -X 'gitlab-master.nvidia.com/nvmetal/elektra-site-agent/pkg/metadata.Version=${VERSION}' \
-                  -X 'gitlab-master.nvidia.com/nvmetal/elektra-site-agent/pkg/metadata.BuildTime=${BUILD_TIME}'" \
+                  -X 'github.com/NVIDIA/carbide-rest-api/carbide-site-agent/pkg/metadata.Version=${VERSION}' \
+                  -X 'github.com/NVIDIA/carbide-rest-api/carbide-site-agent/pkg/metadata.BuildTime=${BUILD_TIME}'" \
         -o /app/elektra \
         ./cmd/elektra
 
-# Build elektractl
-RUN go build \
-        -ldflags "-extldflags '-static' -w -s \
-                  -X 'gitlab-master.nvidia.com/nvmetal/elektra-site-agent/pkg/metadata.Version=${VERSION}' \
-                  -X 'gitlab-master.nvidia.com/nvmetal/elektra-site-agent/pkg/metadata.BuildTime=${BUILD_TIME}'" \
-        -o /app/elektractl \
-        ./cmd/elektractl
 
-# Download kubectl for runtime
-RUN apt-get update && apt-get install -y --no-install-recommends curl && \
-    curl -LO "https://dl.k8s.io/release/v1.28.0/bin/linux/amd64/kubectl" && \
-    chmod +x kubectl && \
-    mv kubectl /app/kubectl && \
-    rm -rf /var/lib/apt/lists/*
 
 # Final stage
 FROM nvcr.io/nvidia/distroless/go:v3.2.1 AS final
@@ -73,8 +60,6 @@ WORKDIR /app
 
 # Copy binaries from builder
 COPY --from=builder --chown=nonroot:nonroot /app/elektra /app/elektra
-COPY --from=builder --chown=nonroot:nonroot /app/elektractl /app/elektractl
-COPY --from=builder --chown=nonroot:nonroot /app/kubectl /usr/local/bin/kubectl
 
 # Switch to non-root user
 USER nonroot
