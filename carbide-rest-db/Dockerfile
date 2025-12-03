@@ -34,24 +34,20 @@ COPY Makefile .
 COPY cmd ./cmd
 COPY pkg ./pkg
 
-RUN --mount=type=secret,id=gitcreds,dst=/root/.netrc go mod download
-# Build App
-RUN make build
-
 # Copy files not related to compilation
-COPY scripts/migrate.sh ./migrate.sh
 COPY VERSION ./VERSION
 
-# Multi-Stage final build
-FROM alpine
+# Download dependencies
+RUN --mount=type=secret,id=gitcreds,dst=/root/.netrc go mod download
 
-RUN apk add --update --no-cache \
-      ca-certificates
+# Build the binary
+RUN CGO_ENABLED=0 go build -ldflags "-extldflags '-static'" ./cmd/migrations
 
-WORKDIR /usr/local
+# Multi-Stage production build
+FROM nvcr.io/nvidia/distroless/go:v3.2.1 AS final
 
+# Copy the binary from the builder stage
 COPY --from=builder /go/src/migrations /usr/local/bin/migrations
-COPY --from=builder /go/src/migrate.sh /usr/local/bin/migrate.sh
 
-# Set the system worker binary as the entrypoint of the container
-ENTRYPOINT ["/usr/local/bin/migrate.sh"]
+# Set the migrations command as the entrypoint of the container
+CMD ["/usr/local/bin/migrations", "db", "init_migrate"]

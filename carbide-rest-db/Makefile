@@ -19,7 +19,7 @@ coverage:
 	go tool cover -func ./ci-reports/coverage.txt
 
 build:
-	go build -race ./cmd/migrations
+	go build -ldflags "-extldflags '-static'" ./cmd/migrations
 
 run:
 	./migrations

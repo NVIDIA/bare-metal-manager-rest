@@ -11,13 +11,14 @@
 
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+
 bases:
   - ../../base
+
 namespace: cloud-db
-resources:
-  - configmap.yaml
 
 patchesStrategicMerge:
+  - configmap.yaml
   - job.yaml
 
 images:
@@ -28,11 +29,26 @@ images:
 patches:
   - target:
       kind: Job
-      name: cloud-db-migration-0.1.43
+      name: cloud-db-migration-0-1-43
     patch: |-
       - op: replace
         path: /spec/template/spec/containers/0/env
         value:
+          - name: PGHOST
+            valueFrom:
+              configMapKeyRef:
+                name: cloud-db-config
+                key: host
+          - name: PGPORT
+            valueFrom:
+              configMapKeyRef:
+                name: cloud-db-config
+                key: port
+          - name: PGDATABASE
+            valueFrom:
+              configMapKeyRef:
+                name: cloud-db-config
+                key: name
           - name: PGUSER
             valueFrom:
               secretKeyRef:
@@ -43,21 +59,3 @@ patches:
               secretKeyRef:
                 name: forge.forge-pg-cluster.credentials
                 key: password
-          - name: DBNAME
-            valueFrom:
-              configMapKeyRef:
-                name: cloud-db-config
-                key: dbName
-          - name: PGHOST
-            valueFrom:
-              configMapKeyRef:
-                name: cloud-db-config
-                key: dbHost
-          - name: PGPORT
-            valueFrom:
-              configMapKeyRef:
-                name: cloud-db-config
-                key: dbPort
-      - op: replace
-        path: /spec/template/spec/containers/0/command
-        value: ['sh', '-c', 'echo "PGUSER: $PGUSER"; echo "DBNAME: $DBNAME"; echo "DB URL: postgres://$PGUSER:****@${PGHOST}:${PGPORT}/${DBNAME}"; if [ -z "$PGUSER" ] || [ -z "$PGPASSWORD" ] || [ -z "$DBNAME" ]; then echo "PGUSER, PGPASSWORD or DBNAME is not set" && exit 1; else exec /usr/local/bin/migrate.sh; fi']

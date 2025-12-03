@@ -11,9 +11,12 @@
 
 bases:
   - ../../base
+
 namespace: cloud-db
-resources:
+
+patchesStrategicMerge:
   - configmap.yaml
+
 images:
   - name: cloud-db
     newName: localhost:5001/forge-cloud-db
