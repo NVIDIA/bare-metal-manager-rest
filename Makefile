@@ -4,7 +4,7 @@
 BUILD_DIR := build/binaries
 IMAGE_REGISTRY := localhost:5000
 IMAGE_TAG := latest
-DOCKERFILE_DIR := single-site-deployment/dockerfiles
+DOCKERFILE_DIR := docker/production
 
 # PostgreSQL container configuration
 POSTGRES_CONTAINER_NAME := project-test
@@ -146,63 +146,56 @@ build:
 	@echo ""
 	@ls -lh $(BUILD_DIR)
 
-# Build all Docker images
-docker-build: build
+# Build all Docker images (production distroless images)
+docker-build:
 	@echo "========================================"
-	@echo "Building Docker Images"
+	@echo "Building Production Docker Images"
 	@echo "========================================"
-	@echo ""
-	@echo "Building shared base runtime image..."
-	@docker build \
-		-t $(IMAGE_REGISTRY)/carbide-base-runtime:$(IMAGE_TAG) \
-		-f $(DOCKERFILE_DIR)/Dockerfile.base-runtime \
-		.
-	@echo "[SUCCESS] Base runtime image built"
 	@echo ""
 	@echo "Building: carbide-rest-api"
 	@docker build \
 		-t $(IMAGE_REGISTRY)/carbide-rest-api:$(IMAGE_TAG) \
-		-f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-api.fast \
+		-f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-api \
 		.
 	@echo "[SUCCESS]"
 	@echo ""
 	@echo "Building: carbide-rest-workflow"
 	@docker build \
 		-t $(IMAGE_REGISTRY)/carbide-rest-workflow:$(IMAGE_TAG) \
-		-f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-workflow.fast \
+		-f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-workflow \
 		.
 	@echo "[SUCCESS]"
 	@echo ""
 	@echo "Building: carbide-rest-site-manager"
 	@docker build \
 		-t $(IMAGE_REGISTRY)/carbide-rest-site-manager:$(IMAGE_TAG) \
-		-f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-manager.fast \
+		-f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-manager \
 		.
 	@echo "[SUCCESS]"
 	@echo ""
 	@echo "Building: carbide-site-agent"
 	@docker build \
 		-t $(IMAGE_REGISTRY)/carbide-site-agent:$(IMAGE_TAG) \
-		-f $(DOCKERFILE_DIR)/Dockerfile.carbide-site-agent.fast \
+		-f $(DOCKERFILE_DIR)/Dockerfile.carbide-site-agent \
 		.
 	@echo "[SUCCESS]"
 	@echo ""
 	@echo "Building: carbide-rest-db"
 	@docker build \
 		-t $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) \
-		-f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-db.fast \
+		-f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-db \
 		.
 	@echo "[SUCCESS]"
 	@echo ""
 	@echo "Building: carbide-rest-cert-manager"
 	@docker build \
 		-t $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) \
-		-f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-cert-manager.fast \
+		-f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-cert-manager \
 		.
 	@echo "[SUCCESS]"
 	@echo ""
 	@echo "========================================"
-	@echo "All Images Built Successfully!"
+	@echo "All Production Images Built Successfully!"
 	@echo "========================================"
 	@echo ""
 	@docker images --filter "reference=$(IMAGE_REGISTRY)/*"
