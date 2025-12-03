@@ -419,27 +419,26 @@ jobs:
             org.opencontainers.image.url=${{ github.repositoryUrl }}
 
 
-      - name: Extract binaries from image
+      - name: Extract binary from image
         run: |
           mkdir -p artifacts
           docker create --name temp-container ${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.short_sha }}
           docker cp temp-container:/app/elektra artifacts/elektra
-          docker cp temp-container:/app/elektractl artifacts/elektractl
           docker rm temp-container
-          chmod +x artifacts/elektra artifacts/elektractl
+          chmod +x artifacts/elektra
 
       - name: Export Docker image
         run: |
           docker save ${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.short_sha }} | gzip > artifacts/carbide-site-agent-${{ inputs.short_sha }}.tar.gz
 
-      - name: Upload binary artifacts
+      - name: Upload binary artifact
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-site-agent-binaries
-          display-name: carbide-site-agent-binaries
-          description: Carbide Site Agent binaries
+          name: carbide-site-agent-binary
+          display-name: carbide-site-agent-binary
+          description: Carbide Site Agent binary
           version: ${{ inputs.version }}
-          path: artifacts/elektractl
+          path: artifacts/elektra
           ngc-path: 0837451325059433/carbide-dev
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
