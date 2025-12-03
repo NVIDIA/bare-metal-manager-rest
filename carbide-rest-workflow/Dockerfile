@@ -47,10 +47,10 @@ RUN CGO_ENABLED=0 go build -ldflags "-extldflags '-static'" ./cmd/workflow
 FROM nvcr.io/nvidia/distroless/go:v3.2.1 AS final
 
 # Copy the binary from the builder stage
-COPY --from=builder /go/src/workflow /usr/local/bin/workflow
+COPY --from=builder /go/src/workflow /app/workflow
 
 # Copy Temporal certs directory
 COPY --from=builder /var/secrets/temporal/certs /var/secrets/temporal/certs
 
 # Set the binary as the entrypoint of the container
-ENTRYPOINT ["/usr/local/bin/workflow"]
+ENTRYPOINT ["/app/workflow"]
