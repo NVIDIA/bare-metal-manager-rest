@@ -83,8 +83,7 @@ main() {
   kubectl create ns "${CERTMGR_NS}"
   setup_ca
   kubectl create secret -n "${CERTMGR_NS}" docker-registry credsmgr-image-pull-secret --from-file=.dockerconfigjson=$HOME/.docker/config.json
-  LSIP=$(ifconfig en0 | grep netmask | awk '{print $2}')
-  OTEL_EXPORTER_OTLP_SPAN_ENDPOINT="${LSIP}:8360" kubectl apply -k "${cur_dir}/../kustomize/cert-manager/overlays/local"
+  kubectl apply -k "${cur_dir}/../kustomize/cert-manager/overlays/local"
   tc_banner "verify cert-manager ready"
   verify_cert_manager_ready
 

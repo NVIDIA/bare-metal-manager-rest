@@ -22,8 +22,3 @@ images:
   - name: vault
     newName: hashicorp/vault
     newTag: 1.19.0
-secretGenerator:
-- name: otel-lightstep
-  namespace: cert-manager
-  envs:
-  - otel.env

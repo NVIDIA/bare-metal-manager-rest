@@ -45,21 +45,11 @@ spec:
             value: 
           - name: CERT_MANAGER_NS
             value: "cert-manager"
-          envFrom:
-          - secretRef:
-              name: otel-lightstep
           image: credsmgr
           imagePullPolicy: IfNotPresent
           resources:
             limits:
               memory: "192Mi"
-          lifecycle:
-            preStop:
-              exec:
-                command:
-                - /bin/sh
-                - -c
-                - sleep 5
           livenessProbe:
             httpGet:
               path: /healthz
