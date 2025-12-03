@@ -63,7 +63,6 @@ func (c *TracerSpan) LoadFromContext(ctx context.Context) (*CurrentContextSpan, 
 
 // SetAttribute set key value attribute to current span
 func (c *TracerSpan) SetAttribute(cspan *CurrentContextSpan, key string, value interface{}) *CurrentContextSpan {
-
 	if cspan == nil {
 		return cspan
 	}
@@ -82,8 +81,7 @@ func (c *TracerSpan) SetAttribute(cspan *CurrentContextSpan, key string, value i
 
 // CreateChildInCurrentContext create a child span from specified span name and context
 func (c *TracerSpan) CreateChildInCurrentContext(ctx context.Context, spanName string) (context.Context, *CurrentContextSpan) {
-
-	// check if given context is empty
+	// Check if given context is empty
 	var emptyCtx context.Context
 	if reflect.DeepEqual(ctx, emptyCtx) {
 		return ctx, nil

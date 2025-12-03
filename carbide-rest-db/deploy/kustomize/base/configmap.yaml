@@ -14,7 +14,8 @@ kind: ConfigMap
 metadata:
   name: cloud-db-config
 data:
-  host: "cloud-db-postgresql.cloud-db.svc.cluster.local"
-  port: "5432"
-  name: "forge"
-  user: "forge"
+    host: "localhost"
+    port: "5432"
+    name: "forge"
+    user: "forge"
+

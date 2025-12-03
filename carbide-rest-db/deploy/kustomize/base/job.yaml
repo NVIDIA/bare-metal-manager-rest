@@ -28,27 +28,30 @@ spec:
           valueFrom:
             configMapKeyRef:
               name: cloud-db-config
-              key: dbHost
+              key: host
         - name: PGPORT
           valueFrom:
             configMapKeyRef:
               name: cloud-db-config
-              key: dbPort
+              key: port
         - name: PGDATABASE
           valueFrom:
             configMapKeyRef:
               name: cloud-db-config
-              key: dbName
+              key: name
         - name: PGUSER
           valueFrom:
             configMapKeyRef:
               name: cloud-db-config
-              key: dbUser
+              key: user
         - name: PGPASSWORD
           valueFrom:
             secretKeyRef:
               name: cloud-db-auth
               key: password
+              optional: true
+        - name: PGPASSWORD_PATH
+          value: /var/secrets/db/password
         resources:
           requests:
             cpu: 50m

@@ -51,13 +51,15 @@ func NewSession(host string, port int, dbName string, user string, password stri
 
 	sqldb := stdlib.OpenDB(*config)
 	db := bun.NewDB(sqldb, pgdialect.New())
+
 	// Uncomment to see failing queries
 	// db.AddQueryHook(bundebug.NewQueryHook())
+
 	// Uncomment to see all queries
 	// bundebug.NewQueryHook(bundebug.WithVerbose(true))
 
-	// if lighstep is configured, add otel hooks
-	if os.Getenv("LS_SERVICE_NAME") != "" {
+	// if tracing service name is configured, add otel hooks
+	if os.Getenv("TRACING_SERVICE_NAME") != "" {
 		db.AddQueryHook(bunotel.NewQueryHook(
 			bunotel.WithDBName(dbName),
 			bunotel.WithFormattedQueries(true),
