@@ -36,18 +36,16 @@ COPY cmd ./cmd
 COPY pkg ./pkg
 
 # Build App
-RUN make build
+RUN CGO_ENABLED=0 go build -ldflags "-extldflags '-static'" ./cmd/sitemgr
 
 # Multi-Stage production build
-FROM alpine
-
-RUN apk add --update --no-cache \
-      ca-certificates
-
-WORKDIR /usr/local
+FROM nvcr.io/nvidia/distroless/go:v3.2.1 AS final
 
 # Retrieve the binary from the previous stage
 COPY --from=builder /go/src/sitemgr /usr/local/bin/sitemgr
 
+# Expose the port
+EXPOSE 8100
+
 # Set the binary as the entrypoint of the container
-CMD ["sitemgr"]
+CMD ["/usr/local/bin/sitemgr"]
