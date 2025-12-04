@@ -8,12 +8,16 @@ on:
         required: false
         default: "ubuntu-latest"
         type: string
-      version:
-        description: "Version tag for Docker images"
+      semantic_version:
+        description: "Semantic version from VERSION file"
         required: true
         type: string
       short_sha:
         description: "Short SHA for tagging"
+        required: true
+        type: string
+      branch_sha_tag:
+        description: "Combined branch name and short SHA tag (branchname-sha)"
         required: true
         type: string
       target_registry:
@@ -30,7 +34,7 @@ on:
         required: true
         type: string
       is_main_branch:
-        description: "Whether to push 'latest' tag (only on main)"
+        description: "Whether to push 'latest' and version tags (only on main)"
         required: false
         default: false
         type: boolean
@@ -81,6 +85,20 @@ jobs:
           username: ${{ secrets.NVCR_USERNAME }}
           password: ${{ secrets.NVCR_TOKEN }}
 
+      - name: Determine Docker tags
+        id: docker-tags
+        run: |
+          # Always include branch-sha tag
+          TAGS="${{ inputs.target_registry }}/carbide-rest-api:${{ inputs.branch_sha_tag }}"
+          
+          # On main branch, also add semantic version and latest tags
+          if [ "${{ inputs.is_main_branch }}" == "true" ]; then
+            TAGS="${TAGS},${{ inputs.target_registry }}/carbide-rest-api:${{ inputs.semantic_version }}"
+            TAGS="${TAGS},${{ inputs.target_registry }}/carbide-rest-api:latest"
+          fi
+          
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
       - name: Build carbide-rest-api
         uses: docker/build-push-action@v5
         with:
@@ -89,52 +107,100 @@ jobs:
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
           load: true
-          tags: |
-            ${{ inputs.target_registry }}/carbide-rest-api:${{ inputs.branch_name }}-${{ inputs.short_sha }}
-            ${{ inputs.target_registry }}/carbide-rest-api:${{ inputs.version }}
-            ${{ inputs.is_main_branch == true && format('{0}/carbide-rest-api:latest', inputs.target_registry) || '' }}
+          tags: ${{ steps.docker-tags.outputs.tags }}
           cache-from: type=gha,scope=carbide-rest-api
           cache-to: type=gha,mode=max,scope=carbide-rest-api
           labels: |
             org.opencontainers.image.title=carbide-rest-api
-            org.opencontainers.image.version=${{ inputs.version }}
+            org.opencontainers.image.version=${{ inputs.semantic_version }}
             org.opencontainers.image.revision=${{ inputs.short_sha }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
 
-
       - name: Extract binary from image
+        if: inputs.is_main_branch
         run: |
           mkdir -p artifacts
-          docker create --name temp-container ${{ inputs.target_registry }}/carbide-rest-api:${{ inputs.branch_name }}-${{ inputs.short_sha }}
+          docker create --name temp-container ${{ inputs.target_registry }}/carbide-rest-api:${{ inputs.branch_sha_tag }}
           docker cp temp-container:/app/api artifacts/api
           docker rm temp-container
           chmod +x artifacts/api
 
       - name: Export Docker image
+        if: inputs.is_main_branch
         run: |
-          docker save ${{ inputs.target_registry }}/carbide-rest-api:${{ inputs.branch_name }}-${{ inputs.short_sha }} | gzip > artifacts/carbide-rest-api-${{ inputs.branch_name }}-${{ inputs.short_sha }}.tar.gz
+          docker save ${{ inputs.target_registry }}/carbide-rest-api:${{ inputs.branch_sha_tag }} | gzip > artifacts/carbide-rest-api-${{ inputs.branch_sha_tag }}.tar.gz
 
-      - name: Upload binary artifact
+      - name: Upload binary artifact with semantic version
+        if: inputs.is_main_branch
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: carbide-rest-api-binary
           display-name: carbide-rest-api-binary
           description: Carbide REST API binary
-          version: ${{ inputs.version }}
+          version: ${{ inputs.semantic_version }}
           path: artifacts/api
           ngc-path: 0837451325059433/carbide-dev
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
-      - name: Upload Docker image artifact
+      - name: Upload binary artifact with latest tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-rest-api-binary
+          display-name: carbide-rest-api-binary
+          description: Carbide REST API binary
+          version: latest
+          path: artifacts/api
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload binary artifact with branch-sha tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-rest-api-binary
+          display-name: carbide-rest-api-binary
+          description: Carbide REST API binary
+          version: ${{ inputs.branch_sha_tag }}
+          path: artifacts/api
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload Docker image artifact with semantic version
+        if: inputs.is_main_branch
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: carbide-rest-api-image
           display-name: carbide-rest-api-image
           description: Carbide REST API image
-          version: ${{ inputs.version }}
-          path: artifacts/carbide-rest-api-${{ inputs.branch_name }}-${{ inputs.short_sha }}.tar.gz
+          version: ${{ inputs.semantic_version }}
+          path: artifacts/carbide-rest-api-${{ inputs.branch_sha_tag }}.tar.gz
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload Docker image artifact with latest tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-rest-api-image
+          display-name: carbide-rest-api-image
+          description: Carbide REST API image
+          version: latest
+          path: artifacts/carbide-rest-api-${{ inputs.branch_sha_tag }}.tar.gz
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload Docker image artifact with branch-sha tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-rest-api-image
+          display-name: carbide-rest-api-image
+          description: Carbide REST API image
+          version: ${{ inputs.branch_sha_tag }}
+          path: artifacts/carbide-rest-api-${{ inputs.branch_sha_tag }}.tar.gz
           ngc-path: 0837451325059433/carbide-dev
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
@@ -162,6 +228,20 @@ jobs:
           username: ${{ secrets.NVCR_USERNAME }}
           password: ${{ secrets.NVCR_TOKEN }}
 
+      - name: Determine Docker tags
+        id: docker-tags
+        run: |
+          # Always include branch-sha tag
+          TAGS="${{ inputs.target_registry }}/carbide-rest-db:${{ inputs.branch_sha_tag }}"
+          
+          # On main branch, also add semantic version and latest tags
+          if [ "${{ inputs.is_main_branch }}" == "true" ]; then
+            TAGS="${TAGS},${{ inputs.target_registry }}/carbide-rest-db:${{ inputs.semantic_version }}"
+            TAGS="${TAGS},${{ inputs.target_registry }}/carbide-rest-db:latest"
+          fi
+          
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
       - name: Build carbide-rest-db
         uses: docker/build-push-action@v5
         with:
@@ -170,52 +250,100 @@ jobs:
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
           load: true
-          tags: |
-            ${{ inputs.target_registry }}/carbide-rest-db:${{ inputs.branch_name }}-${{ inputs.short_sha }}
-            ${{ inputs.target_registry }}/carbide-rest-db:${{ inputs.version }}
-            ${{ inputs.is_main_branch == true && format('{0}/carbide-rest-db:latest', inputs.target_registry) || '' }}
+          tags: ${{ steps.docker-tags.outputs.tags }}
           cache-from: type=gha,scope=carbide-rest-db
           cache-to: type=gha,mode=max,scope=carbide-rest-db
           labels: |
             org.opencontainers.image.title=carbide-rest-db
-            org.opencontainers.image.version=${{ inputs.version }}
+            org.opencontainers.image.version=${{ inputs.semantic_version }}
             org.opencontainers.image.revision=${{ inputs.short_sha }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
 
-
       - name: Extract binary from image
+        if: inputs.is_main_branch
         run: |
           mkdir -p artifacts
-          docker create --name temp-container ${{ inputs.target_registry }}/carbide-rest-db:${{ inputs.branch_name }}-${{ inputs.short_sha }}
+          docker create --name temp-container ${{ inputs.target_registry }}/carbide-rest-db:${{ inputs.branch_sha_tag }}
           docker cp temp-container:/app/migrations artifacts/migrations
           docker rm temp-container
           chmod +x artifacts/migrations
 
       - name: Export Docker image
+        if: inputs.is_main_branch
         run: |
-          docker save ${{ inputs.target_registry }}/carbide-rest-db:${{ inputs.branch_name }}-${{ inputs.short_sha }} | gzip > artifacts/carbide-rest-db-${{ inputs.branch_name }}-${{ inputs.short_sha }}.tar.gz
+          docker save ${{ inputs.target_registry }}/carbide-rest-db:${{ inputs.branch_sha_tag }} | gzip > artifacts/carbide-rest-db-${{ inputs.branch_sha_tag }}.tar.gz
 
-      - name: Upload binary artifact
+      - name: Upload binary artifact with semantic version
+        if: inputs.is_main_branch
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: carbide-rest-db-binary
           display-name: carbide-rest-db-binary
           description: Carbide REST DB binary
-          version: ${{ inputs.version }}
+          version: ${{ inputs.semantic_version }}
           path: artifacts/migrations
           ngc-path: 0837451325059433/carbide-dev
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
-      - name: Upload Docker image artifact
+      - name: Upload binary artifact with latest tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-rest-db-binary
+          display-name: carbide-rest-db-binary
+          description: Carbide REST DB binary
+          version: latest
+          path: artifacts/migrations
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload binary artifact with branch-sha tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-rest-db-binary
+          display-name: carbide-rest-db-binary
+          description: Carbide REST DB binary
+          version: ${{ inputs.branch_sha_tag }}
+          path: artifacts/migrations
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload Docker image artifact with semantic version
+        if: inputs.is_main_branch
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: carbide-rest-db-image
           display-name: carbide-rest-db-image
           description: Carbide REST DB image
-          version: ${{ inputs.version }}
-          path: artifacts/carbide-rest-db-${{ inputs.branch_name }}-${{ inputs.short_sha }}.tar.gz
+          version: ${{ inputs.semantic_version }}
+          path: artifacts/carbide-rest-db-${{ inputs.branch_sha_tag }}.tar.gz
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload Docker image artifact with latest tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-rest-db-image
+          display-name: carbide-rest-db-image
+          description: Carbide REST DB image
+          version: latest
+          path: artifacts/carbide-rest-db-${{ inputs.branch_sha_tag }}.tar.gz
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload Docker image artifact with branch-sha tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-rest-db-image
+          display-name: carbide-rest-db-image
+          description: Carbide REST DB image
+          version: ${{ inputs.branch_sha_tag }}
+          path: artifacts/carbide-rest-db-${{ inputs.branch_sha_tag }}.tar.gz
           ngc-path: 0837451325059433/carbide-dev
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
@@ -243,6 +371,20 @@ jobs:
           username: ${{ secrets.NVCR_USERNAME }}
           password: ${{ secrets.NVCR_TOKEN }}
 
+      - name: Determine Docker tags
+        id: docker-tags
+        run: |
+          # Always include branch-sha tag
+          TAGS="${{ inputs.target_registry }}/carbide-rest-site-manager:${{ inputs.branch_sha_tag }}"
+          
+          # On main branch, also add semantic version and latest tags
+          if [ "${{ inputs.is_main_branch }}" == "true" ]; then
+            TAGS="${TAGS},${{ inputs.target_registry }}/carbide-rest-site-manager:${{ inputs.semantic_version }}"
+            TAGS="${TAGS},${{ inputs.target_registry }}/carbide-rest-site-manager:latest"
+          fi
+          
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
       - name: Build carbide-rest-site-manager
         uses: docker/build-push-action@v5
         with:
@@ -251,52 +393,100 @@ jobs:
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
           load: true
-          tags: |
-            ${{ inputs.target_registry }}/carbide-rest-site-manager:${{ inputs.branch_name }}-${{ inputs.short_sha }}
-            ${{ inputs.target_registry }}/carbide-rest-site-manager:${{ inputs.version }}
-            ${{ inputs.is_main_branch == true && format('{0}/carbide-rest-site-manager:latest', inputs.target_registry) || '' }}
+          tags: ${{ steps.docker-tags.outputs.tags }}
           cache-from: type=gha,scope=carbide-rest-site-manager
           cache-to: type=gha,mode=max,scope=carbide-rest-site-manager
           labels: |
             org.opencontainers.image.title=carbide-rest-site-manager
-            org.opencontainers.image.version=${{ inputs.version }}
+            org.opencontainers.image.version=${{ inputs.semantic_version }}
             org.opencontainers.image.revision=${{ inputs.short_sha }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
 
-
       - name: Extract binary from image
+        if: inputs.is_main_branch
         run: |
           mkdir -p artifacts
-          docker create --name temp-container ${{ inputs.target_registry }}/carbide-rest-site-manager:${{ inputs.branch_name }}-${{ inputs.short_sha }}
+          docker create --name temp-container ${{ inputs.target_registry }}/carbide-rest-site-manager:${{ inputs.branch_sha_tag }}
           docker cp temp-container:/app/sitemgr artifacts/sitemgr
           docker rm temp-container
           chmod +x artifacts/sitemgr
 
       - name: Export Docker image
+        if: inputs.is_main_branch
         run: |
-          docker save ${{ inputs.target_registry }}/carbide-rest-site-manager:${{ inputs.branch_name }}-${{ inputs.short_sha }} | gzip > artifacts/carbide-rest-site-manager-${{ inputs.branch_name }}-${{ inputs.short_sha }}.tar.gz
+          docker save ${{ inputs.target_registry }}/carbide-rest-site-manager:${{ inputs.branch_sha_tag }} | gzip > artifacts/carbide-rest-site-manager-${{ inputs.branch_sha_tag }}.tar.gz
 
-      - name: Upload binary artifact
+      - name: Upload binary artifact with semantic version
+        if: inputs.is_main_branch
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: carbide-rest-site-manager-binary
           display-name: carbide-rest-site-manager-binary
           description: Carbide REST Site Manager binary
-          version: ${{ inputs.version }}
+          version: ${{ inputs.semantic_version }}
           path: artifacts/sitemgr
           ngc-path: 0837451325059433/carbide-dev
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
-      - name: Upload Docker image artifact
+      - name: Upload binary artifact with latest tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-rest-site-manager-binary
+          display-name: carbide-rest-site-manager-binary
+          description: Carbide REST Site Manager binary
+          version: latest
+          path: artifacts/sitemgr
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload binary artifact with branch-sha tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-rest-site-manager-binary
+          display-name: carbide-rest-site-manager-binary
+          description: Carbide REST Site Manager binary
+          version: ${{ inputs.branch_sha_tag }}
+          path: artifacts/sitemgr
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload Docker image artifact with semantic version
+        if: inputs.is_main_branch
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: carbide-rest-site-manager-image
           display-name: carbide-rest-site-manager-image
           description: Carbide REST Site Manager image
-          version: ${{ inputs.version }}
-          path: artifacts/carbide-rest-site-manager-${{ inputs.branch_name }}-${{ inputs.short_sha }}.tar.gz
+          version: ${{ inputs.semantic_version }}
+          path: artifacts/carbide-rest-site-manager-${{ inputs.branch_sha_tag }}.tar.gz
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload Docker image artifact with latest tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-rest-site-manager-image
+          display-name: carbide-rest-site-manager-image
+          description: Carbide REST Site Manager image
+          version: latest
+          path: artifacts/carbide-rest-site-manager-${{ inputs.branch_sha_tag }}.tar.gz
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload Docker image artifact with branch-sha tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-rest-site-manager-image
+          display-name: carbide-rest-site-manager-image
+          description: Carbide REST Site Manager image
+          version: ${{ inputs.branch_sha_tag }}
+          path: artifacts/carbide-rest-site-manager-${{ inputs.branch_sha_tag }}.tar.gz
           ngc-path: 0837451325059433/carbide-dev
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
@@ -324,6 +514,20 @@ jobs:
           username: ${{ secrets.NVCR_USERNAME }}
           password: ${{ secrets.NVCR_TOKEN }}
 
+      - name: Determine Docker tags
+        id: docker-tags
+        run: |
+          # Always include branch-sha tag
+          TAGS="${{ inputs.target_registry }}/carbide-rest-workflow:${{ inputs.branch_sha_tag }}"
+          
+          # On main branch, also add semantic version and latest tags
+          if [ "${{ inputs.is_main_branch }}" == "true" ]; then
+            TAGS="${TAGS},${{ inputs.target_registry }}/carbide-rest-workflow:${{ inputs.semantic_version }}"
+            TAGS="${TAGS},${{ inputs.target_registry }}/carbide-rest-workflow:latest"
+          fi
+          
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
       - name: Build carbide-rest-workflow
         uses: docker/build-push-action@v5
         with:
@@ -332,52 +536,100 @@ jobs:
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
           load: true
-          tags: |
-            ${{ inputs.target_registry }}/carbide-rest-workflow:${{ inputs.branch_name }}-${{ inputs.short_sha }}
-            ${{ inputs.target_registry }}/carbide-rest-workflow:${{ inputs.version }}
-            ${{ inputs.is_main_branch == true && format('{0}/carbide-rest-workflow:latest', inputs.target_registry) || '' }}
+          tags: ${{ steps.docker-tags.outputs.tags }}
           cache-from: type=gha,scope=carbide-rest-workflow
           cache-to: type=gha,mode=max,scope=carbide-rest-workflow
           labels: |
             org.opencontainers.image.title=carbide-rest-workflow
-            org.opencontainers.image.version=${{ inputs.version }}
+            org.opencontainers.image.version=${{ inputs.semantic_version }}
             org.opencontainers.image.revision=${{ inputs.short_sha }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
 
-
       - name: Extract binary from image
+        if: inputs.is_main_branch
         run: |
           mkdir -p artifacts
-          docker create --name temp-container ${{ inputs.target_registry }}/carbide-rest-workflow:${{ inputs.branch_name }}-${{ inputs.short_sha }}
+          docker create --name temp-container ${{ inputs.target_registry }}/carbide-rest-workflow:${{ inputs.branch_sha_tag }}
           docker cp temp-container:/app/workflow artifacts/workflow
           docker rm temp-container
           chmod +x artifacts/workflow
 
       - name: Export Docker image
+        if: inputs.is_main_branch
         run: |
-          docker save ${{ inputs.target_registry }}/carbide-rest-workflow:${{ inputs.branch_name }}-${{ inputs.short_sha }} | gzip > artifacts/carbide-rest-workflow-${{ inputs.branch_name }}-${{ inputs.short_sha }}.tar.gz
+          docker save ${{ inputs.target_registry }}/carbide-rest-workflow:${{ inputs.branch_sha_tag }} | gzip > artifacts/carbide-rest-workflow-${{ inputs.branch_sha_tag }}.tar.gz
 
-      - name: Upload binary artifact
+      - name: Upload binary artifact with semantic version
+        if: inputs.is_main_branch
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: carbide-rest-workflow-binary
           display-name: carbide-rest-workflow-binary
           description: Carbide REST Workflow binary
-          version: ${{ inputs.version }}
+          version: ${{ inputs.semantic_version }}
           path: artifacts/workflow
           ngc-path: 0837451325059433/carbide-dev
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
-      - name: Upload Docker image artifact
+      - name: Upload binary artifact with latest tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-rest-workflow-binary
+          display-name: carbide-rest-workflow-binary
+          description: Carbide REST Workflow binary
+          version: latest
+          path: artifacts/workflow
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload binary artifact with branch-sha tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-rest-workflow-binary
+          display-name: carbide-rest-workflow-binary
+          description: Carbide REST Workflow binary
+          version: ${{ inputs.branch_sha_tag }}
+          path: artifacts/workflow
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload Docker image artifact with semantic version
+        if: inputs.is_main_branch
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: carbide-rest-workflow-image
           display-name: carbide-rest-workflow-image
           description: Carbide REST Workflow image
-          version: ${{ inputs.version }}
-          path: artifacts/carbide-rest-workflow-${{ inputs.branch_name }}-${{ inputs.short_sha }}.tar.gz
+          version: ${{ inputs.semantic_version }}
+          path: artifacts/carbide-rest-workflow-${{ inputs.branch_sha_tag }}.tar.gz
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload Docker image artifact with latest tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-rest-workflow-image
+          display-name: carbide-rest-workflow-image
+          description: Carbide REST Workflow image
+          version: latest
+          path: artifacts/carbide-rest-workflow-${{ inputs.branch_sha_tag }}.tar.gz
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload Docker image artifact with branch-sha tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-rest-workflow-image
+          display-name: carbide-rest-workflow-image
+          description: Carbide REST Workflow image
+          version: ${{ inputs.branch_sha_tag }}
+          path: artifacts/carbide-rest-workflow-${{ inputs.branch_sha_tag }}.tar.gz
           ngc-path: 0837451325059433/carbide-dev
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
@@ -405,6 +657,20 @@ jobs:
           username: ${{ secrets.NVCR_USERNAME }}
           password: ${{ secrets.NVCR_TOKEN }}
 
+      - name: Determine Docker tags
+        id: docker-tags
+        run: |
+          # Always include branch-sha tag
+          TAGS="${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.branch_sha_tag }}"
+          
+          # On main branch, also add semantic version and latest tags
+          if [ "${{ inputs.is_main_branch }}" == "true" ]; then
+            TAGS="${TAGS},${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.semantic_version }}"
+            TAGS="${TAGS},${{ inputs.target_registry }}/carbide-site-agent:latest"
+          fi
+          
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
       - name: Build carbide-site-agent
         uses: docker/build-push-action@v5
         with:
@@ -413,52 +679,100 @@ jobs:
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
           load: true
-          tags: |
-            ${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.branch_name }}-${{ inputs.short_sha }}
-            ${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.version }}
-            ${{ inputs.is_main_branch == true && format('{0}/carbide-site-agent:latest', inputs.target_registry) || '' }}
+          tags: ${{ steps.docker-tags.outputs.tags }}
           cache-from: type=gha,scope=carbide-site-agent
           cache-to: type=gha,mode=max,scope=carbide-site-agent
           labels: |
             org.opencontainers.image.title=carbide-site-agent
-            org.opencontainers.image.version=${{ inputs.version }}
+            org.opencontainers.image.version=${{ inputs.semantic_version }}
             org.opencontainers.image.revision=${{ inputs.short_sha }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
 
-
       - name: Extract binary from image
+        if: inputs.is_main_branch
         run: |
           mkdir -p artifacts
-          docker create --name temp-container ${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.branch_name }}-${{ inputs.short_sha }}
+          docker create --name temp-container ${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.branch_sha_tag }}
           docker cp temp-container:/app/elektra artifacts/elektra
           docker rm temp-container
           chmod +x artifacts/elektra
 
       - name: Export Docker image
+        if: inputs.is_main_branch
         run: |
-          docker save ${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.branch_name }}-${{ inputs.short_sha }} | gzip > artifacts/carbide-site-agent-${{ inputs.branch_name }}-${{ inputs.short_sha }}.tar.gz
+          docker save ${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.branch_sha_tag }} | gzip > artifacts/carbide-site-agent-${{ inputs.branch_sha_tag }}.tar.gz
 
-      - name: Upload binary artifact
+      - name: Upload binary artifact with semantic version
+        if: inputs.is_main_branch
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: carbide-site-agent-binary
           display-name: carbide-site-agent-binary
           description: Carbide Site Agent binary
-          version: ${{ inputs.version }}
+          version: ${{ inputs.semantic_version }}
           path: artifacts/elektra
           ngc-path: 0837451325059433/carbide-dev
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
-      - name: Upload Docker image artifact
+      - name: Upload binary artifact with latest tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-site-agent-binary
+          display-name: carbide-site-agent-binary
+          description: Carbide Site Agent binary
+          version: latest
+          path: artifacts/elektra
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload binary artifact with branch-sha tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-site-agent-binary
+          display-name: carbide-site-agent-binary
+          description: Carbide Site Agent binary
+          version: ${{ inputs.branch_sha_tag }}
+          path: artifacts/elektra
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload Docker image artifact with semantic version
+        if: inputs.is_main_branch
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: carbide-site-agent-image
           display-name: carbide-site-agent-image
           description: Carbide Site Agent image
-          version: ${{ inputs.version }}
-          path: artifacts/carbide-site-agent-${{ inputs.branch_name }}-${{ inputs.short_sha }}.tar.gz
+          version: ${{ inputs.semantic_version }}
+          path: artifacts/carbide-site-agent-${{ inputs.branch_sha_tag }}.tar.gz
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload Docker image artifact with latest tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-site-agent-image
+          display-name: carbide-site-agent-image
+          description: Carbide Site Agent image
+          version: latest
+          path: artifacts/carbide-site-agent-${{ inputs.branch_sha_tag }}.tar.gz
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload Docker image artifact with branch-sha tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-site-agent-image
+          display-name: carbide-site-agent-image
+          description: Carbide Site Agent image
+          version: ${{ inputs.branch_sha_tag }}
+          path: artifacts/carbide-site-agent-${{ inputs.branch_sha_tag }}.tar.gz
           ngc-path: 0837451325059433/carbide-dev
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
@@ -486,6 +800,20 @@ jobs:
           username: ${{ secrets.NVCR_USERNAME }}
           password: ${{ secrets.NVCR_TOKEN }}
 
+      - name: Determine Docker tags
+        id: docker-tags
+        run: |
+          # Always include branch-sha tag
+          TAGS="${{ inputs.target_registry }}/carbide-rest-cert-manager:${{ inputs.branch_sha_tag }}"
+          
+          # On main branch, also add semantic version and latest tags
+          if [ "${{ inputs.is_main_branch }}" == "true" ]; then
+            TAGS="${TAGS},${{ inputs.target_registry }}/carbide-rest-cert-manager:${{ inputs.semantic_version }}"
+            TAGS="${TAGS},${{ inputs.target_registry }}/carbide-rest-cert-manager:latest"
+          fi
+          
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
       - name: Build carbide-rest-cert-manager
         uses: docker/build-push-action@v5
         with:
@@ -494,52 +822,100 @@ jobs:
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
           load: true
-          tags: |
-            ${{ inputs.target_registry }}/carbide-rest-cert-manager:${{ inputs.branch_name }}-${{ inputs.short_sha }}
-            ${{ inputs.target_registry }}/carbide-rest-cert-manager:${{ inputs.version }}
-            ${{ inputs.is_main_branch == true && format('{0}/carbide-rest-cert-manager:latest', inputs.target_registry) || '' }}
+          tags: ${{ steps.docker-tags.outputs.tags }}
           cache-from: type=gha,scope=carbide-rest-cert-manager
           cache-to: type=gha,mode=max,scope=carbide-rest-cert-manager
           labels: |
             org.opencontainers.image.title=carbide-rest-cert-manager
-            org.opencontainers.image.version=${{ inputs.version }}
+            org.opencontainers.image.version=${{ inputs.semantic_version }}
             org.opencontainers.image.revision=${{ inputs.short_sha }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.source=${{ github.repositoryUrl }}
             org.opencontainers.image.url=${{ github.repositoryUrl }}
 
-
       - name: Extract binary from image
+        if: inputs.is_main_branch
         run: |
           mkdir -p artifacts
-          docker create --name temp-container ${{ inputs.target_registry }}/carbide-rest-cert-manager:${{ inputs.branch_name }}-${{ inputs.short_sha }}
+          docker create --name temp-container ${{ inputs.target_registry }}/carbide-rest-cert-manager:${{ inputs.branch_sha_tag }}
           docker cp temp-container:/app/credsmgr artifacts/credsmgr
           docker rm temp-container
           chmod +x artifacts/credsmgr
 
       - name: Export Docker image
+        if: inputs.is_main_branch
         run: |
-          docker save ${{ inputs.target_registry }}/carbide-rest-cert-manager:${{ inputs.branch_name }}-${{ inputs.short_sha }} | gzip > artifacts/carbide-rest-cert-manager-${{ inputs.branch_name }}-${{ inputs.short_sha }}.tar.gz
+          docker save ${{ inputs.target_registry }}/carbide-rest-cert-manager:${{ inputs.branch_sha_tag }} | gzip > artifacts/carbide-rest-cert-manager-${{ inputs.branch_sha_tag }}.tar.gz
 
-      - name: Upload binary artifact
+      - name: Upload binary artifact with semantic version
+        if: inputs.is_main_branch
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: carbide-rest-cert-manager-binary
           display-name: carbide-rest-cert-manager-binary
           description: Carbide REST Cert Manager binary
-          version: ${{ inputs.version }}
+          version: ${{ inputs.semantic_version }}
           path: artifacts/credsmgr
           ngc-path: 0837451325059433/carbide-dev
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
-      - name: Upload Docker image artifact
+      - name: Upload binary artifact with latest tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-rest-cert-manager-binary
+          display-name: carbide-rest-cert-manager-binary
+          description: Carbide REST Cert Manager binary
+          version: latest
+          path: artifacts/credsmgr
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload binary artifact with branch-sha tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-rest-cert-manager-binary
+          display-name: carbide-rest-cert-manager-binary
+          description: Carbide REST Cert Manager binary
+          version: ${{ inputs.branch_sha_tag }}
+          path: artifacts/credsmgr
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload Docker image artifact with semantic version
+        if: inputs.is_main_branch
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: carbide-rest-cert-manager-image
           display-name: carbide-rest-cert-manager-image
           description: Carbide REST Cert Manager image
-          version: ${{ inputs.version }}
-          path: artifacts/carbide-rest-cert-manager-${{ inputs.branch_name }}-${{ inputs.short_sha }}.tar.gz
+          version: ${{ inputs.semantic_version }}
+          path: artifacts/carbide-rest-cert-manager-${{ inputs.branch_sha_tag }}.tar.gz
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload Docker image artifact with latest tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-rest-cert-manager-image
+          display-name: carbide-rest-cert-manager-image
+          description: Carbide REST Cert Manager image
+          version: latest
+          path: artifacts/carbide-rest-cert-manager-${{ inputs.branch_sha_tag }}.tar.gz
+          ngc-path: 0837451325059433/carbide-dev
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload Docker image artifact with branch-sha tag
+        if: inputs.is_main_branch
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: carbide-rest-cert-manager-image
+          display-name: carbide-rest-cert-manager-image
+          description: Carbide REST Cert Manager image
+          version: ${{ inputs.branch_sha_tag }}
+          path: artifacts/carbide-rest-cert-manager-${{ inputs.branch_sha_tag }}.tar.gz
           ngc-path: 0837451325059433/carbide-dev
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
@@ -562,26 +938,40 @@ jobs:
           echo "# Docker Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Build Information" >> $GITHUB_STEP_SUMMARY
-          echo "- **Version**: \`${{ inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Semantic Version**: \`${{ inputs.semantic_version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Git SHA**: \`${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch**: \`${{ inputs.branch_name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Image Tag**: \`${{ inputs.branch_name }}-${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch-SHA Tag**: \`${{ inputs.branch_sha_tag }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Registry**: \`${{ inputs.target_registry }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Push Enabled**: \`${{ inputs.push_enabled }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Latest Tag Pushed**: \`${{ inputs.is_main_branch }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Is Main Branch**: \`${{ inputs.is_main_branch }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ inputs.push_enabled }}" == "false" ]; then
             echo "> **Note**: Images were built but NOT pushed to registry (build-only mode)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
-          echo "## Images Built" >> $GITHUB_STEP_SUMMARY
-          echo "1. \`carbide-rest-api:${{ inputs.branch_name }}-${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "2. \`carbide-rest-db:${{ inputs.branch_name }}-${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "3. \`carbide-rest-site-manager:${{ inputs.branch_name }}-${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "4. \`carbide-rest-workflow:${{ inputs.branch_name }}-${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "5. \`carbide-site-agent:${{ inputs.branch_name }}-${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "6. \`carbide-rest-cert-manager:${{ inputs.branch_name }}-${{ inputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "## Docker Image Tags" >> $GITHUB_STEP_SUMMARY
+          echo "All images tagged with: \`${{ inputs.branch_sha_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.is_main_branch }}" == "true" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Main branch additional tags:**" >> $GITHUB_STEP_SUMMARY
+            echo "- \`${{ inputs.semantic_version }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "- \`latest\`" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Images Built" >> $GITHUB_STEP_SUMMARY
+          echo "1. \`carbide-rest-api:${{ inputs.branch_sha_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "2. \`carbide-rest-db:${{ inputs.branch_sha_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "3. \`carbide-rest-site-manager:${{ inputs.branch_sha_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "4. \`carbide-rest-workflow:${{ inputs.branch_sha_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "5. \`carbide-site-agent:${{ inputs.branch_sha_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "6. \`carbide-rest-cert-manager:${{ inputs.branch_sha_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.is_main_branch }}" == "true" ]; then
+            echo "## Binary Artifacts Uploaded (Main Branch)" >> $GITHUB_STEP_SUMMARY
+            echo "Each binary uploaded with versions: \`${{ inputs.semantic_version }}\`, \`latest\`, \`${{ inputs.branch_sha_tag }}\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "## Job Status" >> $GITHUB_STEP_SUMMARY
           echo "- carbide-rest-api: \`${{ needs.build-carbide-rest-api.result }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- carbide-rest-db: \`${{ needs.build-carbide-rest-db.result }}\`" >> $GITHUB_STEP_SUMMARY
@@ -589,4 +979,3 @@ jobs:
           echo "- carbide-rest-workflow: \`${{ needs.build-carbide-rest-workflow.result }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- carbide-site-agent: \`${{ needs.build-carbide-site-agent.result }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- carbide-rest-cert-manager: \`${{ needs.build-carbide-rest-cert-manager.result }}\`" >> $GITHUB_STEP_SUMMARY
-

@@ -9,9 +9,9 @@ on:
         default: "ubuntu-latest"
         type: string
     outputs:
-      version:
-        description: "Version number generated from git describe"
-        value: ${{ jobs.prepare.outputs.version }}
+      semantic_version:
+        description: "Semantic version from VERSION file"
+        value: ${{ jobs.prepare.outputs.semantic_version }}
       short_sha:
         description: "Short SHA (7 characters) of the current commit"
         value: ${{ jobs.prepare.outputs.short_sha }}
@@ -24,6 +24,9 @@ on:
       branch_name:
         description: "Sanitized branch name for use in image tags"
         value: ${{ jobs.prepare.outputs.branch_name }}
+      branch_sha_tag:
+        description: "Combined branch name and short SHA tag (branchname-sha)"
+        value: ${{ jobs.prepare.outputs.branch_sha_tag }}
       is_main_branch:
         description: "Whether the current branch is main"
         value: ${{ jobs.prepare.outputs.is_main_branch }}
@@ -34,11 +37,12 @@ jobs:
     runs-on: ${{ inputs.runner }}
 
     outputs:
-      version: ${{ steps.generate-version.outputs.version }}
+      semantic_version: ${{ steps.generate-version.outputs.semantic_version }}
       short_sha: ${{ steps.generate-version.outputs.short_sha }}
       full_sha: ${{ steps.generate-version.outputs.full_sha }}
       target_registry: ${{ steps.generate-version.outputs.target_registry }}
       branch_name: ${{ steps.generate-version.outputs.branch_name }}
+      branch_sha_tag: ${{ steps.generate-version.outputs.branch_sha_tag }}
       is_main_branch: ${{ steps.generate-version.outputs.is_main_branch }}
 
     steps:
@@ -51,12 +55,12 @@ jobs:
       - name: Generate version and build information
         id: generate-version
         run: |
-          # Generate version number using git describe
-          # If on a tag, use the tag name; otherwise generate from git history
-          if [ -n "${{ github.ref_type == 'tag' && github.ref_name || '' }}" ]; then
-            VERSION="${{ github.ref_name }}"
+          # Read semantic version from VERSION file
+          if [ -f "VERSION" ]; then
+            SEMANTIC_VERSION=$(cat VERSION | tr -d '[:space:]')
           else
-            VERSION=$(git describe --tags --first-parent --always --long 2>/dev/null || echo "v0.0.0-0-g$(git rev-parse --short HEAD)")
+            echo "ERROR: VERSION file not found in repository root"
+            exit 1
           fi
           
           # Generate short and full SHA
@@ -72,6 +76,9 @@ jobs:
           BRANCH_NAME="${{ github.ref_name }}"
           BRANCH_NAME=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9._-]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
           
+          # Create combined branch-sha tag (always includes both branch and sha)
+          BRANCH_SHA_TAG="${BRANCH_NAME}-${SHORT_SHA}"
+          
           # Check if this is the main branch
           if [ "${{ github.ref }}" == "refs/heads/main" ]; then
             IS_MAIN_BRANCH="true"
@@ -80,20 +87,22 @@ jobs:
           fi
           
           # Output all variables
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "semantic_version=$SEMANTIC_VERSION" >> $GITHUB_OUTPUT
           echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
           echo "full_sha=$FULL_SHA" >> $GITHUB_OUTPUT
           echo "target_registry=$target_registry" >> $GITHUB_OUTPUT
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+          echo "branch_sha_tag=$BRANCH_SHA_TAG" >> $GITHUB_OUTPUT
           echo "is_main_branch=$IS_MAIN_BRANCH" >> $GITHUB_OUTPUT
           
           # Print for logs
           echo "Generated build information:"
-          echo "  VERSION: $VERSION"
+          echo "  SEMANTIC_VERSION: $SEMANTIC_VERSION"
           echo "  SHORT_SHA: $SHORT_SHA"
           echo "  FULL_SHA: $FULL_SHA"
           echo "  TARGET_REGISTRY: $target_registry"
           echo "  BRANCH_NAME: $BRANCH_NAME"
+          echo "  BRANCH_SHA_TAG: $BRANCH_SHA_TAG"
           echo "  IS_MAIN_BRANCH: $IS_MAIN_BRANCH"
 
       - name: Generate build summary
@@ -101,11 +110,11 @@ jobs:
           echo "# Build Information Generated" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Version Details" >> $GITHUB_STEP_SUMMARY
-          echo "- **Version**: \`${{ steps.generate-version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Semantic Version**: \`${{ steps.generate-version.outputs.semantic_version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Short SHA**: \`${{ steps.generate-version.outputs.short_sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Full SHA**: \`${{ steps.generate-version.outputs.full_sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch**: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch Name (sanitized)**: \`${{ steps.generate-version.outputs.branch_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch-SHA Tag**: \`${{ steps.generate-version.outputs.branch_sha_tag }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Is Main Branch**: \`${{ steps.generate-version.outputs.is_main_branch }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Target Registry**: \`${{ steps.generate-version.outputs.target_registry }}\`" >> $GITHUB_STEP_SUMMARY
-
