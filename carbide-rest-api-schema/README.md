@@ -1,6 +1,6 @@
 # Cloud Workflow Schema
 
-This repository defines the Temporal workflow interfaces between Forge Cloud and Forge Site Agent.
+This repository defines the Temporal workflow interfaces between Carbide REST API and Carbide REST API Site Agent.
 
 It also hosts the copy of the Carbide gRPC API proto that must be used by all Cloud services.
 

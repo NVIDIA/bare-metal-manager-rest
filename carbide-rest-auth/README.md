@@ -6,17 +6,6 @@ Initial implementaion will contain:
   - NGC Authentication Middlewar
   - NGC Role Based Authorization
 
-## Development
-
-To build the repo run:
-
-    make build
-
-To run tests:
-
-    make test
-
-
 # Authentication Flow Diagram
 
 ```mermaid
@@ -298,7 +287,7 @@ flowchart TD
             BJ1[Parse RegisteredClaims]
             BJ2[Check ServiceAccount Mode Required]
             BJ3[Use Sub as AuxId, Issuer as FirstName]
-            BJ4[Create Default Admin Roles: FORGE_PROVIDER_ADMIN, FORGE_TEAM_ADMIN]
+            BJ4[Create Default Admin Roles: PROVIDER_ADMIN, TEAM_ADMIN]
             BJ5[DB: UserDAO.GetOrCreate]
             BJ6[Set User in Context]
             
@@ -407,7 +396,7 @@ flowchart TD
 
 #### **Custom Tokens (`RegisteredClaims`)**
 - **Service Account Only**: Requires ServiceAccount mode enabled
-- **Auto-Permissions**: Grants `FORGE_PROVIDER_ADMIN` and `FORGE_TEAM_ADMIN`
+- **Auto-Permissions**: Grants `PROVIDER_ADMIN` and `TEAM_ADMIN`
 - **DB Operations**: `UserDAO.GetOrCreate` with default enterprise roles
 - **Identity**: Uses `sub` as auxiliary ID, `issuer` as first name
 

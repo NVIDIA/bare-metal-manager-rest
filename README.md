@@ -1,186 +1,247 @@
-# Carbide REST API Snapshot
+# Carbide REST API
 
-This is a snapshot of the NVIDIA Carbide cloud infrastructure codebase, set up as a monorepo for local development and single-site deployment.
-
-## Repository Structure
-
-This repository contains all Carbide services in a single monorepo:
-
-```
-carbide-rest-api-snapshot/
-├── go.mod                          # Parent module with replace directives
-├── go.sum                          # All dependencies
-├── carbide-rest-api/               # Cloud REST API
-├── carbide-rest-api-schema/        # API schema definitions
-├── carbide-rest-auth/              # Authentication library
-├── carbide-rest-cert-manager/      # Certificate management (Vault)
-├── carbide-rest-common/            # Shared utilities
-├── carbide-rest-db/                # Database layer and migrations
-├── carbide-rest-ipam/              # IP Address Management
-├── carbide-rest-site-manager/      # Site lifecycle management
-├── carbide-rest-workflow/          # Workflow orchestration
-├── carbide-site-agent/             # Edge site agent (Elektra)
-├── carbide-site-workflow/          # Site workflow library
-└── single-site-deployment/         # Complete deployment setup
-    ├── scripts/
-    │   ├── create-monorepo.sh     # Initialize monorepo
-    │   ├── build-simple.sh        # Build all images
-    │   └── deploy-kind.sh         # Deploy to kind
-    └── kubernetes/                 # K8s manifests
-```
-
-## Monorepo Setup
-
-This repository uses a **parent go.mod** at the root that includes all child modules. The key features:
-
-### Parent go.mod
-- Declares `module carbide.local/snapshot`
-- Contains **replace directives** for all child modules
-- Points to local `./carbide-*` directories
-- Enables offline builds (no GitLab access needed)
-
-### Child Modules
-- Keep their original module names (e.g., `gitlab-master.nvidia.com/nvmetal/cloud-api`)
-- Unchanged from upstream
-- Resolved via parent replace directives
-
-### Benefits
-- ✅ Works completely offline
-- ✅ No code changes needed
-- ✅ Clean dependency management
-- ✅ Easy Docker builds
-- ✅ Supports local development
-
-## Quick Start
-
-### Development Setup
-
-```bash
-# The root go.mod is already set up
-# Just verify it exists
-cat go.mod
-
-# For IDE support, ensure Go workspace is recognized
-# Most IDEs auto-detect go.mod at root
-```
-
-### Building Services
-
-```bash
-cd single-site-deployment
-./build-and-deploy.sh
-```
-
-This runs:
-1. Creates/verifies parent go.mod
-2. Builds all Docker images
-3. Deploys to local kind cluster with HA
-
-Or run steps individually:
-```bash
-./scripts/create-monorepo.sh    # Ensure parent go.mod exists
-./scripts/build-simple.sh        # Build all images
-./scripts/deploy-kind.sh         # Deploy to kind
-```
-
-### Local Development
-
-```bash
-# Make changes in any carbide-* directory
-cd carbide-rest-api
-# ... edit code ...
-
-# Build just that service
-cd ../single-site-deployment
-docker build -t localhost:5000/carbide-rest-api:latest \
-    -f /tmp/Dockerfile.carbide-rest-api \
-    ..
-
-# Or rebuild all
-./scripts/build-simple.sh
-```
-
-## Documentation
-
-- **single-site-deployment/START_HERE.md** - Quick start guide
-- **single-site-deployment/README_COMPLETE.md** - Full reference
-- **single-site-deployment/SETUP_STEPS.md** - Step-by-step guide
-- **SITE_MANAGER_DETAILED.md** - Site Manager architecture
-- **ELEKTRA_SITE_AGENT_DETAILED.md** - Site Agent architecture
+A collection of microservices that comprise the management backend for Carbide, exposed as a REST API.
 
 ## Architecture
 
-### Services
-- **Cloud API**: Main REST API (port 8388)
-- **Workflow Service**: Temporal workers (port 9360)
-- **Site Manager**: Site lifecycle management (port 8100)
-- **IPAM**: IP address management (port 9090)
-- **Cert Manager**: PKI/Vault service (port 8000)
-- **Site Agent (Elektra)**: Edge orchestration (port 9360)
-- **Database**: PostgreSQL with 3 databases
+This monorepo contains the following services:
 
-### Databases
-- **forge**: Cloud control plane data
-- **elektra**: Site agent data
-- **goipam**: IP management data
+| Service | Description | Binary |
+|---------|-------------|--------|
+| **carbide-rest-api** | Main REST API server | `api` |
+| **carbide-rest-workflow** | Temporal workflow service | `workflow` |
+| **carbide-rest-site-manager** | Site management service | `sitemgr` |
+| **carbide-site-agent** | On-site agent (elektra) | `elektra`, `elektractl` |
+| **carbide-rest-db** | Database migrations | `migrations` |
+| **carbide-rest-cert-manager** | Certificate/credentials manager | `credsmgr` |
 
-### HA Configuration
-All services run with 3 replicas except databases and Temporal.
+### Supporting Modules
+
+- **carbide-rest-common** - Shared utilities and configurations
+- **carbide-rest-auth** - Authentication and authorization
+- **carbide-rest-ipam** - IP Address Management
+- **carbide-rest-api-schema** - Protocol buffer schemas
+- **carbide-site-workflow** - Site-side workflow definitions
 
 ## Prerequisites
 
-- Docker Desktop or Colima
-- kind: `brew install kind`
-- kubectl: `brew install kubectl`
-- Go 1.21+
-- 16GB+ RAM
+- Go 1.25.1 or later
+- Docker 20.10+ with BuildKit enabled
+- Make
+- PostgreSQL 14+ (for running tests)
 
-## Contributing
+## Building
 
-### Making Changes
-
-1. Edit code in any `carbide-*` directory
-2. Test locally
-3. Rebuild and test: `./single-site-deployment/scripts/build-simple.sh`
-4. Commit changes
-
-### Adding Dependencies
+### Build All Binaries
 
 ```bash
-# Add to specific service
-cd carbide-rest-api
-go get github.com/new/dependency
-
-# Parent go.mod will pick it up automatically
-cd ..
-go mod tidy
+make build
 ```
 
-### Updating Module Versions
+Binaries are output to `build/binaries/`:
+
+```
+build/binaries/
+  api          # carbide-rest-api
+  workflow     # carbide-rest-workflow
+  sitemgr      # carbide-rest-site-manager
+  elektra      # carbide-site-agent
+  elektractl   # carbide-site-agent CLI
+  migrations   # carbide-rest-db
+  credsmgr     # carbide-rest-cert-manager
+```
+
+### Build Docker Images
+
+Build all production Docker images:
 
 ```bash
-# Update specific dependency across all modules
-cd carbide-rest-api
-go get -u github.com/some/package
-
-cd ..
-go mod tidy
+make docker-build
 ```
 
-## Important Files
+By default, images are tagged with `localhost:5000` registry and `latest` tag.
 
-- **go.mod / go.sum**: Parent module (commit these!)
-- **single-site-deployment/**: Complete deployment setup
-- **.gitignore**: Excludes build artifacts and temp files
+## Using a Private Container Registry
 
-## Support
+### Configure Registry and Tag
 
-For issues:
-1. Check build logs: `/tmp/build-*.log`
-2. Check deployment: `kubectl get pods --all-namespaces`
-3. Review documentation in `single-site-deployment/`
+Override the default registry and tag via environment variables or Make arguments:
+
+```bash
+# Using Make arguments
+make docker-build IMAGE_REGISTRY=my-registry.example.com/carbide IMAGE_TAG=v1.0.0
+
+# Or export environment variables
+export IMAGE_REGISTRY=my-registry.example.com/carbide
+export IMAGE_TAG=v1.0.0
+make docker-build
+```
+
+### Build and Push to Private Registry
+
+1. **Authenticate with your registry:**
+
+```bash
+# Docker Hub
+docker login
+
+# AWS ECR
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 123456789.dkr.ecr.us-east-1.amazonaws.com
+
+# Google Container Registry
+gcloud auth configure-docker
+
+# Azure Container Registry
+az acr login --name myregistry
+
+# Harbor or other private registries
+docker login my-registry.example.com
+```
+
+2. **Build images with your registry prefix:**
+
+```bash
+make docker-build IMAGE_REGISTRY=my-registry.example.com/carbide IMAGE_TAG=v1.0.0
+```
+
+3. **Push all images:**
+
+```bash
+# Push each image
+docker push my-registry.example.com/carbide/carbide-rest-api:v1.0.0
+docker push my-registry.example.com/carbide/carbide-rest-workflow:v1.0.0
+docker push my-registry.example.com/carbide/carbide-rest-site-manager:v1.0.0
+docker push my-registry.example.com/carbide/carbide-site-agent:v1.0.0
+docker push my-registry.example.com/carbide/carbide-rest-db:v1.0.0
+docker push my-registry.example.com/carbide/carbide-rest-cert-manager:v1.0.0
+```
+
+### Quick Build and Push Script
+
+```bash
+#!/bin/bash
+REGISTRY="${1:-my-registry.example.com/carbide}"
+TAG="${2:-latest}"
+
+# Build all images
+make docker-build IMAGE_REGISTRY="$REGISTRY" IMAGE_TAG="$TAG"
+
+# Push all images
+for image in carbide-rest-api carbide-rest-workflow carbide-rest-site-manager carbide-site-agent carbide-rest-db carbide-rest-cert-manager; do
+    docker push "$REGISTRY/$image:$TAG"
+done
+```
+
+### Available Images
+
+| Image | Port | Description |
+|-------|------|-------------|
+| `carbide-rest-api` | 8388 | Main REST API |
+| `carbide-rest-workflow` | - | Temporal workflow worker |
+| `carbide-rest-site-manager` | - | Site management worker |
+| `carbide-site-agent` | - | On-site agent |
+| `carbide-rest-db` | - | Database migrations (run to completion) |
+| `carbide-rest-cert-manager` | - | Certificate manager |
+
+## Running Tests
+
+Tests are currently being ported over from closed source and should not be considered reliable. Some may pass and some may fail while we work through the transition to open source.
+
+Tests require a PostgreSQL database. The Makefile manages a test container automatically.
+
+```bash
+# Run tests (auto-starts PostgreSQL if needed)
+make test
+
+# Run tests with a fresh database
+make test-clean
+
+# Manually manage the test database
+make postgres-up      # Start PostgreSQL
+make postgres-down    # Stop PostgreSQL
+make postgres-restart # Restart PostgreSQL
+```
+
+Test database configuration:
+- Host: `localhost`
+- Port: `30432`
+- User: `postgres`
+- Password: `postgres`
+- Database: `postgres`
+
+## Configuration
+
+Services are configured via environment variables. Common variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DB_HOST` | PostgreSQL host | - |
+| `DB_PORT` | PostgreSQL port | `5432` |
+| `DB_NAME` | Database name | - |
+| `DB_USER` | Database user | - |
+| `DB_PASSWORD` | Database password | - |
+| `TEMPORAL_TLS_ENABLED` | Enable Temporal TLS | `true` |
+| `TEMPORAL_SERVER_NAME` | Temporal server address | - |
+| `TEMPORAL_NAMESPACE` | Temporal namespace | - |
+| `TEMPORAL_QUEUE` | Temporal task queue | - |
+
+## Running Containers
+
+### Basic Example
+
+```bash
+docker run -p 8388:8388 \
+  -e DB_HOST=postgres \
+  -e DB_PORT=5432 \
+  -e DB_NAME=carbide \
+  -e DB_USER=user \
+  -e DB_PASSWORD=password \
+  my-registry.example.com/carbide/carbide-rest-api:v1.0.0
+```
+
+### With Certificate Volumes
+
+```bash
+docker run -p 8388:8388 \
+  -v /path/to/certs:/var/secrets/temporal/certs:ro \
+  -e TEMPORAL_TLS_ENABLED=true \
+  my-registry.example.com/carbide/carbide-rest-api:v1.0.0
+```
+
+## Docker Image Details
+
+Production images use multi-stage builds with:
+
+- **Build stage:** `golang:1.25.1` for compilation
+- **Runtime stage:** `nvcr.io/nvidia/distroless/go:v3.2.1` minimal runtime
+
+Features:
+- Static compilation (CGO disabled)
+- Debug symbols stripped for smaller size
+- Non-root user execution
+- No shell or package manager (distroless)
+
+Approximate image sizes: 20-45 MB depending on service.
+
+## Project Structure
+
+```
+carbide-rest-api/
+  carbide-rest-api/         # Main REST API service
+  carbide-rest-workflow/    # Temporal workflow service
+  carbide-rest-site-manager/# Site manager service
+  carbide-site-agent/       # On-site agent (elektra)
+  carbide-rest-db/          # Database migrations
+  carbide-rest-cert-manager/# Certificate manager
+  carbide-rest-common/      # Shared utilities
+  carbide-rest-auth/        # Authentication
+  carbide-rest-ipam/        # IP Address Management
+  carbide-rest-api-schema/  # Protocol buffers
+  carbide-site-workflow/    # Site workflow definitions
+  docker/production/        # Production Dockerfiles
+  build/binaries/           # Compiled binaries (generated)
+```
 
 ## License
 
-See individual service LICENSE files and THIRD-PARTY-LICENSES.
-
+See [LICENSE](LICENSE) for details.
