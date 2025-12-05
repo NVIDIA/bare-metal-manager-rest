@@ -1,0 +1,102 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+syntax = "proto3";
+
+package workflows.v1;
+
+option go_package = "github.com/nvidia/carbide-rest/workflow-schema/proto";
+
+import "workflow.proto";
+import "forge_carbide.proto";
+import "google/protobuf/timestamp.proto";
+
+// CreateSSHKeyGroupRequest - request parameters of SSHKeyGroup creation
+message CreateSSHKeyGroupRequest {
+  // id of the tenant org attached to this keyset
+  string tenant_organization_id = 1;
+  // the id of the key, provided by the tenant.  Must be unique within the
+  // tenant's organization.
+  string keyset_id = 2;
+  // version of the keyset
+  string version = 3;
+  // list of public keys associated with the tenant org
+  repeated forge.TenantPublicKey public_keys = 4;
+  optional WorkflowOptions options = 5;
+}
+
+// UpdateSSHKeyGroupRequest - request parameters to update SSHKeyGroup
+message UpdateSSHKeyGroupRequest {
+  // id of the tenant org attached to this keyset
+  string tenant_organization_id = 1;
+  // the id of the key, provided by the tenant.  Must be unique within the
+  // tenant's organization.
+  string keyset_id = 2;
+  // version of the keyset
+  string version = 3;
+  // list of public keys associated with the tenant org
+  repeated forge.TenantPublicKey public_keys = 4;
+  // optional version string to check before updating
+  optional string if_version_match = 5;
+  optional WorkflowOptions options = 6;
+}
+
+// DeleteSSHKeyGroupRequest - request parameters to delete SSHKeyGroup
+message DeleteSSHKeyGroupRequest {
+  // id of the tenant org attached to this keyset
+  string tenant_organization_id = 1;
+  // the id of the key, provided by the tenant.  Must be unique within the
+  // tenant's organization.
+  string keyset_id = 2;
+  optional WorkflowOptions options = 3;
+}
+
+// GetSSHKeyGroup - request to get an SSHKeyGroup
+// ListSSHKeyGroup - request to list the existing SSHKeyGroup
+message GetSSHKeyGroup {
+  // id of the tenant org attached to this keyset
+  string tenant_organization_id = 1;
+  // the id of the key, provided by the tenant.  Must be unique within the
+  // tenant's organization.
+  string keyset_id = 2;
+  // request key data
+  bool include_key_data = 3;
+  optional WorkflowOptions options = 4;
+}
+
+// SSHKeyGroupInfo - response for SSHKeyGroup create/update/delete request
+message SSHKeyGroupInfo {
+  WorkflowStatus status = 1;
+  ObjectStatus object_status = 2;
+  string status_msg = 3;
+  forge.TenantKeyset tenant_keyset = 4;
+}
+
+// GetSSHKeyGroupResponse - response for SSHKeyGroup Get queries
+message GetSSHKeyGroupResponse {
+  WorkflowStatus status = 1;
+  string status_msg = 2;
+  forge.TenantKeySetList list = 3;
+  TransactionID transaction_id = 4;
+}
+
+// SSHKeyGroupInventory - inventory info of all SSHKeyGroups on Site collected
+// periodically
+message SSHKeyGroupInventory {
+  // List of SSH keysets
+  repeated forge.TenantKeyset tenant_keysets = 1;
+  // Reported timestamp of SSH keyset inventory
+  google.protobuf.Timestamp timestamp = 2;
+  // Status of Inventory
+  InventoryStatus inventory_status = 3;
+  string status_msg = 4;
+  // Inventory page information
+  InventoryPage inventory_page = 5;
+}

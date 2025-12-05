@@ -1,0 +1,1015 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package server
+
+import (
+	"context"
+	"net"
+	"time"
+
+	"github.com/gogo/status"
+	"github.com/google/uuid"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/reflection"
+
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
+
+	"github.com/rs/zerolog/log"
+
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+)
+
+var (
+	// DefaultPort is the default port that the server listens at
+	DefaultPort = ":11079"
+	// DefaultVpcId is the default VPC ID for testing
+	DefaultVpcId = "00000000-0000-4000-8000-000000000000"
+	// DefaultNetworkSegmentId is the default NetworkSegment ID for testing
+	DefaultNetworkSegmentId = "00000000-0000-4000-9000-000000000000"
+	// DefaultTenantKeysetId is the default TenantKeyset ID for testing
+	DefaultTenantKeysetId = "00000000-0000-4000-a000-000000000000"
+	// DefaultIBParitionId is the default IBPartition ID for testing
+	DefaultIBParitionId = "00000000-0000-4000-b000-000000000000"
+)
+
+// ForgeServerImpl implements interface ForgeServer
+type ForgeServerImpl struct {
+	cwssaws.UnimplementedForgeServer
+	v   map[string]*cwssaws.Vpc
+	ns  map[string]*cwssaws.NetworkSegment
+	ins map[string]*cwssaws.Instance
+	m   map[string]*cwssaws.Machine
+	tk  map[string]*cwssaws.TenantKeyset
+	ibp map[string]*cwssaws.IBPartition
+}
+
+var logger = log.With().Str("Component", "Mock Carbide gRPC Server").Logger()
+
+// Version implements interface ForgeServer
+func (f *ForgeServerImpl) Version(ctx context.Context, req *cwssaws.VersionRequest) (*cwssaws.BuildInfo, error) {
+	return &cwssaws.BuildInfo{
+		BuildVersion: "1.0.0",
+	}, nil
+}
+
+// CreateVpc implements interface ForgeServer
+func (f *ForgeServerImpl) CreateVpc(c context.Context, req *cwssaws.VpcCreationRequest) (*cwssaws.Vpc, error) {
+	if req == nil || req.Name == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+
+	nid := DefaultVpcId
+	_, ok := f.v[DefaultVpcId]
+	if ok {
+		// Default VPC already exists, create a new one with a different ID
+		nid = uuid.NewString()
+	}
+
+	nv := &cwssaws.Vpc{
+		Id:                   &cwssaws.VpcId{Value: nid},
+		Name:                 req.Name,
+		TenantOrganizationId: req.TenantOrganizationId,
+	}
+	f.v[nid] = nv
+
+	return nv, nil
+}
+
+// UpdateVpc implements interface ForgeServer
+func (f *ForgeServerImpl) UpdateVpc(c context.Context, req *cwssaws.VpcUpdateRequest) (*cwssaws.VpcUpdateResult, error) {
+	if req == nil || req.Id == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+
+	nv, ok := f.v[req.Id.Value]
+	if ok {
+		if req.Name != "" {
+			nv.Name = req.Name
+		}
+		return &cwssaws.VpcUpdateResult{}, nil
+	}
+
+	return nil, status.Errorf(codes.NotFound, "VPC with ID not found")
+}
+
+// DeleteVpc implements interface ForgeServer
+func (f *ForgeServerImpl) DeleteVpc(c context.Context, req *cwssaws.VpcDeletionRequest) (*cwssaws.VpcDeletionResult, error) {
+	if req == nil || req.Id == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+
+	_, ok := f.v[req.Id.Value]
+	if ok {
+		delete(f.v, req.Id.Value)
+		return &cwssaws.VpcDeletionResult{}, nil
+	}
+
+	return nil, status.Errorf(codes.NotFound, "VPC with ID not found")
+}
+
+// FindVpcIds implements interface ForgeServer
+func (f *ForgeServerImpl) FindVpcIds(ctx context.Context, req *cwssaws.VpcSearchFilter) (*cwssaws.VpcIdList, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+	response := cwssaws.VpcIdList{}
+	for id := range f.v {
+		response.VpcIds = append(response.VpcIds, &cwssaws.VpcId{Value: id})
+	}
+	return &response, nil
+}
+
+// FindVpcsByIds implements interface ForgeServer
+func (f *ForgeServerImpl) FindVpcsByIds(ctx context.Context, req *cwssaws.VpcsByIdsRequest) (*cwssaws.VpcList, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+	response := cwssaws.VpcList{}
+	for _, id := range req.VpcIds {
+		if obj, ok := f.v[id.GetValue()]; ok {
+			response.Vpcs = append(response.Vpcs, obj)
+		}
+	}
+	return &response, nil
+}
+
+// FindVpcs implements interface ForgeServer
+func (f *ForgeServerImpl) FindVpcs(c context.Context, req *cwssaws.VpcSearchQuery) (*cwssaws.VpcList, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+
+	res := []*cwssaws.Vpc{}
+
+	for _, v := range f.v {
+		res = append(res, v)
+	}
+
+	if req.Id != nil && req.Id.Value != "" {
+		v, ok := f.v[req.Id.Value]
+		if ok {
+			res = []*cwssaws.Vpc{v}
+		} else {
+			res = []*cwssaws.Vpc{}
+		}
+	}
+
+	if req.Name != nil {
+		filtered := []*cwssaws.Vpc{}
+		for _, nv := range f.v {
+			if nv.Name == *req.Name {
+				filtered = append(filtered, nv)
+			}
+		}
+		res = filtered
+	}
+
+	return &cwssaws.VpcList{Vpcs: res}, nil
+}
+
+// CreateNetworkSegment implements interface ForgeServer
+func (f *ForgeServerImpl) CreateNetworkSegment(c context.Context, req *cwssaws.NetworkSegmentCreationRequest) (*cwssaws.NetworkSegment, error) {
+	if req == nil || req.Name == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+
+	nid := DefaultNetworkSegmentId
+	_, ok := f.ns[DefaultNetworkSegmentId]
+	if ok {
+		// Default Network Segment already exists, create a new one with a different ID
+		nid = uuid.NewString()
+	}
+
+	nns := &cwssaws.NetworkSegment{
+		Id:          &cwssaws.NetworkSegmentId{Value: nid},
+		Name:        req.Name,
+		VpcId:       req.VpcId,
+		SubdomainId: req.SubdomainId,
+		Mtu:         req.Mtu,
+		Prefixes:    req.Prefixes,
+	}
+	f.ns[nid] = nns
+
+	return nns, nil
+}
+
+// DeleteNetworkSegment implements interface ForgeServer
+func (f *ForgeServerImpl) DeleteNetworkSegment(c context.Context, req *cwssaws.NetworkSegmentDeletionRequest) (*cwssaws.NetworkSegmentDeletionResult, error) {
+	if req == nil || req.Id == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+
+	_, ok := f.ns[req.Id.Value]
+
+	if ok {
+		delete(f.ns, req.Id.Value)
+		return &cwssaws.NetworkSegmentDeletionResult{}, nil
+	}
+
+	return nil, status.Errorf(codes.NotFound, "NetworkSegment with ID not found")
+}
+
+// FindNetworkSegmentIds implements interface ForgeServer
+func (f *ForgeServerImpl) FindNetworkSegmentIds(ctx context.Context, req *cwssaws.NetworkSegmentSearchFilter) (*cwssaws.NetworkSegmentIdList, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+	response := cwssaws.NetworkSegmentIdList{}
+	for id := range f.ns {
+		response.NetworkSegmentsIds = append(response.NetworkSegmentsIds, &cwssaws.NetworkSegmentId{Value: id})
+	}
+	return &response, nil
+}
+
+// FindNetworkSegmentsByIds implements interface ForgeServer
+func (f *ForgeServerImpl) FindNetworkSegmentsByIds(ctx context.Context, req *cwssaws.NetworkSegmentsByIdsRequest) (*cwssaws.NetworkSegmentList, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+	response := cwssaws.NetworkSegmentList{}
+	for _, id := range req.NetworkSegmentsIds {
+		if obj, ok := f.ns[id.GetValue()]; ok {
+			response.NetworkSegments = append(response.NetworkSegments, obj)
+		}
+	}
+	return &response, nil
+}
+
+// FindNetworkSegments implements interface ForgeServer
+func (f *ForgeServerImpl) FindNetworkSegments(c context.Context, req *cwssaws.NetworkSegmentQuery) (*cwssaws.NetworkSegmentList, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+
+	res := []*cwssaws.NetworkSegment{}
+
+	for _, ns := range f.ns {
+		res = append(res, ns)
+	}
+
+	if req.Id != nil {
+		ns, ok := f.ns[req.Id.Value]
+		if ok {
+			res = []*cwssaws.NetworkSegment{ns}
+		} else {
+			res = []*cwssaws.NetworkSegment{}
+		}
+	}
+
+	return &cwssaws.NetworkSegmentList{NetworkSegments: res}, nil
+}
+
+// CreateInstance implements interface ForgeServer
+func (f *ForgeServerImpl) AllocateInstance(ctx context.Context, req *cwssaws.InstanceAllocationRequest) (*cwssaws.Instance, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+
+	nid := uuid.NewString()
+	if req.InstanceId != nil {
+		nid = req.InstanceId.Value
+	}
+
+	_, ok := f.ins[nid]
+	if !ok {
+		ifcsts := []*cwssaws.InstanceInterfaceStatus{}
+		for _, ifcreq := range req.Config.Network.Interfaces {
+			ifcst := &cwssaws.InstanceInterfaceStatus{
+				MacAddress: getStrPtr(generateMacAddress()),
+				Addresses: []string{
+					generateIPAddress(),
+				},
+			}
+			if ifcreq.FunctionType == cwssaws.InterfaceFunctionType_VIRTUAL_FUNCTION {
+				vfid := uint32(generateInteger(16))
+				ifcst.VirtualFunctionId = &vfid
+			}
+			ifcsts = append(ifcsts, ifcst)
+		}
+
+		nins := cwssaws.Instance{
+			Id:        &cwssaws.InstanceId{Value: nid},
+			MachineId: req.MachineId,
+			Config:    req.Config,
+			Status: &cwssaws.InstanceStatus{
+				Tenant: &cwssaws.InstanceTenantStatus{
+					State: cwssaws.TenantState_PROVISIONING,
+				},
+				Network: &cwssaws.InstanceNetworkStatus{
+					Interfaces: ifcsts,
+				},
+			},
+		}
+
+		f.ins[nid] = &nins
+
+		m := cwssaws.Machine{
+			Id:    req.MachineId,
+			State: "Ready",
+		}
+
+		_, ok := f.m[req.MachineId.Id]
+		if !ok {
+			f.m[req.MachineId.Id] = &m
+		}
+
+		return &nins, nil
+	}
+
+	return nil, status.Errorf(codes.Internal, "Failed to create Instance")
+}
+
+// DeleteInstance implements interface ForgeServer
+func (f *ForgeServerImpl) ReleaseInstance(c context.Context, req *cwssaws.InstanceReleaseRequest) (*cwssaws.InstanceReleaseResult, error) {
+	if req == nil || req.Id == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+
+	_, ok := f.ins[req.Id.Value]
+	if ok {
+		delete(f.ins, req.Id.Value)
+		return &cwssaws.InstanceReleaseResult{}, nil
+	}
+
+	return nil, status.Errorf(codes.NotFound, "Instance with ID not found")
+}
+
+// FindInstances implements interface ForgeServer
+func (f *ForgeServerImpl) FindInstanceIds(ctx context.Context, req *cwssaws.InstanceSearchFilter) (*cwssaws.InstanceIdList, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+	response := cwssaws.InstanceIdList{}
+	for id := range f.ins {
+		response.InstanceIds = append(response.InstanceIds, &cwssaws.InstanceId{Value: id})
+	}
+	return &response, nil
+}
+
+// FindInstances implements interface ForgeServer
+func (f *ForgeServerImpl) FindInstancesByIds(ctx context.Context, req *cwssaws.InstancesByIdsRequest) (*cwssaws.InstanceList, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+	response := cwssaws.InstanceList{}
+	for _, id := range req.InstanceIds {
+		if obj, ok := f.ins[id.GetValue()]; ok {
+			response.Instances = append(response.Instances, obj)
+		}
+	}
+	return &response, nil
+}
+
+// FindInstances implements interface ForgeServer
+func (f *ForgeServerImpl) FindInstances(c context.Context, req *cwssaws.InstanceSearchQuery) (*cwssaws.InstanceList, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+
+	res := []*cwssaws.Instance{}
+
+	for _, ins := range f.ins {
+		res = append(res, ins)
+	}
+
+	if req.Id != nil {
+		ins, ok := f.ins[req.Id.Value]
+		if ok {
+			res = []*cwssaws.Instance{ins}
+		} else {
+			res = []*cwssaws.Instance{}
+		}
+	}
+
+	return &cwssaws.InstanceList{Instances: res}, nil
+}
+
+// InvokeInstancePower implements interface ForgeServer
+func (f *ForgeServerImpl) InvokeInstancePower(c context.Context, req *cwssaws.InstancePowerRequest) (*cwssaws.InstancePowerResult, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+
+	_, ok := f.m[req.MachineId.Id]
+	if ok {
+		if req.Operation == cwssaws.InstancePowerRequest_POWER_RESET {
+			return &cwssaws.InstancePowerResult{}, nil
+		}
+
+		return &cwssaws.InstancePowerResult{}, status.Errorf(codes.InvalidArgument, "Invalid operation in request")
+	}
+
+	return nil, status.Errorf(codes.NotFound, "Machine with ID not found")
+}
+
+// FindMachines implements interface ForgeServer
+func (f *ForgeServerImpl) FindMachines(context.Context, *cwssaws.MachineSearchQuery) (*cwssaws.MachineList, error) {
+	nid := uuid.NewString()
+
+	var memSize uint32 = 16384
+
+	m := &cwssaws.Machine{
+		Id:    &cwssaws.MachineId{Id: nid},
+		State: "Ready",
+		Interfaces: []*cwssaws.MachineInterface{
+			{
+				Id:                   &cwssaws.MachineInterfaceId{Value: uuid.NewString()},
+				AttachedDpuMachineId: &cwssaws.MachineId{Id: uuid.NewString()},
+				MachineId:            &cwssaws.MachineId{Id: nid},
+				SegmentId:            &cwssaws.NetworkSegmentId{Value: uuid.NewString()},
+				Hostname:             "forge.nvidia.com",
+				PrimaryInterface:     true,
+				MacAddress:           generateMacAddress(),
+				Address:              []string{generateIPAddress()},
+			},
+		},
+		DiscoveryInfo: &cwssaws.DiscoveryInfo{
+			Cpus: []*cwssaws.Cpu{
+				{
+					Vendor:    "GenuineIntel",
+					Model:     "Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz",
+					Frequency: "1571.080",
+					Number:    0,
+					Core:      0,
+					Socket:    0,
+				},
+				{
+					Vendor:    "GenuineIntel",
+					Model:     "Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz",
+					Frequency: "1571.080",
+					Number:    1,
+					Core:      0,
+					Socket:    0,
+				},
+				{
+					Vendor:    "GenuineIntel",
+					Model:     "Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz",
+					Frequency: "3371.751",
+					Number:    2,
+					Core:      0,
+					Socket:    1,
+				},
+				{
+					Vendor:    "GenuineIntel",
+					Model:     "Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz",
+					Frequency: "3017.142",
+					Number:    3,
+					Core:      0,
+					Socket:    1,
+				},
+				{
+					Vendor:    "GenuineIntel",
+					Model:     "Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz",
+					Frequency: "3507.275",
+					Number:    4,
+					Core:      1,
+					Socket:    0,
+				},
+				{
+					Vendor:    "GenuineIntel",
+					Model:     "Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz",
+					Frequency: "3255.853",
+					Number:    5,
+					Core:      1,
+					Socket:    0,
+				},
+				{
+					Vendor:    "GenuineIntel",
+					Model:     "Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz",
+					Frequency: "3530.777",
+					Number:    6,
+					Core:      1,
+					Socket:    1,
+				},
+				{
+					Vendor:    "GenuineIntel",
+					Model:     "Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz",
+					Frequency: "3250.777",
+					Number:    7,
+					Core:      1,
+					Socket:    1,
+				},
+				{
+					Vendor:    "GenuineIntel",
+					Model:     "Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz",
+					Frequency: "3250.777",
+					Number:    8,
+					Core:      2,
+					Socket:    0,
+				},
+				{
+					Vendor:    "GenuineIntel",
+					Model:     "Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz",
+					Frequency: "3250.777",
+					Number:    9,
+					Core:      2,
+					Socket:    0,
+				},
+				{
+					Vendor:    "GenuineIntel",
+					Model:     "Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz",
+					Frequency: "3250.777",
+					Number:    10,
+					Core:      2,
+					Socket:    1,
+				},
+				{
+					Vendor:    "GenuineIntel",
+					Model:     "Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz",
+					Frequency: "3250.777",
+					Number:    11,
+					Core:      2,
+					Socket:    1,
+				},
+			},
+			NetworkInterfaces: []*cwssaws.NetworkInterface{
+				{
+					PciProperties: &cwssaws.PciDeviceProperties{
+						Vendor:      "0x14e4",
+						Device:      "0x165f",
+						Path:        "/devices/pci0000:00/0000:00:1c.5/0000:04:00.0/net/eno8303",
+						Description: getStrPtr("NetXtreme BCM5720 2-port Gigabit Ethernet PCIe (PowerEdge Rx5xx LOM Board)"),
+					},
+				},
+				{
+					PciProperties: &cwssaws.PciDeviceProperties{
+						Vendor:      "0x14e4",
+						Device:      "0x165f",
+						Path:        "/devices/pci0000:00/0000:00:1c.5/0000:04:00.1/net/eno8403",
+						Description: getStrPtr("NetXtreme BCM5720 2-port Gigabit Ethernet PCIe (PowerEdge Rx5xx LOM Board)"),
+					},
+				},
+				{
+					PciProperties: &cwssaws.PciDeviceProperties{
+						Vendor:      "0x14e4",
+						Device:      "0x16d7",
+						Path:        "/devices/pci0000:30/0000:30:04.0/0000:31:00.0/net/eno12399np0",
+						Description: getStrPtr("BCM57414 NetXtreme-E 10Gb/25Gb RDMA Ethernet Controller"),
+					},
+				},
+				{
+					PciProperties: &cwssaws.PciDeviceProperties{
+						Vendor:      "0x14e4",
+						Device:      "0x16d7",
+						Path:        "/devices/pci0000:30/0000:30:04.0/0000:31:00.1/net/eno12409np1",
+						Description: getStrPtr("BCM57414 NetXtreme-E 10Gb/25Gb RDMA Ethernet Controller"),
+					},
+				},
+				{
+					PciProperties: &cwssaws.PciDeviceProperties{
+						Vendor:      "0x15b3",
+						Device:      "0xa2d6",
+						Path:        "/devices/pci0000:b0/0000:b0:02.0/0000:b1:00.0/net/enp177s0f0np0",
+						NumaNode:    1,
+						Description: getStrPtr("MT42822 BlueField-2 integrated ConnectX-6 Dx network controller"),
+					},
+				},
+				{
+					PciProperties: &cwssaws.PciDeviceProperties{
+						Vendor:      "0x15b3",
+						Device:      "0xa2d6",
+						Path:        "/devices/pci0000:b0/0000:b0:02.0/0000:b1:00.1/net/enp177s0f1np1",
+						NumaNode:    1,
+						Description: getStrPtr("MT42822 BlueField-2 integrated ConnectX-6 Dx network controller"),
+					},
+				},
+			},
+			BlockDevices: []*cwssaws.BlockDevice{
+				{
+					Model:    "NO_MODEL",
+					Revision: "NO_REVISION",
+				},
+				{
+					Model:    "LOGICAL_VOLUME",
+					Revision: "3.53",
+					Serial:   "600508b1001cb4d1a278bf3ee7a72228",
+				},
+				{
+					Model:    "Dell Ent NVMe CM6 RI 1.92TB",
+					Revision: "2.1.3",
+				},
+				{
+					Model:    "SSDPF2KE016T9L",
+					Revision: "2CV1L028",
+				},
+				{
+					Model:    "DELLBOSS_VD",
+					Revision: "MV.R00-0",
+				},
+			},
+			DmiData: &cwssaws.DmiData{
+				BoardName:     "7Z23CTOLWW",
+				BoardVersion:  "06",
+				BiosVersion:   "U8E122J-1.51",
+				ProductSerial: "J1050ACR",
+				BoardSerial:   ".C1KS2CS001G.",
+				ChassisSerial: "J1050ACR",
+				BiosDate:      "03/30/2023",
+				ProductName:   "ThinkSystem SR670 V2",
+				SysVendor:     "Lenovo",
+			},
+			NvmeDevices: []*cwssaws.NvmeDevice{
+				{
+					Model:       "Dell Ent NVMe CM6 RI 1.92TB",
+					FirmwareRev: "2.1.3",
+				},
+				{
+					Model:       "Dell Ent NVMe CM6 RI 1.92TB",
+					FirmwareRev: "2.1.3",
+				},
+				{
+					Model:       "Dell Ent NVMe CM6 RI 1.92TB",
+					FirmwareRev: "2.1.3",
+				},
+			},
+			Gpus: []*cwssaws.Gpu{
+				{
+					Name:           "NVIDIA H100 PCIe",
+					Serial:         "1654422005434",
+					DriverVersion:  "530.30.02",
+					VbiosVersion:   "96.00.30.00.01",
+					InforomVersion: "1010.0200.00.02",
+					TotalMemory:    "81559 MiB",
+					Frequency:      "1755 MHz",
+					PciBusId:       "00000000:17:00.0",
+				},
+			},
+			MemoryDevices: []*cwssaws.MemoryDevice{
+				{
+					SizeMb:  &memSize,
+					MemType: getStrPtr("DDR4"),
+				},
+				{
+					SizeMb:  &memSize,
+					MemType: getStrPtr("DDR4"),
+				},
+				{
+					SizeMb:  &memSize,
+					MemType: getStrPtr("DDR4"),
+				},
+				{
+					SizeMb:  &memSize,
+					MemType: getStrPtr("DDR4"),
+				},
+				{
+					SizeMb:  nil,
+					MemType: getStrPtr("UNKNOWN"),
+				},
+				{
+					SizeMb:  nil,
+					MemType: getStrPtr("UNKNOWN"),
+				},
+				{
+					SizeMb:  nil,
+					MemType: getStrPtr("UNKNOWN"),
+				},
+				{
+					SizeMb:  nil,
+					MemType: getStrPtr("UNKNOWN"),
+				},
+				{
+					SizeMb:  nil,
+					MemType: getStrPtr("UNKNOWN"),
+				},
+				{
+					SizeMb:  nil,
+					MemType: getStrPtr("UNKNOWN"),
+				},
+				{
+					SizeMb:  nil,
+					MemType: getStrPtr("UNKNOWN"),
+				},
+				{
+					SizeMb:  nil,
+					MemType: getStrPtr("UNKNOWN"),
+				},
+				{
+					SizeMb:  nil,
+					MemType: getStrPtr("UNKNOWN"),
+				},
+				{
+					SizeMb:  nil,
+					MemType: getStrPtr("UNKNOWN"),
+				},
+				{
+					SizeMb:  nil,
+					MemType: getStrPtr("UNKNOWN"),
+				},
+				{
+					SizeMb:  nil,
+					MemType: getStrPtr("UNKNOWN"),
+				},
+				{
+					SizeMb:  &memSize,
+					MemType: getStrPtr("DDR4"),
+				},
+				{
+					SizeMb:  &memSize,
+					MemType: getStrPtr("DDR4"),
+				},
+				{
+					SizeMb:  &memSize,
+					MemType: getStrPtr("DDR4"),
+				},
+				{
+					SizeMb:  &memSize,
+					MemType: getStrPtr("DDR4"),
+				},
+				{
+					SizeMb:  nil,
+					MemType: getStrPtr("UNKNOWN"),
+				},
+			},
+			InfinibandInterfaces: []*cwssaws.InfinibandInterface{
+				{
+					PciProperties: &cwssaws.PciDeviceProperties{
+						Vendor:      "Mellanox Technologies",
+						Device:      "MT28908 Family [ConnectX-6]",
+						Path:        "/devices/pci0000:c9/0000:c9:02.0/0000:ca:00.0/infiniband/rocep202s0f0",
+						NumaNode:    1,
+						Description: getStrPtr("MT28908 Family [ConnectX-6]"),
+						Slot:        getStrPtr("0000:ca:00.0"),
+					},
+					Guid: "1070fd0300bd43ac",
+				},
+				{
+					PciProperties: &cwssaws.PciDeviceProperties{
+						Vendor:      "Mellanox Technologies",
+						Device:      "MT28908 Family [ConnectX-6]",
+						Path:        "/devices/pci0000:c9/0000:c9:02.0/0000:ca:00.1/infiniband/rocep202s0f1",
+						NumaNode:    1,
+						Description: getStrPtr("MT28908 Family [ConnectX-6]"),
+						Slot:        getStrPtr("0000:ca:00.1"),
+					},
+					Guid: "1070fd0300bd43ad",
+				},
+			},
+		},
+	}
+
+	return &cwssaws.MachineList{Machines: []*cwssaws.Machine{m}}, nil
+}
+
+func (f *ForgeServerImpl) SetMaintenance(context.Context, *cwssaws.MaintenanceRequest) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
+}
+
+// CreateTenantKeyset implements interface ForgeServer
+func (f *ForgeServerImpl) CreateTenantKeyset(c context.Context, req *cwssaws.CreateTenantKeysetRequest) (*cwssaws.CreateTenantKeysetResponse, error) {
+	if req == nil || req.KeysetIdentifier == nil || req.KeysetIdentifier.KeysetId == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+
+	nid := DefaultTenantKeysetId
+	_, ok := f.tk[DefaultTenantKeysetId]
+	if ok {
+		// Default TenantKeyset already exists, create a new one with a different ID
+		nid = uuid.NewString()
+	}
+
+	ntk := &cwssaws.TenantKeyset{
+		KeysetIdentifier: &cwssaws.TenantKeysetIdentifier{
+			KeysetId: nid,
+		},
+		KeysetContent: req.KeysetContent,
+		Version:       req.Version,
+	}
+
+	f.tk[nid] = ntk
+
+	result := &cwssaws.CreateTenantKeysetResponse{
+		Keyset: ntk,
+	}
+
+	return result, nil
+}
+
+// UpdateTenantKeyset implements interface ForgeServer
+func (f *ForgeServerImpl) UpdateTenantKeyset(c context.Context, req *cwssaws.UpdateTenantKeysetRequest) (*cwssaws.UpdateTenantKeysetResponse, error) {
+	if req == nil || req.KeysetIdentifier == nil || req.KeysetIdentifier.KeysetId == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+
+	eid := req.KeysetIdentifier.KeysetId
+
+	_, ok := f.tk[eid]
+	if ok {
+		f.tk[eid].KeysetContent = req.KeysetContent
+		f.tk[eid].Version = req.Version
+
+		return &cwssaws.UpdateTenantKeysetResponse{}, nil
+	}
+
+	return nil, status.Errorf(codes.Internal, "TenantKeyset with ID not found")
+}
+
+// DeleteTenantKeyset implements interface ForgeServer
+func (f *ForgeServerImpl) DeleteTenantKeyset(c context.Context, req *cwssaws.DeleteTenantKeysetRequest) (*cwssaws.DeleteTenantKeysetResponse, error) {
+	if req == nil || req.KeysetIdentifier == nil || req.KeysetIdentifier.KeysetId == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+
+	eid := req.KeysetIdentifier.KeysetId
+
+	_, ok := f.tk[eid]
+	if ok {
+		delete(f.tk, eid)
+		return &cwssaws.DeleteTenantKeysetResponse{}, nil
+	}
+
+	return nil, status.Errorf(codes.NotFound, "TenantKeyset with ID not found")
+}
+
+// FindTenantKeysetIds implements interface ForgeServer
+func (f *ForgeServerImpl) FindTenantKeysetIds(ctx context.Context, req *cwssaws.TenantKeysetSearchFilter) (*cwssaws.TenantKeysetIdList, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+	response := cwssaws.TenantKeysetIdList{}
+	for id := range f.tk {
+		response.KeysetIds = append(response.KeysetIds, &cwssaws.TenantKeysetIdentifier{KeysetId: id})
+	}
+	return &response, nil
+}
+
+// FindTenantKeysetsByIds implements interface ForgeServer
+func (f *ForgeServerImpl) FindTenantKeysetsByIds(ctx context.Context, req *cwssaws.TenantKeysetsByIdsRequest) (*cwssaws.TenantKeySetList, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+	response := cwssaws.TenantKeySetList{}
+	for _, id := range req.KeysetIds {
+		if obj, ok := f.tk[id.KeysetId]; ok {
+			response.Keyset = append(response.Keyset, obj)
+		}
+	}
+	return &response, nil
+}
+
+// FindTenantKeyset implements interface ForgeServer
+func (f *ForgeServerImpl) FindTenantKeyset(c context.Context, req *cwssaws.FindTenantKeysetRequest) (*cwssaws.TenantKeySetList, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+
+	res := []*cwssaws.TenantKeyset{}
+	for _, tk := range f.tk {
+		res = append(res, tk)
+	}
+
+	if req.KeysetId != nil {
+		tk, ok := f.tk[*req.KeysetId]
+		if ok {
+			res = []*cwssaws.TenantKeyset{tk}
+		} else {
+			res = []*cwssaws.TenantKeyset{}
+		}
+	}
+
+	if req.OrganizationId != nil {
+		filtered := []*cwssaws.TenantKeyset{}
+		for _, tk := range res {
+			if tk.KeysetIdentifier.OrganizationId == *req.OrganizationId {
+				filtered = append(filtered, tk)
+			}
+		}
+		res = filtered
+	}
+
+	return &cwssaws.TenantKeySetList{Keyset: res}, nil
+}
+
+// UpdateIBPartition implements interface ForgeServer
+func (f *ForgeServerImpl) CreateIBPartition(c context.Context, req *cwssaws.IBPartitionCreationRequest) (*cwssaws.IBPartition, error) {
+	if req == nil || req.Config == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+
+	nid := DefaultIBParitionId
+	_, ok := f.ibp[DefaultNetworkSegmentId]
+	if ok {
+		// Default IBPartition already exists, create a new one with a different ID
+		nid = uuid.NewString()
+	}
+
+	nibp := &cwssaws.IBPartition{
+		Id: &cwssaws.IBPartitionId{Value: nid},
+		Config: &cwssaws.IBPartitionConfig{
+			Name:                 req.Config.Name,
+			TenantOrganizationId: req.Config.TenantOrganizationId,
+		},
+	}
+
+	f.ibp[nid] = nibp
+	return nibp, nil
+}
+
+// DeleteIBPartition implements interface ForgeServer
+func (f *ForgeServerImpl) DeleteIBPartition(c context.Context, req *cwssaws.IBPartitionDeletionRequest) (*cwssaws.IBPartitionDeletionResult, error) {
+	if req == nil || req.Id == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+
+	_, ok := f.ibp[req.Id.Value]
+
+	if ok {
+		delete(f.ibp, req.Id.Value)
+		return &cwssaws.IBPartitionDeletionResult{}, nil
+	}
+
+	return nil, status.Errorf(codes.NotFound, "IB Partition with ID not found")
+}
+
+// FindIBPartitionIds implements interface ForgeServer
+func (f *ForgeServerImpl) FindIBPartitionIds(ctx context.Context, req *cwssaws.IBPartitionSearchFilter) (*cwssaws.IBPartitionIdList, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+	response := cwssaws.IBPartitionIdList{}
+	for id := range f.ibp {
+		response.IbPartitionIds = append(response.IbPartitionIds, &cwssaws.IBPartitionId{Value: id})
+	}
+	return &response, nil
+}
+
+// FindIBPartitionsByIds implements interface ForgeServer
+func (f *ForgeServerImpl) FindIBPartitionsByIds(ctx context.Context, req *cwssaws.IBPartitionsByIdsRequest) (*cwssaws.IBPartitionList, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+	response := cwssaws.IBPartitionList{}
+	for _, id := range req.IbPartitionIds {
+		if obj, ok := f.ibp[id.GetValue()]; ok {
+			response.IbPartitions = append(response.IbPartitions, obj)
+		}
+	}
+	return &response, nil
+}
+
+// CreateIBPartition implements interface ForgeServer
+func (f *ForgeServerImpl) FindIBPartitions(c context.Context, req *cwssaws.IBPartitionQuery) (*cwssaws.IBPartitionList, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+
+	res := []*cwssaws.IBPartition{}
+	for _, ibp := range f.ibp {
+		res = append(res, ibp)
+	}
+
+	if req.Id != nil {
+		ibp, ok := f.ibp[req.Id.Value]
+		if ok {
+			res = []*cwssaws.IBPartition{ibp}
+		} else {
+			res = []*cwssaws.IBPartition{}
+		}
+	}
+
+	return &cwssaws.IBPartitionList{IbPartitions: res}, nil
+}
+
+// ForgeTest tests the grpc server
+func ForgeTest(secs int) {
+	listener, err := net.Listen("tcp", DefaultPort)
+	if err != nil {
+		panic(err)
+	}
+
+	s := grpc.NewServer()
+	reflection.Register(s)
+	cwssaws.RegisterForgeServer(s, &ForgeServerImpl{
+		v:   make(map[string]*cwssaws.Vpc),
+		ns:  make(map[string]*cwssaws.NetworkSegment),
+		ins: make(map[string]*cwssaws.Instance),
+		m:   make(map[string]*cwssaws.Machine),
+		tk:  make(map[string]*cwssaws.TenantKeyset),
+		ibp: make(map[string]*cwssaws.IBPartition),
+	})
+
+	if secs != 0 {
+		timer := time.AfterFunc(time.Second*time.Duration(secs), func() {
+			s.GracefulStop()
+			logger.Info().Msgf("Timer started for: %v seconds", secs)
+		})
+		defer timer.Stop()
+	}
+
+	logger.Info().Msg("Started API server")
+
+	err = s.Serve(listener)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to start API server")
+	}
+
+	logger.Info().Msg("Stopped API server")
+}

@@ -1,0 +1,43 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+syntax = "proto3";
+
+package workflows.v1;
+
+option go_package = "github.com/nvidia/carbide-rest/workflow-schema/proto";
+
+import "google/protobuf/timestamp.proto";
+
+// HealthStatus - site agent health status info sent to cloud
+message HealthStatus {
+  // Site Inventory collection status via Cron
+  HealthStatusMsg SiteInventoryCollection = 1;
+  // Site GRPC interface connection status
+  HealthStatusMsg SiteControllerConnection = 2;
+  // Site Agent HA Status
+  HealthStatusMsg SiteAgentHighAvailability = 3;
+  // Reported timestamp of Health status
+  google.protobuf.Timestamp timestamp = 4;
+}
+
+// HealthState - possible health status for a given state
+enum HealthState {
+  UNKNOWN = 0;
+  UP = 1;
+  DOWN = 2;
+  ERROR = 3;
+}
+
+// HealthStatusMsg - status of given state in Site agent
+message HealthStatusMsg {
+  HealthState State = 1;
+  string Description = 2;
+}

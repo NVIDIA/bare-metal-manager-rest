@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+#
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+namespace: cloud-site-manager
+
+resources:
+- namespace.yaml
+- imagepullsecret.yaml
+- crd-site.yaml
+- deployment.yaml
+- serviceaccount-role.yaml
+- serviceaccount-rolebinding.yaml
+- serviceaccount.yaml
+- sitemgr-service.yaml
+
+images:
+- name: sitemgr
+  newName: nvcr.io/nvidian/nvforge-devel/cloud-site-manager
+  newTag: v0.1.16-4-g8d0b81a

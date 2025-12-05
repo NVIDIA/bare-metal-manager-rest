@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+#
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cloud-db-migration-0-1-47
+  labels:
+    app: cloud-db-migration
+spec:
+  template:
+    spec:
+      imagePullSecrets:
+        - name: imagepullsecret
+      restartPolicy: Never
+      containers:
+        - name: cloud-db
+          image: cloud-db
+          imagePullPolicy: Always
+          env:
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: forge.forge-pg-cluster.credentials
+                  key: username
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: forge.forge-pg-cluster.credentials
+                  key: password
+                  optional: true
+            - name: PGPASSWORD_PATH
+              value: /var/secrets/db/password
+            - name: DBNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: cloud-db-config
+                  key: name
+            - name: PGHOST
+              valueFrom:
+                configMapKeyRef:
+                  name: cloud-db-config
+                  key: host
+            - name: PGPORT
+              valueFrom:
+                configMapKeyRef:
+                  name: cloud-db-config
+                  key: port
+          resources:
+            requests:
+              cpu: 50m
+              memory: 300Mi
+            limits:
+              cpu: 1500m
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - NET_RAW
+      securityContext:
+        runAsNonRoot: false

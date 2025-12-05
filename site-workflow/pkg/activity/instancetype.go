@@ -1,0 +1,285 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package activity
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/rs/zerolog/log"
+	"go.temporal.io/sdk/temporal"
+
+	cClient "github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
+
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+
+	swe "github.com/nvidia/carbide-rest/site-workflow/pkg/error"
+	"github.com/nvidia/carbide-rest/site-workflow/pkg/util"
+)
+
+// ManageInstanceType is an activity wrapper for InstanceType management tasks that allows injecting DB access
+type ManageInstanceType struct {
+	CarbideAtomicClient *cClient.CarbideAtomicClient
+}
+
+// Function to Create Forge InstanceType with the Site Controller
+func (mm *ManageInstanceType) CreateInstanceTypeOnSite(ctx context.Context, request *cwssaws.CreateInstanceTypeRequest) error {
+	logger := log.With().Str("Activity", "CreateInstanceTypeOnSite").Logger()
+
+	logger.Info().Msg("Starting activity")
+
+	var err error
+
+	// Validate request
+	if request == nil {
+		err = errors.New("received empty create InstanceType request")
+	} else if request.Id == nil || *request.Id == "" {
+		err = errors.New("received create InstanceType request without ID")
+	}
+
+	if err != nil {
+		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
+	}
+
+	// Call Site Controller gRPC endpoint
+	carbideClient := mm.CarbideAtomicClient.GetClient()
+	forgeClient := carbideClient.Carbide()
+
+	_, err = forgeClient.CreateInstanceType(ctx, request)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to create InstanceType using Site Controller API")
+		return swe.WrapErr(err)
+	}
+
+	logger.Info().Msg("Completed activity")
+
+	return nil
+}
+
+// Function Update Forge InstanceType with the Site Controller
+func (mm *ManageInstanceType) UpdateInstanceTypeOnSite(ctx context.Context, request *cwssaws.UpdateInstanceTypeRequest) error {
+	logger := log.With().Str("Activity", "UpdateInstanceTypeOnSite").Logger()
+
+	logger.Info().Msg("Starting activity")
+
+	var err error
+
+	// Validate request
+	if request == nil {
+		err = errors.New("received empty InstanceType config update request")
+	} else if request.Id == "" {
+		err = errors.New("received InstanceType config update request without InstanceType ID")
+	}
+
+	if err != nil {
+		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
+	}
+
+	// Call Site Controller gRPC endpoint
+	carbideClient := mm.CarbideAtomicClient.GetClient()
+	forgeClient := carbideClient.Carbide()
+
+	_, err = forgeClient.UpdateInstanceType(ctx, request)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to update config for InstanceType using Site Controller API")
+		return swe.WrapErr(err)
+	}
+
+	logger.Info().Msg("Completed activity")
+
+	return nil
+}
+
+// Function to Delete Forge InstanceType with the Site Controller
+func (mm *ManageInstanceType) DeleteInstanceTypeOnSite(ctx context.Context, request *cwssaws.DeleteInstanceTypeRequest) error {
+	logger := log.With().Str("Activity", "DeleteInstanceTypeOnSite").Logger()
+
+	logger.Info().Msg("Starting activity")
+
+	var err error
+
+	// Validate request
+	if request == nil {
+		err = errors.New("received empty delete InstanceType request")
+	} else if request.Id == "" {
+		err = errors.New("received delete InstanceType request without InstanceType ID")
+	}
+
+	if err != nil {
+		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
+	}
+
+	// Call Site Controller gRPC endpoint
+	carbideClient := mm.CarbideAtomicClient.GetClient()
+	forgeClient := carbideClient.Carbide()
+
+	_, err = forgeClient.DeleteInstanceType(ctx, request)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to delete InstanceType using Site Controller API")
+		return swe.WrapErr(err)
+	}
+
+	logger.Info().Msg("Completed activity")
+
+	return nil
+}
+
+// Function to associate Machine records with an InstanceType
+func (mm *ManageInstanceType) AssociateMachinesWithInstanceTypeOnSite(ctx context.Context, request *cwssaws.AssociateMachinesWithInstanceTypeRequest) error {
+	logger := log.With().Str("Activity", "AssociateMachinesWithInstanceTypeOnSite").Logger()
+
+	logger.Info().Msg("Starting activity")
+
+	var err error
+
+	// Validate request
+	switch {
+	case request == nil:
+		err = errors.New("received empty AssociateMachinesWithInstanceTypeOnSite request")
+	case request.InstanceTypeId == "":
+		err = errors.New("received AssociateMachinesWithInstanceTypeOnSite without InstanceType ID")
+	case len(request.MachineIds) == 0:
+		err = errors.New("received AssociateMachinesWithInstanceTypeOnSite without Machine ID list")
+	}
+
+	if err != nil {
+		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
+	}
+
+	// Call Site Controller gRPC endpoint
+	carbideClient := mm.CarbideAtomicClient.GetClient()
+	forgeClient := carbideClient.Carbide()
+
+	_, err = forgeClient.AssociateMachinesWithInstanceType(ctx, request)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to associate Machines with InstanceType using Site Controller API")
+		return swe.WrapErr(err)
+	}
+
+	logger.Info().Msg("Completed activity")
+
+	return nil
+}
+
+// Function to remove the association between a Machine and InstanceType
+func (mm *ManageInstanceType) RemoveMachineInstanceTypeAssociationOnSite(ctx context.Context, request *cwssaws.RemoveMachineInstanceTypeAssociationRequest) error {
+	logger := log.With().Str("Activity", "RemoveMachineInstanceTypeAssociationOnSite").Logger()
+
+	logger.Info().Msg("Starting activity")
+
+	var err error
+
+	// Validate request
+	switch {
+	case request == nil:
+		err = errors.New("received empty RemoveMachineInstanceTypeAssociationOnSite request")
+	case request.MachineId == "":
+		err = errors.New("received RemoveMachineInstanceTypeAssociationOnSite request without Machine ID")
+	}
+
+	if err != nil {
+		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
+	}
+
+	// Call Site Controller gRPC endpoint
+	carbideClient := mm.CarbideAtomicClient.GetClient()
+	forgeClient := carbideClient.Carbide()
+
+	_, err = forgeClient.RemoveMachineInstanceTypeAssociation(ctx, request)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to associate Machines with InstanceType using Site Controller API")
+		return swe.WrapErr(err)
+	}
+
+	logger.Info().Msg("Completed activity")
+
+	return nil
+}
+
+// NewManageInstanceType returns a new ManageInstanceType activity
+func NewManageInstanceType(carbideClient *cClient.CarbideAtomicClient) ManageInstanceType {
+	return ManageInstanceType{
+		CarbideAtomicClient: carbideClient,
+	}
+}
+
+// ManageInstanceTypeInventory is an activity wrapper for InstanceType inventory collection and publishing
+type ManageInstanceTypeInventory struct {
+	config ManageInventoryConfig
+}
+
+// DiscoverInstanceTypeInventory is an activity to collect InstanceType inventory and publish to Temporal queue
+func (mmi *ManageInstanceTypeInventory) DiscoverInstanceTypeInventory(ctx context.Context) error {
+	logger := log.With().Str("Activity", "DiscoverInstanceTypeInventory").Logger()
+	logger.Info().Msg("Starting activity")
+	inventoryImpl := manageInventoryImpl[*cwssaws.UUID, *cwssaws.InstanceType, *cwssaws.InstanceTypeInventory]{
+		itemType:               "InstanceType",
+		config:                 mmi.config,
+		internalFindIDs:        instanceTypeFindIDs,
+		internalFindByIDs:      instanceTypeFindByIDs,
+		internalPagedInventory: instanceTypePagedInventory,
+	}
+	return inventoryImpl.CollectAndPublishInventory(ctx, &logger)
+}
+
+// NewManageInstanceTypeInventory returns a ManageInventory implementation for InstanceType activity
+func NewManageInstanceTypeInventory(config ManageInventoryConfig) ManageInstanceTypeInventory {
+	return ManageInstanceTypeInventory{
+		config: config,
+	}
+}
+
+func instanceTypeFindIDs(ctx context.Context, carbideClient *cClient.CarbideClient) ([]*cwssaws.UUID, error) {
+	// Call Site Controller gRPC endpoint
+	forgeClient := carbideClient.Carbide()
+	instanceTypeIdList, err := forgeClient.FindInstanceTypeIds(ctx, &cwssaws.FindInstanceTypeIdsRequest{})
+	if err != nil {
+		return nil, err
+	}
+	return util.StringsToProtobufUUIDList(instanceTypeIdList.GetInstanceTypeIds()), nil
+}
+
+func instanceTypeFindByIDs(ctx context.Context, carbideClient *cClient.CarbideClient, ids []*cwssaws.UUID) ([]*cwssaws.InstanceType, error) {
+	// Call Site Controller gRPC endpoint
+	forgeClient := carbideClient.Carbide()
+	instanceTypeList, err := forgeClient.FindInstanceTypesByIds(ctx, &cwssaws.FindInstanceTypesByIdsRequest{
+		InstanceTypeIds: util.ProtobufUUIDListToStringList(ids),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return instanceTypeList.GetInstanceTypes(), nil
+}
+
+func instanceTypePagedInventory(allItemIDs []*cwssaws.UUID, pagedItems []*cwssaws.InstanceType, input *pagedInventoryInput) *cwssaws.InstanceTypeInventory {
+	itemIDs := []string{}
+	for _, id := range allItemIDs {
+		itemIDs = append(itemIDs, id.GetValue())
+	}
+
+	// Create an inventory page with the subset of Machines
+	instanceTypeInventory := &cwssaws.InstanceTypeInventory{
+		InstanceTypes: pagedItems,
+		Timestamp: &timestamppb.Timestamp{
+			Seconds: time.Now().Unix(),
+		},
+		InventoryStatus: input.status,
+		StatusMsg:       input.statusMessage,
+		InventoryPage:   input.buildPage(),
+	}
+	if instanceTypeInventory.InventoryPage != nil {
+		instanceTypeInventory.InventoryPage.ItemIds = itemIDs
+	}
+	return instanceTypeInventory
+}

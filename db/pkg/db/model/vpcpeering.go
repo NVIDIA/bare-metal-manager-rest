@@ -1,0 +1,341 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ *
+ * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+ * property and proprietary rights in and to this material, related
+ * documentation and any modifications thereto. Any use, reproduction,
+ * disclosure or distribution of this material and related documentation
+ * without an express license agreement from NVIDIA CORPORATION or
+ * its affiliates is strictly prohibited.
+ */
+
+
+package model
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"time"
+
+	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+
+	"github.com/google/uuid"
+	"github.com/nvidia/carbide-rest/db/pkg/db"
+	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
+
+	"github.com/uptrace/bun"
+)
+
+const (
+	// VpcPeering status is pending
+	VpcPeeringStatusPending = "Pending"
+	// VpcPeering status is configuring
+	VpcPeeringStatusConfiguring = "Configuring"
+	// VpcPeering status is requested, the requester has issued request to the owner of the peer VPC
+	VpcPeeringStatusRequested = "Requested"
+	// VpcPeering status is ready
+	VpcPeeringStatusReady = "Ready"
+	// VpcPeering status is deleting
+	VpcPeeringStatusDeleting = "Deleting"
+	// VpcPeering status is error
+	VpcPeeringStatusError = "Error"
+
+	// VpcPeering default field to be used for ordering when non specified
+	VpcPeeringOrderByDefault = "created"
+)
+
+var VpcPeeringStatusMap = map[string]bool{
+	VpcPeeringStatusPending:     true,
+	VpcPeeringStatusConfiguring: true,
+	VpcPeeringStatusRequested:   true,
+	VpcPeeringStatusReady:       true,
+	VpcPeeringStatusDeleting:    true,
+	VpcPeeringStatusError:       true,
+}
+
+var (
+	VpcPeeringOrderByFields = []string{"id", "vpc1_id", "vpc2_id", "site_id", "created", "updated"}
+)
+
+type VpcPeering struct {
+	bun.BaseModel `bun:"table:vpc_peering,alias:vp"`
+
+	ID     uuid.UUID `bun:"id,type:uuid,pk,default:gen_random_uuid(),notnull"`
+	Vpc1ID uuid.UUID `bun:"vpc1_id,type:uuid,notnull"`
+	Vpc2ID uuid.UUID `bun:"vpc2_id,type:uuid,notnull"`
+	SiteID uuid.UUID `bun:"site_id,type:uuid,notnull"`
+
+	IsMultiTenant bool `bun:"is_multi_tenant,notnull"`
+
+	Status string `bun:"status,notnull"`
+
+	Created   time.Time  `bun:"created,nullzero,notnull,default:current_timestamp"`
+	Updated   time.Time  `bun:"updated,nullzero,notnull,default:current_timestamp"`
+	Deleted   *time.Time `bun:"deleted,soft_delete"`
+	CreatedBy uuid.UUID  `bun:"type:uuid,notnull"`
+}
+
+type VpcPeeringCreateInput struct {
+	Vpc1ID uuid.UUID
+	Vpc2ID uuid.UUID
+
+	SiteID        uuid.UUID
+	IsMultiTenant bool
+	CreatedByID   uuid.UUID
+}
+
+type VpcPeeringFilterInput struct {
+	IDs      []uuid.UUID
+	VpcID    *uuid.UUID // Return record if either vpc1_id or vpc2_id matches VPCID
+	SiteIDs  []uuid.UUID
+	Statuses []string
+}
+
+func (vp *VpcPeering) BeforeCreateTable(ctx context.Context, query *bun.CreateTableQuery) error {
+	// No "ON DELETE CASCADE" because both vpc and vpc peering are soft delete
+	query.
+		ForeignKey(`("vpc1_id") REFERENCES "vpc" ("id")`).
+		ForeignKey(`("vpc2_id") REFERENCES "vpc" ("id")`).
+		ForeignKey(`("site_id") REFERENCES "site" ("id")`)
+
+	return nil
+}
+
+type VpcPeeringDAO interface {
+	//
+	Create(ctx context.Context, tx *db.Tx, input VpcPeeringCreateInput) (*VpcPeering, error)
+	//
+	GetAll(ctx context.Context, tx *db.Tx, filter VpcPeeringFilterInput, page paginator.PageInput, includeRelations []string) ([]VpcPeering, int, error)
+	//
+	GetByID(ctx context.Context, tx *db.Tx, id uuid.UUID, includeRelations []string) (*VpcPeering, error)
+	//
+	UpdateStatusByID(ctx context.Context, tx *db.Tx, id uuid.UUID, newStatus string) error
+	//
+	Delete(ctx context.Context, tx *db.Tx, id uuid.UUID) error
+	//
+	DeleteByVpcID(ctx context.Context, tx *db.Tx, vpcID uuid.UUID) error
+}
+
+type VpcPeeringSQLDAO struct {
+	dbSession *db.Session
+	VpcPeeringDAO
+	tracerSpan *stracer.TracerSpan
+}
+
+// Create inserts a new VPC peering record into the database without checking for duplicates.
+// It bypasses any uniqueness constraints, so duplicate detection must be handled
+// externally, such as within the cloud API handler before calling this method.
+func (vpsd VpcPeeringSQLDAO) Create(
+	ctx context.Context,
+	tx *db.Tx,
+	input VpcPeeringCreateInput,
+) (*VpcPeering, error) {
+	ctx, vpDAOSpan := vpsd.tracerSpan.CreateChildInCurrentContext(ctx, "VpcPeeringDAO.Create")
+	if vpDAOSpan != nil {
+		defer vpDAOSpan.End()
+	}
+
+	vpc1ID, vpc2ID := input.Vpc1ID, input.Vpc2ID
+
+	if vpc1ID == vpc2ID {
+		return nil, errors.New("cannot peer a VPC with itself")
+	}
+
+	vp := &VpcPeering{
+		ID:            uuid.New(),
+		Vpc1ID:        vpc1ID,
+		Vpc2ID:        vpc2ID,
+		SiteID:        input.SiteID,
+		IsMultiTenant: input.IsMultiTenant,
+		Status:        VpcPeeringStatusPending,
+		Created:       db.GetCurTime(),
+		Updated:       db.GetCurTime(),
+		CreatedBy:     input.CreatedByID,
+	}
+
+	_, err := db.GetIDB(tx, vpsd.dbSession).NewInsert().Model(vp).Exec(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return vp, nil
+}
+
+func (vpsd VpcPeeringSQLDAO) GetAll(
+	ctx context.Context,
+	tx *db.Tx,
+	filter VpcPeeringFilterInput,
+	page paginator.PageInput,
+	includeRelations []string,
+) ([]VpcPeering, int, error) {
+	ctx, vpDAOSpan := vpsd.tracerSpan.CreateChildInCurrentContext(ctx, "VpcPeeringDAO.GetAll")
+	if vpDAOSpan != nil {
+		defer vpDAOSpan.End()
+	}
+
+	vps := []VpcPeering{}
+	query := db.GetIDB(tx, vpsd.dbSession).NewSelect().Model(&vps)
+	query, err := vpsd.setQueryWithFilter(filter, query, vpDAOSpan)
+	if err != nil {
+		return vps, 0, err
+	}
+
+	for _, relation := range includeRelations {
+		query = query.Relation(relation)
+	}
+
+	var multiOrderBy []*paginator.OrderBy
+	if page.OrderBy == nil {
+		multiOrderBy = append(multiOrderBy, paginator.NewDefaultOrderBy(VpcPeeringOrderByDefault))
+	} else {
+		multiOrderBy = append(multiOrderBy, page.OrderBy)
+		if page.OrderBy.Field != VpcPeeringOrderByDefault {
+			multiOrderBy = append(multiOrderBy, paginator.NewDefaultOrderBy(VpcPeeringOrderByDefault))
+		}
+	}
+
+	paginator, err := paginator.NewPaginatorMultiOrderBy(ctx, query, page.Offset, page.Limit, multiOrderBy, VpcPeeringOrderByFields)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	err = paginator.Query.Limit(paginator.Limit).Offset(paginator.Offset).Scan(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return vps, paginator.Total, nil
+}
+
+func (vpsd VpcPeeringSQLDAO) setQueryWithFilter(filter VpcPeeringFilterInput, query *bun.SelectQuery, vpDAOSpan *stracer.CurrentContextSpan) (*bun.SelectQuery, error) {
+	if filter.IDs != nil {
+		query = query.Where("vp.id IN (?)", bun.In(filter.IDs))
+		vpsd.tracerSpan.SetAttribute(vpDAOSpan, "id", filter.IDs)
+	}
+
+	if filter.VpcID != nil {
+		query = query.Where("vp.vpc1_id = ? OR vp.vpc2_id = ?", *filter.VpcID, *filter.VpcID)
+		vpsd.tracerSpan.SetAttribute(vpDAOSpan, "vpc_id", *filter.VpcID)
+	}
+
+	if filter.Statuses != nil {
+		query = query.Where("vp.status IN (?)", bun.In(filter.Statuses))
+		vpsd.tracerSpan.SetAttribute(vpDAOSpan, "status", filter.Statuses)
+	}
+
+	if filter.SiteIDs != nil {
+		query = query.Where("vp.site_id IN (?)", bun.In(filter.SiteIDs))
+		vpsd.tracerSpan.SetAttribute(vpDAOSpan, "site_ids", filter.SiteIDs)
+	}
+
+	return query, nil
+}
+
+func (vpsd VpcPeeringSQLDAO) GetByID(
+	ctx context.Context,
+	tx *db.Tx,
+	id uuid.UUID,
+	includeRelations []string,
+) (*VpcPeering, error) {
+	ctx, vpDAOSpan := vpsd.tracerSpan.CreateChildInCurrentContext(ctx, "VpcPeeringDAO.GetByID")
+	if vpDAOSpan != nil {
+		defer vpDAOSpan.End()
+
+		vpsd.tracerSpan.SetAttribute(vpDAOSpan, "id", id)
+	}
+
+	vp := &VpcPeering{}
+
+	query := db.GetIDB(tx, vpsd.dbSession).NewSelect().Model(vp).Where("vp.id = ?", id)
+
+	for _, relation := range includeRelations {
+		query = query.Relation(relation)
+	}
+
+	err := query.Scan(ctx)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, db.ErrDoesNotExist
+		}
+		return nil, err
+	}
+
+	return vp, nil
+}
+
+func (vpsd VpcPeeringSQLDAO) UpdateStatusByID(
+	ctx context.Context,
+	tx *db.Tx,
+	id uuid.UUID,
+	newStatus string,
+) error {
+	// Disallow undefined VPC peering status
+	if !VpcPeeringStatusMap[newStatus] {
+		return db.ErrInvalidValue
+	}
+
+	ctx, vpDAOSpan := vpsd.tracerSpan.CreateChildInCurrentContext(ctx, "VpcPeeringDAO.UpdateStatusByID")
+	if vpDAOSpan != nil {
+		defer vpDAOSpan.End()
+		vpsd.tracerSpan.SetAttribute(vpDAOSpan, "id", id)
+		vpsd.tracerSpan.SetAttribute(vpDAOSpan, "status", newStatus)
+	}
+
+	_, err := db.GetIDB(tx, vpsd.dbSession).
+		NewUpdate().
+		Model((*VpcPeering)(nil)).
+		Set("status = ?", newStatus).
+		Set("updated = ?", db.GetCurTime()).
+		Where("id = ?", id).
+		Exec(ctx)
+
+	return err
+}
+
+func (vpsd VpcPeeringSQLDAO) Delete(
+	ctx context.Context,
+	tx *db.Tx,
+	id uuid.UUID,
+) error {
+	ctx, vpDAOSpan := vpsd.tracerSpan.CreateChildInCurrentContext(ctx, "VpcPeeringDAO.Delete")
+	if vpDAOSpan != nil {
+		defer vpDAOSpan.End()
+	}
+
+	vp := &VpcPeering{
+		ID: id,
+	}
+
+	_, err := db.GetIDB(tx, vpsd.dbSession).NewDelete().Model(vp).Where("id = ?", id).Exec(ctx)
+
+	return err
+}
+
+func (vpsd VpcPeeringSQLDAO) DeleteByVpcID(
+	ctx context.Context,
+	tx *db.Tx,
+	vpcID uuid.UUID,
+) error {
+	ctx, vpDAOSpan := vpsd.tracerSpan.CreateChildInCurrentContext(ctx, "VpcPeeringDAO.DeleteByVpcID")
+	if vpDAOSpan != nil {
+		defer vpDAOSpan.End()
+		vpsd.tracerSpan.SetAttribute(vpDAOSpan, "vpcID", vpcID)
+	}
+
+	_, err := db.GetIDB(tx, vpsd.dbSession).
+		NewDelete().
+		Model((*VpcPeering)(nil)).
+		Where("vpc1_id = ? OR vpc2_id = ?", vpcID, vpcID).
+		Exec(ctx)
+
+	return err
+}
+
+func NewVpcPeeringDAO(dbSession *db.Session) VpcPeeringDAO {
+	return &VpcPeeringSQLDAO{
+		dbSession:  dbSession,
+		tracerSpan: stracer.NewTracerSpan(),
+	}
+}

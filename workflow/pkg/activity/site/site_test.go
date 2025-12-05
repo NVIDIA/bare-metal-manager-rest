@@ -1,0 +1,1217 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package site
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"reflect"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/golang/mock/gomock"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/uptrace/bun/extra/bundebug"
+	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
+	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
+	"github.com/nvidia/carbide-rest/workflow/internal/config"
+	sc "github.com/nvidia/carbide-rest/workflow/pkg/client/site"
+	"github.com/nvidia/carbide-rest/workflow/pkg/queue"
+	"github.com/nvidia/carbide-rest/workflow/pkg/util"
+	"go.temporal.io/api/serviceerror"
+	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/testsuite"
+
+	tnsv1 "go.temporal.io/api/namespace/v1"
+	tOperatorv1 "go.temporal.io/api/operatorservice/v1"
+	tWorkflowv1 "go.temporal.io/api/workflowservice/v1"
+
+	tosv1mock "go.temporal.io/api/operatorservicemock/v1"
+	twsv1mock "go.temporal.io/api/workflowservicemock/v1"
+	tmocks "go.temporal.io/sdk/mocks"
+
+	cwsv1 "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+)
+
+// testTemporalSiteClientPool Building site client pool
+func testTemporalSiteClientPool(t *testing.T) *sc.ClientPool {
+	keyPath, certPath := config.SetupTestCerts(t)
+	defer os.Remove(keyPath)
+	defer os.Remove(certPath)
+
+	cfg := config.NewConfig()
+	cfg.SetTemporalCertPath(certPath)
+	cfg.SetTemporalKeyPath(keyPath)
+	cfg.SetTemporalCaPath(certPath)
+
+	tcfg, err := cfg.GetTemporalConfig()
+	assert.NoError(t, err)
+
+	tSiteClientPool := sc.NewClientPool(tcfg)
+	return tSiteClientPool
+}
+
+func testSiteInitDB(t *testing.T) *cdb.Session {
+	dbSession := cdbu.GetTestDBSession(t, false)
+	dbSession.DB.AddQueryHook(bundebug.NewQueryHook(
+		bundebug.WithEnabled(false),
+		bundebug.FromEnv("BUNDEBUG"),
+	))
+	return dbSession
+}
+
+func TestManageSite_DeleteSiteComponentsFromDB(t *testing.T) {
+	ctx := context.Background()
+
+	dbSession := testSiteInitDB(t)
+	defer dbSession.Close()
+
+	util.TestSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org-1"
+	ipRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	ipu := util.TestBuildUser(t, dbSession, uuid.New().String(), []string{ipOrg}, ipRoles)
+	ip := util.TestBuildInfrastructureProvider(t, dbSession, "testIP", ipOrg, ipu)
+
+	tnOrg := "test-tenant-org-1"
+	tnRoles := []string{"FORGE_TENANT_ADMIN"}
+
+	tnu := util.TestBuildUser(t, dbSession, uuid.New().String(), []string{tnOrg}, tnRoles)
+	tncfg := cdbm.TenantConfig{
+		EnableSSHAccess: true,
+	}
+
+	tenant := util.TestBuildTenant(t, dbSession, "test-tenant", tnOrg, &tncfg, tnu)
+
+	vpcDAO := cdbm.NewVpcDAO(dbSession)
+	ibpDAO := cdbm.NewInfiniBandPartitionDAO(dbSession)
+	itDAO := cdbm.NewInstanceTypeDAO(dbSession)
+	iDAO := cdbm.NewInstanceDAO(dbSession)
+
+	// Site 1 that will be deleted normally
+	site := util.TestBuildSite(t, dbSession, ip, "test-site", cdbm.SiteStatusPending, nil, ipu)
+	vpc := util.TestBuildVpc(t, dbSession, ip, site, tenant, "test-vpc")
+	machine := util.TestBuildMachine(t, dbSession, ip.ID, site.ID, cdb.GetStrPtr("x86"), cdb.GetBoolPtr(true), cdbm.MachineStatusReady)
+	machine2 := util.TestBuildMachine(t, dbSession, ip.ID, site.ID, cdb.GetStrPtr("x86"), cdb.GetBoolPtr(true), cdbm.MachineStatusReady)
+	allocation := util.TestBuildAllocation(t, dbSession, ip, tenant, site, "test-allocation")
+	instanceType := util.TestBuildInstanceType(t, dbSession, ip, site, "test-instance-type")
+	_ = util.TestBuildAllocationContraints(t, dbSession, allocation, cdbm.AllocationResourceTypeInstanceType, instanceType.ID, cdbm.AllocationConstraintTypeReserved, 1, ipu)
+	operatingSystem := util.TestBuildOperatingSystem(t, dbSession, "test-os")
+	ibp := util.TestBuildInfiniBandPartition(t, dbSession, "test-infiniband-partition", site, tenant, nil, cdbm.InfiniBandInterfaceStatusReady, false)
+
+	ins1, _ := iDAO.Create(
+		ctx, nil,
+		cdbm.InstanceCreateInput{
+			Name:                     "test-instance",
+			TenantID:                 tenant.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			Hostname:                 cdb.GetStrPtr("test.com"),
+			OperatingSystemID:        cdb.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               cdb.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			UserData:                 cdb.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			Status:                   cdbm.InstanceStatusPending,
+			PowerStatus:              cdb.GetStrPtr(cdbm.InstancePowerStatusRebooting),
+			CreatedBy:                tnu.ID,
+		},
+	)
+
+	ins2, _ := iDAO.Create(
+		ctx, nil,
+		cdbm.InstanceCreateInput{
+			Name:                     "test-instance-2",
+			TenantID:                 tenant.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine2.ID,
+			ControllerInstanceID:     cdb.GetUUIDPtr(uuid.New()),
+			Hostname:                 cdb.GetStrPtr("test.com"),
+			OperatingSystemID:        cdb.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               cdb.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			UserData:                 cdb.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			Status:                   cdbm.InstanceStatusPending,
+			PowerStatus:              cdb.GetStrPtr(cdbm.InstancePowerStatusRebooting),
+			CreatedBy:                tnu.ID,
+		},
+	)
+
+	// Site 2 where the Machine components will be purged
+	site2 := util.TestBuildSite(t, dbSession, ip, "test-site-2", cdbm.SiteStatusPending, nil, ipu)
+	vpc2 := util.TestBuildVpc(t, dbSession, ip, site2, tenant, "test-vpc-2")
+	machine3 := util.TestBuildMachine(t, dbSession, ip.ID, site2.ID, cdb.GetStrPtr("mcTypeTest2"), cdb.GetBoolPtr(true), cdbm.MachineStatusReady)
+	machine4 := util.TestBuildMachine(t, dbSession, ip.ID, site2.ID, cdb.GetStrPtr("mcTypeTest3"), cdb.GetBoolPtr(true), cdbm.MachineStatusReady)
+
+	allocation2 := util.TestBuildAllocation(t, dbSession, ip, tenant, site2, "test-allocation-2")
+	instanceType2 := util.TestBuildInstanceType(t, dbSession, ip, site2, "test-instance-type-2")
+	_ = util.TestBuildAllocationContraints(t, dbSession, allocation2, cdbm.AllocationResourceTypeInstanceType, instanceType2.ID, cdbm.AllocationConstraintTypeReserved, 2, ipu)
+	operatingSystem2 := util.TestBuildOperatingSystem(t, dbSession, "test-os-2")
+
+	ins3, _ := iDAO.Create(
+		ctx, nil,
+		cdbm.InstanceCreateInput{
+			Name:                     "test-instance-3",
+			TenantID:                 tenant.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site2.ID,
+			InstanceTypeID:           &instanceType2.ID,
+			VpcID:                    vpc2.ID,
+			MachineID:                &machine3.ID,
+			Hostname:                 cdb.GetStrPtr("test.com"),
+			OperatingSystemID:        cdb.GetUUIDPtr(operatingSystem2.ID),
+			IpxeScript:               cdb.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			UserData:                 cdb.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			Status:                   cdbm.InstanceStatusPending,
+			PowerStatus:              cdb.GetStrPtr(cdbm.InstancePowerStatusRebooting),
+			CreatedBy:                tnu.ID,
+		},
+	)
+	ins4, _ := iDAO.Create(
+		ctx, nil,
+		cdbm.InstanceCreateInput{
+			Name:                     "test-instance-4",
+			TenantID:                 tenant.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site2.ID,
+			InstanceTypeID:           &instanceType2.ID,
+			VpcID:                    vpc2.ID,
+			MachineID:                &machine4.ID,
+			ControllerInstanceID:     cdb.GetUUIDPtr(uuid.New()),
+			Hostname:                 cdb.GetStrPtr("test.com"),
+			OperatingSystemID:        cdb.GetUUIDPtr(operatingSystem2.ID),
+			IpxeScript:               cdb.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			UserData:                 cdb.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			Status:                   cdbm.InstanceStatusPending,
+			PowerStatus:              cdb.GetStrPtr(cdbm.InstancePowerStatusRebooting),
+			CreatedBy:                tnu.ID,
+		},
+	)
+
+	tSiteClientPool := testTemporalSiteClientPool(t)
+	assert.NotNil(t, tSiteClientPool)
+
+	temporalsuit := testsuite.WorkflowTestSuite{}
+	env := temporalsuit.NewTestWorkflowEnvironment()
+
+	type fields struct {
+		dbSession      *cdb.Session
+		siteClientPool *sc.ClientPool
+		env            *testsuite.TestWorkflowEnvironment
+	}
+
+	type args struct {
+		ctx            context.Context
+		siteID         uuid.UUID
+		ipID           *uuid.UUID
+		vpcID          *uuid.UUID
+		ibpID          *uuid.UUID
+		machineIDs     []string
+		instanceTypeID *uuid.UUID
+		instanceIDs    []uuid.UUID
+		purgeMachines  bool
+	}
+
+	tests := []struct {
+		name           string
+		fields         fields
+		args           args
+		want           error
+		wantErr        bool
+		expectDeletion bool
+	}{
+		{
+			name: "test Site delete component activity successfully completed",
+			fields: fields{
+				dbSession:      dbSession,
+				siteClientPool: tSiteClientPool,
+				env:            env,
+			},
+			args: args{
+				ctx:            context.Background(),
+				siteID:         site.ID,
+				ipID:           &ip.ID,
+				vpcID:          &vpc.ID,
+				ibpID:          &ibp.ID,
+				machineIDs:     []string{machine.ID, machine2.ID},
+				instanceTypeID: &instanceType.ID,
+				instanceIDs:    []uuid.UUID{ins1.ID, ins2.ID},
+			},
+			want:           nil,
+			expectDeletion: true,
+		},
+		{
+			name: "test Site delete component activity successfully completed when site doesn't exits",
+			fields: fields{
+				dbSession:      dbSession,
+				siteClientPool: tSiteClientPool,
+				env:            env,
+			},
+			args: args{
+				ctx:    context.Background(),
+				siteID: uuid.New(),
+				ipID:   cdb.GetUUIDPtr(uuid.New()),
+			},
+			want:           nil,
+			expectDeletion: false,
+		},
+		{
+			name: "test Site delete component activity successfully completed with purge",
+			fields: fields{
+				dbSession:      dbSession,
+				siteClientPool: tSiteClientPool,
+				env:            env,
+			},
+			args: args{
+				ctx:            context.Background(),
+				siteID:         site2.ID,
+				ipID:           &ip.ID,
+				vpcID:          &vpc2.ID,
+				machineIDs:     []string{machine3.ID, machine4.ID},
+				instanceTypeID: &instanceType2.ID,
+				instanceIDs:    []uuid.UUID{ins3.ID, ins4.ID},
+				purgeMachines:  true,
+			},
+			want:           nil,
+			expectDeletion: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mv := ManageSite{
+				dbSession:      tt.fields.dbSession,
+				siteClientPool: tSiteClientPool,
+			}
+
+			err := mv.DeleteSiteComponentsFromDB(tt.args.ctx, tt.args.siteID, *tt.args.ipID, tt.args.purgeMachines)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+
+			// Check if the VPC was deleted in the DB
+			if tt.args.vpcID != nil {
+				_, err = vpcDAO.GetByID(ctx, nil, *tt.args.vpcID, nil)
+				if tt.expectDeletion {
+					assert.Equal(t, cdb.ErrDoesNotExist, err)
+				}
+			}
+
+			// Check if Instance Type is deleted from DB
+			if tt.args.instanceTypeID != nil {
+				_, err = itDAO.GetByID(ctx, nil, *tt.args.instanceTypeID, nil)
+				if tt.expectDeletion {
+					assert.Equal(t, cdb.ErrDoesNotExist, err)
+				}
+			}
+
+			// Check if InfinitBand Partition is deleted from DB
+			if tt.args.ibpID != nil {
+				_, err := ibpDAO.GetByID(ctx, nil, *tt.args.ibpID, nil)
+				if tt.expectDeletion {
+					assert.Equal(t, cdb.ErrDoesNotExist, err)
+				}
+			}
+
+			if tt.expectDeletion {
+				// Check if Machines are deleted from DB
+				for _, mID := range tt.args.machineIDs {
+					var res cdbm.Machine
+					if tt.args.purgeMachines {
+						err = dbSession.DB.NewSelect().Model(&res).Where("m.id = ?", mID).WhereAllWithDeleted().Scan(ctx)
+					} else {
+						err = dbSession.DB.NewSelect().Model(&res).Where("m.id = ?", mID).Scan(ctx)
+					}
+
+					assert.Equal(t, sql.ErrNoRows, err)
+				}
+
+				// Check if Instances are deleted from DB
+				for _, iID := range tt.args.instanceIDs {
+					var res cdbm.Instance
+
+					err = dbSession.DB.NewSelect().Model(&res).Where("i.id = ?", iID).Scan(ctx)
+					assert.Equal(t, sql.ErrNoRows, err)
+
+					if tt.args.purgeMachines {
+						err = dbSession.DB.NewSelect().Model(&res).Where("i.id = ?", iID).WhereAllWithDeleted().Scan(ctx)
+						assert.NoError(t, err)
+						assert.Nil(t, res.MachineID)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestNewManageSite(t *testing.T) {
+	type args struct {
+		dbSession      *cdb.Session
+		siteClientPool *sc.ClientPool
+		tc             client.Client
+		cfg            *config.Config
+	}
+
+	dbSession := &cdb.Session{}
+	keyPath, certPath := config.SetupTestCerts(t)
+	defer os.Remove(keyPath)
+	defer os.Remove(certPath)
+
+	cfg := config.NewConfig()
+	cfg.SetTemporalCertPath(certPath)
+	cfg.SetTemporalKeyPath(keyPath)
+	cfg.SetTemporalCaPath(certPath)
+
+	tcfg, err := cfg.GetTemporalConfig()
+	assert.NoError(t, err)
+
+	tc := &tmocks.Client{}
+	scp := sc.NewClientPool(tcfg)
+
+	tests := []struct {
+		name string
+		args args
+		want ManageSite
+	}{
+		{
+			name: "test new ManageSite instantiation",
+			args: args{
+				dbSession:      dbSession,
+				siteClientPool: scp,
+				tc:             tc,
+				cfg:            cfg,
+			},
+			want: ManageSite{
+				dbSession:      dbSession,
+				siteClientPool: scp,
+				tc:             tc,
+				cfg:            cfg,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NewManageSite(tt.args.dbSession, tt.args.siteClientPool, tc, cfg); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewManageSite() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestManageSite_MonitorInventoryReceiptForAllSites(t *testing.T) {
+	ctx := context.Background()
+
+	dbSession := testSiteInitDB(t)
+	defer dbSession.Close()
+
+	util.TestSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org-1"
+	ipRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	ipu := util.TestBuildUser(t, dbSession, uuid.New().String(), []string{ipOrg}, ipRoles)
+	ip := util.TestBuildInfrastructureProvider(t, dbSession, "testIP", ipOrg, ipu)
+
+	site1 := util.TestBuildSite(t, dbSession, ip, "test-site-1", cdbm.SiteStatusPending, nil, ipu)
+	site2 := util.TestBuildSite(t, dbSession, ip, "test-site-2", cdbm.SiteStatusRegistered, cdb.GetTimePtr(time.Now().Add(-1*time.Hour)), ipu)
+	site3 := util.TestBuildSite(t, dbSession, ip, "test-site-3", cdbm.SiteStatusRegistered, cdb.GetTimePtr(time.Now()), ipu)
+	site4 := util.TestBuildSite(t, dbSession, ip, "test-site-4", cdbm.SiteStatusRegistered, cdb.GetTimePtr(time.Now().Add(-1*time.Hour)), ipu)
+
+	tSiteClientPool := testTemporalSiteClientPool(t)
+	assert.NotNil(t, tSiteClientPool)
+
+	temporalsuit := testsuite.WorkflowTestSuite{}
+	temporalsuit.NewTestWorkflowEnvironment()
+
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	}))
+
+	cfg := config.NewConfig()
+	cfg.SetNotificationsSlackWebhookURL(testServer.URL)
+
+	cfg2 := config.NewConfig()
+	cfg2.SetNotificationsSlackWebhookURL("")
+
+	type fields struct {
+		dbSession      *cdb.Session
+		siteClientPool *sc.ClientPool
+		cfg            *config.Config
+	}
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name       string
+		fields     fields
+		args       args
+		wantStatus map[uuid.UUID]string
+	}{
+		{
+			name: "test monitor inventory receipt for all sites with Slack notification",
+			fields: fields{
+				dbSession:      dbSession,
+				siteClientPool: tSiteClientPool,
+				cfg:            cfg,
+			},
+			args: args{
+				ctx: ctx,
+			},
+			wantStatus: map[uuid.UUID]string{
+				site1.ID: cdbm.SiteStatusPending,
+				site2.ID: cdbm.SiteStatusError,
+				site3.ID: cdbm.SiteStatusRegistered,
+			},
+		},
+		{
+			name: "test monitor inventory receipt for all sites without Slack notification",
+			fields: fields{
+				dbSession:      dbSession,
+				siteClientPool: tSiteClientPool,
+				cfg:            cfg2,
+			},
+			args: args{
+				ctx: ctx,
+			},
+			wantStatus: map[uuid.UUID]string{
+				site4.ID: cdbm.SiteStatusError,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mst := ManageSite{
+				dbSession:      tt.fields.dbSession,
+				siteClientPool: tt.fields.siteClientPool,
+				cfg:            tt.fields.cfg,
+			}
+			err := mst.MonitorInventoryReceiptForAllSites(tt.args.ctx)
+			assert.NoError(t, err)
+
+			for siteID, wantStatus := range tt.wantStatus {
+				siteDAO := cdbm.NewSiteDAO(dbSession)
+				site, err := siteDAO.GetByID(ctx, nil, siteID, nil, false)
+				assert.NoError(t, err)
+				assert.Equal(t, wantStatus, site.Status)
+			}
+		})
+	}
+}
+
+func TestManageSite_CheckHealthForAllSitesViaSiteAgent(t *testing.T) {
+	ctx := context.Background()
+
+	dbSession := testSiteInitDB(t)
+	defer dbSession.Close()
+
+	util.TestSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org-1"
+	ipRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	ipu := util.TestBuildUser(t, dbSession, uuid.New().String(), []string{ipOrg}, ipRoles)
+	ip := util.TestBuildInfrastructureProvider(t, dbSession, "testIP", ipOrg, ipu)
+
+	site1 := util.TestBuildSite(t, dbSession, ip, "test-site-1", cdbm.SiteStatusPending, nil, ipu)
+	site2 := util.TestBuildSite(t, dbSession, ip, "test-site-2", cdbm.SiteStatusError, cdb.GetTimePtr(time.Now()), ipu)
+	site3 := util.TestBuildSite(t, dbSession, ip, "test-site-3", cdbm.SiteStatusRegistered, cdb.GetTimePtr(time.Now()), ipu)
+
+	// Mock GetHealth workflow from site-agent
+	wrun1 := &tmocks.WorkflowRun{}
+	wid1 := "test-workflow-id-1"
+
+	var healthStatus1 *cwsv1.HealthStatus
+	result := &cwsv1.HealthStatus{
+		SiteInventoryCollection: &cwsv1.HealthStatusMsg{
+			State: 1,
+		},
+		SiteControllerConnection: &cwsv1.HealthStatusMsg{
+			State: 1,
+		},
+		SiteAgentHighAvailability: &cwsv1.HealthStatusMsg{
+			State: 1,
+		},
+	}
+
+	wrun1.On("Get", mock.Anything, &healthStatus1).Return(nil, result)
+	wrun1.On("GetID").Return(wid1)
+
+	wrun2 := &tmocks.WorkflowRun{}
+	var healthStatus2 *cwsv1.HealthStatus
+	wid2 := "test-workflow-id-2"
+	wrun2.On("Get", mock.Anything, &healthStatus2).Return(nil)
+	wrun2.On("GetID").Return(wid2)
+
+	wrun3 := &tmocks.WorkflowRun{}
+	var healthStatus3 *cwsv1.HealthStatus
+	wid3 := "test-workflow-id-3"
+	wrun3.On("Get", mock.Anything, &healthStatus3).Return(serviceerror.NewNotFound("NotFound"))
+	wrun3.On("GetID").Return(wid3)
+
+	workflowOptions1 := client.StartWorkflowOptions{
+		ID:        "get-health-site-agent-" + site1.ID.String(),
+		TaskQueue: queue.SiteTaskQueue,
+	}
+	workflowOptions2 := client.StartWorkflowOptions{
+		ID:        "get-health-site-agent-" + site2.ID.String(),
+		TaskQueue: queue.SiteTaskQueue,
+	}
+	workflowOptions3 := client.StartWorkflowOptions{
+		ID:        "get-health-site-agent-" + site3.ID.String(),
+		TaskQueue: queue.SiteTaskQueue,
+	}
+
+	mtc1 := &tmocks.Client{}
+	mtc1.Mock.On("ExecuteWorkflow", context.Background(), workflowOptions1, "GetHealth",
+		mock.Anything).Return(wrun1, nil)
+
+	mtc2 := &tmocks.Client{}
+	mtc2.Mock.On("ExecuteWorkflow", context.Background(), workflowOptions2, "GetHealth",
+		mock.Anything).Return(wrun2, nil)
+
+	mtc3 := &tmocks.Client{}
+	mtc3.Mock.On("ExecuteWorkflow", context.Background(), workflowOptions3, "GetHealth",
+		mock.Anything).Return(wrun3, nil)
+
+	tSiteClientPool := testTemporalSiteClientPool(t)
+	assert.NotNil(t, tSiteClientPool)
+
+	temporalsuit := testsuite.WorkflowTestSuite{}
+	temporalsuit.NewTestWorkflowEnvironment()
+
+	type fields struct {
+		dbSession        *cdb.Session
+		siteClientPool   *sc.ClientPool
+		clientPoolSiteID uuid.UUID
+		clientPoolClient *tmocks.Client
+	}
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name       string
+		fields     fields
+		args       args
+		wantStatus map[uuid.UUID]string
+	}{
+		{
+			name: "test monitor inventory receipt for all sites, site status pending to registered",
+			fields: fields{
+				dbSession:        dbSession,
+				siteClientPool:   tSiteClientPool,
+				clientPoolSiteID: site1.ID,
+				clientPoolClient: mtc1,
+			},
+			args: args{
+				ctx: ctx,
+			},
+			wantStatus: map[uuid.UUID]string{
+				site1.ID: cdbm.SiteStatusRegistered,
+			},
+		},
+		{
+			name: "test monitor inventory receipt for all sites, site status error to registered",
+			fields: fields{
+				dbSession:        dbSession,
+				siteClientPool:   tSiteClientPool,
+				clientPoolSiteID: site2.ID,
+				clientPoolClient: mtc2,
+			},
+			args: args{
+				ctx: ctx,
+			},
+			wantStatus: map[uuid.UUID]string{
+				site2.ID: cdbm.SiteStatusRegistered,
+			},
+		},
+		{
+			name: "test monitor inventory receipt for all sites, site status registered to error",
+			fields: fields{
+				dbSession:        dbSession,
+				siteClientPool:   tSiteClientPool,
+				clientPoolSiteID: site3.ID,
+				clientPoolClient: mtc3,
+			},
+			args: args{
+				ctx: ctx,
+			},
+			wantStatus: map[uuid.UUID]string{
+				site3.ID: cdbm.SiteStatusError,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mst := ManageSite{
+				dbSession:      tt.fields.dbSession,
+				siteClientPool: tt.fields.siteClientPool,
+			}
+			mst.siteClientPool.IDClientMap[tt.fields.clientPoolSiteID.String()] = tt.fields.clientPoolClient
+
+			err := mst.CheckHealthForSiteViaSiteAgent(tt.args.ctx, tt.fields.clientPoolSiteID)
+			assert.NoError(t, err)
+
+			for siteID, wantStatus := range tt.wantStatus {
+				siteDAO := cdbm.NewSiteDAO(dbSession)
+				site, err := siteDAO.GetByID(ctx, nil, siteID, nil, false)
+				assert.NoError(t, err)
+				assert.Equal(t, wantStatus, site.Status)
+			}
+		})
+	}
+}
+
+func TestManageSite_CheckHealthForGetAllSites(t *testing.T) {
+	ctx := context.Background()
+
+	dbSession := testSiteInitDB(t)
+	defer dbSession.Close()
+
+	util.TestSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org-1"
+	ipRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	ipu := util.TestBuildUser(t, dbSession, uuid.New().String(), []string{ipOrg}, ipRoles)
+	ip := util.TestBuildInfrastructureProvider(t, dbSession, "testIP", ipOrg, ipu)
+
+	util.TestBuildSite(t, dbSession, ip, "test-site-1", cdbm.SiteStatusPending, nil, ipu)
+	util.TestBuildSite(t, dbSession, ip, "test-site-2", cdbm.SiteStatusError, cdb.GetTimePtr(time.Now()), ipu)
+	util.TestBuildSite(t, dbSession, ip, "test-site-3", cdbm.SiteStatusRegistered, cdb.GetTimePtr(time.Now()), ipu)
+
+	type fields struct {
+		dbSession      *cdb.Session
+		siteClientPool *sc.ClientPool
+	}
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name               string
+		fields             fields
+		args               args
+		expectSiteIDCounts int
+	}{
+		{
+			name: "test get all site IDs",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx: ctx,
+			},
+			expectSiteIDCounts: 3,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mst := ManageSite{
+				dbSession:      tt.fields.dbSession,
+				siteClientPool: tt.fields.siteClientPool,
+			}
+			siteIDs, err := mst.GetAllSiteIDs(tt.args.ctx)
+			assert.NoError(t, err)
+			assert.Equal(t, len(siteIDs), tt.expectSiteIDCounts)
+		})
+	}
+}
+
+func TestManageSite_OnCheckHealthForSiteViaSiteAgentError(t *testing.T) {
+	ctx := context.Background()
+
+	dbSession := testSiteInitDB(t)
+	defer dbSession.Close()
+
+	util.TestSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org-1"
+	ipRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	ipu := util.TestBuildUser(t, dbSession, uuid.New().String(), []string{ipOrg}, ipRoles)
+	ip := util.TestBuildInfrastructureProvider(t, dbSession, "testIP", ipOrg, ipu)
+
+	site1 := util.TestBuildSite(t, dbSession, ip, "test-site-1", cdbm.SiteStatusPending, nil, ipu)
+	util.TestBuildSite(t, dbSession, ip, "test-site-2", cdbm.SiteStatusError, cdb.GetTimePtr(time.Now()), ipu)
+	util.TestBuildSite(t, dbSession, ip, "test-site-3", cdbm.SiteStatusRegistered, cdb.GetTimePtr(time.Now()), ipu)
+
+	type fields struct {
+		dbSession      *cdb.Session
+		siteClientPool *sc.ClientPool
+	}
+	type args struct {
+		ctx context.Context
+	}
+	tests := []struct {
+		name       string
+		fields     fields
+		args       args
+		siteID     uuid.UUID
+		wantStatus string
+	}{
+		{
+			name: "set site status error successfully",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx: ctx,
+			},
+			siteID:     site1.ID,
+			wantStatus: cdbm.SiteStatusError,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mst := ManageSite{
+				dbSession:      tt.fields.dbSession,
+				siteClientPool: tt.fields.siteClientPool,
+			}
+			err := mst.OnCheckHealthForSiteViaSiteAgentError(tt.args.ctx, tt.siteID, nil)
+			assert.NoError(t, err)
+
+			siteDAO := cdbm.NewSiteDAO(dbSession)
+			site, err := siteDAO.GetByID(ctx, nil, tt.siteID, nil, false)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.wantStatus, site.Status)
+		})
+	}
+}
+
+func TestManageSite_GetSiteStatusFromSiteAgentHealthStatus(t *testing.T) {
+	type fields struct {
+		healthStatus *cwsv1.HealthStatus
+	}
+	tests := []struct {
+		name                string
+		fields              fields
+		expectStatus        string
+		expectStatusMessage string
+	}{
+		{
+			name: "test site status success site registered",
+			fields: fields{
+				healthStatus: &cwsv1.HealthStatus{
+					SiteInventoryCollection: &cwsv1.HealthStatusMsg{
+						State: 1,
+					},
+					SiteControllerConnection: &cwsv1.HealthStatusMsg{
+						State: 1,
+					},
+					SiteAgentHighAvailability: &cwsv1.HealthStatusMsg{
+						State: 1,
+					},
+				},
+			},
+			expectStatus:        cdbm.SiteStatusRegistered,
+			expectStatusMessage: "Received health check from Site Agent",
+		},
+		{
+			name: "test site status success site error inventory collection down",
+			fields: fields{
+				healthStatus: &cwsv1.HealthStatus{
+					SiteInventoryCollection: &cwsv1.HealthStatusMsg{
+						State: 2,
+					},
+					SiteControllerConnection: &cwsv1.HealthStatusMsg{
+						State: 1,
+					},
+					SiteAgentHighAvailability: &cwsv1.HealthStatusMsg{
+						State: 1,
+					},
+				},
+			},
+			expectStatus:        cdbm.SiteStatusError,
+			expectStatusMessage: "Site Agent inventory collection is suspended due to errors",
+		},
+		{
+			name: "test site status success site error controller collection down",
+			fields: fields{
+				healthStatus: &cwsv1.HealthStatus{
+					SiteInventoryCollection: &cwsv1.HealthStatusMsg{
+						State: 1,
+					},
+					SiteControllerConnection: &cwsv1.HealthStatusMsg{
+						State: 2,
+					},
+					SiteAgentHighAvailability: &cwsv1.HealthStatusMsg{
+						State: 1,
+					},
+				},
+			},
+			expectStatus:        cdbm.SiteStatusError,
+			expectStatusMessage: "Site Agent is unable to reach Site Controller",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mst := ManageSite{
+				dbSession:      nil,
+				siteClientPool: nil,
+			}
+			status, statusMessage := mst.getSiteStatusFromSiteAgentHealthStatus(tt.fields.healthStatus)
+			assert.Equal(t, status, tt.expectStatus)
+			assert.Equal(t, statusMessage, tt.expectStatusMessage)
+		})
+	}
+}
+
+// MockTemporalClient is a mock for Temporal Client
+type MockTemporalClient struct {
+	mock.Mock
+}
+
+func (m *MockTemporalClient) ExecuteWorkflow(ctx context.Context, options client.StartWorkflowOptions, workflow interface{}, args ...interface{}) (client.WorkflowRun, error) {
+	argsM := m.Called(ctx, options, workflow, args)
+	return argsM.Get(0).(client.WorkflowRun), argsM.Error(1)
+}
+
+func TestManageSite_CheckOTPExpirationAndRenewForAllSites(t *testing.T) {
+	ctx := context.Background()
+
+	dbSession := testSiteInitDB(t)
+	defer dbSession.Close()
+
+	// Initialize schema and mock data
+	util.TestSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org-1"
+	ipRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	ipu := util.TestBuildUser(t, dbSession, uuid.New().String(), []string{ipOrg}, ipRoles)
+	ip := util.TestBuildInfrastructureProvider(t, dbSession, "testIP", ipOrg, ipu)
+
+	site1 := util.TestBuildSite(t, dbSession, ip, "test-site-1", cdbm.SiteStatusRegistered, nil, ipu)
+	site2 := util.TestBuildSite(t, dbSession, ip, "test-site-2", cdbm.SiteStatusRegistered, nil, ipu)
+
+	// Mock the HTTP server to simulate Site Manager responses
+	almostExpired := time.Now().Add(-23 * time.Hour).Format("2006-01-02 15:04:05 -0700 MST")
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{
+			"siteuuid": "` + uuid.New().String() + `",
+			"otp": "mocked-otp",
+			"otpexpiry": "` + almostExpired + `"
+		}`))
+	}))
+	defer testServer.Close()
+
+	// Mock Temporal Client
+	wrun1 := &tmocks.WorkflowRun{}
+	wrun1.On("GetID").Return("test-workflow-id-1")
+
+	mockTemporalClient := &tmocks.Client{}
+	mockTemporalClient.On("ExecuteWorkflow", mock.Anything, mock.Anything, "RotateTemporalCertAccessOTP", mock.Anything).Return(wrun1, nil)
+
+	tSiteClientPool := sc.NewClientPool(nil)
+	tSiteClientPool.IDClientMap[site1.ID.String()] = mockTemporalClient
+	tSiteClientPool.IDClientMap[site2.ID.String()] = mockTemporalClient
+
+	// Set up test environment
+	cfg := config.NewConfig()
+	cfg.SetSiteManagerEndpoint(testServer.URL)
+
+	temporalsuit := testsuite.WorkflowTestSuite{}
+	temporalsuit.NewTestWorkflowEnvironment()
+
+	// Define test cases
+	type fields struct {
+		dbSession      *cdb.Session
+		siteClientPool *sc.ClientPool
+	}
+	tests := []struct {
+		name       string
+		fields     fields
+		wantErr    bool
+		wantStatus map[uuid.UUID]string
+	}{
+		{
+			name: "Test OTP expiration and renewal for all sites with no errors",
+			fields: fields{
+				dbSession:      dbSession,
+				siteClientPool: tSiteClientPool,
+			},
+			wantErr: false,
+			wantStatus: map[uuid.UUID]string{
+				site1.ID: cdbm.SiteStatusRegistered,
+				site2.ID: cdbm.SiteStatusRegistered,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mst := ManageSite{
+				dbSession:      tt.fields.dbSession,
+				siteClientPool: tt.fields.siteClientPool,
+				cfg:            cfg,
+			}
+
+			err := mst.CheckOTPExpirationAndRenewForAllSites(context.Background())
+			if (err != nil) != tt.wantErr {
+				t.Errorf("CheckOTPExpirationAndRenewForAllSites() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			for siteID, wantStatus := range tt.wantStatus {
+				siteDAO := cdbm.NewSiteDAO(dbSession)
+				site, err := siteDAO.GetByID(ctx, nil, siteID, nil, false)
+				assert.NoError(t, err)
+				assert.Equal(t, wantStatus, site.Status)
+			}
+		})
+	}
+}
+
+func TestManageSite_CheckOTPExpirationAndRenewForAllSites_MoreThanDefaultPageSize(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testSiteInitDB(t)
+	defer dbSession.Close()
+
+	// Initialize schema and mock data
+	util.TestSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org-1"
+	ipRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	ipu := util.TestBuildUser(t, dbSession, uuid.New().String(), []string{ipOrg}, ipRoles)
+	ip := util.TestBuildInfrastructureProvider(t, dbSession, "testIP", ipOrg, ipu)
+
+	// Create more than 20 sites to exceed the default page size.
+	siteCount := 25
+	siteIDs := make([]uuid.UUID, 0, siteCount)
+	for i := 1; i <= siteCount; i++ {
+		site := util.TestBuildSite(t, dbSession, ip, fmt.Sprintf("test-site-%d", i), cdbm.SiteStatusRegistered, nil, ipu)
+		siteIDs = append(siteIDs, site.ID)
+	}
+	almostExpiredTime := time.Now().Add(24 * time.Hour).Format("2006-01-02 15:04:05 -0700 MST")
+
+	requestCount := 0
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{
+            "siteuuid": "` + uuid.New().String() + `",
+            "otp": "mocked-otp",
+            "otpexpiry": "` + almostExpiredTime + `"
+        }`))
+	}))
+	defer testServer.Close()
+
+	wrun := &tmocks.WorkflowRun{}
+	wrun.On("GetID").Return("test-workflow-id")
+
+	mockTemporalClient := &tmocks.Client{}
+	mockTemporalClient.On(
+		"ExecuteWorkflow",
+		mock.Anything, // context
+		mock.Anything, // StartWorkflowOptions
+		"RotateTemporalCertAccessOTP",
+		mock.Anything, // OTP
+	).Return(wrun, nil)
+
+	tSiteClientPool := sc.NewClientPool(nil)
+	for _, sid := range siteIDs {
+		tSiteClientPool.IDClientMap[sid.String()] = mockTemporalClient
+	}
+
+	// Set up config with the test server's endpoint
+	cfg := config.NewConfig()
+	cfg.SetSiteManagerEndpoint(testServer.URL)
+
+	mst := ManageSite{
+		dbSession:      dbSession,
+		siteClientPool: tSiteClientPool,
+		cfg:            cfg}
+
+	err := mst.CheckOTPExpirationAndRenewForAllSites(ctx)
+	require.NoError(t, err, "Expected no error from CheckOTPExpirationAndRenewForAllSites")
+
+	// Assert that the site-manager endpoint was called as many times as the number of sites
+	// times 2: Once because we'll call RollSite and once for GetSiteOTP again
+	assert.Equal(t, siteCount*2, requestCount, "Expected site manager to be called for all sites")
+
+	// Assert that Temporal client was called for each site
+	assert.Equal(t, siteCount, len(mockTemporalClient.Calls), "Expected Temporal client to be called for all sites")
+}
+
+func TestManageSite_UpdateAgentCertExpiry_Activity(t *testing.T) {
+	ctx := context.Background()
+
+	dbSession := cdbu.GetTestDBSession(t, false)
+	defer dbSession.Close()
+
+	util.TestSetupSchema(t, dbSession)
+
+	// Create infrastructure provider org and user
+	ipOrg := "test-provider-org-1"
+	ipRoles := []string{"FORGE_PROVIDER_ADMIN"}
+	ipu := util.TestBuildUser(t, dbSession, uuid.New().String(), []string{ipOrg}, ipRoles)
+
+	// Create infrastructure provider with a valid user
+	ip := util.TestBuildInfrastructureProvider(t, dbSession, "testIP", ipOrg, ipu)
+
+	// Create a site without AgentCertExpiry, providing the same user as createdBy
+	site := util.TestBuildSite(t, dbSession, ip, "test-site", cdbm.SiteStatusRegistered, nil, ipu)
+
+	mst := ManageSite{
+		dbSession: dbSession,
+	}
+
+	// Check initial condition: AgentCertExpiry is nil
+	siteDAO := cdbm.NewSiteDAO(dbSession)
+	existingSite, err := siteDAO.GetByID(ctx, nil, site.ID, nil, false)
+	assert.NoError(t, err)
+	assert.Nil(t, existingSite.AgentCertExpiry)
+
+	// Now let's update AgentCertExpiry
+	newCertExpiry := time.Now().Add(48 * time.Hour).UTC().Round(time.Microsecond)
+	err = mst.UpdateAgentCertExpiry(ctx, site.ID, newCertExpiry)
+	assert.NoError(t, err)
+
+	// Verify AgentCertExpiry is updated
+	updatedSite, err := siteDAO.GetByID(ctx, nil, site.ID, nil, false)
+	assert.NoError(t, err)
+	assert.NotNil(t, updatedSite.AgentCertExpiry)
+	assert.True(t, updatedSite.AgentCertExpiry.Equal(newCertExpiry))
+}
+
+func TestManageSite_DeleteOrphanedSiteTemporalNamespaces_Activity(t *testing.T) {
+	ctx := context.Background()
+
+	dbSession := cdbu.GetTestDBSession(t, false)
+	defer dbSession.Close()
+
+	util.TestSetupSchema(t, dbSession)
+
+	// Create infrastructure provider org and user
+	ipOrg := "test-provider-org-1"
+	ipRoles := []string{"FORGE_PROVIDER_ADMIN"}
+	ipu := util.TestBuildUser(t, dbSession, uuid.New().String(), []string{ipOrg}, ipRoles)
+
+	// Create infrastructure provider with a valid user
+	ip := util.TestBuildInfrastructureProvider(t, dbSession, "testIP", ipOrg, ipu)
+
+	stDAO := cdbm.NewSiteDAO(dbSession)
+
+	// Create a site with a namespace
+	site1 := util.TestBuildSite(t, dbSession, ip, "test-site-1", cdbm.SiteStatusRegistered, nil, ipu)
+	assert.NotNil(t, site1)
+	site2 := util.TestBuildSite(t, dbSession, ip, "test-site-2", cdbm.SiteStatusRegistered, nil, ipu)
+	assert.NotNil(t, site2)
+	site3 := util.TestBuildSite(t, dbSession, ip, "test-site-3", cdbm.SiteStatusRegistered, nil, ipu)
+	err := stDAO.Delete(ctx, nil, site3.ID)
+	assert.Nil(t, err)
+	site4 := util.TestBuildSite(t, dbSession, ip, "test-site-4", cdbm.SiteStatusRegistered, nil, ipu)
+	err = stDAO.Delete(ctx, nil, site4.ID)
+	assert.Nil(t, err)
+	site5 := util.TestBuildSite(t, dbSession, ip, "test-site-5", cdbm.SiteStatusRegistered, nil, ipu)
+	err = stDAO.Delete(ctx, nil, site5.ID)
+	assert.Nil(t, err)
+
+	tc := &tmocks.Client{}
+	gmockctrl1 := gomock.NewController(t)
+
+	tws1 := twsv1mock.NewMockWorkflowServiceClient(gmockctrl1)
+
+	nextPageToken := []byte("next-page-token")
+	tws1.EXPECT().ListNamespaces(gomock.Any(), &tWorkflowv1.ListNamespacesRequest{
+		PageSize:      100,
+		NextPageToken: nil,
+	}).Return(&tWorkflowv1.ListNamespacesResponse{
+		Namespaces: []*tWorkflowv1.DescribeNamespaceResponse{
+			{
+				NamespaceInfo: &tnsv1.NamespaceInfo{
+					Name: site1.ID.String(),
+				},
+			},
+			{
+				NamespaceInfo: &tnsv1.NamespaceInfo{
+					Name: site2.ID.String(),
+				},
+			},
+			{
+				NamespaceInfo: &tnsv1.NamespaceInfo{
+					Name: "cloud",
+				},
+			},
+			{
+				NamespaceInfo: &tnsv1.NamespaceInfo{
+					Name: site3.ID.String(),
+				},
+			},
+			{
+				NamespaceInfo: &tnsv1.NamespaceInfo{
+					Name: site4.ID.String(),
+				},
+			},
+		},
+		NextPageToken: nextPageToken,
+	}, nil).Times(1)
+
+	tws1.EXPECT().ListNamespaces(gomock.Any(), &tWorkflowv1.ListNamespacesRequest{
+		PageSize:      100,
+		NextPageToken: nextPageToken,
+	}).Return(&tWorkflowv1.ListNamespacesResponse{
+		Namespaces: []*tWorkflowv1.DescribeNamespaceResponse{
+			{
+				NamespaceInfo: &tnsv1.NamespaceInfo{
+					Name: site5.ID.String(),
+				},
+			},
+		},
+		NextPageToken: nil,
+	}, nil).Times(1)
+
+	tc.Mock.On("WorkflowService").Return(tws1)
+
+	tosc1 := tosv1mock.NewMockOperatorServiceClient(gmockctrl1)
+
+	// Delete namespace should be called for the 2 random UUID namespaces
+	tosc1.EXPECT().DeleteNamespace(gomock.Any(), gomock.Any()).Return(&tOperatorv1.DeleteNamespaceResponse{}, nil).Times(3)
+
+	tc.Mock.On("OperatorService").Return(tosc1)
+
+	temporalsuit := testsuite.WorkflowTestSuite{}
+	temporalsuit.NewTestWorkflowEnvironment()
+
+	mst := ManageSite{
+		dbSession: dbSession,
+		tc:        tc,
+	}
+
+	err = mst.DeleteOrphanedSiteTemporalNamespaces(ctx)
+	assert.NoError(t, err, "Expected no error when deleting orphaned site temporal namespaces")
+
+	gmockctrl1.Finish()
+}

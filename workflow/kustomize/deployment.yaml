@@ -1,0 +1,174 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+#
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloud-worker
+  labels:
+    app.kubernetes.io/name: cloud-worker
+    app.kubernetes.io/instance: cloud-worker
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cloud-worker
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cloud-worker
+    spec:
+      imagePullSecrets:
+        - name: imagepullsecret
+      containers:
+        - name: cloud-worker
+          image: nvcr.io/nvidian/nvforge-devel/cloud-workflow:v0.2.35
+          imagePullPolicy: Always
+          env:
+            # Config file path
+            - name: CONFIG_FILE_PATH
+              value: /etc/cloud-workflow/config.yaml
+            # Temporal namespace this worker will operate on
+            - name: TEMPORAL_NAMESPACE
+              value: cloud
+            # Temporal queue this worker will operate on
+            - name: TEMPORAL_QUEUE
+              value: cloud
+          volumeMounts:
+            - name: forge-pg-cluster-auth
+              mountPath: /var/secrets/db/auth/
+              readOnly: true
+            - name: cloud-workflow-config
+              mountPath: /etc/cloud-workflow/
+              readOnly: true
+            - name: temporal-client-cloud-certs
+              mountPath: /var/secrets/temporal/certs/client-cloud/
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8899
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8899
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 30m
+              memory: 300Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - NET_RAW
+      securityContext:
+        runAsNonRoot: false
+      volumes:
+        - name: forge-pg-cluster-auth
+          secret:
+            secretName: forge.forge-pg-cluster.credentials
+        - name: cloud-workflow-config
+          configMap:
+            name: cloud-workflow-config
+        - name: temporal-client-cloud-certs
+          secret:
+            secretName: temporal-client-cloud-certs
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: site-worker
+  labels:
+    app.kubernetes.io/name: site-worker
+    app.kubernetes.io/instance: site-worker
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: site-worker
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: site-worker
+    spec:
+      imagePullSecrets:
+        - name: imagepullsecret
+      containers:
+        - name: site-worker
+          image: nvcr.io/nvidian/nvforge-devel/cloud-workflow:v0.2.35
+          imagePullPolicy: Always
+          env:
+            # Config file path
+            - name: CONFIG_FILE_PATH
+              value: /etc/cloud-workflow/config.yaml
+            # Temporal namespace this worker will operate on
+            - name: TEMPORAL_NAMESPACE
+              value: site
+            # Temporal queue this worker will operate on
+            - name: TEMPORAL_QUEUE
+              value: site
+          volumeMounts:
+            - name: forge-pg-cluster-auth
+              mountPath: /var/secrets/db/auth/
+              readOnly: true
+            - name: cloud-workflow-config
+              mountPath: /etc/cloud-workflow/
+              readOnly: true
+            - name: temporal-client-cloud-certs
+              mountPath: /var/secrets/temporal/certs/client-cloud/
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8899
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8899
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 300Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - NET_RAW
+      securityContext:
+        runAsNonRoot: false
+      volumes:
+        - name: forge-pg-cluster-auth
+          secret:
+            secretName: forge.forge-pg-cluster.credentials
+        - name: cloud-workflow-config
+          configMap:
+            name: cloud-workflow-config
+        - name: temporal-client-cloud-certs
+          secret:
+            secretName: temporal-client-cloud-certs

@@ -1,0 +1,120 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package workflowtypes
+
+import (
+	"context"
+
+	wflows "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	computils "github.com/nvidia/carbide-rest/site-agent/pkg/components/common"
+	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/worker"
+	"go.uber.org/atomic"
+)
+
+// State - temporal state
+type State struct {
+	// ConnectionAttempted the number of times the connection has been attempted
+	ConnectionAttempted atomic.Uint64
+	// ConnectionSucc the number of times the connection has succeded
+	ConnectionSucc atomic.Uint64
+	// HealthStatus current health state
+	HealthStatus atomic.Uint64
+	// Err is error message
+	Err *string
+	// ConnectionTime time when attempted to connect
+	ConnectionTime string
+}
+
+// MgrState - Mgr state
+type MgrState struct {
+	// WflowStarted the number of times the Wflow has started
+	WflowStarted atomic.Uint64
+	// WflowActFail the number of times the Wflow Activity has failed
+	WflowActFail atomic.Uint64
+	// WflowActSucc the number of times the Wflow Activity has succeded
+	WflowActSucc atomic.Uint64
+	// WflowPubFail the number of times the Wflow Publishing has failed
+	WflowPubFail atomic.Uint64
+	// WflowPubSucc the number of times the Wflow Publishing has succeded
+	WflowPubSucc atomic.Uint64
+}
+
+// Workflow - workflow data
+type Workflow struct {
+	ID                          string
+	Name                        string
+	Namespace                   string
+	Temporal                    Temporal
+	WorkflowFunctions           []interface{}
+	State                       *State
+	VpcState                    *MgrState
+	VpcPrefixState              *MgrState
+	SubnetState                 *MgrState
+	InstanceState               *MgrState
+	MachineState                *MgrState
+	TenantState                 *MgrState
+	SSHKeyGroupState            *MgrState
+	InfiniBandPartitionState    *MgrState
+	OperatingSystemState        *MgrState
+	MachineValidationState      *MgrState
+	InstanceTypeState           *MgrState
+	NetworkSecurityGroupState   *MgrState
+	ExpectedMachineState        *MgrState
+	SKUState                    *MgrState
+	DpuExtensionServiceState    *MgrState
+	NVLinkLogicalPartitionState *MgrState
+}
+
+// Temporal datastructure
+type Temporal struct {
+	Publisher  client.Client
+	Subscriber client.Client
+	Worker     worker.Worker
+}
+
+// NewWorkflowInstance - new instance
+func NewWorkflowInstance() *Workflow {
+	// Initialize the necessary values and return
+	return &Workflow{
+		State:                       &State{},
+		VpcState:                    &MgrState{},
+		VpcPrefixState:              &MgrState{},
+		SubnetState:                 &MgrState{},
+		InstanceState:               &MgrState{},
+		SSHKeyGroupState:            &MgrState{},
+		MachineState:                &MgrState{},
+		TenantState:                 &MgrState{},
+		InfiniBandPartitionState:    &MgrState{},
+		OperatingSystemState:        &MgrState{},
+		MachineValidationState:      &MgrState{},
+		InstanceTypeState:           &MgrState{},
+		NetworkSecurityGroupState:   &MgrState{},
+		ExpectedMachineState:        &MgrState{},
+		SKUState:                    &MgrState{},
+		DpuExtensionServiceState:    &MgrState{},
+		NVLinkLogicalPartitionState: &MgrState{},
+	}
+}
+
+// WorkflowMetadata - workflow metadata
+type WorkflowMetadata interface {
+	ResourceType() string
+	ActivityType() string
+	DoDbOP() computils.OpType
+	DoSiteControllerOP(context.Context, *wflows.TransactionID, interface{}) (interface{}, error)
+	ActivityInvoke() interface{}
+	ActivityPublish() interface{}
+	Response() interface{}
+	ResponseState(status wflows.WorkflowStatus,
+		objectStatus wflows.ObjectStatus, statusMsg string)
+	Statistics() *MgrState
+}

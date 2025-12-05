@@ -1,0 +1,103 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package config
+
+import (
+	"fmt"
+	"sync"
+
+	"github.com/rs/zerolog/log"
+)
+
+// KeycloakConfig represents the configuration for Keycloak authentication
+type KeycloakConfig struct {
+	BaseURL               string
+	ExternalBaseURL       string
+	ClientID              string
+	ClientSecret          string
+	Realm                 string
+	Issuer                string
+	ServiceAccountEnabled bool
+	jwksConfig            *JwksConfig
+	mu                    sync.RWMutex
+}
+
+// NewKeycloakConfig creates a new KeycloakConfig instance and attempts to fetch JWKS
+func NewKeycloakConfig(baseURL, externalBaseURL, clientID, clientSecret, realm string, serviceAccountEnabled bool) *KeycloakConfig {
+	// Construct the issuer URL upfront
+	issuer := fmt.Sprintf("%s/realms/%s", externalBaseURL, realm)
+
+	kc := &KeycloakConfig{
+		BaseURL:               baseURL,
+		ExternalBaseURL:       externalBaseURL,
+		ClientID:              clientID,
+		ClientSecret:          clientSecret,
+		Realm:                 realm,
+		Issuer:                issuer,
+		ServiceAccountEnabled: serviceAccountEnabled,
+	}
+
+	// Initialize and populate JWKS config during construction
+	kc.mu.Lock()
+	kc.initializeJWKS()
+	kc.mu.Unlock()
+
+	return kc
+}
+
+// initializeJWKS initializes the JWKS configuration and attempts to fetch keys
+// Note: This method should be called with the mutex already locked
+// Returns whether the JWKS was successfully fetched
+func (kc *KeycloakConfig) initializeJWKS() bool {
+	jwksURL := fmt.Sprintf("%s/realms/%s/protocol/openid-connect/certs", kc.BaseURL, kc.Realm)
+
+	tempJwksConfig := &JwksConfig{
+		URL:    jwksURL,
+		Issuer: kc.Issuer,
+	}
+
+	// Attempt to fetch JWKS during initialization
+	err := tempJwksConfig.UpdateJWKs()
+	if err != nil {
+		log.Warn().Err(err).Msgf("Failed to fetch JWKS during initialization from URL %s for realm %s", jwksURL, kc.Realm)
+		return false
+	} else {
+		log.Info().Msgf("Successfully initialized JWKS for realm %s from URL %s", kc.Realm, jwksURL)
+		// Only set jwksConfig if fetch succeeds
+		kc.jwksConfig = tempJwksConfig
+		return true
+	}
+}
+
+// GetJwksConfig gets the JWKS configuration, retrying fetch if needed
+func (kc *KeycloakConfig) GetJwksConfig() (*JwksConfig, error) {
+	kc.mu.RLock()
+	if kc.jwksConfig != nil {
+		kc.mu.RUnlock()
+		return kc.jwksConfig, nil
+	}
+	kc.mu.RUnlock()
+
+	kc.mu.Lock()
+	defer kc.mu.Unlock()
+
+	// Double-check in case another goroutine initialized it
+	if kc.jwksConfig != nil {
+		return kc.jwksConfig, nil
+	}
+
+	success := kc.initializeJWKS()
+	if !success || kc.jwksConfig == nil {
+		return nil, fmt.Errorf("failed to fetch JWKS for realm %s", kc.Realm)
+	}
+
+	return kc.jwksConfig, nil
+}

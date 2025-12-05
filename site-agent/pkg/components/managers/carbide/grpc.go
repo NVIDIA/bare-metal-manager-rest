@@ -1,0 +1,118 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package carbide
+
+import (
+	"sync"
+
+	"github.com/gogo/status"
+	"github.com/rs/zerolog/log"
+	computils "github.com/nvidia/carbide-rest/site-agent/pkg/components/utils"
+	"github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
+	"google.golang.org/grpc/codes"
+)
+
+// checkCertsOnce is a local variable to ensure the go routine for checking if the certificate has changed only gets
+// kicked off once even if creategRPC gets called multiple times
+var checkCertsOnce sync.Once
+
+func creategRPC() (conn *client.CarbideClient, err error) {
+	// Initialize contextual logger
+	logger := log.With().Str("Method", "CarbideClient.creategRPC").Logger()
+	logger.Info().Msg("GRPC: Starting GRPC client")
+
+	// Initialize the GRPC client configuration
+	ManagerAccess.Data.EB.Managers.Carbide.Client.Config = &client.CarbideClientConfig{
+		Address:        ManagerAccess.Conf.EB.Carbide.Address,
+		Secure:         ManagerAccess.Conf.EB.Carbide.Secure,
+		ServerCAPath:   ManagerAccess.Conf.EB.Carbide.ServerCAPath,
+		SkipServerAuth: ManagerAccess.Conf.EB.Carbide.SkipServerAuth,
+		ClientCertPath: ManagerAccess.Conf.EB.Carbide.ClientCertPath,
+		ClientKeyPath:  ManagerAccess.Conf.EB.Carbide.ClientKeyPath,
+		ClientMetrics:  makeGrpcClientMetrics(),
+	}
+
+	logger.Info().Interface("GRPCConfig", ManagerAccess.Data.EB.Managers.Carbide.Client.Config).Msg("Initializing GRPC client")
+
+	// Get initial certificate MD5 hashes
+	initialClientMD5, initialServerMD5, err := ManagerAccess.Data.EB.Managers.Carbide.Client.GetInitialCertMD5()
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to get initial certificate MD5 hashes")
+		return nil, err
+	}
+	newClient, err := client.NewCarbideClient(ManagerAccess.Data.EB.Managers.Carbide.Client.Config)
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to initialize GRPC client")
+		return nil, err
+	}
+
+	// Since this is initial creation, there's no old client to manage. SwapClient still used for consistency.
+	_ = ManagerAccess.Data.EB.Managers.Carbide.Client.SwapClient(newClient)
+	logger.Info().Msg("Successfully initialized GRPC client")
+
+	// Start the certificate check and reload routine in a background goroutine
+	checkCertsOnce.Do(func() {
+		go ManagerAccess.Data.EB.Managers.Carbide.Client.CheckAndReloadCerts(initialClientMD5, initialServerMD5)
+		logger.Info().Msg("Started certificate reload routine")
+	})
+
+	return ManagerAccess.Data.EB.Managers.Carbide.GetClient(), nil
+}
+
+// CreateGRPCClient - creates the grpc connection handle
+func (Carbide *API) CreateGRPCClient() error {
+	// Initialize the GRPC client
+	// We can handle advanced features later
+	_, err := creategRPC()
+	if err != nil {
+		ManagerAccess.Data.EB.Managers.Carbide.State.HealthStatus.Store(uint64(computils.CompUnhealthy))
+	} else {
+		ManagerAccess.Data.EB.Managers.Carbide.State.HealthStatus.Store(uint64(computils.CompNotKnown))
+	}
+
+	return err
+}
+
+// GetGRPCClient - gets the grpc connection handle
+func (Carbide *API) GetGRPCClient() *client.CarbideClient {
+	return ManagerAccess.Data.EB.Managers.Carbide.GetClient()
+}
+
+// isGRPCUp Is grpc connection functional
+func isGRPCUp(c codes.Code) bool {
+	switch c {
+	case codes.Unavailable, codes.Unauthenticated:
+		return false
+	}
+	return true
+}
+
+// UpdateGRPCClientState - updates carbide state
+func (Carbide *API) UpdateGRPCClientState(err error) {
+	defer computils.UpdateState(ManagerAccess.Data.EB)
+	if err == nil {
+		ManagerAccess.Data.EB.Managers.Carbide.State.GrpcSucc.Inc()
+		ManagerAccess.Data.EB.Managers.Carbide.State.HealthStatus.Store(uint64(computils.CompHealthy))
+		return
+	}
+	ManagerAccess.Data.EB.Managers.Carbide.State.GrpcFail.Inc()
+	ManagerAccess.Data.EB.Managers.Carbide.State.Err = err.Error()
+	log.Error().Err(err).Msg("GRPC: Failed to send request to GRPC server")
+	st, ok := status.FromError(err)
+	if ok {
+		if !isGRPCUp(st.Code()) {
+			ManagerAccess.Data.EB.Managers.Carbide.State.HealthStatus.Store(uint64(computils.CompUnhealthy))
+			log.Error().Err(err).Msg("GRPC: connection down")
+		} else {
+			log.Info().Msgf("GRPC application error %v", st.Code())
+		}
+	}
+}

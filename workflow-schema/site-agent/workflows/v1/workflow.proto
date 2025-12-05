@@ -1,0 +1,81 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+syntax = "proto3";
+
+package workflows.v1;
+
+option go_package = "github.com/nvidia/carbide-rest/workflow-schema/proto";
+
+import "google/protobuf/timestamp.proto";
+
+// WorkflowStatus - response status
+enum WorkflowStatus {
+  WORKFLOW_STATUS_UNSPECIFIED = 0;
+  WORKFLOW_STATUS_CREATED = 1;
+  WORKFLOW_STATUS_IN_PROGRESS = 2;
+  WORKFLOW_STATUS_REQUEUED = 3;
+  WORKFLOW_STATUS_SUCCESS = 4;
+  WORKFLOW_STATUS_FAILURE = 5;
+}
+
+// WorkflowPolicy - policies of siteagent workflow
+enum WorkflowPolicy {
+  WORKFLOW_POLICY_UNSPECIFIED = 0;
+  WORKFLOW_POLICY_DELETE_ON_FAILURE = 1;
+  WORKFLOW_POLICY_ASYNC_NOTIFY = 2;
+}
+
+// WorkflowOptions - options for executing workflows
+// TODO: Fix typo in attribute name
+message WorkflowOptions {
+  optional int32 retry_count = 1;
+  optional int32 retry_int32erval = 2;
+  optional WorkflowPolicy policy = 3;
+}
+
+// TransactionID - Identity for temporal workflow
+message TransactionID {
+  // Object ID of the resource
+  string resource_id = 1;
+  // Microsecond timestamp for object serialization
+  google.protobuf.Timestamp timestamp = 2;
+}
+
+// ObjectStatus - response status
+enum ObjectStatus {
+  OBJECT_STATUS_UNSPECIFIED = 0;
+  OBJECT_STATUS_CREATED = 1;
+  OBJECT_STATUS_IN_PROGRESS = 2;
+  OBJECT_STATUS_DELETED = 3;
+  OBJECT_STATUS_UPDATED = 4;
+  OBJECT_STATUS_READY = 5;
+}
+
+// InventoryStatus - response status for inventory collection
+enum InventoryStatus {
+  INVENTORY_STATUS_UNSPECIFIED = 0;
+  INVENTORY_STATUS_SUCCESS = 1;
+  INVENTORY_STATUS_FAILED = 2;
+}
+
+// InventoryPage - pagination information about inventory
+message InventoryPage {
+  // Total number of pages
+  int32 total_pages = 1;
+  // Current page number
+  int32 current_page = 2;
+  // Number of items per page
+  int32 page_size = 3;
+  // Total number of items
+  int32 total_items = 4;
+  // IDs of all items
+  repeated string item_ids = 5;
+}

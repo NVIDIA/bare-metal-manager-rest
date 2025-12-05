@@ -1,0 +1,1261 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ *
+ * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+ * property and proprietary rights in and to this material, related
+ * documentation and any modifications thereto. Any use, reproduction,
+ * disclosure or distribution of this material and related documentation
+ * without an express license agreement from NVIDIA CORPORATION or
+ * its affiliates is strictly prohibited.
+ */
+
+package handler
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
+	"github.com/nvidia/carbide-rest/api/pkg/api/model"
+	"github.com/nvidia/carbide-rest/api/pkg/api/pagination"
+	sc "github.com/nvidia/carbide-rest/api/pkg/client/site"
+	"github.com/nvidia/carbide-rest/common/pkg/otelecho"
+	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
+	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
+	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	temporalClient "go.temporal.io/sdk/client"
+	tmocks "go.temporal.io/sdk/mocks"
+
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+)
+
+// TestCreateDpuExtensionServiceHandler_Handle tests the Create DPU Extension Service handler
+func TestCreateDpuExtensionServiceHandler_Handle(t *testing.T) {
+	ctx := context.Background()
+	dbSession := common.TestInitDB(t)
+	defer dbSession.Close()
+
+	common.TestSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org"
+	ipOrgRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	tnOrg := "test-tenant-org-1"
+	tnOrgRoles := []string{"FORGE_TENANT_ADMIN"}
+	tnOrgRolesForbidden := []string{"FORGE_TENANT_USER"}
+
+	ipu := common.TestBuildUser(t, dbSession, uuid.New().String(), ipOrg, ipOrgRoles)
+	ip := common.TestBuildInfrastructureProvider(t, dbSession, "test-infrastructure-provider", ipOrg, ipu)
+	st1 := common.TestBuildSite(t, dbSession, ip, "test-site-1", ipu)
+	// Update site to Registered status
+	st1.Status = cdbm.SiteStatusRegistered
+	_, err := dbSession.DB.NewUpdate().Model(st1).Where("id = ?", st1.ID).Exec(context.Background())
+	assert.Nil(t, err)
+
+	tnu1 := common.TestBuildUser(t, dbSession, uuid.New().String(), tnOrg, tnOrgRoles)
+	tnu1Forbidden := common.TestBuildUser(t, dbSession, uuid.New().String(), tnOrg, tnOrgRolesForbidden)
+	tn1 := common.TestBuildTenant(t, dbSession, "test-tenant", tnOrg, tnu1)
+	ts1 := common.TestBuildTenantSite(t, dbSession, tn1, st1, tnu1)
+	assert.NotNil(t, ts1)
+
+	// Create existing DPU Extension Service to test name collision
+	existingDES := common.TestBuildDpuExtensionService(t, dbSession, "existing-service", model.DpuExtensionServiceTypeKubernetesPod, tn1, st1, "V1-T1761856992374052", cdbm.DpuExtensionServiceStatusReady, tnu1)
+	assert.NotNil(t, existingDES)
+
+	// OTEL Spanner configuration
+	tracer, _, ctx := common.TestCommonTraceProviderSetup(t, ctx)
+
+	// Mock Temporal client
+
+	versionInfo := &cwssaws.DpuExtensionServiceVersionInfo{
+		Version:       "V1-T1761856992374052",
+		Data:          "apiVersion: v1\nkind: Pod",
+		HasCredential: true,
+		Created:       time.Now().Format(time.RFC3339),
+	}
+	mockTC := &tmocks.Client{}
+	mockWorkflowRun := &tmocks.WorkflowRun{}
+	mockWorkflowRun.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		arg := args.Get(1)
+		if ptr, ok := arg.(**cwssaws.DpuExtensionService); ok {
+			*ptr = &cwssaws.DpuExtensionService{
+				LatestVersionInfo: versionInfo,
+			}
+		}
+	}).Return(nil)
+	mockWorkflowRun.On("GetID").Return("test-workflow-id")
+	mockTC.On("ExecuteWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockWorkflowRun, nil)
+
+	// Mock Site Client Pool
+	mockSCP := &sc.ClientPool{
+		IDClientMap: map[string]temporalClient.Client{
+			st1.ID.String(): mockTC,
+		},
+	}
+
+	okBody := model.APIDpuExtensionServiceCreateRequest{
+		Name:        "test-service",
+		Description: cdb.GetStrPtr("Test Description"),
+		ServiceType: model.DpuExtensionServiceTypeKubernetesPod,
+		SiteID:      st1.ID.String(),
+		Data:        "apiVersion: v1\nkind: Pod",
+		Credentials: &model.APIDpuExtensionServiceCredentials{
+			RegistryURL: "https://registry.example.com",
+			Username:    cdb.GetStrPtr("testuser"),
+			Password:    cdb.GetStrPtr("testpass"),
+		},
+	}
+	okBodyBytes, _ := json.Marshal(okBody)
+
+	nameClashBody := okBody
+	nameClashBody.Name = "existing-service"
+	nameClashBodyBytes, _ := json.Marshal(nameClashBody)
+
+	invalidSiteBody := okBody
+	invalidSiteBody.SiteID = uuid.New().String()
+	invalidSiteBodyBytes, _ := json.Marshal(invalidSiteBody)
+
+	invalidBodyBytes := []byte(`{"name": "test"}`)
+
+	tests := []struct {
+		name           string
+		reqOrgName     string
+		reqBody        string
+		user           *cdbm.User
+		expectedErr    bool
+		expectedStatus int
+	}{
+		{
+			name:           "error when user not found in request context",
+			reqOrgName:     tnOrg,
+			reqBody:        string(okBodyBytes),
+			user:           nil,
+			expectedErr:    true,
+			expectedStatus: http.StatusInternalServerError,
+		},
+		{
+			name:           "error when user does not belong to org",
+			reqOrgName:     "SomeOtherOrg",
+			reqBody:        string(okBodyBytes),
+			user:           tnu1,
+			expectedErr:    true,
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "error when user role is forbidden",
+			reqOrgName:     tnOrg,
+			reqBody:        string(okBodyBytes),
+			user:           tnu1Forbidden,
+			expectedErr:    true,
+			expectedStatus: http.StatusForbidden,
+		},
+		{
+			name:           "error when request body is invalid",
+			reqOrgName:     tnOrg,
+			reqBody:        string(invalidBodyBytes),
+			user:           tnu1,
+			expectedErr:    true,
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "error when site does not exist",
+			reqOrgName:     tnOrg,
+			reqBody:        string(invalidSiteBodyBytes),
+			user:           tnu1,
+			expectedErr:    true,
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "error when name already exists",
+			reqOrgName:     tnOrg,
+			reqBody:        string(nameClashBodyBytes),
+			user:           tnu1,
+			expectedErr:    true,
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "success creating DPU Extension Service",
+			reqOrgName:     tnOrg,
+			reqBody:        string(okBodyBytes),
+			user:           tnu1,
+			expectedErr:    false,
+			expectedStatus: http.StatusCreated,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cdesh := CreateDpuExtensionServiceHandler{
+				dbSession:  dbSession,
+				tc:         mockTC,
+				scp:        mockSCP,
+				cfg:        common.GetTestConfig(),
+				tracerSpan: sutil.NewTracerSpan(),
+			}
+
+			// Setup echo server/context
+			e := echo.New()
+			req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(tt.reqBody))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+
+			ec := e.NewContext(req, rec)
+			ec.SetParamNames("orgName")
+			ec.SetParamValues(tt.reqOrgName)
+			ec.Set("user", tt.user)
+
+			testCtx := context.WithValue(ctx, otelecho.TracerKey, tracer)
+			ec.SetRequest(ec.Request().WithContext(testCtx))
+
+			err := cdesh.Handle(ec)
+			require.NoError(t, err)
+
+			require.Equal(t, tt.expectedStatus, rec.Code)
+
+			if !tt.expectedErr && rec.Code == http.StatusCreated {
+				var apiDES model.APIDpuExtensionService
+				err := json.Unmarshal(rec.Body.Bytes(), &apiDES)
+				require.NoError(t, err)
+				assert.Equal(t, okBody.Name, apiDES.Name)
+				assert.Equal(t, okBody.ServiceType, apiDES.ServiceType)
+				assert.Equal(t, okBody.SiteID, apiDES.SiteID)
+				assert.Equal(t, versionInfo.Version, *apiDES.Version)
+			}
+		})
+	}
+}
+
+// TestGetAllDpuExtensionServiceHandler_Handle tests the GetAll DPU Extension Service handler
+func TestGetAllDpuExtensionServiceHandler_Handle(t *testing.T) {
+	ctx := context.Background()
+	dbSession := common.TestInitDB(t)
+	defer dbSession.Close()
+
+	common.TestSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org"
+	ipOrgRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	tnOrg := "test-tenant-org-1"
+	tnOrgRoles := []string{"FORGE_TENANT_ADMIN"}
+	tnOrgRolesForbidden := []string{"FORGE_TENANT_USER"}
+
+	ipu := common.TestBuildUser(t, dbSession, uuid.New().String(), ipOrg, ipOrgRoles)
+	ip := common.TestBuildInfrastructureProvider(t, dbSession, "test-infrastructure-provider", ipOrg, ipu)
+	st1 := common.TestBuildSite(t, dbSession, ip, "test-site-1", ipu)
+	st1.Status = cdbm.SiteStatusRegistered
+	_, err := dbSession.DB.NewUpdate().Model(st1).Where("id = ?", st1.ID).Exec(context.Background())
+	assert.Nil(t, err)
+
+	tnu1 := common.TestBuildUser(t, dbSession, uuid.New().String(), tnOrg, tnOrgRoles)
+	tnu1Forbidden := common.TestBuildUser(t, dbSession, uuid.New().String(), tnOrg, tnOrgRolesForbidden)
+	tn1 := common.TestBuildTenant(t, dbSession, "test-tenant", tnOrg, tnu1)
+	ts1 := common.TestBuildTenantSite(t, dbSession, tn1, st1, tnu1)
+	assert.NotNil(t, ts1)
+
+	// Create multiple DPU Extension Services
+	des1 := common.TestBuildDpuExtensionService(t, dbSession, "service-1", model.DpuExtensionServiceTypeKubernetesPod, tn1, st1, "V1-T1761856992374052", cdbm.DpuExtensionServiceStatusReady, tnu1)
+	assert.NotNil(t, des1)
+	des2 := common.TestBuildDpuExtensionService(t, dbSession, "service-2", model.DpuExtensionServiceTypeKubernetesPod, tn1, st1, "V1-T1761856992374052", cdbm.DpuExtensionServiceStatusPending, tnu1)
+	assert.NotNil(t, des2)
+
+	cfg := common.GetTestConfig()
+
+	// OTEL Spanner configuration
+	tracer, _, ctx := common.TestCommonTraceProviderSetup(t, ctx)
+
+	mockTC := &tmocks.Client{}
+
+	tests := []struct {
+		name               string
+		reqOrgName         string
+		queryParams        map[string]string
+		user               *cdbm.User
+		expectedErr        bool
+		expectedStatus     int
+		expectedCount      int
+		validatePagination bool
+	}{
+		{
+			name:           "error when user not found in request context",
+			reqOrgName:     tnOrg,
+			user:           nil,
+			expectedErr:    true,
+			expectedStatus: http.StatusInternalServerError,
+		},
+		{
+			name:           "error when user does not belong to org",
+			reqOrgName:     "SomeOtherOrg",
+			user:           tnu1,
+			expectedErr:    true,
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "error when user role is forbidden",
+			reqOrgName:     tnOrg,
+			user:           tnu1Forbidden,
+			expectedErr:    true,
+			expectedStatus: http.StatusForbidden,
+		},
+		{
+			name:           "success getting all DPU Extension Services",
+			reqOrgName:     tnOrg,
+			user:           tnu1,
+			expectedErr:    false,
+			expectedStatus: http.StatusOK,
+			expectedCount:  2,
+		},
+		{
+			name:       "success filtering by site",
+			reqOrgName: tnOrg,
+			queryParams: map[string]string{
+				"siteId": st1.ID.String(),
+			},
+			user:           tnu1,
+			expectedErr:    false,
+			expectedStatus: http.StatusOK,
+			expectedCount:  2,
+		},
+		{
+			name:       "success filtering by status",
+			reqOrgName: tnOrg,
+			queryParams: map[string]string{
+				"status": cdbm.DpuExtensionServiceStatusReady,
+			},
+			user:           tnu1,
+			expectedErr:    false,
+			expectedStatus: http.StatusOK,
+			expectedCount:  1,
+		},
+		{
+			name:       "success with pagination",
+			reqOrgName: tnOrg,
+			queryParams: map[string]string{
+				"pageNumber": "1",
+				"pageSize":   "1",
+			},
+			user:               tnu1,
+			expectedErr:        false,
+			expectedStatus:     http.StatusOK,
+			expectedCount:      1,
+			validatePagination: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gadesh := GetAllDpuExtensionServiceHandler{
+				dbSession:  dbSession,
+				tc:         mockTC,
+				cfg:        cfg,
+				tracerSpan: sutil.NewTracerSpan(),
+			}
+
+			// Setup echo server/context
+			e := echo.New()
+			url := "/"
+			if len(tt.queryParams) > 0 {
+				url += "?"
+				first := true
+				for k, v := range tt.queryParams {
+					if !first {
+						url += "&"
+					}
+					url += fmt.Sprintf("%s=%s", k, v)
+					first = false
+				}
+			}
+			req := httptest.NewRequest(http.MethodGet, url, nil)
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+
+			ec := e.NewContext(req, rec)
+			ec.SetParamNames("orgName")
+			ec.SetParamValues(tt.reqOrgName)
+			ec.Set("user", tt.user)
+
+			testCtx := context.WithValue(ctx, otelecho.TracerKey, tracer)
+			ec.SetRequest(ec.Request().WithContext(testCtx))
+
+			err := gadesh.Handle(ec)
+			require.NoError(t, err)
+
+			require.Equal(t, tt.expectedStatus, rec.Code)
+
+			if !tt.expectedErr && rec.Code == http.StatusOK {
+				var apiDESList []model.APIDpuExtensionService
+				err := json.Unmarshal(rec.Body.Bytes(), &apiDESList)
+				require.NoError(t, err)
+				assert.Equal(t, tt.expectedCount, len(apiDESList))
+
+				if tt.validatePagination {
+					paginationHeader := rec.Header().Get(pagination.ResponseHeaderName)
+					assert.NotEmpty(t, paginationHeader)
+					var pageResp pagination.PageResponse
+					err := json.Unmarshal([]byte(paginationHeader), &pageResp)
+					require.NoError(t, err)
+					assert.Equal(t, 2, pageResp.Total)
+				}
+			}
+		})
+	}
+}
+
+// TestGetDpuExtensionServiceHandler_Handle tests the Get DPU Extension Service handler
+func TestGetDpuExtensionServiceHandler_Handle(t *testing.T) {
+	ctx := context.Background()
+	dbSession := common.TestInitDB(t)
+	defer dbSession.Close()
+
+	common.TestSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org"
+	ipOrgRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	tnOrg := "test-tenant-org-1"
+	tnOrgRoles := []string{"FORGE_TENANT_ADMIN"}
+	tnOrgRolesForbidden := []string{"FORGE_TENANT_USER"}
+
+	tnOrg2 := "test-tenant-org-2"
+
+	ipu := common.TestBuildUser(t, dbSession, uuid.New().String(), ipOrg, ipOrgRoles)
+	ip := common.TestBuildInfrastructureProvider(t, dbSession, "test-infrastructure-provider", ipOrg, ipu)
+	st1 := common.TestBuildSite(t, dbSession, ip, "test-site-1", ipu)
+
+	tnu1 := common.TestBuildUser(t, dbSession, uuid.New().String(), tnOrg, tnOrgRoles)
+	tnu1Forbidden := common.TestBuildUser(t, dbSession, uuid.New().String(), tnOrg, tnOrgRolesForbidden)
+	tn1 := common.TestBuildTenant(t, dbSession, "test-tenant", tnOrg, tnu1)
+	ts1 := common.TestBuildTenantSite(t, dbSession, tn1, st1, tnu1)
+	assert.NotNil(t, ts1)
+
+	tnu2 := common.TestBuildUser(t, dbSession, uuid.New().String(), tnOrg2, tnOrgRoles)
+	tn2 := common.TestBuildTenant(t, dbSession, "test-tenant-2", tnOrg2, tnu2)
+
+	// Create DPU Extension Services
+	des1 := common.TestBuildDpuExtensionService(t, dbSession, "service-1", model.DpuExtensionServiceTypeKubernetesPod, tn1, st1, "V1-T1761856992374052", cdbm.DpuExtensionServiceStatusReady, tnu1)
+	assert.NotNil(t, des1)
+	des2 := common.TestBuildDpuExtensionService(t, dbSession, "service-2", model.DpuExtensionServiceTypeKubernetesPod, tn2, st1, "V1-T1761856992374052", cdbm.DpuExtensionServiceStatusReady, tnu2)
+	assert.NotNil(t, des2)
+
+	cfg := common.GetTestConfig()
+
+	// OTEL Spanner configuration
+	tracer, _, ctx := common.TestCommonTraceProviderSetup(t, ctx)
+
+	mockTC := &tmocks.Client{}
+
+	tests := []struct {
+		name                  string
+		reqOrgName            string
+		dpuExtensionServiceID string
+		user                  *cdbm.User
+		expectedErr           bool
+		expectedStatus        int
+		expectedDESName       string
+		expectNotFoundError   bool
+		expectForbiddenError  bool
+	}{
+		{
+			name:                  "error when user not found in request context",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des1.ID.String(),
+			user:                  nil,
+			expectedErr:           true,
+			expectedStatus:        http.StatusInternalServerError,
+		},
+		{
+			name:                  "error when user does not belong to org",
+			reqOrgName:            "SomeOtherOrg",
+			dpuExtensionServiceID: des1.ID.String(),
+			user:                  tnu1,
+			expectedErr:           true,
+			expectedStatus:        http.StatusBadRequest,
+		},
+		{
+			name:                  "error when user role is forbidden",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des1.ID.String(),
+			user:                  tnu1Forbidden,
+			expectedErr:           true,
+			expectedStatus:        http.StatusForbidden,
+		},
+		{
+			name:                  "error when DPU Extension Service ID is invalid",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: "invalid-uuid",
+			user:                  tnu1,
+			expectedErr:           true,
+			expectedStatus:        http.StatusBadRequest,
+		},
+		{
+			name:                  "error when DPU Extension Service does not exist",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: uuid.New().String(),
+			user:                  tnu1,
+			expectedErr:           true,
+			expectedStatus:        http.StatusNotFound,
+			expectNotFoundError:   true,
+		},
+		{
+			name:                  "error when DPU Extension Service does not belong to tenant",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des2.ID.String(),
+			user:                  tnu1,
+			expectedErr:           true,
+			expectedStatus:        http.StatusForbidden,
+			expectForbiddenError:  true,
+		},
+		{
+			name:                  "success getting DPU Extension Service",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des1.ID.String(),
+			user:                  tnu1,
+			expectedErr:           false,
+			expectedStatus:        http.StatusOK,
+			expectedDESName:       "service-1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gdesh := GetDpuExtensionServiceHandler{
+				dbSession:  dbSession,
+				tc:         mockTC,
+				cfg:        cfg,
+				tracerSpan: sutil.NewTracerSpan(),
+			}
+
+			// Setup echo server/context
+			e := echo.New()
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+
+			ec := e.NewContext(req, rec)
+			ec.SetParamNames("orgName", "id")
+			ec.SetParamValues(tt.reqOrgName, tt.dpuExtensionServiceID)
+			ec.Set("user", tt.user)
+
+			testCtx := context.WithValue(ctx, otelecho.TracerKey, tracer)
+			ec.SetRequest(ec.Request().WithContext(testCtx))
+
+			err := gdesh.Handle(ec)
+			require.NoError(t, err)
+
+			require.Equal(t, tt.expectedStatus, rec.Code)
+
+			if !tt.expectedErr && rec.Code == http.StatusOK {
+				var apiDES model.APIDpuExtensionService
+				err := json.Unmarshal(rec.Body.Bytes(), &apiDES)
+				require.NoError(t, err)
+				assert.Equal(t, tt.expectedDESName, apiDES.Name)
+				assert.Equal(t, tt.dpuExtensionServiceID, apiDES.ID)
+			}
+		})
+	}
+}
+
+// TestUpdateDpuExtensionServiceHandler_Handle tests the Update DPU Extension Service handler
+func TestUpdateDpuExtensionServiceHandler_Handle(t *testing.T) {
+	ctx := context.Background()
+	dbSession := common.TestInitDB(t)
+	defer dbSession.Close()
+
+	common.TestSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org"
+	ipOrgRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	tnOrg := "test-tenant-org-1"
+	tnOrgRoles := []string{"FORGE_TENANT_ADMIN"}
+	tnOrgRolesForbidden := []string{"FORGE_TENANT_USER"}
+
+	ipu := common.TestBuildUser(t, dbSession, uuid.New().String(), ipOrg, ipOrgRoles)
+	ip := common.TestBuildInfrastructureProvider(t, dbSession, "test-infrastructure-provider", ipOrg, ipu)
+	st1 := common.TestBuildSite(t, dbSession, ip, "test-site-1", ipu)
+	st1.Status = cdbm.SiteStatusRegistered
+	_, err := dbSession.DB.NewUpdate().Model(st1).Where("id = ?", st1.ID).Exec(context.Background())
+	assert.Nil(t, err)
+
+	tnu1 := common.TestBuildUser(t, dbSession, uuid.New().String(), tnOrg, tnOrgRoles)
+	tnu1Forbidden := common.TestBuildUser(t, dbSession, uuid.New().String(), tnOrg, tnOrgRolesForbidden)
+	tn1 := common.TestBuildTenant(t, dbSession, "test-tenant", tnOrg, tnu1)
+	ts1 := common.TestBuildTenantSite(t, dbSession, tn1, st1, tnu1)
+	assert.NotNil(t, ts1)
+
+	des1 := common.TestBuildDpuExtensionService(t, dbSession, "service-1", model.DpuExtensionServiceTypeKubernetesPod, tn1, st1, "V1-T1761856992374052", cdbm.DpuExtensionServiceStatusReady, tnu1)
+	assert.NotNil(t, des1)
+	des2 := common.TestBuildDpuExtensionService(t, dbSession, "service-2", model.DpuExtensionServiceTypeKubernetesPod, tn1, st1, "V1-T1761856992374052", cdbm.DpuExtensionServiceStatusReady, tnu1)
+	assert.NotNil(t, des2)
+
+	cfg := common.GetTestConfig()
+
+	// OTEL Spanner configuration
+	tracer, _, ctx := common.TestCommonTraceProviderSetup(t, ctx)
+
+	// Mock Temporal client
+	versionInfo := &cwssaws.DpuExtensionServiceVersionInfo{
+		Version:       "V1-T1761856992374065",
+		Data:          "apiVersion: v1\nkind: Pod",
+		HasCredential: true,
+		Created:       time.Now().Format(time.RFC3339),
+	}
+
+	mockTC := &tmocks.Client{}
+	mockWorkflowRun := &tmocks.WorkflowRun{}
+	mockWorkflowRun.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		arg := args.Get(1)
+		if ptr, ok := arg.(**cwssaws.DpuExtensionService); ok {
+			*ptr = &cwssaws.DpuExtensionService{
+				LatestVersionInfo: versionInfo,
+			}
+		}
+	}).Return(nil)
+	mockWorkflowRun.On("GetID").Return("test-workflow-id")
+	mockTC.On("ExecuteWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockWorkflowRun, nil)
+
+	// Mock Site Client Pool
+	mockSCP := &sc.ClientPool{
+		IDClientMap: map[string]temporalClient.Client{
+			st1.ID.String(): mockTC,
+		},
+	}
+
+	okBody := model.APIDpuExtensionServiceUpdateRequest{
+		Name:        cdb.GetStrPtr("updated-service-name"),
+		Description: cdb.GetStrPtr("Updated Description"),
+	}
+	okBodyBytes, _ := json.Marshal(okBody)
+
+	nameClashBody := model.APIDpuExtensionServiceUpdateRequest{
+		Name: cdb.GetStrPtr("service-2"),
+	}
+	nameClashBodyBytes, _ := json.Marshal(nameClashBody)
+
+	invalidBodyBytes := []byte(`{"name": ""}`)
+
+	tests := []struct {
+		name                  string
+		reqOrgName            string
+		dpuExtensionServiceID string
+		reqBody               string
+		user                  *cdbm.User
+		expectedErr           bool
+		expectedStatus        int
+	}{
+		{
+			name:                  "error when user not found in request context",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des1.ID.String(),
+			reqBody:               string(okBodyBytes),
+			user:                  nil,
+			expectedErr:           true,
+			expectedStatus:        http.StatusInternalServerError,
+		},
+		{
+			name:                  "error when user does not belong to org",
+			reqOrgName:            "SomeOtherOrg",
+			dpuExtensionServiceID: des1.ID.String(),
+			reqBody:               string(okBodyBytes),
+			user:                  tnu1,
+			expectedErr:           true,
+			expectedStatus:        http.StatusBadRequest,
+		},
+		{
+			name:                  "error when user role is forbidden",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des1.ID.String(),
+			reqBody:               string(okBodyBytes),
+			user:                  tnu1Forbidden,
+			expectedErr:           true,
+			expectedStatus:        http.StatusForbidden,
+		},
+		{
+			name:                  "error when request body is invalid",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des1.ID.String(),
+			reqBody:               string(invalidBodyBytes),
+			user:                  tnu1,
+			expectedErr:           true,
+			expectedStatus:        http.StatusBadRequest,
+		},
+		{
+			name:                  "error when DPU Extension Service does not exist",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: uuid.New().String(),
+			reqBody:               string(okBodyBytes),
+			user:                  tnu1,
+			expectedErr:           true,
+			expectedStatus:        http.StatusNotFound,
+		},
+		{
+			name:                  "error when name already exists",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des1.ID.String(),
+			reqBody:               string(nameClashBodyBytes),
+			user:                  tnu1,
+			expectedErr:           true,
+			expectedStatus:        http.StatusBadRequest,
+		},
+		{
+			name:                  "success updating DPU Extension Service",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des1.ID.String(),
+			reqBody:               string(okBodyBytes),
+			user:                  tnu1,
+			expectedErr:           false,
+			expectedStatus:        http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			udesh := UpdateDpuExtensionServiceHandler{
+				dbSession:  dbSession,
+				tc:         mockTC,
+				scp:        mockSCP,
+				cfg:        cfg,
+				tracerSpan: sutil.NewTracerSpan(),
+			}
+
+			// Setup echo server/context
+			e := echo.New()
+			req := httptest.NewRequest(http.MethodPatch, "/", strings.NewReader(tt.reqBody))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+
+			ec := e.NewContext(req, rec)
+			ec.SetParamNames("orgName", "id")
+			ec.SetParamValues(tt.reqOrgName, tt.dpuExtensionServiceID)
+			ec.Set("user", tt.user)
+
+			testCtx := context.WithValue(ctx, otelecho.TracerKey, tracer)
+			ec.SetRequest(ec.Request().WithContext(testCtx))
+
+			err := udesh.Handle(ec)
+			require.NoError(t, err)
+
+			require.Equal(t, tt.expectedStatus, rec.Code)
+
+			if !tt.expectedErr && rec.Code == http.StatusOK {
+				var apiDES model.APIDpuExtensionService
+				err := json.Unmarshal(rec.Body.Bytes(), &apiDES)
+				require.NoError(t, err)
+				assert.Equal(t, *okBody.Name, apiDES.Name)
+				assert.Equal(t, *okBody.Description, *apiDES.Description)
+				assert.Equal(t, versionInfo.Version, *apiDES.Version)
+			}
+		})
+	}
+}
+
+// TestDeleteDpuExtensionServiceHandler_Handle tests the Delete DPU Extension Service handler
+func TestDeleteDpuExtensionServiceHandler_Handle(t *testing.T) {
+	ctx := context.Background()
+	dbSession := common.TestInitDB(t)
+	defer dbSession.Close()
+
+	common.TestSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org"
+	ipOrgRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	tnOrg := "test-tenant-org-1"
+	tnOrgRoles := []string{"FORGE_TENANT_ADMIN"}
+	tnOrgRolesForbidden := []string{"FORGE_TENANT_USER"}
+
+	ipu := common.TestBuildUser(t, dbSession, uuid.New().String(), ipOrg, ipOrgRoles)
+	ip := common.TestBuildInfrastructureProvider(t, dbSession, "test-infrastructure-provider", ipOrg, ipu)
+	st1 := common.TestBuildSite(t, dbSession, ip, "test-site-1", ipu)
+
+	tnu1 := common.TestBuildUser(t, dbSession, uuid.New().String(), tnOrg, tnOrgRoles)
+	tnu1Forbidden := common.TestBuildUser(t, dbSession, uuid.New().String(), tnOrg, tnOrgRolesForbidden)
+	tn1 := common.TestBuildTenant(t, dbSession, "test-tenant", tnOrg, tnu1)
+	ts1 := common.TestBuildTenantSite(t, dbSession, tn1, st1, tnu1)
+	assert.NotNil(t, ts1)
+
+	des1 := common.TestBuildDpuExtensionService(t, dbSession, "service-1", model.DpuExtensionServiceTypeKubernetesPod, tn1, st1, "V1-T1761856992374052", cdbm.DpuExtensionServiceStatusReady, tnu1)
+	assert.NotNil(t, des1)
+	des2 := common.TestBuildDpuExtensionService(t, dbSession, "service-2", model.DpuExtensionServiceTypeKubernetesPod, tn1, st1, "V1-T1761856992374052", cdbm.DpuExtensionServiceStatusReady, tnu1)
+	assert.NotNil(t, des2)
+
+	al1 := common.TestBuildAllocation(t, dbSession, st1, tn1, "test-allocation-1", ipu)
+	it1 := common.TestBuildInstanceType(t, dbSession, "test-instance-type-1", nil, st1, tnu1)
+	alc1 := common.TestBuildAllocationConstraint(t, dbSession, al1, it1, nil, 5, tnu1)
+	m1 := common.TestBuildMachine(t, dbSession, ip, st1, &it1.ID, nil, cdbm.MachineStatusReady)
+	_ = common.TestBuildMachineInstanceType(t, dbSession, m1, it1)
+	vpc1 := common.TestBuildVPC(t, dbSession, "test-vpc-1", ip, tn1, st1, nil, nil, cdbm.VpcStatusReady, tnu1)
+	os1 := common.TestBuildOperatingSystem(t, dbSession, "test-operating-system-1", tn1, cdbm.OperatingSystemStatusReady, tnu1)
+	i1 := common.TestBuildInstance(t, dbSession, "test-instance-1", al1.ID, alc1.ID, tn1.ID, ip.ID, st1.ID, it1.ID, vpc1.ID, &m1.ID, os1.ID)
+	assert.NotNil(t, i1)
+
+	// Create a deployment for des2 to test active deployment check
+	desd := common.TestBuildDpuExtensionServiceDeployment(t, dbSession, des2, i1.ID, "v1", cdbm.DpuExtensionServiceDeploymentStatusRunning, tnu1)
+	assert.NotNil(t, desd)
+
+	cfg := common.GetTestConfig()
+
+	// OTEL Spanner configuration
+	tracer, _, ctx := common.TestCommonTraceProviderSetup(t, ctx)
+
+	// Mock Temporal client
+	mockTC := &tmocks.Client{}
+	mockWorkflowRun := &tmocks.WorkflowRun{}
+	mockWorkflowRun.On("Get", mock.Anything, mock.Anything).Return(nil)
+	mockWorkflowRun.On("GetID").Return("test-workflow-id")
+	mockTC.On("ExecuteWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockWorkflowRun, nil)
+
+	// Mock Site Client Pool
+	mockSCP := &sc.ClientPool{
+		IDClientMap: map[string]temporalClient.Client{
+			st1.ID.String(): mockTC,
+		},
+	}
+
+	tests := []struct {
+		name                  string
+		reqOrgName            string
+		dpuExtensionServiceID string
+		user                  *cdbm.User
+		expectedErr           bool
+		expectedStatus        int
+	}{
+		{
+			name:                  "error when user not found in request context",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des1.ID.String(),
+			user:                  nil,
+			expectedErr:           true,
+			expectedStatus:        http.StatusInternalServerError,
+		},
+		{
+			name:                  "error when user does not belong to org",
+			reqOrgName:            "SomeOtherOrg",
+			dpuExtensionServiceID: des1.ID.String(),
+			user:                  tnu1,
+			expectedErr:           true,
+			expectedStatus:        http.StatusBadRequest,
+		},
+		{
+			name:                  "error when user role is forbidden",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des1.ID.String(),
+			user:                  tnu1Forbidden,
+			expectedErr:           true,
+			expectedStatus:        http.StatusForbidden,
+		},
+		{
+			name:                  "error when DPU Extension Service does not exist",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: uuid.New().String(),
+			user:                  tnu1,
+			expectedErr:           true,
+			expectedStatus:        http.StatusNotFound,
+		},
+		{
+			name:                  "error when DPU Extension Service has active deployments",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des2.ID.String(),
+			user:                  tnu1,
+			expectedErr:           true,
+			expectedStatus:        http.StatusBadRequest,
+		},
+		{
+			name:                  "success deleting DPU Extension Service",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des1.ID.String(),
+			user:                  tnu1,
+			expectedErr:           false,
+			expectedStatus:        http.StatusAccepted,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ddesh := DeleteDpuExtensionServiceHandler{
+				dbSession:  dbSession,
+				tc:         mockTC,
+				scp:        mockSCP,
+				cfg:        cfg,
+				tracerSpan: sutil.NewTracerSpan(),
+			}
+
+			// Setup echo server/context
+			e := echo.New()
+			req := httptest.NewRequest(http.MethodDelete, "/", nil)
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+
+			ec := e.NewContext(req, rec)
+			ec.SetParamNames("orgName", "id")
+			ec.SetParamValues(tt.reqOrgName, tt.dpuExtensionServiceID)
+			ec.Set("user", tt.user)
+
+			testCtx := context.WithValue(ctx, otelecho.TracerKey, tracer)
+			ec.SetRequest(ec.Request().WithContext(testCtx))
+
+			err := ddesh.Handle(ec)
+			require.NoError(t, err)
+
+			require.Equal(t, tt.expectedStatus, rec.Code)
+
+			if !tt.expectedErr && rec.Code == http.StatusAccepted {
+				// Verify the service status is updated to Deleting
+				desDAO := cdbm.NewDpuExtensionServiceDAO(dbSession)
+				updatedDES, err := desDAO.GetByID(context.Background(), nil, uuid.MustParse(tt.dpuExtensionServiceID), nil)
+				require.NoError(t, err)
+				assert.Equal(t, cdbm.DpuExtensionServiceStatusDeleting, updatedDES.Status)
+			}
+		})
+	}
+}
+
+// TestGetDpuExtensionServiceVersionHandler_Handle tests the Get DPU Extension Service Version handler
+func TestGetDpuExtensionServiceVersionHandler_Handle(t *testing.T) {
+	ctx := context.Background()
+	dbSession := common.TestInitDB(t)
+	defer dbSession.Close()
+
+	common.TestSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org"
+	ipOrgRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	tnOrg := "test-tenant-org-1"
+	tnOrgRoles := []string{"FORGE_TENANT_ADMIN"}
+	tnOrgRolesForbidden := []string{"FORGE_TENANT_USER"}
+
+	ipu := common.TestBuildUser(t, dbSession, uuid.New().String(), ipOrg, ipOrgRoles)
+	ip := common.TestBuildInfrastructureProvider(t, dbSession, "test-infrastructure-provider", ipOrg, ipu)
+	st1 := common.TestBuildSite(t, dbSession, ip, "test-site-1", ipu)
+
+	tnu1 := common.TestBuildUser(t, dbSession, uuid.New().String(), tnOrg, tnOrgRoles)
+	tnu1Forbidden := common.TestBuildUser(t, dbSession, uuid.New().String(), tnOrg, tnOrgRolesForbidden)
+	tn1 := common.TestBuildTenant(t, dbSession, "test-tenant", tnOrg, tnu1)
+	ts1 := common.TestBuildTenantSite(t, dbSession, tn1, st1, tnu1)
+	assert.NotNil(t, ts1)
+
+	des1 := common.TestBuildDpuExtensionService(t, dbSession, "service-1", model.DpuExtensionServiceTypeKubernetesPod, tn1, st1, "V1-T1761856992374052", cdbm.DpuExtensionServiceStatusReady, tnu1)
+	assert.NotNil(t, des1)
+
+	cfg := common.GetTestConfig()
+
+	// OTEL Spanner configuration
+	tracer, _, ctx := common.TestCommonTraceProviderSetup(t, ctx)
+
+	// Mock Temporal client
+	mockTC := &tmocks.Client{}
+	mockWorkflowRun := &tmocks.WorkflowRun{}
+
+	// Mock version info response
+	mockVersionInfo := &cwssaws.DpuExtensionServiceVersionInfoList{
+		VersionInfos: []*cwssaws.DpuExtensionServiceVersionInfo{
+			{
+				Version:       "v1",
+				Data:          "apiVersion: v1\nkind: Pod",
+				HasCredential: true,
+				Created:       time.Now().Format(time.RFC3339),
+			},
+		},
+	}
+
+	mockWorkflowRun.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		arg := args.Get(1)
+		if ptr, ok := arg.(**cwssaws.DpuExtensionServiceVersionInfoList); ok {
+			*ptr = mockVersionInfo
+		}
+	}).Return(nil)
+	mockWorkflowRun.On("GetID").Return("test-workflow-id")
+	mockTC.On("ExecuteWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockWorkflowRun, nil)
+
+	// Mock Site Client Pool
+	mockSCP := &sc.ClientPool{
+		IDClientMap: map[string]temporalClient.Client{
+			st1.ID.String(): mockTC,
+		},
+	}
+
+	tests := []struct {
+		name                  string
+		reqOrgName            string
+		dpuExtensionServiceID string
+		versionID             string
+		user                  *cdbm.User
+		expectedErr           bool
+		expectedStatus        int
+	}{
+		{
+			name:                  "error when user not found in request context",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des1.ID.String(),
+			versionID:             "v1",
+			user:                  nil,
+			expectedErr:           true,
+			expectedStatus:        http.StatusInternalServerError,
+		},
+		{
+			name:                  "error when user does not belong to org",
+			reqOrgName:            "SomeOtherOrg",
+			dpuExtensionServiceID: des1.ID.String(),
+			versionID:             "v1",
+			user:                  tnu1,
+			expectedErr:           true,
+			expectedStatus:        http.StatusBadRequest,
+		},
+		{
+			name:                  "error when user role is forbidden",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des1.ID.String(),
+			versionID:             "v1",
+			user:                  tnu1Forbidden,
+			expectedErr:           true,
+			expectedStatus:        http.StatusForbidden,
+		},
+		{
+			name:                  "error when DPU Extension Service does not exist",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: uuid.New().String(),
+			versionID:             "v1",
+			user:                  tnu1,
+			expectedErr:           true,
+			expectedStatus:        http.StatusNotFound,
+		},
+		{
+			name:                  "success getting DPU Extension Service version",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des1.ID.String(),
+			versionID:             "v1",
+			user:                  tnu1,
+			expectedErr:           false,
+			expectedStatus:        http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gdesvh := GetDpuExtensionServiceVersionHandler{
+				dbSession:  dbSession,
+				tc:         mockTC,
+				scp:        mockSCP,
+				cfg:        cfg,
+				tracerSpan: sutil.NewTracerSpan(),
+			}
+
+			// Setup echo server/context
+			e := echo.New()
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+
+			ec := e.NewContext(req, rec)
+			ec.SetParamNames("orgName", "id", "version")
+			ec.SetParamValues(tt.reqOrgName, tt.dpuExtensionServiceID, tt.versionID)
+			ec.Set("user", tt.user)
+
+			testCtx := context.WithValue(ctx, otelecho.TracerKey, tracer)
+			ec.SetRequest(ec.Request().WithContext(testCtx))
+
+			err := gdesvh.Handle(ec)
+			require.NoError(t, err)
+
+			require.Equal(t, tt.expectedStatus, rec.Code)
+
+			if !tt.expectedErr && rec.Code == http.StatusOK {
+				var apiVersionInfo model.APIDpuExtensionServiceVersionInfo
+				err := json.Unmarshal(rec.Body.Bytes(), &apiVersionInfo)
+				require.NoError(t, err)
+				assert.NotNil(t, apiVersionInfo.Version)
+				assert.Equal(t, "v1", apiVersionInfo.Version)
+			}
+		})
+	}
+}
+
+// TestDeleteDpuExtensionServiceVersionHandler_Handle tests the Delete DPU Extension Service Version handler
+func TestDeleteDpuExtensionServiceVersionHandler_Handle(t *testing.T) {
+	ctx := context.Background()
+	dbSession := common.TestInitDB(t)
+	defer dbSession.Close()
+
+	common.TestSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org"
+	ipOrgRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	tnOrg := "test-tenant-org-1"
+	tnOrgRoles := []string{"FORGE_TENANT_ADMIN"}
+	tnOrgRolesForbidden := []string{"FORGE_TENANT_USER"}
+
+	ipu := common.TestBuildUser(t, dbSession, uuid.New().String(), ipOrg, ipOrgRoles)
+	ip := common.TestBuildInfrastructureProvider(t, dbSession, "test-infrastructure-provider", ipOrg, ipu)
+	st1 := common.TestBuildSite(t, dbSession, ip, "test-site-1", ipu)
+
+	tnu1 := common.TestBuildUser(t, dbSession, uuid.New().String(), tnOrg, tnOrgRoles)
+	tnu1Forbidden := common.TestBuildUser(t, dbSession, uuid.New().String(), tnOrg, tnOrgRolesForbidden)
+	tn1 := common.TestBuildTenant(t, dbSession, "test-tenant", tnOrg, tnu1)
+	ts1 := common.TestBuildTenantSite(t, dbSession, tn1, st1, tnu1)
+	assert.NotNil(t, ts1)
+
+	des1 := common.TestBuildDpuExtensionService(t, dbSession, "service-1", model.DpuExtensionServiceTypeKubernetesPod, tn1, st1, "V1-T1761856992374052", cdbm.DpuExtensionServiceStatusReady, tnu1)
+	assert.NotNil(t, des1)
+	// Set version for the service
+	des1.Version = cdb.GetStrPtr("v1")
+	_, err := dbSession.DB.NewUpdate().Model(des1).Where("id = ?", des1.ID).Exec(context.Background())
+	assert.Nil(t, err)
+
+	des2 := common.TestBuildDpuExtensionService(t, dbSession, "service-2", model.DpuExtensionServiceTypeKubernetesPod, tn1, st1, "V1-T1761856992374052", cdbm.DpuExtensionServiceStatusReady, tnu1)
+	assert.NotNil(t, des2)
+	des2.Version = cdb.GetStrPtr("v2")
+	_, err = dbSession.DB.NewUpdate().Model(des2).Where("id = ?", des2.ID).Exec(context.Background())
+	assert.Nil(t, err)
+
+	al1 := common.TestBuildAllocation(t, dbSession, st1, tn1, "test-allocation-1", ipu)
+	it1 := common.TestBuildInstanceType(t, dbSession, "test-instance-type-1", nil, st1, tnu1)
+	alc1 := common.TestBuildAllocationConstraint(t, dbSession, al1, it1, nil, 5, tnu1)
+	m1 := common.TestBuildMachine(t, dbSession, ip, st1, &it1.ID, nil, cdbm.MachineStatusReady)
+	_ = common.TestBuildMachineInstanceType(t, dbSession, m1, it1)
+	vpc1 := common.TestBuildVPC(t, dbSession, "test-vpc-1", ip, tn1, st1, nil, nil, cdbm.VpcStatusReady, tnu1)
+	os1 := common.TestBuildOperatingSystem(t, dbSession, "test-operating-system-1", tn1, cdbm.OperatingSystemStatusReady, tnu1)
+	i1 := common.TestBuildInstance(t, dbSession, "test-instance-1", al1.ID, alc1.ID, tn1.ID, ip.ID, st1.ID, it1.ID, vpc1.ID, &m1.ID, os1.ID)
+	assert.NotNil(t, i1)
+
+	// Create a deployment for des2 to test active deployment check
+	desd := common.TestBuildDpuExtensionServiceDeployment(t, dbSession, des2, i1.ID, "v2", cdbm.DpuExtensionServiceDeploymentStatusRunning, tnu1)
+	assert.NotNil(t, desd)
+
+	cfg := common.GetTestConfig()
+
+	// OTEL Spanner configuration
+	tracer, _, ctx := common.TestCommonTraceProviderSetup(t, ctx)
+
+	// Mock Temporal client
+	mockTC := &tmocks.Client{}
+	mockWorkflowRun := &tmocks.WorkflowRun{}
+	mockWorkflowRun.On("Get", mock.Anything, mock.Anything).Return(nil)
+	mockWorkflowRun.On("GetID").Return("test-workflow-id")
+	mockTC.On("ExecuteWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockWorkflowRun, nil)
+
+	// Mock Site Client Pool
+	mockSCP := &sc.ClientPool{
+		IDClientMap: map[string]temporalClient.Client{
+			st1.ID.String(): mockTC,
+		},
+	}
+
+	tests := []struct {
+		name                  string
+		reqOrgName            string
+		dpuExtensionServiceID string
+		versionID             string
+		user                  *cdbm.User
+		expectedErr           bool
+		expectedStatus        int
+	}{
+		{
+			name:                  "error when user not found in request context",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des1.ID.String(),
+			versionID:             "v1",
+			user:                  nil,
+			expectedErr:           true,
+			expectedStatus:        http.StatusInternalServerError,
+		},
+		{
+			name:                  "error when user does not belong to org",
+			reqOrgName:            "SomeOtherOrg",
+			dpuExtensionServiceID: des1.ID.String(),
+			versionID:             "v1",
+			user:                  tnu1,
+			expectedErr:           true,
+			expectedStatus:        http.StatusBadRequest,
+		},
+		{
+			name:                  "error when user role is forbidden",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des1.ID.String(),
+			versionID:             "v1",
+			user:                  tnu1Forbidden,
+			expectedErr:           true,
+			expectedStatus:        http.StatusForbidden,
+		},
+		{
+			name:                  "error when DPU Extension Service does not exist",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: uuid.New().String(),
+			versionID:             "v1",
+			user:                  tnu1,
+			expectedErr:           true,
+			expectedStatus:        http.StatusNotFound,
+		},
+		{
+			name:                  "error when version does not exist",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des1.ID.String(),
+			versionID:             "v99",
+			user:                  tnu1,
+			expectedErr:           true,
+			expectedStatus:        http.StatusNotFound,
+		},
+		{
+			name:                  "error when version has active deployments",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des2.ID.String(),
+			versionID:             "v2",
+			user:                  tnu1,
+			expectedErr:           true,
+			expectedStatus:        http.StatusBadRequest,
+		},
+		{
+			name:                  "success deleting DPU Extension Service version",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des1.ID.String(),
+			versionID:             "v1",
+			user:                  tnu1,
+			expectedErr:           false,
+			expectedStatus:        http.StatusAccepted,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ddesvh := DeleteDpuExtensionServiceVersionHandler{
+				dbSession:  dbSession,
+				tc:         mockTC,
+				scp:        mockSCP,
+				cfg:        cfg,
+				tracerSpan: sutil.NewTracerSpan(),
+			}
+
+			// Setup echo server/context
+			e := echo.New()
+			req := httptest.NewRequest(http.MethodDelete, "/", nil)
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+
+			ec := e.NewContext(req, rec)
+			ec.SetParamNames("orgName", "id", "version")
+			ec.SetParamValues(tt.reqOrgName, tt.dpuExtensionServiceID, tt.versionID)
+			ec.Set("user", tt.user)
+
+			testCtx := context.WithValue(ctx, otelecho.TracerKey, tracer)
+			ec.SetRequest(ec.Request().WithContext(testCtx))
+
+			err := ddesvh.Handle(ec)
+			require.NoError(t, err)
+
+			require.Equal(t, tt.expectedStatus, rec.Code)
+		})
+	}
+}

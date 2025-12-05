@@ -1,0 +1,1146 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ *
+ * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+ * property and proprietary rights in and to this material, related
+ * documentation and any modifications thereto. Any use, reproduction,
+ * disclosure or distribution of this material and related documentation
+ * without an express license agreement from NVIDIA CORPORATION or
+ * its affiliates is strictly prohibited.
+ */
+
+
+package handler
+
+import (
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+
+	"go.opentelemetry.io/otel/attribute"
+	temporalClient "go.temporal.io/sdk/client"
+	"golang.org/x/crypto/ssh"
+
+	validation "github.com/go-ozzo/ozzo-validation/v4"
+	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
+
+	"github.com/labstack/echo/v4"
+
+	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
+	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+	cdbp "github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+
+	"github.com/nvidia/carbide-rest/api/internal/config"
+	common "github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
+	"github.com/nvidia/carbide-rest/api/pkg/api/model"
+	"github.com/nvidia/carbide-rest/api/pkg/api/pagination"
+	auth "github.com/nvidia/carbide-rest/auth/pkg/authorization"
+	cerr "github.com/nvidia/carbide-rest/common/pkg/util"
+	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
+
+	sshKeyGroupWorkflow "github.com/nvidia/carbide-rest/workflow/pkg/workflow/sshkeygroup"
+)
+
+// ~~~~~ Create Handler ~~~~~ //
+
+// CreateSSHKeyHandler is the API Handler for creating new SSHKey
+type CreateSSHKeyHandler struct {
+	dbSession  *cdb.Session
+	tc         temporalClient.Client
+	cfg        *config.Config
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewCreateSSHKeyHandler initializes and returns a new handler for creating SSH Key
+func NewCreateSSHKeyHandler(dbSession *cdb.Session, tc temporalClient.Client, cfg *config.Config) CreateSSHKeyHandler {
+	return CreateSSHKeyHandler{
+		dbSession:  dbSession,
+		tc:         tc,
+		cfg:        cfg,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Create an SSH Key
+// @Description Create an SSH Key for the org.
+// @Tags SSHKey
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param org path string true "Name of NGC organization"
+// @Param message body model.APISSHKeyCreateRequest true "SSH Key create request"
+// @Success 201 {object} model.APISSHKey
+// @Router /v2/org/{org}/carbide/sshkey [post]
+func (cskh CreateSSHKeyHandler) Handle(c echo.Context) error {
+	// Get context
+	ctx := c.Request().Context()
+
+	// Get org
+	org := c.Param("orgName")
+
+	// Initialize logger
+	logger := log.With().Str("Model", "SSHKey").Str("Handler", "Create").Str("Org", org).Logger()
+
+	logger.Info().Msg("started API handler")
+
+	// Create a child span and set the attributes for current request
+	newctx, handlerSpan := cskh.tracerSpan.CreateChildInContext(ctx, "CreateSSHKeyHandler", logger)
+	if handlerSpan != nil {
+		// Set newly created span context as a current context
+		ctx = newctx
+
+		defer handlerSpan.End()
+
+		cskh.tracerSpan.SetAttribute(handlerSpan, attribute.String("org", org), logger)
+	}
+
+	dbUser, logger, err := common.GetUserAndEnrichLogger(c, logger, cskh.tracerSpan, handlerSpan)
+	if err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// Validate org
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Validate the tenant for which this SSH Key is being created
+	tenant, err := common.GetTenantForOrg(ctx, nil, cskh.dbSession, org)
+	if err != nil {
+		if err == common.ErrOrgTenantNotFound {
+			logger.Warn().Err(err).Msg("Org does not have a Tenant associated")
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Org does not have a Tenant associated", nil)
+		}
+		logger.Error().Err(err).Msg("unable to retrieve tenant for org")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve tenant for org", nil)
+	}
+
+	// Validate role, only Tenant Admins are allowed to create SSH Keys
+	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.TenantAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Tenant Admin role with org, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Tenant Admin role with org", nil)
+	}
+
+	// Validate request
+	// Bind request data to API model
+	apiRequest := model.APISSHKeyCreateRequest{}
+	err = c.Bind(&apiRequest)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error binding request data into API model")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data, potentially invalid structure", nil)
+	}
+
+	// Validate request attributes
+	verr := apiRequest.Validate()
+	if verr != nil {
+		logger.Warn().Err(verr).Msg("error validating SSH Key creation request data")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Error validating SSH Key creation request data", verr)
+	}
+
+	cskh.tracerSpan.SetAttribute(handlerSpan, attribute.String("name", apiRequest.Name), logger)
+
+	// check for name uniqueness for the tenant, ie, tenant cannot have another SSH Key with same name at the site
+	skDAO := cdbm.NewSSHKeyDAO(cskh.dbSession)
+	sks, tot, err := skDAO.GetAll(
+		ctx,
+		nil,
+		cdbm.SSHKeyFilterInput{
+			Names:     []string{apiRequest.Name},
+			TenantIDs: []uuid.UUID{tenant.ID},
+		},
+		cdbp.PageInput{},
+		nil,
+	)
+	if err != nil {
+		logger.Error().Err(err).Msg("db error checking for name uniqueness of tenant SSH Key")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create SSH Key due to DB error", nil)
+	}
+	if tot > 0 {
+		logger.Warn().Str("tenantId", tenant.ID.String()).Str("name", apiRequest.Name).Msg("SSH Key with same name already exists for Tenant")
+		return cerr.NewAPIErrorResponse(c, http.StatusConflict, "An SSH Key with specified name already exists for Tenant", validation.Errors{
+			"id": errors.New(sks[0].ID.String()),
+		})
+	}
+
+	// Verify SSH Key Group ID
+	var dbskg *cdbm.SSHKeyGroup
+
+	if apiRequest.SSHKeyGroupID != nil {
+		skgID := *apiRequest.SSHKeyGroupID
+		cskh.tracerSpan.SetAttribute(handlerSpan, attribute.String("sshKeyGroupID", skgID), logger)
+
+		var serr error
+		dbskg, serr = common.GetSSHKeyGroupFromIDString(ctx, nil, skgID, cskh.dbSession, nil)
+		if serr != nil {
+			if serr == common.ErrInvalidID {
+				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Failed to create SSH Key, Invalid SSH Key Group ID: %s", skgID), nil)
+			}
+			if serr == cdb.ErrDoesNotExist {
+				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Failed to create SSH Key, Could not find SSH Key Group with ID: %s ", skgID), nil)
+			}
+			logger.Warn().Err(serr).Str("SSH Key Group ID", *apiRequest.SSHKeyGroupID).Msg("error retrieving SSH Key Group from DB by ID")
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Failed to create SSH Key Group, Could not find SSH Key Group with ID: %s due to data store error", skgID), nil)
+		}
+
+		if dbskg.TenantID != tenant.ID {
+			logger.Warn().Str("Tenant ID", tenant.ID.String()).Str("SSH Key Group ID", *apiRequest.SSHKeyGroupID).Msg("SSH Key Group does not belong to current Tenant")
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Failed to create SSH Key, SSH Key Group with ID: %s does not belong to Tenant", skgID), nil)
+		}
+
+		if dbskg.Status == cdbm.SSHKeyGroupStatusDeleting {
+			logger.Warn().Str("SSH Key Group ID", *apiRequest.SSHKeyGroupID).Msg("SSH Key Group is in Deleting state")
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Failed to create SSH Key, SSH Key Group with ID: %s is in Deleting state", skgID), nil)
+		}
+	}
+
+	// Validate the SSH Key, and generate the fingerprint
+	publicKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(apiRequest.PublicKey))
+	if err != nil {
+		logger.Warn().Err(err).Msg("error parsing public key")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Unable to parse public key in api request", nil)
+	}
+	fingerprint := ssh.FingerprintSHA256(publicKey)
+	// the fingerprint is prefixed by "SHA256:", remove that prefix
+	fingerprint = fingerprint[7:]
+
+	// Check for uniqueness of fingerprint
+	sks, tot, err = skDAO.GetAll(
+		ctx,
+		nil,
+		cdbm.SSHKeyFilterInput{
+			TenantIDs:    []uuid.UUID{tenant.ID},
+			Fingerprints: []string{fingerprint},
+		},
+		cdbp.PageInput{},
+		nil,
+	)
+	if err != nil {
+		logger.Error().Err(err).Msg("db error checking for name uniqueness of tenant SSHKey")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "SSH Key create failed due to data store error", nil)
+	}
+	if tot > 0 {
+		logger.Warn().Str("tenantId", tenant.ID.String()).Msg("SSH Key with same fingerprint already exists for tenant")
+		return cerr.NewAPIErrorResponse(c, http.StatusConflict, "An SSH Key with same fingerprint already exists for Tenant", validation.Errors{
+			"id": errors.New(sks[0].ID.String()),
+		})
+	}
+
+	// start a transaction
+	tx, err := cdb.BeginTx(ctx, cskh.dbSession, &sql.TxOptions{})
+	if err != nil {
+		logger.Error().Err(err).Msg("unable to start transaction")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create SSH Key due to data store error", nil)
+	}
+	// this variable is used in cleanup actions to indicate if this transaction committed
+	txCommitted := false
+	defer common.RollbackTx(ctx, tx, &txCommitted)
+
+	// create the ssh key
+	// NOTE: Remove `expires` from DB model
+	dbsk, err := skDAO.Create(
+		ctx,
+		tx,
+		cdbm.SSHKeyCreateInput{
+			Name:        apiRequest.Name,
+			TenantOrg:   org,
+			TenantID:    tenant.ID,
+			PublicKey:   apiRequest.PublicKey,
+			Fingerprint: &fingerprint,
+			CreatedBy:   dbUser.ID,
+		},
+	)
+	if err != nil {
+		logger.Error().Err(err).Msg("unable to create the SSH Key record in DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Error creating SSH Key due to data store error", nil)
+	}
+
+	var skgsas []cdbm.SSHKeyGroupSiteAssociation
+	var serr error
+
+	if dbskg != nil {
+		// Create SSH Key Association for SSH Key Group
+		skgDAO := cdbm.NewSSHKeyGroupDAO(cskh.dbSession)
+
+		// Acquire an advisory lock on the SSH Key Group on which there could be contention
+		// this lock is released when the transaction commits or rollsback
+		serr = tx.TryAcquireAdvisoryLock(ctx, cdb.GetAdvisoryLockIDFromString(dbskg.ID.String()), nil)
+		if serr != nil {
+			logger.Error().Err(serr).Msg("Failed to acquire advisory lock on sshkey group")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to associate SSH Key with SSH Key Group, could not acquire data store lock on Group", nil)
+		}
+
+		skaDAO := cdbm.NewSSHKeyAssociationDAO(cskh.dbSession)
+		_, serr = skaDAO.CreateFromParams(ctx, tx, dbsk.ID, dbskg.ID, dbUser.ID)
+		if serr != nil {
+			logger.Error().Err(serr).Msg("unable to create the SSH Key Association record in DB")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to associate SSH Key with SSH Key Group due to data store error", nil)
+		}
+
+		// Calculate and set new versions
+		_, serr = skgDAO.GenerateAndUpdateVersion(ctx, tx, dbskg.ID)
+		if serr != nil {
+			logger.Error().Err(serr).Msg("error updating current version for SSH Key Group")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to set updated version for SSH Key Group", nil)
+		}
+
+		// Update SSH Key Group status to Syncing
+		_, serr = skgDAO.Update(
+			ctx,
+			tx,
+			cdbm.SSHKeyGroupUpdateInput{
+				SSHKeyGroupID: dbskg.ID,
+				Status:        cdb.GetStrPtr(cdbm.SSHKeyGroupStatusSyncing),
+			},
+		)
+		if serr != nil {
+			logger.Error().Err(serr).Msg("error updating SSH Key Group in DB")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to delete SSH Key Groups", nil)
+		}
+
+		// Create a status detail record for the SSH Key Group
+		sdDAO := cdbm.NewStatusDetailDAO(cskh.dbSession)
+		_, serr = sdDAO.CreateFromParams(ctx, tx, dbskg.ID.String(), cdbm.SSHKeyGroupStatusSyncing, cdb.GetStrPtr("Sync required due to SSH Key creation, pending processing"))
+		if serr != nil {
+			logger.Error().Err(serr).Msg("error creating Status Detail DB entry")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Status Detail for SSH Key Group", nil)
+		}
+
+		skgsaDAO := cdbm.NewSSHKeyGroupSiteAssociationDAO(cskh.dbSession)
+		skgsas, _, serr = skgsaDAO.GetAll(ctx, tx, []uuid.UUID{dbskg.ID}, nil, nil, nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+		if serr != nil {
+			logger.Error().Err(serr).Msg("error retrieving SSH Key Group Association from DB")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve SSH Key Group Association from DB", nil)
+		}
+	}
+
+	// commit transaction
+	err = tx.Commit()
+	if err != nil {
+		logger.Error().Err(err).Msg("error committing transaction")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create SSH Key due to data store error", nil)
+	}
+	txCommitted = true
+
+	// If SSH Key Group was specified then trigger SyncSSHKeyGroup workflow
+	for _, skgsa := range skgsas {
+		if skgsa.Status == cdbm.SSHKeyGroupSiteAssociationStatusDeleting {
+			continue
+		}
+
+		// Trigger workflow to sync SSH Key Group with Site
+		wid, err := sshKeyGroupWorkflow.ExecuteSyncSSHKeyGroupWorkflow(ctx, cskh.tc, skgsa.SiteID, skgsa.SSHKeyGroupID, *skgsa.Version)
+		if err != nil {
+			// Log error but continue, unsynced groups will be triggered by inventory
+			logger.Error().Err(err).Msg("failed to execute sync SSH Key Group workflow")
+			continue
+		}
+
+		logger.Info().Str("Workflow ID", *wid).Str("Site ID", skgsa.SiteID.String()).Msg("triggered SSH Key Group sync workflow")
+	}
+
+	// Create response
+	apisk := model.NewAPISSHKey(dbsk, []cdbm.SSHKeyAssociation{})
+	logger.Info().Msg("finishing API handler")
+	return c.JSON(http.StatusCreated, apisk)
+}
+
+// ~~~~~ Update Handler ~~~~~ //
+
+// UpdateSSHKeyHandler is the API Handler for updating a SSH Key
+type UpdateSSHKeyHandler struct {
+	dbSession  *cdb.Session
+	tc         temporalClient.Client
+	cfg        *config.Config
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewUpdateSSHKeyHandler initializes and returns a new handler for updating SSH Key
+func NewUpdateSSHKeyHandler(dbSession *cdb.Session, tc temporalClient.Client, cfg *config.Config) UpdateSSHKeyHandler {
+	return UpdateSSHKeyHandler{
+		dbSession:  dbSession,
+		tc:         tc,
+		cfg:        cfg,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Update an existing SSH Key
+// @Description Update an existing SSH Key for the org
+// @Tags SSHKey
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param org path string true "Name of NGC organization"
+// @Param id path string true "ID of SSHKey"
+// @Param message body model.APISSHKeyUpdateRequest true "SSH Key update request"
+// @Success 200 {object} model.APISSHKey
+// @Router /v2/org/{org}/carbide/sshkey/{id} [patch]
+func (uskh UpdateSSHKeyHandler) Handle(c echo.Context) error {
+	// Get context
+	ctx := c.Request().Context()
+
+	// Get org
+	org := c.Param("orgName")
+
+	// Initialize logger
+	logger := log.With().Str("Model", "SSHKey").Str("Handler", "Update").Str("Org", org).Logger()
+
+	logger.Info().Msg("started API handler")
+
+	// Create a child span and set the attributes for current request
+	newctx, handlerSpan := uskh.tracerSpan.CreateChildInContext(ctx, "UpdateSSHKeyHandler", logger)
+	if handlerSpan != nil {
+		// Set newly created span context as a current context
+		ctx = newctx
+
+		defer handlerSpan.End()
+
+		uskh.tracerSpan.SetAttribute(handlerSpan, attribute.String("org", org), logger)
+	}
+
+	dbUser, logger, err := common.GetUserAndEnrichLogger(c, logger, uskh.tracerSpan, handlerSpan)
+	if err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// Validate org
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Validate role, only Tenant Admins are allowed to update SSHKey
+	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.TenantAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Tenant Admin role with org, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Tenant Admin role with org", nil)
+	}
+
+	// Get SSH Key ID from URL param
+	sshKeyStrID := c.Param("id")
+
+	uskh.tracerSpan.SetAttribute(handlerSpan, attribute.String("sshkey_id", sshKeyStrID), logger)
+
+	sshKeyID, err := uuid.Parse(sshKeyStrID)
+	if err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid SSH Key ID in URL", nil)
+	}
+
+	skDAO := cdbm.NewSSHKeyDAO(uskh.dbSession)
+
+	// Validate request
+	// Bind request data to API model
+	apiRequest := model.APISSHKeyUpdateRequest{}
+	err = c.Bind(&apiRequest)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error binding request data into API model")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data, potentially invalid structure", nil)
+	}
+
+	// Validate request attributes
+	verr := apiRequest.Validate()
+	if verr != nil {
+		logger.Warn().Err(verr).Msg("error validating SSH Key update request data")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Error validating SSH Key update data", verr)
+	}
+
+	// Check that SSH Key exists
+	sk, err := skDAO.GetByID(ctx, nil, sshKeyID, nil)
+	if err != nil {
+		if err == cdb.ErrDoesNotExist {
+			logger.Warn().Err(err).Msg("SSH Key DB entity not found")
+			return cerr.NewAPIErrorResponse(c, http.StatusNotFound, "Could not find SSH Key to update", nil)
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Could not find SSH Key to update due to data store error", nil)
+	}
+
+	// Get Tenant for this org
+	tnDAO := cdbm.NewTenantDAO(uskh.dbSession)
+
+	tenants, err := tnDAO.GetAllByOrg(ctx, nil, org, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving Tenant for this org")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Tenant for org", nil)
+	}
+
+	if len(tenants) == 0 {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Org does not have a Tenant associated", nil)
+	}
+	tenant := tenants[0]
+
+	// Check that SSH Key belongs to the Tenant
+	if sk.TenantID != tenant.ID {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "SSH Key does not belong to current Tenant", nil)
+	}
+
+	// check for name uniqueness for the tenant, ie, tenant cannot have another SSH Key with same name
+	if apiRequest.Name != nil && *apiRequest.Name != sk.Name {
+		sks, tot, serr := skDAO.GetAll(
+			ctx,
+			nil,
+			cdbm.SSHKeyFilterInput{
+				Names:     []string{*apiRequest.Name},
+				TenantIDs: []uuid.UUID{tenant.ID},
+			},
+			cdbp.PageInput{},
+			nil,
+		)
+		if serr != nil {
+			logger.Error().Err(serr).Msg("db error checking for name uniqueness of tenant SSH Key")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to update SSH Key due to data store error", nil)
+		}
+		if tot > 0 {
+			return cerr.NewAPIErrorResponse(c, http.StatusConflict, "Another SSH Key with specified name already exists for Tenant", validation.Errors{
+				"id": errors.New(sks[0].ID.String()),
+			})
+		}
+	}
+
+	// Start a database transaction
+	tx, err := cdb.BeginTx(ctx, uskh.dbSession, &sql.TxOptions{})
+	if err != nil {
+		logger.Error().Err(err).Msg("unable to start transaction")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Error updating SSH Key due to data store error", nil)
+	}
+	// This variable is used in cleanup actions to indicate if this transaction committed
+	txCommitted := false
+	defer common.RollbackTx(ctx, tx, &txCommitted)
+
+	// Update SSHKey
+	sk, err = skDAO.Update(
+		ctx,
+		tx,
+		cdbm.SSHKeyUpdateInput{
+			SSHKeyID: sk.ID,
+			Name:     apiRequest.Name,
+		},
+	)
+	if err != nil {
+		logger.Error().Err(err).Msg("error updating SSH Key")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to update SSH Key due to data store error", nil)
+	}
+
+	skaDAO := cdbm.NewSSHKeyAssociationDAO(uskh.dbSession)
+	skas, _, err := skaDAO.GetAll(ctx, tx, []uuid.UUID{sk.ID}, nil, nil, nil, cdb.GetIntPtr(paginator.TotalLimit), nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving SSH Key association from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve SSH Key Association from DB", nil)
+	}
+
+	// commit transaction
+	err = tx.Commit()
+	if err != nil {
+		logger.Error().Err(err).Msg("error committing transaction")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to update SSH Key due to data store error", nil)
+	}
+	txCommitted = true
+
+	// Create response
+	apiSSHKey := model.NewAPISSHKey(sk, skas)
+
+	logger.Info().Msg("finishing API handler")
+	return c.JSON(http.StatusOK, apiSSHKey)
+}
+
+// ~~~~~ Get Handler ~~~~~ //
+
+// GetSSHKeyHandler is the API Handler for getting an SSH Key
+type GetSSHKeyHandler struct {
+	dbSession  *cdb.Session
+	tc         temporalClient.Client
+	cfg        *config.Config
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewGetSSHKeyHandler initializes and returns a new handler for getting SSH Key
+func NewGetSSHKeyHandler(dbSession *cdb.Session, tc temporalClient.Client, cfg *config.Config) GetSSHKeyHandler {
+	return GetSSHKeyHandler{
+		dbSession:  dbSession,
+		tc:         tc,
+		cfg:        cfg,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Get an SSH Key
+// @Description Get an SSH Key for the org
+// @Tags SSHKey
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param org path string true "Name of NGC organization"
+// @Param id path string true "ID of SSH Key"
+// @Param includeRelation query string false "Related entities to include in response e.g. 'Tenant'"
+// @Success 200 {object} model.APISSHKey
+// @Router /v2/org/{org}/carbide/sshkey/{id} [get]
+func (gskh GetSSHKeyHandler) Handle(c echo.Context) error {
+	// Get context
+	ctx := c.Request().Context()
+
+	// Get org
+	org := c.Param("orgName")
+
+	// Initialize logger
+	logger := log.With().Str("Model", "SSHKey").Str("Handler", "Get").Str("Org", org).Logger()
+
+	logger.Info().Msg("started API handler")
+
+	// Create a child span and set the attributes for current request
+	newctx, handlerSpan := gskh.tracerSpan.CreateChildInContext(ctx, "GetSSHKeyHandler", logger)
+	if handlerSpan != nil {
+		// Set newly created span context as a current context
+		ctx = newctx
+
+		defer handlerSpan.End()
+
+		gskh.tracerSpan.SetAttribute(handlerSpan, attribute.String("org", org), logger)
+	}
+
+	dbUser, logger, err := common.GetUserAndEnrichLogger(c, logger, gskh.tracerSpan, handlerSpan)
+	if err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// Validate org
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Validate role, only Tenant Admins are allowed to update SSH Key
+	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.TenantAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Tenant Admin role with org, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Tenant Admin role with org", nil)
+	}
+
+	// Get  ID from URL param
+	sshKeyStrID := c.Param("id")
+
+	gskh.tracerSpan.SetAttribute(handlerSpan, attribute.String("sshkey_id", sshKeyStrID), logger)
+
+	sshKeyID, err := uuid.Parse(sshKeyStrID)
+	if err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid SSH Key ID in URL", nil)
+	}
+
+	skDAO := cdbm.NewSSHKeyDAO(gskh.dbSession)
+
+	// Get and validate includeRelation params
+	qParams := c.QueryParams()
+	qIncludeRelations, errMsg := common.GetAndValidateQueryRelations(qParams, cdbm.SSHKeyRelatedEntities)
+	if errMsg != "" {
+		logger.Warn().Msg(errMsg)
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, errMsg, nil)
+	}
+
+	// Check that SSH Key exists
+	sk, err := skDAO.GetByID(ctx, nil, sshKeyID, qIncludeRelations)
+	if err != nil {
+		if err == cdb.ErrDoesNotExist {
+			logger.Warn().Err(err).Msg("SSH Key DB entity not found")
+			return cerr.NewAPIErrorResponse(c, http.StatusNotFound, "Could not find SSH Key", nil)
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Could not find SSH Key due to data store error", nil)
+	}
+
+	// Get Tenant for this org
+	tnDAO := cdbm.NewTenantDAO(gskh.dbSession)
+
+	tenants, err := tnDAO.GetAllByOrg(ctx, nil, org, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving Tenant for this org")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Tenant for org", nil)
+	}
+
+	if len(tenants) == 0 {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Org does not have a Tenant associated", nil)
+	}
+	tenant := tenants[0]
+
+	// Check that SSH Key belongs to the Tenant
+	if sk.TenantID != tenant.ID {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "SSH Key does not belong to current Tenant", nil)
+	}
+
+	skaDAO := cdbm.NewSSHKeyAssociationDAO(gskh.dbSession)
+	skas, _, err := skaDAO.GetAll(ctx, nil, []uuid.UUID{sk.ID}, nil, nil, nil, cdb.GetIntPtr(paginator.TotalLimit), nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving SSH Key association from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve SSH Key Association from DB", nil)
+	}
+
+	// Create response
+	apiSSHKey := model.NewAPISSHKey(sk, skas)
+
+	logger.Info().Msg("finishing API handler")
+	return c.JSON(http.StatusOK, apiSSHKey)
+}
+
+// ~~~~~ GetAll Handler ~~~~~ //
+
+// GetAllSSHKeyHandler is the API Handler for retrieving all SSH Keys
+type GetAllSSHKeyHandler struct {
+	dbSession  *cdb.Session
+	tc         temporalClient.Client
+	cfg        *config.Config
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewGetAllSSHKeyHandler initializes and returns a new handler for retreiving all SSH Keys
+func NewGetAllSSHKeyHandler(dbSession *cdb.Session, tc temporalClient.Client, cfg *config.Config) GetAllSSHKeyHandler {
+	return GetAllSSHKeyHandler{
+		dbSession:  dbSession,
+		tc:         tc,
+		cfg:        cfg,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Get all SSH Keys
+// @Description Get all SSH Keys for the org
+// @Tags SSHKey
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param org path string true "Name of NGC organization"
+// @Param sshKeyGroupId query string true "ID of SSH Key Group"
+// @Param query query string false "Query input for full text search"
+// @Param includeRelation query string false "Related entities to include in response e.g. 'Tenant'"
+// @Param pageNumber query integer false "Page number of results returned"
+// @Param pageSize query integer false "Number of results per page"
+// @Param orderBy query string false "Order by field"
+// @Success 200 {array} []model.APISSHKey
+// @Router /v2/org/{org}/carbide/sshkey [get]
+func (gaskh GetAllSSHKeyHandler) Handle(c echo.Context) error {
+	// Get context
+	ctx := c.Request().Context()
+
+	// Get org
+	org := c.Param("orgName")
+
+	// Initialize logger
+	logger := log.With().Str("Model", "SSHKey").Str("Handler", "GetAll").Str("Org", org).Logger()
+
+	logger.Info().Msg("started API handler")
+
+	// Create a child span and set the attributes for current request
+	newctx, handlerSpan := gaskh.tracerSpan.CreateChildInContext(ctx, "GetAllSSHKeyHandler", logger)
+	if handlerSpan != nil {
+		// Set newly created span context as a current context
+		ctx = newctx
+
+		defer handlerSpan.End()
+
+		gaskh.tracerSpan.SetAttribute(handlerSpan, attribute.String("org", org), logger)
+	}
+
+	dbUser, logger, err := common.GetUserAndEnrichLogger(c, logger, gaskh.tracerSpan, handlerSpan)
+	if err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// Validate org
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Validate role, only Tenant Admins are allowed to retrieve
+	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.TenantAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Tenant Admin role with org, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Tenant Admin role with org", nil)
+	}
+
+	// Validate pagination request
+	pageRequest := pagination.PageRequest{}
+	err = c.Bind(&pageRequest)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error binding pagination request data into API model")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request pagination data", nil)
+	}
+
+	// Validate pagination request attributes
+	err = pageRequest.Validate(cdbm.SSHKeyOrderByFields)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error validating pagination request data")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest,
+			"Failed to validate pagination request data", err)
+	}
+
+	// Get and validate includeRelation params
+	qParams := c.QueryParams()
+	qIncludeRelations, errMsg := common.GetAndValidateQueryRelations(qParams, cdbm.SSHKeyRelatedEntities)
+	if errMsg != "" {
+		logger.Warn().Msg(errMsg)
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, errMsg, nil)
+	}
+
+	// Get Tenant for this org
+	tnDAO := cdbm.NewTenantDAO(gaskh.dbSession)
+
+	tenants, err := tnDAO.GetAllByOrg(ctx, nil, org, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving Tenant for this org")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Tenant for org", nil)
+	}
+
+	if len(tenants) == 0 {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Org does not have a Tenant associated", nil)
+	}
+	tenant := tenants[0]
+
+	// verify sshKeyGroupId if specified in query string
+	qSshKeyGroupID := c.QueryParam("sshKeyGroupId")
+	var sshKeyGroupIDs []uuid.UUID
+	if qSshKeyGroupID != "" {
+		sshKeyGroup, err := common.GetSSHKeyGroupFromIDString(ctx, nil, qSshKeyGroupID, gaskh.dbSession, nil)
+		if err != nil {
+			logger.Warn().Err(err).Msg("error getting SSH Key Group in request")
+			return cerr.NewAPIErrorResponse(c, http.StatusNotFound, "Could not find SSH Key Group specified in request", nil)
+		}
+		if sshKeyGroup.TenantID != tenant.ID {
+			logger.Warn().Msg("tenant in SSH Key Group does not belong to tenant in org")
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Tenant for SSH Key Group in request does not match tenant in org", nil)
+		}
+		sshKeyGroupIDs = append(sshKeyGroupIDs, sshKeyGroup.ID)
+	}
+
+	// Get query text for full text search from query param
+	var searchQuery *string
+
+	searchQueryStr := c.QueryParam("query")
+	if searchQueryStr != "" {
+		searchQuery = &searchQueryStr
+		gaskh.tracerSpan.SetAttribute(handlerSpan, attribute.String("query", searchQueryStr), logger)
+	}
+
+	// Get all SSH Keys by Tenant
+	skDAO := cdbm.NewSSHKeyDAO(gaskh.dbSession)
+	dbSSHKeys, total, serr := skDAO.GetAll(
+		ctx,
+		nil,
+		cdbm.SSHKeyFilterInput{
+			TenantIDs:      []uuid.UUID{tenant.ID},
+			SSHKeyGroupIDs: sshKeyGroupIDs,
+			SearchQuery:    searchQuery,
+		},
+		cdbp.PageInput{
+			Offset:  pageRequest.Offset,
+			Limit:   pageRequest.Limit,
+			OrderBy: pageRequest.OrderBy,
+		},
+		qIncludeRelations,
+	)
+	if serr != nil {
+		logger.Error().Err(serr).Msg("error retrieving SSHKeys for tenant")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve SSHKeys due to datastore error", nil)
+	}
+
+	// Create response
+	skaDAO := cdbm.NewSSHKeyAssociationDAO(gaskh.dbSession)
+	apiSSHKeys := []model.APISSHKey{}
+
+	for _, sk := range dbSSHKeys {
+		skas, _, err := skaDAO.GetAll(ctx, nil, []uuid.UUID{sk.ID}, nil, nil, nil, cdb.GetIntPtr(paginator.TotalLimit), nil)
+		if err != nil {
+			logger.Error().Err(err).Msg("error getting SSH Key association records")
+		}
+
+		// Create response
+		dbSSHKey := sk
+		apiSSHKey := model.NewAPISSHKey(&dbSSHKey, skas)
+		apiSSHKeys = append(apiSSHKeys, *apiSSHKey)
+	}
+
+	// Create pagination response header
+	pageReponse := pagination.NewPageResponse(*pageRequest.PageNumber, *pageRequest.PageSize, total, pageRequest.OrderByStr)
+	pageHeader, err := json.Marshal(pageReponse)
+	if err != nil {
+		logger.Error().Err(err).Msg("error marshaling pagination response")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to generate pagination response header", nil)
+	}
+	c.Response().Header().Set(pagination.ResponseHeaderName, string(pageHeader))
+
+	logger.Info().Msg("finishing API handler")
+
+	return c.JSON(http.StatusOK, apiSSHKeys)
+}
+
+// ~~~~~ Delete Handler ~~~~~ //
+
+// DeleteSSHKeyHandler is the API Handler for deleting an SSH Key
+type DeleteSSHKeyHandler struct {
+	dbSession  *cdb.Session
+	tc         temporalClient.Client
+	cfg        *config.Config
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewDeleteSSHKeyHandler initializes and returns a new handler for deleting a SSH Key
+func NewDeleteSSHKeyHandler(dbSession *cdb.Session, tc temporalClient.Client, cfg *config.Config) DeleteSSHKeyHandler {
+	return DeleteSSHKeyHandler{
+		dbSession:  dbSession,
+		tc:         tc,
+		cfg:        cfg,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Delete an SSH Key
+// @Description Delete an SSH Key from the org
+// @Tags SSHKey
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param org path string true "Name of NGC organization"
+// @Param id path string true "ID of SSHKey"
+// @Success 202
+// @Router /v2/org/{org}/carbide/sshkey/{id} [delete]
+func (dskh DeleteSSHKeyHandler) Handle(c echo.Context) error {
+	// Get context
+	ctx := c.Request().Context()
+
+	// Get org
+	org := c.Param("orgName")
+
+	// Initialize logger
+	logger := log.With().Str("Model", "SSHKey").Str("Handler", "Delete").Str("Org", org).Logger()
+
+	logger.Info().Msg("started API handler")
+
+	// Create a child span and set the attributes for current request
+	newctx, handlerSpan := dskh.tracerSpan.CreateChildInContext(ctx, "DeleteSSHKeyHandler", logger)
+	if handlerSpan != nil {
+		// Set newly created span context as a current context
+		ctx = newctx
+
+		defer handlerSpan.End()
+
+		dskh.tracerSpan.SetAttribute(handlerSpan, attribute.String("org", org), logger)
+	}
+
+	dbUser, logger, err := common.GetUserAndEnrichLogger(c, logger, dskh.tracerSpan, handlerSpan)
+	if err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// Validate org
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Validate role, only Tenant Admins are allowed to delete SSHKeys
+	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.TenantAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Tenant Admin role with org, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Tenant Admin role with org", nil)
+	}
+
+	// Get Tenant for this org
+	tnDAO := cdbm.NewTenantDAO(dskh.dbSession)
+
+	tenants, err := tnDAO.GetAllByOrg(ctx, nil, org, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving Tenant for this org")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Tenant for org", nil)
+	}
+
+	if len(tenants) == 0 {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Org does not have a Tenant associated with it", nil)
+	}
+	tenant := tenants[0]
+
+	// Get ID from URL param
+	sshKeyStrID := c.Param("id")
+
+	dskh.tracerSpan.SetAttribute(handlerSpan, attribute.String("sshkey_id", sshKeyStrID), logger)
+
+	sshKeyID, err := uuid.Parse(sshKeyStrID)
+	if err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid SSH Key ID in URL", nil)
+	}
+
+	// Get SSH Key
+	skDAO := cdbm.NewSSHKeyDAO(dskh.dbSession)
+
+	sk, err := skDAO.GetByID(ctx, nil, sshKeyID, nil)
+	if err != nil {
+		if err == cdb.ErrDoesNotExist {
+			return cerr.NewAPIErrorResponse(c, http.StatusNotFound, "Could not find SSH Key with specified ID", nil)
+		}
+		logger.Error().Err(err).Msg("error retrieving SSH Key from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve SSH Key due to datastore error", nil)
+	}
+
+	// Check that the SSH Key belongs to the Tenant
+	if sk.TenantID != tenant.ID {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "SSHKey does not belong to current Tenant", nil)
+	}
+
+	// Start a DB transaction
+	tx, err := cdb.BeginTx(ctx, dskh.dbSession, &sql.TxOptions{})
+	if err != nil {
+		logger.Error().Err(err).Msg("unable to start transaction")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to delete SSH Key due to data store error", nil)
+	}
+
+	// This variable is used in cleanup actions to indicate if this transaction committed
+	txCommitted := false
+	defer common.RollbackTx(ctx, tx, &txCommitted)
+
+	skaDAO := cdbm.NewSSHKeyAssociationDAO(dskh.dbSession)
+	skgDAO := cdbm.NewSSHKeyGroupDAO(dskh.dbSession)
+	sdDAO := cdbm.NewStatusDetailDAO(dskh.dbSession)
+
+	skas, _, err := skaDAO.GetAll(ctx, tx, []uuid.UUID{sk.ID}, nil, []string{cdbm.SSHKeyGroupRelationName}, nil, cdb.GetIntPtr(paginator.TotalLimit), nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving SSH Key association from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve SSH Key Association from DB", nil)
+	}
+
+	// Delete all SSH Key Associations
+	skgIDs := []uuid.UUID{}
+	for _, ska := range skas {
+		// acquire an advisory lock on the SSH Key Group on which there could be contention
+		// this lock is released when the transaction commits or rollsback
+		serr := tx.TryAcquireAdvisoryLock(ctx, cdb.GetAdvisoryLockIDFromString(ska.SSHKeyGroupID.String()), nil)
+		if serr != nil {
+			logger.Error().Err(serr).Msg("Failed to acquire advisory lock on sshkey group")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to update dissociate SSH Key from one or more SSH Key Groups, could not acquire data store lock on Group", nil)
+		}
+
+		// Delete Key Association
+		serr = skaDAO.DeleteByID(ctx, tx, ska.ID)
+		if serr != nil {
+			logger.Error().Err(serr).Msg("unable to delete SSH Key Association record in DB")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to delete SSH Key Association due to data store error", nil)
+		}
+
+		// Only allow to update SSHKeyGroup if it is not in Deleting State
+		if ska.SSHKeyGroup != nil && ska.SSHKeyGroup.Status == cdbm.SSHKeyGroupStatusDeleting {
+			continue
+		}
+
+		// Calculate and set new versions
+		_, serr = skgDAO.GenerateAndUpdateVersion(ctx, tx, ska.SSHKeyGroupID)
+		if serr != nil {
+			logger.Error().Err(serr).Msg("error calculating current version for SSH Key Group")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to calculate current version for SSH Key Group", nil)
+		}
+
+		skgIDs = append(skgIDs, ska.SSHKeyGroupID)
+	}
+
+	// Delete SSH Key in DB
+	err = skDAO.Delete(ctx, tx, sk.ID)
+	if err != nil {
+		logger.Error().Err(err).Msg("error deleting SSHKey in DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to delete SSH Key due to data store error", nil)
+	}
+
+	skgsaDAO := cdbm.NewSSHKeyGroupSiteAssociationDAO(dskh.dbSession)
+	skgsasToSync, _, err := skgsaDAO.GetAll(ctx, tx, skgIDs, nil, nil, nil, []string{cdbm.SSHKeyGroupRelationName}, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving SSH Key Group Associations related to SSH Key from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve SSH Key Group Associations from DB", nil)
+	}
+
+	// If SSH Key Group is present in the list of Groups to sync to Sites, update the status
+	for _, skgsa := range skgsasToSync {
+		// Update SSH Key Group version and status to Syncing
+		_, serr := skgDAO.Update(
+			ctx,
+			tx,
+			cdbm.SSHKeyGroupUpdateInput{
+				SSHKeyGroupID: skgsa.SSHKeyGroupID,
+				Status:        cdb.GetStrPtr(cdbm.SSHKeyGroupStatusSyncing),
+			},
+		)
+		if serr != nil {
+			logger.Error().Err(serr).Msg("error updating SSH Key Group in DB")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to delete SSH Key Groups", nil)
+		}
+
+		// Create a status detail record for the SSH Key Group
+		_, serr = sdDAO.CreateFromParams(ctx, tx, skgsa.SSHKeyGroupID.String(), cdbm.SSHKeyGroupStatusSyncing, cdb.GetStrPtr("Sync required due to SSH Key deletion, pending processing"))
+		if serr != nil {
+			logger.Error().Err(serr).Msg("error creating Status Detail DB entry")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Status Detail for SSH Key Group", nil)
+		}
+	}
+
+	// Commit transaction
+	err = tx.Commit()
+	if err != nil {
+		logger.Error().Err(err).Msg("error committing transaction")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to delete SSH Key due to data store error", nil)
+	}
+	txCommitted = true
+
+	// Trigger SyncSSHKeyGroup workflow for each SSH Key Group
+	for _, skgsa := range skgsasToSync {
+		// Skip triggering SSHKeyGroup sync if it is in Deleting state
+		if skgsa.SSHKeyGroup != nil && skgsa.SSHKeyGroup.Status == cdbm.SSHKeyGroupStatusDeleting {
+			continue
+		}
+
+		if skgsa.Status == cdbm.SSHKeyGroupSiteAssociationStatusDeleting {
+			continue
+		}
+
+		// Trigger workflow to sync SSH Key Group with Site
+		wid, err := sshKeyGroupWorkflow.ExecuteSyncSSHKeyGroupWorkflow(ctx, dskh.tc, skgsa.SiteID, skgsa.SSHKeyGroupID, *skgsa.Version)
+		if err != nil {
+			// Log error but continue, unsynced groups will be triggered by inventory
+			logger.Error().Err(err).Msg("failed to execute sync SSH Key Group workflow")
+			continue
+		}
+
+		logger.Info().Str("Workflow ID", *wid).Str("Site ID", skgsa.SiteID.String()).Msg("triggered SSH Key Group sync workflow")
+	}
+
+	// Return response
+	logger.Info().Msg("finishing API handler")
+
+	return c.String(http.StatusAccepted, "Deletion request was accepted")
+}

@@ -1,0 +1,179 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ *
+ * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+ * property and proprietary rights in and to this material, related
+ * documentation and any modifications thereto. Any use, reproduction,
+ * disclosure or distribution of this material and related documentation
+ * without an express license agreement from NVIDIA CORPORATION or
+ * its affiliates is strictly prohibited.
+ */
+
+package server
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"testing"
+
+	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+
+	echo "github.com/labstack/echo/v4"
+	"github.com/stretchr/testify/assert"
+	"github.com/nvidia/carbide-rest/api/internal/config"
+	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
+	_ "github.com/nvidia/carbide-rest/api/pkg/api/model"
+	sc "github.com/nvidia/carbide-rest/api/pkg/client/site"
+	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
+	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
+	temporalClient "go.temporal.io/sdk/client"
+	tmocks "go.temporal.io/sdk/mocks"
+)
+
+func Test_InitAPIServer(t *testing.T) {
+	type args struct {
+		cfg       *config.Config
+		dbSession *cdb.Session
+		tc        temporalClient.Client
+		tnc       temporalClient.NamespaceClient
+		scp       *sc.ClientPool
+	}
+
+	cfg := common.GetTestConfig()
+
+	dbSession := cdbu.GetTestDBSession(t, true)
+	defer dbSession.Close()
+
+	tc := &tmocks.Client{}
+	tnc := &tmocks.NamespaceClient{}
+
+	tcfg, _ := cfg.GetTemporalConfig()
+
+	scp := sc.NewClientPool(tcfg)
+
+	t.Setenv("SENTRY_DSN", "https://bfe69b59461e44059a533274a6393155@glitchtip.test.com/3")
+
+	tests := []struct {
+		name string
+		args args
+		want *echo.Echo
+	}{
+		{
+			name: "test initAPIServer success",
+			args: args{
+				cfg:       cfg,
+				dbSession: dbSession,
+				tc:        tc,
+				tnc:       tnc,
+				scp:       scp,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			InitAPIServer(tt.args.cfg, tt.args.dbSession, tt.args.tc, tt.args.tnc, tt.args.scp)
+		})
+	}
+}
+
+func Test_InitTemporalClients(t *testing.T) {
+	keyPath, certPath := config.SetupTestCerts(t)
+	defer os.Remove(keyPath)
+	defer os.Remove(certPath)
+
+	cfg := common.GetTestConfig()
+	cfg.SetTemporalCertPath(certPath)
+	cfg.SetTemporalKeyPath(keyPath)
+	cfg.SetTemporalCaPath(certPath)
+
+	tcfg, err := cfg.GetTemporalConfig()
+	assert.NoError(t, err)
+	defer cfg.Close()
+
+	type args struct {
+		tConfig *config.TemporalConfig
+	}
+
+	tests := []struct {
+		name string
+		args args
+	}{
+		{
+			name: "test initTemporalClient success",
+			args: args{
+				tConfig: tcfg,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			InitTemporalClients(tt.args.tConfig, true)
+		})
+	}
+}
+
+func Test_InitMetricsServer(t *testing.T) {
+	type args struct {
+		e *echo.Echo
+	}
+	tests := []struct {
+		name string
+		args args
+	}{
+		{
+			name: "test initMetricsServer success",
+			args: args{
+				e: echo.New(),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			InitMetricsServer(tt.args.e)
+		})
+	}
+}
+
+func testAuditSetupSchema(t *testing.T, dbSession *cdb.Session) {
+	err := dbSession.DB.ResetModel(context.Background(), (*cdbm.User)(nil))
+	assert.Nil(t, err)
+	err = dbSession.DB.ResetModel(context.Background(), (*cdbm.AuditEntry)(nil))
+	assert.Nil(t, err)
+}
+
+func Test_Audit(t *testing.T) {
+
+	cfg := common.GetTestConfig()
+
+	dbSession := cdbu.GetTestDBSession(t, true)
+	defer dbSession.Close()
+	testAuditSetupSchema(t, dbSession)
+
+	tc := &tmocks.Client{}
+	tnc := &tmocks.NamespaceClient{}
+
+	tcfg, _ := cfg.GetTemporalConfig()
+
+	scp := sc.NewClientPool(tcfg)
+
+	t.Setenv("SENTRY_DSN", "https://bfe69b59461e44059a533274a6393155@glitchtip.test.com/3")
+
+	srv := InitAPIServer(cfg, dbSession, tc, tnc, scp)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v2/org/wdksahew1rqv/carbide/site", nil)
+	srv.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	// check if the audit log entry was created
+	aeDAO := cdbm.NewAuditEntryDAO(dbSession)
+	entries, count, err := aeDAO.GetAll(context.Background(), nil, cdbm.AuditEntryFilterInput{OrgName: cdb.GetStrPtr("wdksahew1rqv")}, paginator.PageInput{})
+	assert.NoError(t, err)
+	assert.Len(t, entries, 1)
+	assert.Equal(t, count, 1)
+	assert.Equal(t, entries[0].OrgName, "wdksahew1rqv")
+	assert.Equal(t, entries[0].StatusCode, 401)
+}

@@ -1,0 +1,102 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package vpcprefix
+
+import (
+	"errors"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/suite"
+	"go.temporal.io/sdk/temporal"
+	"go.temporal.io/sdk/testsuite"
+
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+
+	vpcPrefixActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/vpcprefix"
+)
+
+type UpdateVpcPrefixTestSuite struct {
+	suite.Suite
+	testsuite.WorkflowTestSuite
+
+	env *testsuite.TestWorkflowEnvironment
+}
+
+func (s *UpdateVpcPrefixTestSuite) SetupTest() {
+	s.env = s.NewTestWorkflowEnvironment()
+}
+
+func (s *UpdateVpcPrefixTestSuite) AfterTest(suiteName, testName string) {
+	s.env.AssertExpectations(s.T())
+}
+
+func (s *UpdateVpcPrefixTestSuite) Test_UpdateVpcPrefixInventory_Success() {
+
+	var VpcPrefixManager vpcPrefixActivity.ManageVpcPrefix
+
+	siteID := uuid.New()
+	VpcPrefixInventory := &cwssaws.VpcPrefixInventory{
+		VpcPrefixes: []*cwssaws.VpcPrefix{
+			{
+				Id: &cwssaws.VpcPrefixId{Value: uuid.NewString()},
+			},
+			{
+				Id: &cwssaws.VpcPrefixId{Value: uuid.NewString()},
+			},
+		},
+	}
+
+	// Mock UpdateVpcPrefixViaSiteAgent activity
+	s.env.RegisterActivity(VpcPrefixManager.UpdateVpcPrefixesInDB)
+	s.env.OnActivity(VpcPrefixManager.UpdateVpcPrefixesInDB, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	// execute UpdateVpcPrefixInventory workflow
+	s.env.ExecuteWorkflow(UpdateVpcPrefixInventory, siteID.String(), VpcPrefixInventory)
+	s.True(s.env.IsWorkflowCompleted())
+	s.NoError(s.env.GetWorkflowError())
+}
+
+func (s *UpdateVpcPrefixTestSuite) Test_UpdateVpcPrefixInventory_ActivityFails() {
+
+	var VpcPrefixManager vpcPrefixActivity.ManageVpcPrefix
+
+	siteID := uuid.New()
+	VpcPrefixInventory := &cwssaws.VpcPrefixInventory{
+		VpcPrefixes: []*cwssaws.VpcPrefix{
+			{
+				Id: &cwssaws.VpcPrefixId{Value: uuid.NewString()},
+			},
+			{
+				Id: &cwssaws.VpcPrefixId{Value: uuid.NewString()},
+			},
+		},
+	}
+
+	// Mock UpdateVpcPrefixesInDB activity failure
+	s.env.RegisterActivity(VpcPrefixManager.UpdateVpcPrefixesInDB)
+	s.env.OnActivity(VpcPrefixManager.UpdateVpcPrefixesInDB, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("UpdateVpcPrefixInventory Failure"))
+
+	// execute UpdateVpcPrefixStatus workflow
+	s.env.ExecuteWorkflow(UpdateVpcPrefixInventory, siteID.String(), VpcPrefixInventory)
+	s.True(s.env.IsWorkflowCompleted())
+	err := s.env.GetWorkflowError()
+	s.Error(err)
+
+	var applicationErr *temporal.ApplicationError
+	s.True(errors.As(err, &applicationErr))
+	s.Equal("UpdateVpcPrefixInventory Failure", applicationErr.Error())
+}
+
+func TestUpdateVpcPrefixSuite(t *testing.T) {
+	suite.Run(t, new(UpdateVpcPrefixTestSuite))
+}

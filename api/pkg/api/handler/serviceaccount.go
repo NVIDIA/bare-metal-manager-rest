@@ -1,0 +1,195 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package handler
+
+import (
+	"net/http"
+
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
+	"github.com/rs/zerolog/log"
+	"github.com/nvidia/carbide-rest/api/internal/config"
+	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
+	"github.com/nvidia/carbide-rest/api/pkg/api/model"
+	cerr "github.com/nvidia/carbide-rest/common/pkg/util"
+	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
+	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
+	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	cdbp "github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+	"go.opentelemetry.io/otel/attribute"
+)
+
+// GetCurrentServiceAccountHandler is the API Handler for getting the current Service Account
+type GetCurrentServiceAccountHandler struct {
+	dbSession  *cdb.Session
+	cfg        *config.Config
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewGetCurrentServiceAccountHandler initializes and returns a new handler for getting the current Service Account
+func NewGetCurrentServiceAccountHandler(dbSession *cdb.Session, cfg *config.Config) GetCurrentServiceAccountHandler {
+	return GetCurrentServiceAccountHandler{
+		dbSession:  dbSession,
+		cfg:        cfg,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Retrieve information about the current Service Account
+// @Description Retrieve information about the current Service Account. If it does not exist, it will be created.
+// @Tags serviceaccount
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param org path string true "Name of organization"
+// @Success 200 {object} model.APIServiceAccount
+// @Router /v2/org/{org}/carbide/service-account/current [get]
+func (gcsah GetCurrentServiceAccountHandler) Handle(c echo.Context) error {
+	// Get context
+	ctx := c.Request().Context()
+
+	// Get org
+	org := c.Param("orgName")
+
+	// Initialize logger
+	logger := log.With().Str("Model", "ServiceAccount").Str("Handler", "GetCurrent").Str("Org", org).Logger()
+
+	logger.Info().Msg("started API handler")
+
+	// Create a child span and set the attributes for current request
+	newctx, handlerSpan := gcsah.tracerSpan.CreateChildInContext(ctx, "GetCurrentServiceAccountHandler", logger)
+	if handlerSpan != nil {
+		// Set newly created span context as a current context
+		ctx = newctx
+
+		defer handlerSpan.End()
+
+		gcsah.tracerSpan.SetAttribute(handlerSpan, attribute.String("org", org), logger)
+	}
+
+	dbUser, logger, err := common.GetUserAndEnrichLogger(c, logger, gcsah.tracerSpan, handlerSpan)
+	if err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// Check if service account is enabled for at least one auth configuration
+	serviceAccountEnabled := false
+	jwtOriginConfigs := gcsah.cfg.GetOrInitJWTOriginConfig()
+	for _, jwtOriginConfig := range jwtOriginConfigs.GetAllConfigs() {
+		if jwtOriginConfig.ServiceAccount {
+			serviceAccountEnabled = true
+			break
+		}
+	}
+
+	if !serviceAccountEnabled {
+		logger.Info().Msg("service account is disabled for this org")
+
+		return c.JSON(http.StatusOK, model.NewAPIServiceAccount(false, nil, nil))
+	}
+
+	// Get or create InfrastructureProvider for this org
+	ipDAO := cdbm.NewInfrastructureProviderDAO(gcsah.dbSession)
+
+	var ip *cdbm.InfrastructureProvider
+
+	ips, err := ipDAO.GetAllByOrg(ctx, nil, org, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving Infrastructure Provider for this org")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Infrastructure Provider for org, DB error", nil)
+	}
+
+	var serr error
+	if len(ips) == 0 {
+		// Create Infrastructure Provider
+		ip, serr = ipDAO.CreateFromParams(ctx, nil, org, nil, org, cdb.GetStrPtr(org), dbUser)
+		if serr != nil {
+			logger.Error().Err(serr).Msg("error creating Infrastructure Provider DB entity")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Infrastructure Provider for org, DB error", nil)
+		}
+	} else {
+		ip = &ips[0]
+	}
+
+	// Get or create Tenant for this org
+	tnDAO := cdbm.NewTenantDAO(gcsah.dbSession)
+
+	var tn *cdbm.Tenant
+
+	tns, err := tnDAO.GetAllByOrg(ctx, nil, org, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving Tenant for this org")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Tenant for org, DB error", nil)
+	}
+
+	if len(tns) == 0 {
+		// Create Tenant
+		tenantConfig := &cdbm.TenantConfig{
+			// Enable targeted instance creation for org
+			TargetedInstanceCreation: true,
+		}
+		tn, serr = tnDAO.CreateFromParams(ctx, nil, org, nil, org, cdb.GetStrPtr(org), tenantConfig, dbUser)
+		if serr != nil {
+			logger.Error().Err(serr).Msg("error creating Tenant DB entity")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Tenant for org, DB error", nil)
+		}
+	} else {
+		tn = &tns[0]
+
+		// Check if Tenant has targeted instance creation enabled
+		if !tn.Config.TargetedInstanceCreation {
+			// Update Tenant to enable targeted instance creation
+			tenantConfig := tn.Config
+			tenantConfig.TargetedInstanceCreation = true
+			tn, serr = tnDAO.UpdateFromParams(ctx, nil, tn.ID, nil, nil, nil, tenantConfig)
+			if serr != nil {
+				logger.Error().Err(serr).Msg("error updating Tenant DB entity")
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to update Tenant capabilities for org, DB error", nil)
+			}
+		}
+	}
+
+	// Create Tenant Account if it doesn't exist
+	taDAO := cdbm.NewTenantAccountDAO(gcsah.dbSession)
+	tas, _, err := taDAO.GetAll(ctx, nil, cdbm.TenantAccountFilterInput{
+		InfrastructureProviderID: &ip.ID,
+		TenantIDs:                []uuid.UUID{tn.ID},
+	}, cdbp.PageInput{}, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving Tenant Account for this org")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Tenant Account for org's Tenant, DB error", nil)
+	}
+
+	if len(tas) == 0 {
+		// Create Tenant Account
+		_, serr = taDAO.Create(ctx, nil, cdbm.TenantAccountCreateInput{
+			AccountNumber:             common.GenerateAccountNumber(),
+			TenantID:                  &tn.ID,
+			TenantOrg:                 org,
+			InfrastructureProviderID:  ip.ID,
+			InfrastructureProviderOrg: ip.Org,
+			Status:                    cdbm.TenantAccountStatusReady,
+			CreatedBy:                 dbUser.ID,
+		})
+		if serr != nil {
+			logger.Error().Err(serr).Msg("error creating Tenant Account DB entity")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Tenant Account for org's Tenant, DB error", nil)
+		}
+	}
+
+	// Create response
+	apiServiceAccount := model.NewAPIServiceAccount(serviceAccountEnabled, ip, tn)
+
+	logger.Info().Msg("finishing API handler")
+
+	return c.JSON(http.StatusOK, apiServiceAccount)
+}

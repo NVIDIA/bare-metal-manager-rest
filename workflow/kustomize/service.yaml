@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+#
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: cloud-worker
+  labels:
+    app: cloud-worker
+spec:
+  ports:
+    - name: http
+      port: 8899
+      targetPort: 8899
+      protocol: TCP
+    - name: metrics
+      port: 9360
+      targetPort: 9360
+      protocol: TCP
+  selector:
+    app: cloud-worker
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: site-worker
+  labels:
+    app: site-worker
+spec:
+  ports:
+    - name: http
+      port: 8899
+      targetPort: 8899
+      protocol: TCP
+    - name: metrics
+      port: 9360
+      targetPort: 9360
+      protocol: TCP
+  selector:
+    app: site-worker

@@ -1,0 +1,92 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package dpuextensionservice
+
+import (
+	"errors"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/suite"
+	"go.temporal.io/sdk/temporal"
+	"go.temporal.io/sdk/testsuite"
+
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+
+	"github.com/nvidia/carbide-rest/workflow/pkg/activity/dpuextensionservice"
+)
+
+type UpdateDpuExtensionServiceTestSuite struct {
+	suite.Suite
+	testsuite.WorkflowTestSuite
+
+	env *testsuite.TestWorkflowEnvironment
+}
+
+func (s *UpdateDpuExtensionServiceTestSuite) SetupTest() {
+	s.env = s.NewTestWorkflowEnvironment()
+}
+
+func (s *UpdateDpuExtensionServiceTestSuite) AfterTest(suiteName, testName string) {
+	s.env.AssertExpectations(s.T())
+}
+
+func (s *UpdateDpuExtensionServiceTestSuite) Test_UpdateDpuExtensionServiceInventory_Success() {
+	var dpuExtensionServiceManager dpuextensionservice.ManageDpuExtensionService
+
+	siteID := uuid.New()
+	DpuExtensionServiceInventory := &cwssaws.DpuExtensionServiceInventory{
+		DpuExtensionServices: []*cwssaws.DpuExtensionService{
+			{ServiceId: uuid.NewString()},
+			{ServiceId: uuid.NewString()},
+		},
+	}
+
+	// Mock UpdateDpuExtensionServicesInDB activity
+	s.env.RegisterActivity(dpuExtensionServiceManager.UpdateDpuExtensionServicesInDB)
+	s.env.OnActivity(dpuExtensionServiceManager.UpdateDpuExtensionServicesInDB, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	// execute UpdateDpuExtensionServiceInventory workflow
+	s.env.ExecuteWorkflow(UpdateDpuExtensionServiceInventory, siteID.String(), DpuExtensionServiceInventory)
+	s.True(s.env.IsWorkflowCompleted())
+	s.NoError(s.env.GetWorkflowError())
+}
+
+func (s *UpdateDpuExtensionServiceTestSuite) Test_UpdateDpuExtensionServiceInventory_ActivityFails() {
+	var dpuExtensionServiceManager dpuextensionservice.ManageDpuExtensionService
+
+	siteID := uuid.New()
+	DpuExtensionServiceInventory := &cwssaws.DpuExtensionServiceInventory{
+		DpuExtensionServices: []*cwssaws.DpuExtensionService{
+			{ServiceId: uuid.NewString()},
+			{ServiceId: uuid.NewString()},
+		},
+	}
+
+	// Mock UpdateDpuExtensionServicesInDB activity failure
+	s.env.RegisterActivity(dpuExtensionServiceManager.UpdateDpuExtensionServicesInDB)
+	s.env.OnActivity(dpuExtensionServiceManager.UpdateDpuExtensionServicesInDB, mock.Anything, mock.Anything, mock.Anything).Return(errors.New("UpdateDpuExtensionServicesInDB Failure"))
+
+	// execute UpdateDpuExtensionServiceInventory workflow
+	s.env.ExecuteWorkflow(UpdateDpuExtensionServiceInventory, siteID.String(), DpuExtensionServiceInventory)
+	s.True(s.env.IsWorkflowCompleted())
+	err := s.env.GetWorkflowError()
+	s.Error(err)
+
+	var applicationErr *temporal.ApplicationError
+	s.True(errors.As(err, &applicationErr))
+	s.Equal("UpdateDpuExtensionServicesInDB Failure", applicationErr.Error())
+}
+
+func TestUpdateDpuExtensionServiceSuite(t *testing.T) {
+	suite.Run(t, new(UpdateDpuExtensionServiceTestSuite))
+}

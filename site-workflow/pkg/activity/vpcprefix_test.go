@@ -1,0 +1,395 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package activity
+
+import (
+	"context"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cClient "github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
+	tmocks "go.temporal.io/sdk/mocks"
+)
+
+func TestManageVpcPrefixInventory_DiscoverVpcPrefixInventory(t *testing.T) {
+	mockCarbide := cClient.NewMockCarbideClient()
+
+	carbideAtomicClient := cClient.NewCarbideAtomicClient(&cClient.CarbideClientConfig{})
+	carbideAtomicClient.SwapClient(mockCarbide)
+
+	wid := "test-workflow-id"
+	wrun := &tmocks.WorkflowRun{}
+	wrun.On("GetID").Return(wid)
+
+	type fields struct {
+		siteID               uuid.UUID
+		carbideAtomicClient  *cClient.CarbideAtomicClient
+		temporalPublishQueue string
+		sitePageSize         int
+		cloudPageSize        int
+	}
+	type args struct {
+		wantTotalItems int
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+	}{
+		{
+			name: "test collecting and publishing VpcPrefix inventory, empty inventory",
+			fields: fields{
+				siteID:               uuid.New(),
+				carbideAtomicClient:  carbideAtomicClient,
+				temporalPublishQueue: "test-queue",
+				sitePageSize:         100,
+				cloudPageSize:        25,
+			},
+			args: args{
+				wantTotalItems: 0,
+			},
+		},
+		{
+			name: "test collecting and publishing VpcPrefix inventory, normal inventory",
+			fields: fields{
+				siteID:               uuid.New(),
+				carbideAtomicClient:  carbideAtomicClient,
+				temporalPublishQueue: "test-queue",
+				sitePageSize:         100,
+				cloudPageSize:        25,
+			},
+			args: args{
+				wantTotalItems: 195,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tc := &tmocks.Client{}
+			tc.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
+				mock.AnythingOfType("string"), mock.AnythingOfType("uuid.UUID"), mock.Anything).Return(wrun, nil)
+			tc.AssertNumberOfCalls(t, "ExecuteWorkflow", 0)
+
+			manageVpcPrefix := NewManageVpcPrefixInventory(ManageInventoryConfig{
+				SiteID:                tt.fields.siteID,
+				CarbideAtomicClient:   tt.fields.carbideAtomicClient,
+				TemporalPublishClient: tc,
+				TemporalPublishQueue:  tt.fields.temporalPublishQueue,
+				SitePageSize:          tt.fields.sitePageSize,
+				CloudPageSize:         tt.fields.cloudPageSize,
+			})
+
+			ctx := context.Background()
+			ctx = context.WithValue(ctx, "wantCount", tt.args.wantTotalItems)
+
+			totalPages := tt.args.wantTotalItems / tt.fields.cloudPageSize
+			if tt.args.wantTotalItems%tt.fields.cloudPageSize > 0 {
+				totalPages++
+			}
+
+			err := manageVpcPrefix.DiscoverVpcPrefixInventory(ctx)
+			assert.NoError(t, err)
+
+			if tt.args.wantTotalItems == 0 {
+				tc.AssertNumberOfCalls(t, "ExecuteWorkflow", 1)
+			} else {
+				tc.AssertNumberOfCalls(t, "ExecuteWorkflow", totalPages)
+			}
+
+			inventory, ok := tc.Calls[0].Arguments[4].(*cwssaws.VpcPrefixInventory)
+			assert.True(t, ok)
+
+			if tt.args.wantTotalItems == 0 {
+				assert.Equal(t, 0, len(inventory.VpcPrefixes))
+			} else {
+				assert.Equal(t, tt.fields.cloudPageSize, len(inventory.VpcPrefixes))
+			}
+
+			assert.Equal(t, cwssaws.InventoryStatus_INVENTORY_STATUS_SUCCESS, inventory.InventoryStatus)
+			assert.Equal(t, totalPages, int(inventory.InventoryPage.TotalPages))
+			assert.Equal(t, 1, int(inventory.InventoryPage.CurrentPage))
+			assert.Equal(t, tt.fields.cloudPageSize, int(inventory.InventoryPage.PageSize))
+			assert.Equal(t, tt.args.wantTotalItems, int(inventory.InventoryPage.TotalItems))
+			assert.Equal(t, tt.args.wantTotalItems, len(inventory.InventoryPage.ItemIds))
+		})
+	}
+}
+
+func TestManageVpcPrefix_CreateVpcPrefixOnSite(t *testing.T) {
+	mockCarbide := cClient.NewMockCarbideClient()
+
+	carbideAtomicClient := cClient.NewCarbideAtomicClient(&cClient.CarbideClientConfig{})
+	carbideAtomicClient.SwapClient(mockCarbide)
+
+	name := "best_VpcPrefix_ever"
+	prefix := "192.168.1.0/24"
+
+	type fields struct {
+		CarbideAtomicClient *cClient.CarbideAtomicClient
+	}
+	type args struct {
+		ctx     context.Context
+		request *cwssaws.VpcPrefixCreationRequest
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "test create VpcPrefix success",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.VpcPrefixCreationRequest{
+					Id:     &cwssaws.VpcPrefixId{Value: "b410867c-655a-11ef-bc4a-0393098e5d09"},
+					Name:   name,
+					Prefix: prefix,
+					VpcId:  &cwssaws.VpcId{Value: uuid.NewString()},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "test create VpcPrefix fail on missing name",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.VpcPrefixCreationRequest{
+					Id:     &cwssaws.VpcPrefixId{Value: "b410867c-655a-11ef-bc4a-0393098e5d09"},
+					Name:   "",
+					Prefix: prefix,
+					VpcId:  &cwssaws.VpcId{Value: uuid.NewString()},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "test create VpcPrefix fail on missing prefix",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.VpcPrefixCreationRequest{
+					Id:     &cwssaws.VpcPrefixId{Value: "b410867c-655a-11ef-bc4a-0393098e5d09"},
+					Name:   name,
+					Prefix: "",
+					VpcId:  &cwssaws.VpcId{Value: uuid.NewString()},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "test create VpcPrefix fail on missing id",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.VpcPrefixCreationRequest{
+					Id:     nil,
+					Name:   name,
+					Prefix: prefix,
+					VpcId:  &cwssaws.VpcId{Value: uuid.NewString()},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "test create VpcPrefix fail on missing vpc id",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.VpcPrefixCreationRequest{
+					Id:     &cwssaws.VpcPrefixId{Value: "b410867c-655a-11ef-bc4a-0393098e5d09"},
+					Name:   name,
+					Prefix: prefix,
+					VpcId:  nil,
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "test create VpcPrefix fail on missing request",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx:     context.Background(),
+				request: nil,
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm := NewManageVpcPrefix(tt.fields.CarbideAtomicClient)
+			err := mm.CreateVpcPrefixOnSite(tt.args.ctx, tt.args.request)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestManageVpcPrefix_UpdateVpcPrefixOnSiteOnSite(t *testing.T) {
+	mockCarbide := cClient.NewMockCarbideClient()
+
+	carbideAtomicClient := cClient.NewCarbideAtomicClient(&cClient.CarbideClientConfig{})
+	carbideAtomicClient.SwapClient(mockCarbide)
+
+	type fields struct {
+		CarbideAtomicClient *cClient.CarbideAtomicClient
+	}
+	type args struct {
+		ctx     context.Context
+		request *cwssaws.VpcPrefixUpdateRequest
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "test update VpcPrefix success",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.VpcPrefixUpdateRequest{
+					Id: &cwssaws.VpcPrefixId{Value: "b410867c-655a-11ef-bc4a-0393098e5d09"},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "test update VpcPrefix fail on missing id",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.VpcPrefixUpdateRequest{
+					Id: nil,
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "test update VpcPrefix fail on missing request",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx:     context.Background(),
+				request: nil,
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm := NewManageVpcPrefix(tt.fields.CarbideAtomicClient)
+			err := mm.UpdateVpcPrefixOnSite(tt.args.ctx, tt.args.request)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestManageVpcPrefix_DeleteVpcPrefixOnSiteOnSite(t *testing.T) {
+	mockCarbide := cClient.NewMockCarbideClient()
+
+	carbideAtomicClient := cClient.NewCarbideAtomicClient(&cClient.CarbideClientConfig{})
+	carbideAtomicClient.SwapClient(mockCarbide)
+
+	type fields struct {
+		CarbideAtomicClient *cClient.CarbideAtomicClient
+	}
+	type args struct {
+		ctx     context.Context
+		request *cwssaws.VpcPrefixDeletionRequest
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "test delete VpcPrefix success",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.VpcPrefixDeletionRequest{
+					Id: &cwssaws.VpcPrefixId{Value: "b410867c-655a-11ef-bc4a-0393098e5d09"},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "test delete VpcPrefix fail on blank id",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.VpcPrefixDeletionRequest{
+					Id: &cwssaws.VpcPrefixId{Value: ""},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "test delete VpcPrefix fail on missing request",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx:     context.Background(),
+				request: nil,
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm := NewManageVpcPrefix(tt.fields.CarbideAtomicClient)
+			err := mm.DeleteVpcPrefixOnSite(tt.args.ctx, tt.args.request)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}

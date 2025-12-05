@@ -1,0 +1,1330 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ *
+ * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+ * property and proprietary rights in and to this material, related
+ * documentation and any modifications thereto. Any use, reproduction,
+ * disclosure or distribution of this material and related documentation
+ * without an express license agreement from NVIDIA CORPORATION or
+ * its affiliates is strictly prohibited.
+ */
+
+
+package model
+
+import (
+	"context"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/nvidia/carbide-rest/db/pkg/db"
+	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
+	otrace "go.opentelemetry.io/otel/trace"
+)
+
+// reset the tables needed for Interface tests
+func testInterfaceSetupSchema(t *testing.T, dbSession *db.Session) {
+	// create User table
+	err := dbSession.DB.ResetModel(context.Background(), (*User)(nil))
+	assert.Nil(t, err)
+	// create Tenant table
+	err = dbSession.DB.ResetModel(context.Background(), (*Tenant)(nil))
+	assert.Nil(t, err)
+	// create Infrastructure Provider table
+	err = dbSession.DB.ResetModel(context.Background(), (*InfrastructureProvider)(nil))
+	assert.Nil(t, err)
+	// create Site table
+	err = dbSession.DB.ResetModel(context.Background(), (*Site)(nil))
+	assert.Nil(t, err)
+	// create NetworkSecurityGroup table
+	err = dbSession.DB.ResetModel(context.Background(), (*NetworkSecurityGroup)(nil))
+	assert.Nil(t, err)
+	// create InstanceType table
+	err = dbSession.DB.ResetModel(context.Background(), (*InstanceType)(nil))
+	assert.Nil(t, err)
+	// create IPBlock table
+	err = dbSession.DB.ResetModel(context.Background(), (*IPBlock)(nil))
+	assert.Nil(t, err)
+	// create Allocation table
+	err = dbSession.DB.ResetModel(context.Background(), (*Allocation)(nil))
+	assert.Nil(t, err)
+	// create Allocation table
+	err = dbSession.DB.ResetModel(context.Background(), (*AllocationConstraint)(nil))
+	assert.Nil(t, err)
+	// create Machine table
+	err = dbSession.DB.ResetModel(context.Background(), (*Machine)(nil))
+	assert.Nil(t, err)
+	// create Vpc table
+	err = dbSession.DB.ResetModel(context.Background(), (*Vpc)(nil))
+	assert.Nil(t, err)
+	// create OperatingSystem table
+	err = dbSession.DB.ResetModel(context.Background(), (*OperatingSystem)(nil))
+	assert.Nil(t, err)
+	// create Instance table
+	err = dbSession.DB.ResetModel(context.Background(), (*Instance)(nil))
+	assert.Nil(t, err)
+	// create domain table
+	err = dbSession.DB.ResetModel(context.Background(), (*Domain)(nil))
+	assert.Nil(t, err)
+	// create VpcPrefix table
+	err = dbSession.DB.ResetModel(context.Background(), (*VpcPrefix)(nil))
+	assert.Nil(t, err)
+	// create Subnet table
+	err = dbSession.DB.ResetModel(context.Background(), (*Subnet)(nil))
+	assert.Nil(t, err)
+	// create MachineInterface
+	err = dbSession.DB.ResetModel(context.Background(), (*MachineInterface)(nil))
+	assert.Nil(t, err)
+	// create Interface
+	err = dbSession.DB.ResetModel(context.Background(), (*Interface)(nil))
+	assert.Nil(t, err)
+}
+
+func TestInterfaceSQLDAO_Create(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInstanceInitDB(t)
+	defer dbSession.Close()
+	testInterfaceSetupSchema(t, dbSession)
+	ip := testInstanceBuildInfrastructureProvider(t, dbSession, "testIP")
+	site := testInstanceBuildSite(t, dbSession, ip, "testSite")
+	tenant := testInstanceBuildTenant(t, dbSession, "testTenant")
+	vpc := testInstanceBuildVpc(t, dbSession, ip, site, tenant, "testVpc")
+	instanceType := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType")
+	machine := testMachineBuildMachine(t, dbSession, ip.ID, site.ID, db.GetUUIDPtr(instanceType.ID), db.GetStrPtr("mcTypeTest"))
+	allocation := testInstanceBuildAllocation(t, dbSession, ip, tenant, site, "testAllocation")
+	allocationConstraint := testBuildAllocationConstraint(t, dbSession, allocation, AllocationResourceTypeInstanceType, instanceType.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+	operatingSystem := testInstanceBuildOperatingSystem(t, dbSession, "testOS")
+	user := testInstanceBuildUser(t, dbSession, "testUser")
+	isd := NewInstanceDAO(dbSession)
+	dummyUUID := uuid.New()
+	i1, err := isd.Create(
+		ctx, nil,
+		InstanceCreateInput{
+			Name:                     "test1",
+			AllocationID:             &allocation.ID,
+			AllocationConstraintID:   &allocationConstraint.ID,
+			TenantID:                 tenant.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			Hostname:                 db.GetStrPtr("test.com"),
+			OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               db.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			UserData:                 db.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			Status:                   InstanceStatusPending,
+			CreatedBy:                user.ID,
+		},
+	)
+	assert.Nil(t, err)
+	assert.NotNil(t, i1)
+	domain := testSubnetBuildDomain(t, dbSession, "testDomain")
+	ipv4Block := testSubnetBuildIPBlock(t, dbSession, &site.ID, &ip.ID, "ipv4Block", db.GetUUIDPtr(user.ID))
+	ipv6Block := testSubnetBuildIPBlock(t, dbSession, &site.ID, &ip.ID, "ipv6Block", db.GetUUIDPtr(user.ID))
+
+	ssd := NewSubnetDAO(dbSession)
+	ipv4Prefix := "192.0.2.0/24"
+	ipv4Gateway := "192.0.2.1"
+	ipv6Prefix := "2001:db8:abcd:0012::0/24"
+	ipv6Gateway := "2001:db8:abcd:0012::1"
+	subnet, err := ssd.Create(ctx, nil, SubnetCreateInput{
+		Name:                       "test",
+		Description:                db.GetStrPtr("test"),
+		Org:                        "test",
+		SiteID:                     site.ID,
+		VpcID:                      vpc.ID,
+		DomainID:                   &domain.ID,
+		TenantID:                   tenant.ID,
+		ControllerNetworkSegmentID: &dummyUUID,
+		RoutingType:                &ipv4Block.RoutingType,
+		IPv4Prefix:                 &ipv4Prefix,
+		IPv4Gateway:                &ipv4Gateway,
+		IPv4BlockID:                &ipv4Block.ID,
+		IPv6Prefix:                 &ipv6Prefix,
+		IPv6Gateway:                &ipv6Gateway,
+		IPv6BlockID:                &ipv6Block.ID,
+		PrefixLength:               8,
+		Status:                     SubnetStatusPending,
+		CreatedBy:                  user.ID,
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, subnet)
+
+	vpsd := NewVpcPrefixDAO(dbSession)
+	vpcPrefix, err := vpsd.Create(ctx, nil, VpcPrefixCreateInput{
+		Name:         "VpcPrefix-1",
+		TenantOrg:    "test",
+		SiteID:       site.ID,
+		VpcID:        vpc.ID,
+		TenantID:     tenant.ID,
+		IpBlockID:    &ipv4Block.ID,
+		Prefix:       ipv4Prefix,
+		PrefixLength: 24,
+		Status:       VpcPrefixStatusReady,
+		CreatedBy:    user.ID,
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, vpcPrefix)
+
+	ifcd := NewInterfaceDAO(dbSession)
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc               string
+		iss                []Interface
+		expectError        bool
+		verifyChildSpanner bool
+	}{
+		{
+			desc: "create one with subnet",
+			iss: []Interface{
+				{
+					ID:         uuid.New(),
+					InstanceID: i1.ID,
+					SubnetID:   &subnet.ID,
+					IsPhysical: true,
+					Status:     InterfaceStatusPending,
+					CreatedBy:  user.ID,
+				},
+			},
+			expectError:        false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc: "create one with vpcprefix",
+			iss: []Interface{
+				{
+					ID:          uuid.New(),
+					InstanceID:  i1.ID,
+					VpcPrefixID: &vpcPrefix.ID,
+					IsPhysical:  false,
+					Status:      InterfaceStatusPending,
+					CreatedBy:   user.ID,
+				},
+			},
+			expectError:        false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc: "create one with device and device instance",
+			iss: []Interface{
+				{
+					ID:             uuid.New(),
+					InstanceID:     i1.ID,
+					VpcPrefixID:    &vpcPrefix.ID,
+					IsPhysical:     true,
+					Device:         db.GetStrPtr("MT43244 BlueField-3 integrated ConnectX-7 network controller"),
+					DeviceInstance: db.GetIntPtr(0),
+					Status:         InterfaceStatusPending,
+					CreatedBy:      user.ID,
+				},
+			},
+			expectError:        false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc: "create one with virtual function id",
+			iss: []Interface{
+				{
+					ID:                uuid.New(),
+					InstanceID:        i1.ID,
+					VpcPrefixID:       &vpcPrefix.ID,
+					IsPhysical:        false,
+					VirtualFunctionID: db.GetIntPtr(1),
+					Status:            InterfaceStatusPending,
+					CreatedBy:         user.ID,
+				},
+			},
+			expectError:        false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc: "failed create due to foreign key on instance",
+			iss: []Interface{
+				{
+					ID:         uuid.New(),
+					InstanceID: uuid.New(),
+					SubnetID:   &subnet.ID,
+					IsPhysical: true,
+					Status:     InterfaceStatusPending,
+					CreatedBy:  user.ID,
+				},
+			},
+			expectError: true,
+		},
+		{
+			desc: "failed create due to foreign key on subnet",
+			iss: []Interface{
+				{
+					ID:         uuid.New(),
+					InstanceID: i1.ID,
+					SubnetID:   db.GetUUIDPtr(uuid.New()),
+					IsPhysical: true,
+					Status:     InterfaceStatusPending,
+					CreatedBy:  user.ID,
+				},
+			},
+			expectError: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			for _, i := range tc.iss {
+
+				input := InterfaceCreateInput{
+					InstanceID:        i.InstanceID,
+					SubnetID:          i.SubnetID,
+					VpcPrefixID:       i.VpcPrefixID,
+					Device:            i.Device,
+					DeviceInstance:    i.DeviceInstance,
+					IsPhysical:        i.IsPhysical,
+					VirtualFunctionID: i.VirtualFunctionID,
+					Status:            i.Status,
+					CreatedBy:         i.CreatedBy,
+				}
+
+				got, err := ifcd.Create(ctx, nil, input)
+				assert.Equal(t, tc.expectError, err != nil)
+				if !tc.expectError {
+					assert.NotNil(t, got)
+					if i.Device != nil {
+						assert.Equal(t, *i.Device, *got.Device)
+					}
+					if i.DeviceInstance != nil {
+						assert.Equal(t, *i.DeviceInstance, *got.DeviceInstance)
+					}
+					if i.VirtualFunctionID != nil {
+						assert.Equal(t, *i.VirtualFunctionID, *got.VirtualFunctionID)
+					}
+				}
+			}
+
+			if tc.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}
+
+func TestInterfaceSQLDAO_GetByID(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInstanceInitDB(t)
+	defer dbSession.Close()
+	testInterfaceSetupSchema(t, dbSession)
+	ip := testInstanceBuildInfrastructureProvider(t, dbSession, "testIP")
+	site := testInstanceBuildSite(t, dbSession, ip, "testSite")
+	tenant := testInstanceBuildTenant(t, dbSession, "testTenant")
+	vpc := testInstanceBuildVpc(t, dbSession, ip, site, tenant, "testVpc")
+	instanceType := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType")
+	machine := testMachineBuildMachine(t, dbSession, ip.ID, site.ID, db.GetUUIDPtr(instanceType.ID), db.GetStrPtr("mcTypeTest"))
+	allocation := testInstanceBuildAllocation(t, dbSession, ip, tenant, site, "testAllocation")
+	allocationConstraint := testBuildAllocationConstraint(t, dbSession, allocation, AllocationResourceTypeInstanceType, instanceType.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+	operatingSystem := testInstanceBuildOperatingSystem(t, dbSession, "testOS")
+	user := testInstanceBuildUser(t, dbSession, "testUser")
+	isd := NewInstanceDAO(dbSession)
+	dummyUUID := uuid.New()
+	i1, err := isd.Create(
+		ctx, nil,
+		InstanceCreateInput{
+			Name:                     "test1",
+			AllocationID:             &allocation.ID,
+			AllocationConstraintID:   &allocationConstraint.ID,
+			TenantID:                 tenant.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			Hostname:                 db.GetStrPtr("test.com"),
+			OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               db.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			UserData:                 db.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			Status:                   InstanceStatusPending,
+			CreatedBy:                user.ID,
+		},
+	)
+	assert.Nil(t, err)
+	assert.NotNil(t, i1)
+	domain := testSubnetBuildDomain(t, dbSession, "testDomain")
+	ipv4Block := testSubnetBuildIPBlock(t, dbSession, &site.ID, &ip.ID, "ipv4Block", &user.ID)
+	ipv6Block := testSubnetBuildIPBlock(t, dbSession, &site.ID, &ip.ID, "ipv6Block", &user.ID)
+
+	ssd := NewSubnetDAO(dbSession)
+	ipv4Prefix := "192.0.2.0/24"
+	ipv4Gateway := "192.0.2.1"
+	ipv6Prefix := "2001:db8:abcd:0012::0/24"
+	ipv6Gateway := "2001:db8:abcd:0012::1"
+	subnet, err := ssd.Create(ctx, nil, SubnetCreateInput{
+		Name:                       "test",
+		Description:                db.GetStrPtr("test"),
+		Org:                        "test",
+		SiteID:                     site.ID,
+		VpcID:                      vpc.ID,
+		DomainID:                   &domain.ID,
+		TenantID:                   tenant.ID,
+		ControllerNetworkSegmentID: &dummyUUID,
+		RoutingType:                &ipv4Block.RoutingType,
+		IPv4Prefix:                 &ipv4Prefix,
+		IPv4Gateway:                &ipv4Gateway,
+		IPv4BlockID:                &ipv4Block.ID,
+		IPv6Prefix:                 &ipv6Prefix,
+		IPv6Gateway:                &ipv6Gateway,
+		IPv6BlockID:                &ipv6Block.ID,
+		PrefixLength:               8,
+		Status:                     SubnetStatusPending,
+		CreatedBy:                  user.ID,
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, subnet)
+
+	vpsd := NewVpcPrefixDAO(dbSession)
+
+	vpcPrefix, err := vpsd.Create(ctx, nil, VpcPrefixCreateInput{
+		Name:         "VpcPrefix-1",
+		TenantOrg:    "test",
+		SiteID:       site.ID,
+		VpcID:        vpc.ID,
+		TenantID:     tenant.ID,
+		IpBlockID:    &ipv4Block.ID,
+		Prefix:       ipv4Prefix,
+		PrefixLength: 24,
+		Status:       VpcPrefixStatusReady,
+		CreatedBy:    user.ID,
+	})
+
+	assert.Nil(t, err)
+	assert.NotNil(t, vpcPrefix)
+
+	ifcd := NewInterfaceDAO(dbSession)
+
+	input1 := InterfaceCreateInput{
+		InstanceID: i1.ID,
+		SubnetID:   &subnet.ID,
+		IsPhysical: true,
+		Status:     InterfaceStatusPending,
+		CreatedBy:  user.ID,
+	}
+
+	ifc, err := ifcd.Create(ctx, nil, input1)
+	assert.Nil(t, err)
+	assert.NotNil(t, ifc)
+
+	input2 := InterfaceCreateInput{
+		InstanceID:     i1.ID,
+		VpcPrefixID:    &vpcPrefix.ID,
+		Device:         db.GetStrPtr("MT43244 BlueField-3 integrated ConnectX-7 network controller"),
+		DeviceInstance: db.GetIntPtr(0),
+		IsPhysical:     true,
+		Status:         InterfaceStatusPending,
+		CreatedBy:      user.ID,
+	}
+	ifc1, err := ifcd.Create(ctx, nil, input2)
+	assert.Nil(t, err)
+	assert.NotNil(t, ifc1)
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc               string
+		id                 uuid.UUID
+		instance           *Instance
+		paramRelations     []string
+		expectedError      bool
+		expectedInstance   bool
+		expectedSubnet     bool
+		expectVpcPrefix    bool
+		expectedDevice     bool
+		expectedIsPhysical bool
+		verifyChildSpanner bool
+	}{
+		{
+			desc:               "success when found in case of subnet",
+			id:                 ifc.ID,
+			paramRelations:     nil,
+			expectedError:      false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc:               "success when found in case of vpcprefix",
+			id:                 ifc1.ID,
+			paramRelations:     nil,
+			expectedError:      false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc:           "fails when not found",
+			id:             uuid.New(),
+			paramRelations: nil,
+			expectedError:  true,
+		},
+		{
+			desc:               "success with subnet relations",
+			id:                 ifc.ID,
+			paramRelations:     []string{InstanceRelationName, SubnetRelationName, MachineInterfaceRelationName},
+			expectedError:      false,
+			expectedInstance:   true,
+			expectedSubnet:     true,
+			expectedIsPhysical: true,
+		},
+		{
+			desc:               "success with vpcprefix relations",
+			id:                 ifc1.ID,
+			paramRelations:     []string{InstanceRelationName, MachineInterfaceRelationName, VpcPrefixRelationName},
+			expectedError:      false,
+			expectedInstance:   true,
+			expectVpcPrefix:    true,
+			expectedDevice:     true,
+			expectedIsPhysical: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, err := ifcd.GetByID(ctx, nil, tc.id, tc.paramRelations)
+			assert.Equal(t, tc.expectedError, err != nil)
+			if err == nil {
+				assert.EqualValues(t, tc.id, got.ID)
+				if tc.expectedInstance {
+					assert.EqualValues(t, i1.ID, got.Instance.ID)
+				}
+				if tc.expectedSubnet {
+					assert.EqualValues(t, subnet.ID, *got.SubnetID)
+				}
+				if tc.expectedIsPhysical {
+					assert.EqualValues(t, ifc.IsPhysical, got.IsPhysical)
+				}
+				if tc.expectVpcPrefix {
+					assert.EqualValues(t, vpcPrefix.ID, *got.VpcPrefixID)
+				}
+				if tc.expectedDevice {
+					assert.EqualValues(t, *ifc1.Device, *got.Device)
+					assert.EqualValues(t, *ifc1.DeviceInstance, *got.DeviceInstance)
+				}
+			}
+
+			if tc.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}
+
+func TestInterfaceSQLDAO_GetAll(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInstanceInitDB(t)
+	defer dbSession.Close()
+	testInterfaceSetupSchema(t, dbSession)
+	ip := testInstanceBuildInfrastructureProvider(t, dbSession, "testIP")
+	site := testInstanceBuildSite(t, dbSession, ip, "testSite")
+	tenant := testInstanceBuildTenant(t, dbSession, "testTenant")
+	vpc := testInstanceBuildVpc(t, dbSession, ip, site, tenant, "testVpc")
+	instanceType := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType")
+	machine := testMachineBuildMachine(t, dbSession, ip.ID, site.ID, db.GetUUIDPtr(instanceType.ID), db.GetStrPtr("mcTypeTest"))
+	allocation := testInstanceBuildAllocation(t, dbSession, ip, tenant, site, "testAllocation")
+	allocationConstraint := testBuildAllocationConstraint(t, dbSession, allocation, AllocationResourceTypeInstanceType, instanceType.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+	operatingSystem := testInstanceBuildOperatingSystem(t, dbSession, "testOS")
+	user := testInstanceBuildUser(t, dbSession, "testUser")
+	isd := NewInstanceDAO(dbSession)
+	dummyUUID := uuid.New()
+
+	totalCount := 30
+	instances := []Instance{}
+	for i := 0; i < totalCount/2; i++ {
+		instance, err := isd.Create(
+			ctx, nil,
+			InstanceCreateInput{
+				Name:                     "test1",
+				AllocationID:             &allocation.ID,
+				AllocationConstraintID:   &allocationConstraint.ID,
+				TenantID:                 tenant.ID,
+				InfrastructureProviderID: ip.ID,
+				SiteID:                   site.ID,
+				InstanceTypeID:           &instanceType.ID,
+				VpcID:                    vpc.ID,
+				MachineID:                &machine.ID,
+				Hostname:                 db.GetStrPtr("test.com"),
+				OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+				IpxeScript:               db.GetStrPtr("ipxe"),
+				AlwaysBootWithCustomIpxe: true,
+				UserData:                 db.GetStrPtr("userdata"),
+				Labels:                   map[string]string{},
+				Status:                   InstanceStatusPending,
+				CreatedBy:                user.ID,
+			},
+		)
+		assert.NoError(t, err)
+		instances = append(instances, *instance)
+	}
+	domain := testSubnetBuildDomain(t, dbSession, "testDomain")
+	ipv4Block := testSubnetBuildIPBlock(t, dbSession, &site.ID, &ip.ID, "ipv4Block", db.GetUUIDPtr(user.ID))
+	ipv6Block := testSubnetBuildIPBlock(t, dbSession, &site.ID, &ip.ID, "ipv6Block", db.GetUUIDPtr(user.ID))
+
+	ssd := NewSubnetDAO(dbSession)
+	ipv4Prefix := "192.0.2.0/24"
+	ipv4Gateway := "192.0.2.1"
+	ipv6Prefix := "2001:db8:abcd:0012::0/24"
+	ipv6Gateway := "2001:db8:abcd:0012::1"
+	subnet1, err := ssd.Create(ctx, nil, SubnetCreateInput{
+		Name:                       "test",
+		Description:                db.GetStrPtr("test"),
+		Org:                        "test",
+		SiteID:                     site.ID,
+		VpcID:                      vpc.ID,
+		DomainID:                   &domain.ID,
+		TenantID:                   tenant.ID,
+		ControllerNetworkSegmentID: &dummyUUID,
+		RoutingType:                &ipv4Block.RoutingType,
+		IPv4Prefix:                 &ipv4Prefix,
+		IPv4Gateway:                &ipv4Gateway,
+		IPv4BlockID:                &ipv4Block.ID,
+		IPv6Prefix:                 &ipv6Prefix,
+		IPv6Gateway:                &ipv6Gateway,
+		IPv6BlockID:                &ipv6Block.ID,
+		PrefixLength:               8,
+		Status:                     SubnetStatusPending,
+		CreatedBy:                  user.ID,
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, subnet1)
+	subnet2, err := ssd.Create(ctx, nil, SubnetCreateInput{
+		Name:                       "test2",
+		Description:                db.GetStrPtr("test"),
+		Org:                        "test",
+		SiteID:                     site.ID,
+		VpcID:                      vpc.ID,
+		DomainID:                   &domain.ID,
+		TenantID:                   tenant.ID,
+		ControllerNetworkSegmentID: &dummyUUID,
+		RoutingType:                &ipv4Block.RoutingType,
+		IPv4Prefix:                 &ipv4Prefix,
+		IPv4Gateway:                &ipv4Gateway,
+		IPv4BlockID:                &ipv4Block.ID,
+		IPv6Prefix:                 &ipv6Prefix,
+		IPv6Gateway:                &ipv6Gateway,
+		IPv6BlockID:                &ipv6Block.ID,
+		PrefixLength:               8,
+		Status:                     SubnetStatusPending,
+		CreatedBy:                  user.ID,
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, subnet2)
+
+	vpsd := NewVpcPrefixDAO(dbSession)
+	vpcPrefix, err := vpsd.Create(ctx, nil, VpcPrefixCreateInput{
+		Name:         "VpcPrefix-1",
+		TenantOrg:    "test",
+		SiteID:       site.ID,
+		VpcID:        vpc.ID,
+		TenantID:     tenant.ID,
+		IpBlockID:    &ipv4Block.ID,
+		Prefix:       ipv4Prefix,
+		PrefixLength: 24,
+		Status:       VpcPrefixStatusReady,
+		CreatedBy:    user.ID,
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, vpcPrefix)
+
+	vpcPrefix1, err := vpsd.Create(ctx, nil, VpcPrefixCreateInput{
+		Name:         "VpcPrefix-2",
+		TenantOrg:    "test",
+		SiteID:       site.ID,
+		VpcID:        vpc.ID,
+		TenantID:     tenant.ID,
+		IpBlockID:    &ipv4Block.ID,
+		Prefix:       ipv4Prefix,
+		PrefixLength: 24,
+		Status:       VpcPrefixStatusReady,
+		CreatedBy:    user.ID,
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, vpcPrefix1)
+
+	ifcd := NewInterfaceDAO(dbSession)
+
+	instance1Subnets := []Interface{}
+	instance2Subnets := []Interface{}
+	instance1VpcPrefixes := []Interface{}
+	instance2VpcPrefixes := []Interface{}
+
+	for i := 0; i < totalCount/2; i++ {
+		instance1Subnet, err := ifcd.Create(ctx, nil, InterfaceCreateInput{InstanceID: instances[i].ID, SubnetID: &subnet1.ID, IsPhysical: true, Status: InterfaceStatusPending, CreatedBy: user.ID})
+		assert.NoError(t, err)
+
+		instance1Subnets = append(instance1Subnets, *instance1Subnet)
+
+		// Create one with device and device instance
+		// Only the first one is physical
+		device := db.GetStrPtr("MT43244 BlueField-3 integrated ConnectX-7 network controller")
+		deviceInstance := db.GetIntPtr(i)
+		IsPhysical := false
+		if i == 0 {
+			IsPhysical = true
+		}
+
+		instance1VpcPrefix, err := ifcd.Create(ctx, nil, InterfaceCreateInput{InstanceID: instances[i].ID, VpcPrefixID: &vpcPrefix.ID, Device: device, DeviceInstance: deviceInstance, IsPhysical: IsPhysical, Status: InterfaceStatusPending, CreatedBy: user.ID})
+		assert.NoError(t, err)
+
+		instance1VpcPrefixes = append(instance1VpcPrefixes, *instance1VpcPrefix)
+
+		instance2Subnet, err := ifcd.Create(ctx, nil, InterfaceCreateInput{InstanceID: instances[i].ID, SubnetID: &subnet2.ID, Status: InterfaceStatusPending, CreatedBy: user.ID})
+		assert.NoError(t, err)
+
+		instance2Subnets = append(instance2Subnets, *instance2Subnet)
+
+		instance2VpcPrefix, err := ifcd.Create(ctx, nil, InterfaceCreateInput{InstanceID: instances[i].ID, VpcPrefixID: &vpcPrefix1.ID, Status: InterfaceStatusPending, CreatedBy: user.ID})
+		assert.NoError(t, err)
+
+		instance2VpcPrefixes = append(instance2VpcPrefixes, *instance2VpcPrefix)
+	}
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc               string
+		InstanceID         *uuid.UUID
+		SubnetID           *uuid.UUID
+		VpcPrefixID        *uuid.UUID
+		Device             *string
+		DeviceInstance     *int
+		IsPhysical         *bool
+		status             *string
+		offset             *int
+		limit              *int
+		orderBy            *paginator.OrderBy
+		firstEntry         *Interface
+		expectedCount      int
+		expectedTotal      *int
+		expectedError      bool
+		paramRelations     []string
+		verifyChildSpanner bool
+	}{
+		{
+			desc:               "GetAll with Instance ID filter returns objects",
+			InstanceID:         &instances[0].ID,
+			expectedCount:      4,
+			expectedError:      false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc:          "GetAll with Subnet ID filter returns objects",
+			SubnetID:      &subnet1.ID,
+			expectedCount: totalCount / 2,
+			expectedError: false,
+		},
+		{
+			desc:          "GetAll with VpcPrefix ID filter returns objects",
+			VpcPrefixID:   &vpcPrefix.ID,
+			expectedCount: totalCount / 2,
+			expectedError: false,
+		},
+		{
+			desc:          "GetAll with Device filter returns objects",
+			Device:        db.GetStrPtr("MT43244 BlueField-3 integrated ConnectX-7 network controller"),
+			expectedCount: totalCount / 2,
+			expectedError: false,
+		},
+		{
+			desc:           "GetAll with DeviceInstance filter returns objects",
+			DeviceInstance: db.GetIntPtr(0),
+			expectedCount:  1,
+			expectedError:  false,
+		},
+		{
+			desc:          "GetAll with IsPhysical filter returns objects",
+			IsPhysical:    db.GetBoolPtr(true),
+			expectedCount: totalCount/2 + 1,
+			expectedError: false,
+		},
+		{
+			desc:          "GetAll with no filters returns objects",
+			expectedCount: paginator.DefaultLimit,
+			expectedTotal: db.GetIntPtr(totalCount * 2),
+			expectedError: false,
+		},
+		{
+			desc:           "GetAll with relation returns objects",
+			expectedCount:  paginator.DefaultLimit,
+			expectedTotal:  db.GetIntPtr(totalCount * 2),
+			expectedError:  false,
+			paramRelations: []string{InstanceRelationName, SubnetRelationName, MachineInterfaceRelationName, VpcPrefixRelationName},
+		},
+		{
+			desc:          "GetAll with limit returns objects",
+			SubnetID:      &subnet1.ID,
+			offset:        db.GetIntPtr(0),
+			limit:         db.GetIntPtr(5),
+			expectedCount: 5,
+			expectedTotal: db.GetIntPtr(totalCount / 2),
+			expectedError: false,
+		},
+		{
+			desc:          "GetAll with offset returns objects",
+			SubnetID:      &subnet2.ID,
+			offset:        db.GetIntPtr(5),
+			expectedCount: 10,
+			expectedTotal: db.GetIntPtr(totalCount / 2),
+			expectedError: false,
+		},
+		{
+			desc:     "GetAll with order by returns objects",
+			SubnetID: &subnet1.ID,
+			orderBy: &paginator.OrderBy{
+				Field: "created",
+				Order: paginator.OrderAscending,
+			},
+			firstEntry:    &instance1Subnets[0],
+			expectedCount: totalCount / 2,
+			expectedTotal: db.GetIntPtr(totalCount / 2),
+			expectedError: false,
+		},
+		{
+			desc:          "GetAll with InterfaceStatusPending status returns objects",
+			expectedCount: paginator.DefaultLimit,
+			expectedTotal: db.GetIntPtr(totalCount * 2),
+			expectedError: false,
+			status:        db.GetStrPtr(InterfaceStatusPending),
+		},
+		{
+			desc:          "GetAll with InterfaceStatusError status returns no objects",
+			expectedCount: 0,
+			expectedTotal: db.GetIntPtr(0),
+			expectedError: false,
+			status:        db.GetStrPtr(InterfaceStatusError),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			var insIDs []uuid.UUID
+			if tc.InstanceID != nil {
+				insIDs = []uuid.UUID{*tc.InstanceID}
+			}
+
+			filterInput := InterfaceFilterInput{
+				InstanceIDs:    insIDs,
+				SubnetID:       tc.SubnetID,
+				VpcPrefixID:    tc.VpcPrefixID,
+				Device:         tc.Device,
+				DeviceInstance: tc.DeviceInstance,
+				IsPhysical:     tc.IsPhysical,
+			}
+
+			if tc.status != nil {
+				filterInput.Statuses = []string{*tc.status}
+			}
+
+			page := paginator.PageInput{
+				Offset:  tc.offset,
+				Limit:   tc.limit,
+				OrderBy: tc.orderBy,
+			}
+
+			got, total, err := ifcd.GetAll(ctx, nil, filterInput, page, tc.paramRelations)
+
+			assert.Equal(t, tc.expectedError, err != nil)
+			if tc.expectedError {
+				assert.Equal(t, nil, got)
+			} else {
+				assert.Equal(t, tc.expectedCount, len(got))
+
+				if len(tc.paramRelations) > 0 {
+					assert.NotNil(t, got[0].Subnet)
+				}
+			}
+
+			if tc.expectedTotal != nil {
+				assert.Equal(t, *tc.expectedTotal, total)
+			}
+
+			if tc.firstEntry != nil {
+				assert.Equal(t, *tc.firstEntry, got[0])
+			}
+
+			if tc.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}
+
+func TestInterfaceSQLDAO_Update(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInstanceInitDB(t)
+	defer dbSession.Close()
+	testInterfaceSetupSchema(t, dbSession)
+	ip := testInstanceBuildInfrastructureProvider(t, dbSession, "testIP")
+	site := testInstanceBuildSite(t, dbSession, ip, "testSite")
+	tenant := testInstanceBuildTenant(t, dbSession, "testTenant")
+	vpc := testInstanceBuildVpc(t, dbSession, ip, site, tenant, "testVpc")
+	instanceType := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType")
+	machine := testMachineBuildMachine(t, dbSession, ip.ID, site.ID, db.GetUUIDPtr(instanceType.ID), db.GetStrPtr("mcTypeTest"))
+	allocation := testInstanceBuildAllocation(t, dbSession, ip, tenant, site, "testAllocation")
+	allocationConstraint := testBuildAllocationConstraint(t, dbSession, allocation, AllocationResourceTypeInstanceType, instanceType.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+	operatingSystem := testInstanceBuildOperatingSystem(t, dbSession, "testOS")
+	user := testInstanceBuildUser(t, dbSession, "testUser")
+	isd := NewInstanceDAO(dbSession)
+	dummyUUID := uuid.New()
+	i1, err := isd.Create(
+		ctx, nil,
+		InstanceCreateInput{
+			Name:                     "test1",
+			AllocationID:             &allocation.ID,
+			AllocationConstraintID:   &allocationConstraint.ID,
+			TenantID:                 tenant.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			Hostname:                 db.GetStrPtr("test.com"),
+			OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               db.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			UserData:                 db.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			Status:                   InstanceStatusPending,
+			CreatedBy:                user.ID,
+		},
+	)
+
+	assert.Nil(t, err)
+	assert.NotNil(t, i1)
+	i2, err := isd.Create(
+		ctx, nil,
+		InstanceCreateInput{
+			Name:                     "test2",
+			AllocationID:             &allocation.ID,
+			AllocationConstraintID:   &allocationConstraint.ID,
+			TenantID:                 tenant.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			Hostname:                 db.GetStrPtr("test.com"),
+			OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               db.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			UserData:                 db.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			Status:                   InstanceStatusPending,
+			CreatedBy:                user.ID,
+		},
+	)
+	assert.Nil(t, err)
+	assert.NotNil(t, i2)
+	domain := testSubnetBuildDomain(t, dbSession, "testDomain")
+	ipv4Block := testSubnetBuildIPBlock(t, dbSession, &site.ID, &ip.ID, "ipv4Block", db.GetUUIDPtr(user.ID))
+	ipv6Block := testSubnetBuildIPBlock(t, dbSession, &site.ID, &ip.ID, "ipv6Block", db.GetUUIDPtr(user.ID))
+
+	ssd := NewSubnetDAO(dbSession)
+	ipv4Prefix := "192.0.2.0/24"
+	ipv4Gateway := "192.0.2.1"
+	ipv6Prefix := "2001:db8:abcd:0012::0/24"
+	ipv6Gateway := "2001:db8:abcd:0012::1"
+	subnet1, err := ssd.Create(ctx, nil, SubnetCreateInput{
+		Name:                       "test1",
+		Description:                db.GetStrPtr("test"),
+		Org:                        "test",
+		SiteID:                     site.ID,
+		VpcID:                      vpc.ID,
+		DomainID:                   &domain.ID,
+		TenantID:                   tenant.ID,
+		ControllerNetworkSegmentID: &dummyUUID,
+		RoutingType:                &ipv4Block.RoutingType,
+		IPv4Prefix:                 &ipv4Prefix,
+		IPv4Gateway:                &ipv4Gateway,
+		IPv4BlockID:                &ipv4Block.ID,
+		IPv6Prefix:                 &ipv6Prefix,
+		IPv6Gateway:                &ipv6Gateway,
+		IPv6BlockID:                &ipv6Block.ID,
+		PrefixLength:               8,
+		Status:                     SubnetStatusPending,
+		CreatedBy:                  user.ID,
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, subnet1)
+	subnet2, err := ssd.Create(ctx, nil, SubnetCreateInput{
+		Name:                       "test2",
+		Description:                db.GetStrPtr("test"),
+		Org:                        "test",
+		SiteID:                     site.ID,
+		VpcID:                      vpc.ID,
+		DomainID:                   &domain.ID,
+		TenantID:                   tenant.ID,
+		ControllerNetworkSegmentID: &dummyUUID,
+		RoutingType:                &ipv4Block.RoutingType,
+		IPv4Prefix:                 &ipv4Prefix,
+		IPv4Gateway:                &ipv4Gateway,
+		IPv4BlockID:                &ipv4Block.ID,
+		IPv6Prefix:                 &ipv6Prefix,
+		IPv6Gateway:                &ipv6Gateway,
+		IPv6BlockID:                &ipv6Block.ID,
+		PrefixLength:               8,
+		Status:                     SubnetStatusPending,
+		CreatedBy:                  user.ID,
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, subnet2)
+
+	vpsd := NewVpcPrefixDAO(dbSession)
+	vpcPrefix1, err := vpsd.Create(ctx, nil, VpcPrefixCreateInput{
+		Name:         "VpcPrefix-1",
+		TenantOrg:    "test",
+		SiteID:       site.ID,
+		VpcID:        vpc.ID,
+		TenantID:     tenant.ID,
+		IpBlockID:    &ipv4Block.ID,
+		Prefix:       ipv4Prefix,
+		PrefixLength: 24,
+		Status:       VpcPrefixStatusReady,
+		CreatedBy:    user.ID,
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, vpcPrefix1)
+
+	vpcPrefix2, err := vpsd.Create(ctx, nil, VpcPrefixCreateInput{
+		Name:         "VpcPrefix-2",
+		TenantOrg:    "test",
+		SiteID:       site.ID,
+		VpcID:        vpc.ID,
+		TenantID:     tenant.ID,
+		IpBlockID:    &ipv4Block.ID,
+		Prefix:       ipv4Prefix,
+		PrefixLength: 24,
+		Status:       VpcPrefixStatusReady,
+		CreatedBy:    user.ID,
+	})
+
+	assert.Nil(t, err)
+	assert.NotNil(t, vpcPrefix2)
+
+	ifcd := NewInterfaceDAO(dbSession)
+
+	input1 := InterfaceCreateInput{
+		InstanceID: i1.ID,
+		SubnetID:   &subnet1.ID,
+		IsPhysical: false,
+		Status:     InterfaceStatusPending,
+		CreatedBy:  user.ID,
+	}
+
+	ifc, err := ifcd.Create(ctx, nil, input1)
+	assert.Nil(t, err)
+	assert.NotNil(t, ifc)
+
+	vfID := 10
+	macAddress := "21-41-A7-A6-40-76"
+	ipAddresses := []string{"192.0.2.3", "2001:db8:abcd:0018"}
+
+	input2 := InterfaceCreateInput{
+		InstanceID:  i1.ID,
+		VpcPrefixID: &vpcPrefix1.ID,
+		IsPhysical:  true,
+		Status:      InterfaceStatusPending,
+		CreatedBy:   user.ID,
+	}
+
+	ifc1, err := ifcd.Create(ctx, nil, input2)
+	assert.Nil(t, err)
+	assert.NotNil(t, ifc1)
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc                   string
+		id                     uuid.UUID
+		paramInstanceID        *uuid.UUID
+		paramSubnetID          *uuid.UUID
+		paramVpcPrefixID       *uuid.UUID
+		paramDevice            *string
+		paramDeviceInstance    *int
+		paramVirtualFunctionID *int
+		paramMacAddress        *string
+		paramIPAddresses       []string
+		paramStatus            *string
+
+		expectedInstanceID        *uuid.UUID
+		expectedSubnetID          *uuid.UUID
+		expectedVpcPrefixID       *uuid.UUID
+		expectedDevice            *string
+		expectedDeviceInstance    *int
+		expectedVirtualFunctionID *int
+		expectedMacAddress        *string
+		expectedIPAddresses       []string
+		expectedStatus            *string
+
+		expectError        bool
+		verifyChildSpanner bool
+	}{
+		{
+			desc:                   "success wth subnet fields updated",
+			id:                     ifc.ID,
+			paramInstanceID:        &i2.ID,
+			paramSubnetID:          &subnet2.ID,
+			paramVirtualFunctionID: &vfID,
+			paramMacAddress:        &macAddress,
+			paramIPAddresses:       ipAddresses,
+			paramStatus:            db.GetStrPtr(InterfaceStatusReady),
+
+			expectedInstanceID:        &i2.ID,
+			expectedSubnetID:          &subnet2.ID,
+			expectedVirtualFunctionID: &vfID,
+			expectedMacAddress:        &macAddress,
+			expectedIPAddresses:       ipAddresses,
+			expectedStatus:            db.GetStrPtr(InterfaceStatusReady),
+
+			expectError:        false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc:                   "success wth vpcprefix fields updated",
+			id:                     ifc1.ID,
+			paramInstanceID:        &i2.ID,
+			paramVpcPrefixID:       &vpcPrefix2.ID,
+			paramVirtualFunctionID: &vfID,
+			paramMacAddress:        &macAddress,
+			paramIPAddresses:       ipAddresses,
+			paramStatus:            db.GetStrPtr(InterfaceStatusReady),
+
+			expectedInstanceID:        &i2.ID,
+			expectedVpcPrefixID:       &vpcPrefix2.ID,
+			expectedVirtualFunctionID: &vfID,
+			expectedMacAddress:        &macAddress,
+			expectedIPAddresses:       ipAddresses,
+			expectedStatus:            db.GetStrPtr(InterfaceStatusReady),
+
+			expectError:        false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc:                   "success wth device fields updated",
+			paramInstanceID:        &i2.ID,
+			id:                     ifc1.ID,
+			paramDevice:            db.GetStrPtr("MT43344 BlueField-3 integrated ConnectX-7 network controller"),
+			paramDeviceInstance:    db.GetIntPtr(1),
+			paramVirtualFunctionID: &vfID,
+			paramMacAddress:        &macAddress,
+			paramIPAddresses:       ipAddresses,
+			paramStatus:            db.GetStrPtr(InterfaceStatusReady),
+
+			expectedInstanceID:        &i2.ID,
+			expectedDevice:            db.GetStrPtr("MT43344 BlueField-3 integrated ConnectX-7 network controller"),
+			expectedDeviceInstance:    db.GetIntPtr(1),
+			expectedVirtualFunctionID: &vfID,
+			expectedMacAddress:        &macAddress,
+			expectedIPAddresses:       ipAddresses,
+			expectedStatus:            db.GetStrPtr(InterfaceStatusReady),
+
+			expectError:        false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc:        "failed when id not found",
+			id:          uuid.New(),
+			paramStatus: db.GetStrPtr(InterfaceStatusProvisioning),
+			expectError: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			input := InterfaceUpdateInput{
+				InterfaceID:       tc.id,
+				InstanceID:        tc.paramInstanceID,
+				SubnetID:          tc.paramSubnetID,
+				VpcPrefixID:       tc.paramVpcPrefixID,
+				Device:            tc.paramDevice,
+				DeviceInstance:    tc.paramDeviceInstance,
+				VirtualFunctionID: tc.paramVirtualFunctionID,
+				MacAddress:        tc.paramMacAddress,
+				IpAddresses:       tc.paramIPAddresses,
+				Status:            tc.paramStatus,
+			}
+			got, err := ifcd.Update(ctx, nil, input)
+			assert.Equal(t, tc.expectError, err != nil)
+			if err == nil {
+				assert.EqualValues(t, tc.id, got.ID)
+
+				assert.Equal(t, *tc.expectedInstanceID, got.InstanceID)
+				if tc.expectedSubnetID != nil {
+					assert.Equal(t, *tc.expectedSubnetID, *got.SubnetID)
+				}
+				if tc.expectedVpcPrefixID != nil {
+					assert.Equal(t, *tc.expectedVpcPrefixID, *got.VpcPrefixID)
+				}
+				assert.Equal(t, *tc.expectedVirtualFunctionID, *got.VirtualFunctionID)
+				assert.Equal(t, *tc.expectedMacAddress, *got.MacAddress)
+				assert.Equal(t, tc.expectedIPAddresses, got.IPAddresses)
+				assert.Equal(t, *tc.expectedStatus, got.Status)
+
+				if tc.expectedDevice != nil {
+					assert.Equal(t, *tc.expectedDevice, *got.Device)
+				}
+				if tc.expectedDeviceInstance != nil {
+					assert.Equal(t, *tc.expectedDeviceInstance, *got.DeviceInstance)
+				}
+
+				if got.Updated.String() == ifc.Updated.String() {
+					t.Errorf("got.Updated = %v, want different value", got.Updated)
+				}
+			}
+
+			if tc.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+
+}
+
+func TestInterfaceSQLDAO_Delete(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInstanceInitDB(t)
+	defer dbSession.Close()
+	testInterfaceSetupSchema(t, dbSession)
+	ip := testInstanceBuildInfrastructureProvider(t, dbSession, "testIP")
+	site := testInstanceBuildSite(t, dbSession, ip, "testSite")
+	tenant := testInstanceBuildTenant(t, dbSession, "testTenant")
+	vpc := testInstanceBuildVpc(t, dbSession, ip, site, tenant, "testVpc")
+	instanceType := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType")
+	machine := testMachineBuildMachine(t, dbSession, ip.ID, site.ID, db.GetUUIDPtr(instanceType.ID), db.GetStrPtr("mcTypeTest"))
+	allocation := testInstanceBuildAllocation(t, dbSession, ip, tenant, site, "testAllocation")
+	allocationConstraint := testBuildAllocationConstraint(t, dbSession, allocation, AllocationResourceTypeInstanceType, instanceType.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+	operatingSystem := testInstanceBuildOperatingSystem(t, dbSession, "testOS")
+	user := testInstanceBuildUser(t, dbSession, "testUser")
+	isd := NewInstanceDAO(dbSession)
+	dummyUUID := uuid.New()
+	i1, err := isd.Create(
+		ctx, nil,
+		InstanceCreateInput{
+			Name:                     "test1",
+			AllocationID:             &allocation.ID,
+			AllocationConstraintID:   &allocationConstraint.ID,
+			TenantID:                 tenant.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			Hostname:                 db.GetStrPtr("test.com"),
+			OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               db.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			UserData:                 db.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			Status:                   InstanceStatusPending,
+			CreatedBy:                user.ID,
+		},
+	)
+	assert.Nil(t, err)
+	assert.NotNil(t, i1)
+	domain := testSubnetBuildDomain(t, dbSession, "testDomain")
+	ipv4Block := testSubnetBuildIPBlock(t, dbSession, &site.ID, &ip.ID, "ipv4Block", db.GetUUIDPtr(user.ID))
+	ipv6Block := testSubnetBuildIPBlock(t, dbSession, &site.ID, &ip.ID, "ipv6Block", db.GetUUIDPtr(user.ID))
+
+	ssd := NewSubnetDAO(dbSession)
+	ipv4Prefix := "192.0.2.0/24"
+	ipv4Gateway := "192.0.2.1"
+	ipv6Prefix := "2001:db8:abcd:0012::0/24"
+	ipv6Gateway := "2001:db8:abcd:0012::1"
+	subnet, err := ssd.Create(ctx, nil, SubnetCreateInput{
+		Name:                       "test",
+		Description:                db.GetStrPtr("test"),
+		Org:                        "test",
+		SiteID:                     site.ID,
+		VpcID:                      vpc.ID,
+		DomainID:                   &domain.ID,
+		TenantID:                   tenant.ID,
+		ControllerNetworkSegmentID: &dummyUUID,
+		RoutingType:                &ipv4Block.RoutingType,
+		IPv4Prefix:                 &ipv4Prefix,
+		IPv4Gateway:                &ipv4Gateway,
+		IPv4BlockID:                &ipv4Block.ID,
+		IPv6Prefix:                 &ipv6Prefix,
+		IPv6Gateway:                &ipv6Gateway,
+		IPv6BlockID:                &ipv6Block.ID,
+		PrefixLength:               8,
+		Status:                     SubnetStatusPending,
+		CreatedBy:                  user.ID,
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, subnet)
+
+	ifcd := NewInterfaceDAO(dbSession)
+
+	input := InterfaceCreateInput{
+		InstanceID: i1.ID,
+		SubnetID:   &subnet.ID,
+		IsPhysical: true,
+		Status:     InterfaceStatusPending,
+		CreatedBy:  user.ID,
+	}
+
+	ifc, err := ifcd.Create(ctx, nil, input)
+	assert.Nil(t, err)
+	assert.NotNil(t, ifc)
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc               string
+		id                 uuid.UUID
+		expectedError      bool
+		verifyChildSpanner bool
+	}{
+		{
+			desc:               "can delete existing object",
+			id:                 ifc.ID,
+			expectedError:      false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc:          "delete non-existing object",
+			id:            dummyUUID,
+			expectedError: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			err := ifcd.Delete(ctx, nil, tc.id)
+			assert.Equal(t, tc.expectedError, err != nil)
+			if !tc.expectedError {
+				tmp, err := isd.GetByID(ctx, nil, tc.id, nil)
+				assert.NotNil(t, err)
+				assert.Nil(t, tmp)
+			}
+
+			if tc.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}

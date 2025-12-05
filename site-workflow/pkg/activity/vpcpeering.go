@@ -1,0 +1,175 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package activity
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/rs/zerolog/log"
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	swe "github.com/nvidia/carbide-rest/site-workflow/pkg/error"
+	cClient "github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
+	"go.temporal.io/sdk/temporal"
+	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+// ManageVpcPeering is an activity wrapper for VpcPeering management
+type ManageVpcPeering struct {
+	CarbideAtomicClient *cClient.CarbideAtomicClient
+}
+
+// NewManageVpcPeering returns a new ManageVpcPeering client
+func NewManageVpcPeering(carbideClient *cClient.CarbideAtomicClient) ManageVpcPeering {
+	return ManageVpcPeering{
+		CarbideAtomicClient: carbideClient,
+	}
+}
+
+// Function to create VpcPeering with Carbide
+func (mvp *ManageVpcPeering) CreateVpcPeeringOnSite(ctx context.Context, request *cwssaws.VpcPeeringCreationRequest) error {
+	logger := log.With().Str("Activity", "CreateVpcPeeringOnSite").Logger()
+
+	logger.Info().Msg("Starting activity'")
+
+	var err error
+
+	// Validate request
+	if request == nil {
+		err = errors.New("received empty create VpcPeering request")
+	} else if request.VpcId == nil || request.VpcId.Value == "" {
+		err = errors.New("received create VpcPeering request missing VpcId")
+	} else if request.PeerVpcId == nil || request.PeerVpcId.Value == "" {
+		err = errors.New("received create VpcPeering request missing PeerVpcId")
+	}
+
+	if err != nil {
+		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
+	}
+
+	// Call Site Controller API
+	carbideClient := mvp.CarbideAtomicClient.GetClient()
+	forgeClient := carbideClient.Carbide()
+
+	_, err = forgeClient.CreateVpcPeering(ctx, request)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to create VpcPeering using Site Controller API")
+		return swe.WrapErr(err)
+	}
+
+	logger.Info().Msg("Completed activity")
+
+	return nil
+}
+
+// Function to delete VpcPeering on Carbide
+func (mvp *ManageVpcPeering) DeleteVpcPeeringOnSite(ctx context.Context, request *cwssaws.VpcPeeringDeletionRequest) error {
+	logger := log.With().Str("Activity", "DeleteVpcPeeringOnSite").Logger()
+
+	logger.Info().Msg("Starting activity")
+
+	var err error
+
+	// Validate request
+	if request == nil {
+		err = errors.New("received empty delete VpcPeering request")
+	} else if request.Id == nil || request.Id.Value == "" {
+		err = errors.New("received delete VpcPeering request missing VPC peering ID")
+	}
+
+	if err != nil {
+		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
+	}
+
+	// Call Site Controller API
+	carbideClient := mvp.CarbideAtomicClient.GetClient()
+	forgeClient := carbideClient.Carbide()
+
+	_, err = forgeClient.DeleteVpcPeering(ctx, request)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to delete VpcPeering using Site Controller API")
+		return swe.WrapErr(err)
+	}
+
+	logger.Info().Msg("Completed activity")
+
+	return nil
+}
+
+// ManageVpcPeeringInventory is an activity wrapper for VpcPeering inventory collection and publishing
+type ManageVpcPeeringInventory struct {
+	config ManageInventoryConfig
+}
+
+func NewManageVpcPeeringInventory(config ManageInventoryConfig) ManageVpcPeeringInventory {
+	return ManageVpcPeeringInventory{
+		config: config,
+	}
+}
+
+// DiscoverVpcPeeringInventory is an activity to collect VpcPeering inventory and publish to Temporal queue
+func (mvi *ManageVpcPeeringInventory) DiscoverVpcPeeringInventory(ctx context.Context) error {
+	logger := log.With().Str("Activity", "DiscoverVpcPeeringInventory").Logger()
+	logger.Info().Msg("Starting activity")
+
+	inventoryImpl := manageInventoryImpl[*cwssaws.VpcPeeringId, *cwssaws.VpcPeering, *cwssaws.VPCPeeringInventory]{
+		itemType:               "VpcPeering",
+		config:                 mvi.config,
+		internalFindIDs:        VpcPeeringFindIDs,
+		internalFindByIDs:      VpcPeeringFindByIDs,
+		internalPagedInventory: VpcPeeringPagedInventory,
+	}
+	return inventoryImpl.CollectAndPublishInventory(ctx, &logger)
+}
+
+func VpcPeeringFindIDs(ctx context.Context, carbideClient *cClient.CarbideClient) ([]*cwssaws.VpcPeeringId, error) {
+	resp, err := carbideClient.Carbide().FindVpcPeeringIds(ctx, &cwssaws.VpcPeeringSearchFilter{})
+	if err != nil {
+		return nil, err
+	}
+	return resp.VpcPeeringIds, nil
+}
+
+func VpcPeeringFindByIDs(ctx context.Context, carbideClient *cClient.CarbideClient, ids []*cwssaws.VpcPeeringId) ([]*cwssaws.VpcPeering, error) {
+	req := &cwssaws.VpcPeeringsByIdsRequest{
+		VpcPeeringIds: ids,
+	}
+	resp, err := carbideClient.Carbide().FindVpcPeeringsByIds(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.GetVpcPeerings(), nil
+}
+
+func VpcPeeringPagedInventory(allItemIDs []*cwssaws.VpcPeeringId, pagedItems []*cwssaws.VpcPeering, input *pagedInventoryInput) *cwssaws.VPCPeeringInventory {
+	itemIDs := make([]string, len(allItemIDs))
+	for i, id := range allItemIDs {
+		itemIDs[i] = id.GetValue()
+	}
+
+	// Create an inventory page with the subset of VpcPeerings
+	inventory := &cwssaws.VPCPeeringInventory{
+		VpcPeerings: pagedItems,
+		Timestamp: &timestamppb.Timestamp{
+			Seconds: time.Now().Unix(),
+		},
+		InventoryStatus: input.status,
+		StatusMsg:       input.statusMessage,
+		InventoryPage:   input.buildPage(),
+	}
+
+	if inventory.InventoryPage != nil {
+		inventory.InventoryPage.ItemIds = itemIDs
+	}
+
+	return inventory
+}

@@ -1,0 +1,33 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+syntax = "proto3";
+
+package workflows.v1;
+
+import "workflow.proto";
+import "forge_carbide.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/nvidia/carbide-rest/workflow-schema/proto";
+
+// InstanceTypeInventory - inventory info for all InstanceTypes periodically collected
+message InstanceTypeInventory {
+  // List of InstanceTypes
+  repeated forge.InstanceType instance_types = 1;
+  // Reported timestamp of inventory
+  google.protobuf.Timestamp timestamp = 2;
+  // Status of Inventory
+  InventoryStatus inventory_status = 3;
+  // Message for status
+  string status_msg = 4;
+  // Inventory page information
+  InventoryPage inventory_page = 5;
+}

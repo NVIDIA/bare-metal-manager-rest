@@ -1,0 +1,169 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+#
+
+---
+# Source: cert-manager/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: credsmgr
+  namespace: "cert-manager"
+  labels:
+    app.kubernetes.io/name: credsmgr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: credsmgr
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: credsmgr
+    spec:
+      terminationGracePeriodSeconds: 5
+      imagePullSecrets:
+        - name: imagepullsecret
+      containers:
+        - name: credsmgr
+          command:
+            - /usr/local/bin/credsmgr
+          args:
+            - --dns-name
+            - credsmgr.cert-manager
+          env:
+            - name: FORGE_VAULT_INGRESS_URL
+              value: https://temporal.forge.nvidia.com
+            - name: FORGE_CERT_MANAGER_SECRET_NAME
+              value: "vault-token"
+            - name: CERT_MANAGER_NS
+              value: "cert-manager"
+          image: credsmgr
+          imagePullPolicy: IfNotPresent
+          resources:
+            limits:
+              memory: "192Mi"
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - sleep 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8001
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8001
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8001
+            periodSeconds: 5
+            failureThreshold: 60
+          volumeMounts:
+            - mountPath: /vault/secrets/token
+              name: vault-token
+            - mountPath: /vault/secrets/vault-root-ca-certificate
+              name: vault-root-ca-certificate
+            - mountPath: /vault/secrets/vault-root-ca-private-key
+              name: vault-root-ca-private-key
+        - name: vault
+          args:
+            - "sed -E \"s/HOST_IP/${HOST_IP?}/g\" /vault/server-config/extraconfig-from-values.hcl
+              > /tmp/storageconfig.hcl;\nsed -Ei \"s/POD_IP/${POD_IP?}/g\" /tmp/storageconfig.hcl;\n/usr/local/bin/docker-entrypoint.sh
+              vault server -config=/tmp/storageconfig.hcl \n"
+          command:
+            - /bin/sh
+            - -ec
+          env:
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: status.hostIP
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: status.podIP
+            - name: VAULT_ADDR
+              value: http://127.0.0.1:8200
+            - name: VAULT_API_ADDR
+              value: http://$(POD_IP):8200
+            - name: SKIP_CHOWN
+              value: "true"
+            - name: SKIP_SETCAP
+              value: "true"
+          image: vault
+          imagePullPolicy: IfNotPresent
+          resources:
+            limits:
+              memory: "192Mi"
+          ports:
+            - containerPort: 8200
+              name: http-vault
+              protocol: TCP
+            - containerPort: 8201
+              name: internal-vault
+              protocol: TCP
+            - containerPort: 8202
+              name: replicate-vault
+              protocol: TCP
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - vault status -tls-skip-verify
+            failureThreshold: 2
+            initialDelaySeconds: 5
+            periodSeconds: 3
+            successThreshold: 1
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - vault status -tls-skip-verify
+            failureThreshold: 3
+            periodSeconds: 6
+            successThreshold: 1
+            timeoutSeconds: 5
+          securityContext:
+            capabilities:
+              add:
+                - IPC_LOCK
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+            - mountPath: /vault/server-config
+              name: vault-server-config
+      serviceAccountName: credsmgr
+      volumes:
+        - name: vault-server-config
+          configMap:
+            name: vault-server-config
+            defaultMode: 420
+        - name: vault-token
+          emptyDir:
+            # Mount this in memory for additional security as secret volumes
+            medium: Memory
+            sizeLimit: 1Mi
+        - name: vault-root-ca-certificate
+          secret:
+            secretName: vault-root-ca-certificate
+        - name: vault-root-ca-private-key
+          secret:
+            secretName: vault-root-ca-private-key
