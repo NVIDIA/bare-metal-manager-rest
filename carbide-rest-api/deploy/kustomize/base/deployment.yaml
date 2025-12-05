@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+#
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloud-api
+  labels:
+    app.kubernetes.io/name: cloud-api
+    app.kubernetes.io/instance: cloud-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cloud-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cloud-api
+    spec:
+      containers:
+        - name: cloud-api
+          image: nvcr.io/nvidian/nvforge-devel/cloud-api:v0.2.79
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8388
+              name: api
+          env:
+            - name: CONFIG_FILE_PATH
+              value: /etc/cloud-api/config.yaml
+          volumeMounts:
+            - name: forge-pg-cluster-auth
+              mountPath: /var/secrets/db/auth/
+              readOnly: true
+            - name: cloud-api-config
+              mountPath: /etc/cloud-api/
+              readOnly: true
+            - name: temporal-client-cloud-certs
+              mountPath: /var/secrets/temporal/certs/client-cloud/
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8388
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8388
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 30m
+              memory: 300Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - NET_RAW
+      imagePullSecrets:
+        - name: imagepullsecret
+      securityContext:
+        runAsNonRoot: false
+      volumes:
+        - name: forge-pg-cluster-auth
+          secret:
+            secretName: forge.forge-pg-cluster.credentials
+        - name: cloud-api-config
+          configMap:
+            name: cloud-api-config
+        - name: temporal-client-cloud-certs
+          secret:
+            secretName: temporal-client-cloud-certs
