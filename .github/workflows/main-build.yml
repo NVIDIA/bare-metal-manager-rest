@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+
+name: Build and Push All Docker Images
+
+# Trigger on push to main/master or any tag
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+      - feature/docker-build-push-nvcr  # Allow testing on feature branch
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  # Step 1: Prepare build information
+  prepare:
+    name: Prepare Build Info
+    uses: ./.github/workflows/prepare-build-info.yml
+    with:
+      runner: ubuntu-latest
+
+  # Step 2: Build and push all Docker images
+  build-and-push:
+    name: Build and Push Docker Images
+    needs: prepare
+    uses: ./.github/workflows/build-push-docker.yml
+    with:
+      runner: ubuntu-latest
+      semantic_version: ${{ needs.prepare.outputs.semantic_version }}
+      short_sha: ${{ needs.prepare.outputs.short_sha }}
+      branch_sha_tag: ${{ needs.prepare.outputs.branch_sha_tag }}
+      target_registry: ${{ needs.prepare.outputs.target_registry }}
+      branch_name: ${{ needs.prepare.outputs.branch_name }}
+      is_main_branch: ${{ needs.prepare.outputs.is_main_branch == 'true' }}
+      # Push images on all branches (including PRs for branch-sha tags)
+      # Only main gets latest and version tags
+      push_enabled: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    secrets: inherit  # Pass all repository secrets to the reusable workflow

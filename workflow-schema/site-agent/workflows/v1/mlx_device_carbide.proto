@@ -1,0 +1,170 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+syntax = "proto3";
+
+package mlx_device;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/nvidia/carbide-rest/workflow-schema/proto";
+
+// MlxDeviceReport represents a complete device discovery report
+// with metadata and filtered device results.
+message MlxDeviceReport {
+  // hostname is the system hostname where the report was generated.
+  string hostname = 1;
+  // timestamp is when the report was generated.
+  google.protobuf.Timestamp timestamp = 2;
+  // devices contains the discovered devices matching any applied filters.
+  repeated MlxDeviceInfo devices = 3;
+  // filters contains the filter set used to generate this report.
+  optional DeviceFilterSet filters = 4;
+}
+
+// MlxDeviceInfo represents detailed information about a Mellanox network device.
+message MlxDeviceInfo {
+  // pci_name is the PCI address or MST device path for the device.
+  string pci_name = 1;
+  // device_type identifies the specific Mellanox device model.
+  string device_type = 2;
+  // psid (Parameter-Set IDentification) is a 16-ASCII character string
+  // embedded in the firmware image which provides a unique identification
+  // for the configuration.
+  string psid = 3;
+  // device_description provides a human-readable description of the device.
+  string device_description = 4;
+  // part_number is the manufacturer part number for the device.
+  string part_number = 5;
+  // fw_version_current is the currently installed firmware version.
+  string fw_version_current = 6;
+  // pxe_version_current is the currently installed PXE boot version.
+  string pxe_version_current = 7;
+  // uefi_version_current is the currently installed UEFI boot version.
+  string uefi_version_current = 8;
+  // uefi_version_virtio_blk_current is the currently installed UEFI
+  // VirtIO block driver version.
+  string uefi_version_virtio_blk_current = 9;
+  // uefi_version_virtio_net_current is the currently installed UEFI
+  // VirtIO network driver version.
+  string uefi_version_virtio_net_current = 10;
+  // base_mac is the base MAC address for the device as a string.
+  string base_mac = 11;
+  // status is the status string returned by mlxfwmanager.
+  string status = 12;
+}
+
+// DeviceFilterSet represents a collection of filters that must all match.
+message DeviceFilterSet {
+  // filters contains the list of individual filters to apply.
+  repeated DeviceFilter filters = 1;
+}
+
+// DeviceFilter represents a single filter criterion for device matching.
+message DeviceFilter {
+  // field specifies which device field to match against.
+  DeviceField field = 1;
+  // values contains the list of acceptable values for this field.
+  repeated string values = 2;
+  // match_mode defines how values should be matched against the device field.
+  MatchMode match_mode = 3;
+}
+
+// DeviceField represents the available device fields for filtering.
+enum DeviceField {
+  DEVICE_FIELD_UNSPECIFIED = 0;
+  DEVICE_FIELD_DEVICE_TYPE = 1;
+  DEVICE_FIELD_PART_NUMBER = 2;
+  DEVICE_FIELD_FIRMWARE_VERSION = 3;
+  DEVICE_FIELD_MAC_ADDRESS = 4;
+  DEVICE_FIELD_DESCRIPTION = 5;
+  DEVICE_FIELD_PCI_NAME = 6;
+  DEVICE_FIELD_STATUS = 7;
+}
+
+// MatchMode defines how filter values should be matched against
+// device fields.
+enum MatchMode {
+  MATCH_MODE_UNSPECIFIED = 0;
+  MATCH_MODE_REGEX = 1;
+  MATCH_MODE_EXACT = 2;
+  MATCH_MODE_PREFIX = 3;
+}
+
+// ProfileTargetConstraints defines criteria for matching devices
+// to configuration profiles.
+message ProfileTargetConstraints {
+  // device_types contains allowed device type prefixes for matching.
+  repeated string device_types = 1;
+  // part_numbers contains allowed part number prefixes for matching.
+  repeated string part_numbers = 2;
+  // fw_versions contains allowed firmware version prefixes for matching.
+  repeated string fw_versions = 3;
+}
+
+// PublishMlxDeviceReportRequest is sent by scout or the agent
+// into carbide-api so that we can both observe the current
+// state of the Mellanox devices (DPAs and DPUs), and potentially
+// decide to take action on them (instruct scout to update
+// firmware, configuration, etc).
+message PublishMlxDeviceReportRequest {
+  MlxDeviceReport report = 1;
+}
+
+// PublishMlxDeviceReportResponse is returned by carbide-api
+// in response to a PublishMlxDeviceReportRequest. It currently
+// is actually just a placeholder response, but there's a good
+// chance it will soon contain actions to take based on the
+// observations made in the parent request.
+message PublishMlxDeviceReportResponse {
+}
+
+// SerializableMlxConfigProfile is a protobuf representation
+// of an mlxconfig-profile SerializableProfile, which itself
+// is a serializable representation of an MlxConfigProfile.
+// This is used for sending down a profile configuration from
+// the API to scout (or the agent) for applying mlxconfig
+// based configuration to a device. The profile itself can
+// be defined as TOML in the carbide-api config, or it
+// can be stored in the database. The profiles themselves
+// are ultimately deserialized to MlxConfigProfile instances
+// within their respective components, but we then convert
+// to a SerializableProfile before serializing to/from
+// a TOML/YAML/JSON/protobuf format.
+message SerializableMlxConfigProfile {
+  // name is the profile name.
+  string name = 1;
+
+  // registry_name is the mlx variable configuration
+  // registry that this profile is backed by. The registry
+  // is where variable types are assigned, as well as
+  // any device filters for what device types are allowed
+  // to be used.
+  string registry_name = 2;
+
+  // description is an optional description for the profile.
+  // It should probably generally be set, but whatever I made
+  // it optional.
+  optional string description = 3;
+
+  // config is a map of variable -> value, where, in this case,
+  // the value is actually a YAML string representation of
+  // the underlying value (which is how we're serializing it
+  // out to send it over the wire). If for some reason someone
+  // tries fuddling with direct proto values, then it will
+  // just fail to deserialize to a SerializableProfile on
+  // the other side (since we attempt to deserialize to the
+  // underlying variable-typed value). I could have also done
+  // something fancy with a map<string, special-oneof-type> to
+  // be able to [de]serialize with typed values, but it seemed
+  // like a lot of extra work for something that is pretty well
+  // wrapped and bounded by typing already.
+  map<string, string> config = 4;
+}

@@ -1,0 +1,994 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ *
+ * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+ * property and proprietary rights in and to this material, related
+ * documentation and any modifications thereto. Any use, reproduction,
+ * disclosure or distribution of this material and related documentation
+ * without an express license agreement from NVIDIA CORPORATION or
+ * its affiliates is strictly prohibited.
+ */
+
+
+package model
+
+import (
+	"context"
+	"database/sql"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	otrace "go.opentelemetry.io/otel/trace"
+
+	"github.com/google/uuid"
+	"github.com/nvidia/carbide-rest/db/pkg/db"
+	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
+)
+
+// reset the tables needed for ExpectedMachine tests
+func testExpectedMachineSetupSchema(t *testing.T, dbSession *db.Session) {
+	// create User table
+	err := dbSession.DB.ResetModel(context.Background(), (*User)(nil))
+	assert.Nil(t, err)
+	// create InfrastructureProvider table
+	err = dbSession.DB.ResetModel(context.Background(), (*InfrastructureProvider)(nil))
+	assert.Nil(t, err)
+	// create Site table
+	err = dbSession.DB.ResetModel(context.Background(), (*Site)(nil))
+	assert.Nil(t, err)
+	// create InstanceType table (required by Machine)
+	err = dbSession.DB.ResetModel(context.Background(), (*InstanceType)(nil))
+	assert.Nil(t, err)
+	// create SKU table
+	err = dbSession.DB.ResetModel(context.Background(), (*SKU)(nil))
+	assert.Nil(t, err)
+	// create Machine table (must be before ExpectedMachine due to foreign key)
+	err = dbSession.DB.ResetModel(context.Background(), (*Machine)(nil))
+	assert.Nil(t, err)
+	// create ExpectedMachine table
+	err = dbSession.DB.ResetModel(context.Background(), (*ExpectedMachine)(nil))
+	assert.Nil(t, err)
+}
+
+func TestExpectedMachineSQLDAO_Create(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+	testExpectedMachineSetupSchema(t, dbSession)
+
+	// Create test dependencies
+	user := TestBuildUser(t, dbSession, "test-user", "test-org", []string{"admin"})
+	ip := TestBuildInfrastructureProvider(t, dbSession, "test-provider", "test-org", user)
+	site := TestBuildSite(t, dbSession, ip, "test-site", user)
+
+	emsd := NewExpectedMachineDAO(dbSession)
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc               string
+		inputs             []ExpectedMachineCreateInput
+		expectError        bool
+		verifyChildSpanner bool
+	}{
+		{
+			desc: "create one",
+			inputs: []ExpectedMachineCreateInput{
+				{
+					ExpectedMachineID:        uuid.New(),
+					SiteID:                   site.ID,
+					BmcMacAddress:            "00:1B:44:11:3A:B7",
+					ChassisSerialNumber:      "CHASSIS123",
+					FallbackDpuSerialNumbers: []string{"DPU001", "DPU002"},
+					Labels: map[string]string{
+						"environment": "test",
+						"location":    "datacenter1",
+					},
+					CreatedBy: user.ID,
+				},
+			},
+			expectError:        false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc: "create multiple, some with nullable fields",
+			inputs: []ExpectedMachineCreateInput{
+				{
+					ExpectedMachineID:        uuid.New(),
+					SiteID:                   site.ID,
+					BmcMacAddress:            "00:1B:44:11:3A:B8",
+					ChassisSerialNumber:      "CHASSIS789",
+					FallbackDpuSerialNumbers: []string{"DPU003"},
+					Labels: map[string]string{
+						"environment": "production",
+					},
+					CreatedBy: user.ID,
+				},
+				{
+					ExpectedMachineID:        uuid.New(),
+					SiteID:                   site.ID,
+					BmcMacAddress:            "00:1B:44:11:3A:B9",
+					ChassisSerialNumber:      "CHASSIS456",
+					FallbackDpuSerialNumbers: nil,
+					Labels:                   nil,
+					CreatedBy:                user.ID,
+				},
+			},
+			expectError: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			for _, input := range tc.inputs {
+				em, err := emsd.Create(ctx, nil, input)
+				if err != nil {
+					assert.True(t, tc.expectError)
+					assert.Nil(t, em)
+				} else {
+					assert.False(t, tc.expectError)
+					assert.NotNil(t, em)
+					assert.Equal(t, input.BmcMacAddress, em.BmcMacAddress)
+					assert.Equal(t, input.ChassisSerialNumber, em.ChassisSerialNumber)
+					assert.Equal(t, input.FallbackDpuSerialNumbers, em.FallbackDpuSerialNumbers)
+					assert.Equal(t, input.Labels, em.Labels)
+				}
+
+				if tc.verifyChildSpanner {
+					span := otrace.SpanFromContext(ctx)
+					assert.True(t, span.SpanContext().IsValid())
+					_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+					assert.True(t, ok)
+				}
+
+				if err != nil {
+					t.Logf("%s", err.Error())
+					return
+				}
+			}
+		})
+	}
+}
+
+func testExpectedMachineSQLDAOCreateExpectedMachines(ctx context.Context, t *testing.T, dbSession *db.Session) (created []ExpectedMachine) {
+	// Create test dependencies
+	user := TestBuildUser(t, dbSession, "test-user", "test-org", []string{"admin"})
+	ip := TestBuildInfrastructureProvider(t, dbSession, "test-provider", "test-org", user)
+	site := TestBuildSite(t, dbSession, ip, "test-site", user)
+
+	// Create a SKU and assign it to one ExpectedMachine to exercise includeRelations later
+	ssd := NewSkuDAO(dbSession)
+	sku, err := ssd.Create(ctx, nil, SkuCreateInput{SkuID: "sku-test-1", Components: &SkuComponents{}, SiteID: site.ID})
+	assert.NoError(t, err)
+	assert.NotNil(t, sku)
+
+	var createInputs []ExpectedMachineCreateInput
+	{
+		// ExpectedMachine set 1
+		createInputs = append(createInputs, ExpectedMachineCreateInput{
+			ExpectedMachineID:        uuid.New(),
+			SiteID:                   site.ID,
+			BmcMacAddress:            "00:1B:44:11:3A:B7",
+			ChassisSerialNumber:      "CHASSIS123",
+			FallbackDpuSerialNumbers: []string{"DPU001", "DPU002"},
+			Labels: map[string]string{
+				"environment": "test",
+				"location":    "datacenter1",
+			},
+			CreatedBy: user.ID,
+		})
+
+		// ExpectedMachine set 2
+		createInputs = append(createInputs, ExpectedMachineCreateInput{
+			ExpectedMachineID:        uuid.New(),
+			SiteID:                   site.ID,
+			BmcMacAddress:            "00:1B:44:11:3A:B8",
+			ChassisSerialNumber:      "CHASSIS789",
+			SkuID:                    &sku.ID,
+			FallbackDpuSerialNumbers: []string{"DPU003"},
+			Labels: map[string]string{
+				"environment": "production",
+			},
+			CreatedBy: user.ID,
+		})
+
+		// ExpectedMachine set 3
+		createInputs = append(createInputs, ExpectedMachineCreateInput{
+			ExpectedMachineID:        uuid.New(),
+			SiteID:                   site.ID,
+			BmcMacAddress:            "00:1B:44:11:3A:B9",
+			ChassisSerialNumber:      "CHASSIS456",
+			FallbackDpuSerialNumbers: nil,
+			Labels:                   nil,
+			CreatedBy:                user.ID,
+		})
+	}
+
+	emsd := NewExpectedMachineDAO(dbSession)
+
+	// ExpectedMachine created
+	for _, input := range createInputs {
+		emCre, _ := emsd.Create(ctx, nil, input)
+		assert.NotNil(t, emCre)
+		created = append(created, *emCre)
+	}
+
+	return
+}
+
+func TestExpectedMachineSQLDAO_GetByID(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+	testExpectedMachineSetupSchema(t, dbSession)
+
+	emsExp := testExpectedMachineSQLDAOCreateExpectedMachines(ctx, t, dbSession)
+	emsd := NewExpectedMachineDAO(dbSession)
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc               string
+		em                 ExpectedMachine
+		expectError        bool
+		expectedErrVal     error
+		verifyChildSpanner bool
+	}{
+		{
+			desc:               "GetById success when ExpectedMachine exists on [0]",
+			em:                 emsExp[0],
+			expectError:        false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc:        "GetById success when ExpectedMachine exists on [1]",
+			em:          emsExp[1],
+			expectError: false,
+		},
+		{
+			desc: "GetById success when ExpectedMachine not found",
+			em: ExpectedMachine{
+				ID: uuid.New(),
+			},
+			expectError:    true,
+			expectedErrVal: db.ErrDoesNotExist,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			tmp, err := emsd.Get(ctx, nil, tc.em.ID, nil, false)
+			assert.Equal(t, tc.expectError, err != nil)
+			if tc.expectError {
+				assert.Equal(t, tc.expectedErrVal, err)
+			}
+			if err == nil {
+				assert.Equal(t, tc.em.ID, tmp.ID)
+				assert.Equal(t, tc.em.BmcMacAddress, tmp.BmcMacAddress)
+				assert.Equal(t, tc.em.ChassisSerialNumber, tmp.ChassisSerialNumber)
+				assert.Equal(t, tc.em.FallbackDpuSerialNumbers, tmp.FallbackDpuSerialNumbers)
+				assert.Equal(t, tc.em.Labels, tmp.Labels)
+			} else {
+				t.Logf("%s", err.Error())
+			}
+
+			if tc.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}
+
+func TestExpectedMachineSQLDAO_Get_includeRelations(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+	testExpectedMachineSetupSchema(t, dbSession)
+
+	created := testExpectedMachineSQLDAOCreateExpectedMachines(ctx, t, dbSession)
+	req := NewExpectedMachineDAO(dbSession)
+
+	got, err := req.Get(ctx, nil, created[1].ID, []string{SiteRelationName, SkuRelationName}, false)
+	assert.NoError(t, err)
+	assert.NotNil(t, got)
+	assert.NotNil(t, got.Site)
+	assert.NotNil(t, got.Sku)
+}
+
+func TestExpectedMachineSQLDAO_Get_MachineRelation(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+	testExpectedMachineSetupSchema(t, dbSession)
+
+	// Create test dependencies
+	user := TestBuildUser(t, dbSession, "test-user", "test-org", []string{"admin"})
+	ip := TestBuildInfrastructureProvider(t, dbSession, "test-provider", "test-org", user)
+	site := TestBuildSite(t, dbSession, ip, "test-site", user)
+
+	// Create Machine first
+	machine := &Machine{
+		ID:                       uuid.NewString(),
+		InfrastructureProviderID: ip.ID,
+		SiteID:                   site.ID,
+		ControllerMachineID:      uuid.NewString(),
+		Status:                   MachineStatusReady,
+	}
+	_, err := dbSession.DB.NewInsert().Model(machine).Exec(ctx)
+	assert.NoError(t, err)
+
+	// Create ExpectedMachine with MachineID reference
+	emsd := NewExpectedMachineDAO(dbSession)
+	em, err := emsd.Create(ctx, nil, ExpectedMachineCreateInput{
+		ExpectedMachineID:   uuid.New(),
+		SiteID:              site.ID,
+		BmcMacAddress:       "00:1B:44:11:3A:B7",
+		ChassisSerialNumber: "CHASSIS-TEST-001",
+		MachineID:           &machine.ID,
+		CreatedBy:           user.ID,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, em)
+	assert.Equal(t, &machine.ID, em.MachineID)
+
+	// Query ExpectedMachine with Machine relation
+	got, err := emsd.Get(ctx, nil, em.ID, []string{MachineRelationName}, false)
+	assert.NoError(t, err)
+	assert.NotNil(t, got)
+	assert.NotNil(t, got.Machine, "Machine relation should be populated")
+	assert.Equal(t, machine.ID, got.Machine.ID)
+}
+
+func TestExpectedMachineSQLDAO_Get_MachineRelation_NoMatch(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+	testExpectedMachineSetupSchema(t, dbSession)
+
+	// Create test dependencies
+	user := TestBuildUser(t, dbSession, "test-user", "test-org", []string{"admin"})
+	ip := TestBuildInfrastructureProvider(t, dbSession, "test-provider", "test-org", user)
+	site := TestBuildSite(t, dbSession, ip, "test-site", user)
+
+	// Create ExpectedMachine without MachineID reference
+	emsd := NewExpectedMachineDAO(dbSession)
+	em, err := emsd.Create(ctx, nil, ExpectedMachineCreateInput{
+		ExpectedMachineID:   uuid.New(),
+		SiteID:              site.ID,
+		BmcMacAddress:       "00:1B:44:11:3A:B7",
+		ChassisSerialNumber: "CHASSIS-TEST-002",
+		MachineID:           nil,
+		CreatedBy:           user.ID,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, em)
+	assert.Nil(t, em.MachineID)
+
+	// Create Machine but don't associate it
+	machine := &Machine{
+		ID:                       uuid.NewString(),
+		InfrastructureProviderID: ip.ID,
+		SiteID:                   site.ID,
+		ControllerMachineID:      uuid.NewString(),
+		Status:                   MachineStatusReady,
+	}
+	_, err = dbSession.DB.NewInsert().Model(machine).Exec(ctx)
+	assert.NoError(t, err)
+
+	// Query ExpectedMachine with Machine relation
+	got, err := emsd.Get(ctx, nil, em.ID, []string{MachineRelationName}, false)
+	assert.NoError(t, err)
+	assert.NotNil(t, got)
+	assert.Nil(t, got.Machine, "Machine relation should be nil when MachineID is null")
+}
+
+func TestExpectedMachineSQLDAO_GetAll(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+	testExpectedMachineSetupSchema(t, dbSession)
+
+	emsd := NewExpectedMachineDAO(dbSession)
+
+	// Create test data
+	created := testExpectedMachineSQLDAOCreateExpectedMachines(ctx, t, dbSession)
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc               string
+		filter             ExpectedMachineFilterInput
+		pageInput          paginator.PageInput
+		expectedCount      int
+		expectedTotal      *int
+		expectedError      bool
+		verifyChildSpanner bool
+	}{
+		{
+			desc:               "GetAll with no filters returns all objects",
+			expectedCount:      3,
+			expectedTotal:      db.GetIntPtr(3),
+			expectedError:      false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc: "GetAll with BmcMacAddress filter returns objects",
+			filter: ExpectedMachineFilterInput{
+				BmcMacAddresses: []string{created[0].BmcMacAddress},
+			},
+			expectedCount: 1,
+			expectedError: false,
+		},
+
+		{
+			desc: "GetAll with ChassisSerialNumber filter returns objects",
+			filter: ExpectedMachineFilterInput{
+				ChassisSerialNumbers: []string{created[0].ChassisSerialNumber},
+			},
+			expectedCount: 1,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with search query filter returns objects",
+			filter: ExpectedMachineFilterInput{
+				SearchQuery: db.GetStrPtr("CHASSIS123"),
+			},
+			expectedCount: 1,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with ExpectedMachineIDs filter returns objects",
+			filter: ExpectedMachineFilterInput{
+				ExpectedMachineIDs: []uuid.UUID{created[0].ID, created[2].ID},
+			},
+			expectedCount: 2,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with limit returns objects",
+			pageInput: paginator.PageInput{
+				Offset: db.GetIntPtr(0),
+				Limit:  db.GetIntPtr(2),
+			},
+			expectedCount: 2,
+			expectedTotal: db.GetIntPtr(3),
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with offset returns objects",
+			pageInput: paginator.PageInput{
+				Offset: db.GetIntPtr(1),
+			},
+			expectedCount: 2,
+			expectedTotal: db.GetIntPtr(3),
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with order by returns objects",
+			pageInput: paginator.PageInput{
+				OrderBy: &paginator.OrderBy{
+					Field: "created",
+					Order: paginator.OrderDescending,
+				},
+			},
+			expectedCount: 3,
+			expectedTotal: db.GetIntPtr(3),
+			expectedError: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, total, err := emsd.GetAll(ctx, nil, tc.filter, tc.pageInput, nil)
+			if err != nil {
+				t.Logf("%s", err.Error())
+			}
+
+			assert.Equal(t, tc.expectedError, err != nil)
+			if tc.expectedError {
+				assert.Equal(t, nil, got)
+			} else {
+				assert.Equal(t, tc.expectedCount, len(got))
+			}
+
+			if tc.expectedTotal != nil {
+				assert.Equal(t, *tc.expectedTotal, total)
+			}
+
+			if tc.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}
+
+func TestExpectedMachineSQLDAO_GetAll_MachineIDsFilter(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+	testExpectedMachineSetupSchema(t, dbSession)
+
+	// Create test dependencies
+	user := TestBuildUser(t, dbSession, "test-user", "test-org", []string{"admin"})
+	ip := TestBuildInfrastructureProvider(t, dbSession, "test-provider", "test-org", user)
+	site := TestBuildSite(t, dbSession, ip, "test-site", user)
+
+	// Create machines
+	machine1 := &Machine{
+		ID:                       uuid.NewString(),
+		InfrastructureProviderID: ip.ID,
+		SiteID:                   site.ID,
+		ControllerMachineID:      uuid.NewString(),
+		Status:                   MachineStatusReady,
+	}
+	_, err := dbSession.DB.NewInsert().Model(machine1).Exec(ctx)
+	assert.NoError(t, err)
+
+	machine2 := &Machine{
+		ID:                       uuid.NewString(),
+		InfrastructureProviderID: ip.ID,
+		SiteID:                   site.ID,
+		ControllerMachineID:      uuid.NewString(),
+		Status:                   MachineStatusReady,
+	}
+	_, err = dbSession.DB.NewInsert().Model(machine2).Exec(ctx)
+	assert.NoError(t, err)
+
+	// Create ExpectedMachines
+	emsd := NewExpectedMachineDAO(dbSession)
+
+	em1, err := emsd.Create(ctx, nil, ExpectedMachineCreateInput{
+		ExpectedMachineID:   uuid.New(),
+		SiteID:              site.ID,
+		BmcMacAddress:       "00:1B:44:11:3A:B1",
+		ChassisSerialNumber: "CHASSIS-001",
+		MachineID:           &machine1.ID,
+		CreatedBy:           user.ID,
+	})
+	assert.NoError(t, err)
+
+	em2, err := emsd.Create(ctx, nil, ExpectedMachineCreateInput{
+		ExpectedMachineID:   uuid.New(),
+		SiteID:              site.ID,
+		BmcMacAddress:       "00:1B:44:11:3A:B2",
+		ChassisSerialNumber: "CHASSIS-002",
+		MachineID:           &machine2.ID,
+		CreatedBy:           user.ID,
+	})
+	assert.NoError(t, err)
+
+	_, err = emsd.Create(ctx, nil, ExpectedMachineCreateInput{
+		ExpectedMachineID:   uuid.New(),
+		SiteID:              site.ID,
+		BmcMacAddress:       "00:1B:44:11:3A:B3",
+		ChassisSerialNumber: "CHASSIS-003",
+		MachineID:           nil,
+		CreatedBy:           user.ID,
+	})
+	assert.NoError(t, err)
+
+	// Test filter by single MachineID
+	got, total, err := emsd.GetAll(ctx, nil, ExpectedMachineFilterInput{
+		MachineIDs: []string{machine1.ID},
+	}, paginator.PageInput{}, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, total)
+	assert.Equal(t, 1, len(got))
+	assert.Equal(t, em1.ID, got[0].ID)
+
+	// Test filter by multiple MachineIDs
+	got, total, err = emsd.GetAll(ctx, nil, ExpectedMachineFilterInput{
+		MachineIDs: []string{machine1.ID, machine2.ID},
+	}, paginator.PageInput{}, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, total)
+	assert.Equal(t, 2, len(got))
+	
+	// Verify the correct ExpectedMachines were returned
+	foundEM1 := false
+	foundEM2 := false
+	for _, em := range got {
+		if em.ID == em1.ID {
+			foundEM1 = true
+		}
+		if em.ID == em2.ID {
+			foundEM2 = true
+		}
+	}
+	assert.True(t, foundEM1, "ExpectedMachine 1 should be in results")
+	assert.True(t, foundEM2, "ExpectedMachine 2 should be in results")
+}
+
+func TestExpectedMachineSQLDAO_GetAll_includeRelations(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+	testExpectedMachineSetupSchema(t, dbSession)
+
+	req := NewExpectedMachineDAO(dbSession)
+	_ = testExpectedMachineSQLDAOCreateExpectedMachines(ctx, t, dbSession)
+
+	got, _, err := req.GetAll(ctx, nil, ExpectedMachineFilterInput{}, paginator.PageInput{}, []string{SiteRelationName, SkuRelationName})
+	assert.NoError(t, err)
+	assert.Equal(t, 3, len(got))
+
+	withSku := 0
+	withoutSku := 0
+	for _, em := range got {
+		assert.NotNil(t, em.Site)
+		if em.Sku != nil {
+			withSku++
+		} else {
+			withoutSku++
+		}
+	}
+
+	assert.Equal(t, 1, withSku)
+	assert.Equal(t, 2, withoutSku)
+}
+
+func TestExpectedMachineSQLDAO_GetAll_MachineRelation(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+	testExpectedMachineSetupSchema(t, dbSession)
+
+	// Create test dependencies
+	user := TestBuildUser(t, dbSession, "test-user", "test-org", []string{"admin"})
+	ip := TestBuildInfrastructureProvider(t, dbSession, "test-provider", "test-org", user)
+	site := TestBuildSite(t, dbSession, ip, "test-site", user)
+
+	emsd := NewExpectedMachineDAO(dbSession)
+
+	// Create Machine first
+	machine1 := &Machine{
+		ID:                       uuid.NewString(),
+		InfrastructureProviderID: ip.ID,
+		SiteID:                   site.ID,
+		ControllerMachineID:      uuid.NewString(),
+		Status:                   MachineStatusReady,
+	}
+	_, err := dbSession.DB.NewInsert().Model(machine1).Exec(ctx)
+	assert.NoError(t, err)
+
+	// Create ExpectedMachine with Machine reference
+	em1, err := emsd.Create(ctx, nil, ExpectedMachineCreateInput{
+		ExpectedMachineID:   uuid.New(),
+		SiteID:              site.ID,
+		BmcMacAddress:       "00:1B:44:11:3A:B7",
+		ChassisSerialNumber: "CHASSIS-001",
+		MachineID:           &machine1.ID,
+		CreatedBy:           user.ID,
+	})
+	assert.NoError(t, err)
+
+	// Create ExpectedMachine without Machine reference
+	em2, err := emsd.Create(ctx, nil, ExpectedMachineCreateInput{
+		ExpectedMachineID:   uuid.New(),
+		SiteID:              site.ID,
+		BmcMacAddress:       "AA:BB:CC:DD:EE:FF",
+		ChassisSerialNumber: "CHASSIS-002",
+		MachineID:           nil,
+		CreatedBy:           user.ID,
+	})
+	assert.NoError(t, err)
+
+	// Query all ExpectedMachines with Machine relation
+	got, total, err := emsd.GetAll(ctx, nil, ExpectedMachineFilterInput{}, paginator.PageInput{}, []string{MachineRelationName})
+	assert.NoError(t, err)
+	assert.Equal(t, 2, total)
+	assert.Equal(t, 2, len(got))
+
+	// Verify relations
+	withMachine := 0
+	withoutMachine := 0
+	for _, em := range got {
+		if em.Machine != nil {
+			withMachine++
+			if em.ID == em1.ID {
+				assert.Equal(t, machine1.ID, em.Machine.ID)
+			}
+		} else {
+			withoutMachine++
+			assert.Equal(t, em2.ID, em.ID)
+		}
+	}
+
+	assert.Equal(t, 1, withMachine, "One ExpectedMachine should have a matching Machine")
+	assert.Equal(t, 1, withoutMachine, "One ExpectedMachine should not have a matching Machine")
+}
+
+// TestExpectedMachineSQLDAO_GetAll_includeSkuRelation_withSiteFilter tests the critical case
+// where filtering by SiteIDs while including the Sku relation requires proper table aliasing.
+// Both ExpectedMachine and SKU tables have a site_id column, so without the "em." prefix,
+// the query becomes ambiguous and will fail with: "column reference 'site_id' is ambiguous"
+func TestExpectedMachineSQLDAO_GetAll_includeSkuRelation_withSiteFilter(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+	testExpectedMachineSetupSchema(t, dbSession)
+
+	// Create test data
+	user := TestBuildUser(t, dbSession, "test-user", "test-org", []string{"admin"})
+	ip := TestBuildInfrastructureProvider(t, dbSession, "test-provider", "test-org", user)
+	site := TestBuildSite(t, dbSession, ip, "test-site", user)
+
+	// Create a SKU
+	ssd := NewSkuDAO(dbSession)
+	sku, err := ssd.Create(ctx, nil, SkuCreateInput{
+		SkuID:      "test-sku-123",
+		Components: &SkuComponents{},
+		SiteID:     site.ID,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, sku)
+
+	// Create ExpectedMachines with SKU
+	emDAO := NewExpectedMachineDAO(dbSession)
+	em1, err := emDAO.Create(ctx, nil, ExpectedMachineCreateInput{
+		ExpectedMachineID:   uuid.New(),
+		SiteID:              site.ID,
+		BmcMacAddress:       "00:11:22:33:44:55",
+		ChassisSerialNumber: "CHASSIS-001",
+		SkuID:               &sku.ID,
+		CreatedBy:           user.ID,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, em1)
+
+	// This query will fail with "column reference 'site_id' is ambiguous" if the filter
+	// uses "site_id" instead of "em.site_id" because:
+	// 1. ExpectedMachine table (alias: em) has a site_id column
+	// 2. SKU table (alias: sk) ALSO has a site_id column
+	// 3. When we include the Sku relation, the query does a LEFT JOIN
+	// 4. Without the alias, PostgreSQL doesn't know which table's site_id to use
+	got, total, err := emDAO.GetAll(
+		ctx,
+		nil,
+		ExpectedMachineFilterInput{
+			SiteIDs: []uuid.UUID{site.ID}, // This filter triggers the ambiguous column issue
+		},
+		paginator.PageInput{},
+		[]string{SkuRelationName}, // Including Sku relation creates the ambiguity
+	)
+
+	// Test assertions
+	assert.NoError(t, err, "GetAll should not fail with ambiguous column error when using proper table alias")
+	assert.Equal(t, 1, total)
+	assert.Equal(t, 1, len(got))
+	assert.Equal(t, em1.ID, got[0].ID)
+	assert.NotNil(t, got[0].Sku, "Sku relation should be loaded")
+	assert.Equal(t, sku.ID, got[0].Sku.ID)
+}
+
+func TestExpectedMachineSQLDAO_Update(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+	testExpectedMachineSetupSchema(t, dbSession)
+
+	emsExp := testExpectedMachineSQLDAOCreateExpectedMachines(ctx, t, dbSession)
+	emsd := NewExpectedMachineDAO(dbSession)
+	assert.NotNil(t, emsd)
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc               string
+		input              ExpectedMachineUpdateInput
+		expectedError      bool
+		verifyChildSpanner bool
+	}{
+		{
+			desc: "Update BMC MAC address",
+			input: ExpectedMachineUpdateInput{
+				ExpectedMachineID: emsExp[0].ID,
+				BmcMacAddress:     db.GetStrPtr("00:1B:44:11:3A:C1"),
+			},
+			expectedError:      false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc: "Update chassis serial number",
+			input: ExpectedMachineUpdateInput{
+				ExpectedMachineID:   emsExp[1].ID,
+				ChassisSerialNumber: db.GetStrPtr("NEWCHASSIS789"),
+			},
+			expectedError: false,
+		},
+		{
+			desc: "Update fallback DPU serial numbers",
+			input: ExpectedMachineUpdateInput{
+				ExpectedMachineID:        emsExp[2].ID,
+				FallbackDpuSerialNumbers: []string{"DPU004", "DPU005", "DPU006"},
+			},
+			expectedError: false,
+		},
+		{
+			desc: "Update labels",
+			input: ExpectedMachineUpdateInput{
+				ExpectedMachineID: emsExp[0].ID,
+				Labels: map[string]string{
+					"environment": "staging",
+					"owner":       "team-alpha",
+				},
+			},
+			expectedError: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, err := emsd.Update(ctx, nil, tc.input)
+			assert.Equal(t, tc.expectedError, err != nil)
+			if err != nil {
+				t.Logf("%s", err.Error())
+			}
+			if !tc.expectedError {
+				assert.Nil(t, err)
+				assert.NotNil(t, got)
+				if tc.input.BmcMacAddress != nil {
+					assert.Equal(t, *tc.input.BmcMacAddress, got.BmcMacAddress)
+				}
+				if tc.input.ChassisSerialNumber != nil {
+					assert.Equal(t, *tc.input.ChassisSerialNumber, got.ChassisSerialNumber)
+				}
+				if tc.input.FallbackDpuSerialNumbers != nil {
+					assert.Equal(t, tc.input.FallbackDpuSerialNumbers, got.FallbackDpuSerialNumbers)
+				}
+				if tc.input.Labels != nil {
+					assert.Equal(t, tc.input.Labels, got.Labels)
+				}
+
+				if tc.verifyChildSpanner {
+					span := otrace.SpanFromContext(ctx)
+					assert.True(t, span.SpanContext().IsValid())
+					_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+					assert.True(t, ok)
+				}
+			}
+		})
+	}
+}
+
+func TestExpectedMachineSQLDAO_Clear(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+	testExpectedMachineSetupSchema(t, dbSession)
+
+	emsExp := testExpectedMachineSQLDAOCreateExpectedMachines(ctx, t, dbSession)
+	emsd := NewExpectedMachineDAO(dbSession)
+	assert.NotNil(t, emsd)
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc               string
+		em                 ExpectedMachine
+		input              ExpectedMachineClearInput
+		expectedUpdate     bool
+		verifyChildSpanner bool
+	}{
+		{
+			desc: "can clear FallbackDpuSerialNumbers",
+			em:   emsExp[1],
+			input: ExpectedMachineClearInput{
+				FallbackDpuSerialNumbers: true,
+			},
+			expectedUpdate: true,
+		},
+		{
+			desc: "can clear Labels",
+			em:   emsExp[0],
+			input: ExpectedMachineClearInput{
+				Labels: true,
+			},
+			expectedUpdate: true,
+		},
+		{
+			desc: "can clear multiple fields",
+			em:   emsExp[2],
+			input: ExpectedMachineClearInput{
+				FallbackDpuSerialNumbers: true,
+				Labels:                   true,
+			},
+			expectedUpdate: true,
+		},
+		{
+			desc:           "nop when no cleared fields are specified",
+			em:             emsExp[2],
+			input:          ExpectedMachineClearInput{},
+			expectedUpdate: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			tc.input.ExpectedMachineID = tc.em.ID
+			tmp, err := emsd.Clear(ctx, nil, tc.input)
+			assert.Nil(t, err)
+			assert.NotNil(t, tmp)
+			if tc.input.FallbackDpuSerialNumbers {
+				assert.Nil(t, tmp.FallbackDpuSerialNumbers)
+			}
+			if tc.input.Labels {
+				assert.Nil(t, tmp.Labels)
+			}
+
+			if tc.expectedUpdate {
+				assert.True(t, tmp.Updated.After(tc.em.Updated))
+			}
+
+			if tc.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}
+
+func TestExpectedMachineSQLDAO_Delete(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+	testExpectedMachineSetupSchema(t, dbSession)
+
+	emsExp := testExpectedMachineSQLDAOCreateExpectedMachines(ctx, t, dbSession)
+	emsd := NewExpectedMachineDAO(dbSession)
+	assert.NotNil(t, emsd)
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc               string
+		emID               uuid.UUID
+		wantErr            bool
+		verifyChildSpanner bool
+	}{
+		{
+			desc:               "can delete existing object success",
+			emID:               emsExp[1].ID,
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc:    "delete non-existent object success",
+			emID:    uuid.New(),
+			wantErr: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			err := emsd.Delete(ctx, nil, tc.emID)
+
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+
+			var res ExpectedMachine
+
+			err = dbSession.DB.NewSelect().Model(&res).Where("em.id = ?", tc.emID).Scan(ctx)
+			assert.ErrorIs(t, err, sql.ErrNoRows)
+
+			if tc.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}

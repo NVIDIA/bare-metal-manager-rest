@@ -1,0 +1,404 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package dpuextensionservice
+
+import (
+	"context"
+	"fmt"
+	"reflect"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/uptrace/bun/extra/bundebug"
+	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
+	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	sc "github.com/nvidia/carbide-rest/workflow/pkg/client/site"
+	"github.com/nvidia/carbide-rest/workflow/pkg/util"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/google/uuid"
+
+	"github.com/nvidia/carbide-rest/workflow/internal/config"
+
+	"os"
+
+	"go.temporal.io/sdk/testsuite"
+)
+
+// testTemporalSiteClientPool Building site client pool
+func testTemporalSiteClientPool(t *testing.T) *sc.ClientPool {
+
+	keyPath, certPath := config.SetupTestCerts(t)
+	defer os.Remove(keyPath)
+	defer os.Remove(certPath)
+
+	cfg := config.NewConfig()
+	cfg.SetTemporalCertPath(certPath)
+	cfg.SetTemporalKeyPath(keyPath)
+	cfg.SetTemporalCaPath(certPath)
+
+	tcfg, err := cfg.GetTemporalConfig()
+	assert.NoError(t, err)
+
+	tSiteClientPool := sc.NewClientPool(tcfg)
+	return tSiteClientPool
+}
+
+func testDpuExtensionServiceInitDB(t *testing.T) *cdb.Session {
+	dbSession := cdbu.GetTestDBSession(t, false)
+	dbSession.DB.AddQueryHook(bundebug.NewQueryHook(
+		bundebug.WithEnabled(false),
+		bundebug.FromEnv("BUNDEBUG"),
+	))
+	return dbSession
+}
+
+func testDpuExtensionServiceSetupSchema(t *testing.T, dbSession *cdb.Session) {
+	// create Infrastructure Provider table
+	err := dbSession.DB.ResetModel(context.Background(), (*cdbm.InfrastructureProvider)(nil))
+	assert.Nil(t, err)
+	// create Tenant table
+	err = dbSession.DB.ResetModel(context.Background(), (*cdbm.Tenant)(nil))
+	assert.Nil(t, err)
+	// create Site table
+	err = dbSession.DB.ResetModel(context.Background(), (*cdbm.Site)(nil))
+	assert.Nil(t, err)
+	// create User table
+	err = dbSession.DB.ResetModel(context.Background(), (*cdbm.User)(nil))
+	assert.Nil(t, err)
+	// create DpuExtensionService table
+	err = dbSession.DB.ResetModel(context.Background(), (*cdbm.DpuExtensionService)(nil))
+	assert.Nil(t, err)
+	// create StatusDetail table
+	err = dbSession.DB.ResetModel(context.Background(), (*cdbm.StatusDetail)(nil))
+	assert.Nil(t, err)
+}
+
+func testDpuExtensionServiceBuildDpuExtensionService(t *testing.T, dbSession *cdb.Session, name string, st *cdbm.Site, tn *cdbm.Tenant, serviceType string, version *string, versionInfo *cdbm.DpuExtensionServiceVersionInfo, activeVersions []string, status string, user *cdbm.User) *cdbm.DpuExtensionService {
+	dpuExtensionServiceDAO := cdbm.NewDpuExtensionServiceDAO(dbSession)
+
+	dpuExtensionService, err := dpuExtensionServiceDAO.Create(context.Background(), nil, cdbm.DpuExtensionServiceCreateInput{
+		Name:           name,
+		SiteID:         st.ID,
+		TenantID:       tn.ID,
+		ServiceType:    serviceType,
+		Version:        version,
+		VersionInfo:    versionInfo,
+		ActiveVersions: activeVersions,
+		Status:         status,
+		CreatedBy:      user.ID,
+	})
+	assert.Nil(t, err)
+
+	return dpuExtensionService
+}
+
+func TestManageDpuExtensionService_UpdateDpuExtensionServicesInDB(t *testing.T) {
+	ctx := context.Background()
+
+	dbSession := testDpuExtensionServiceInitDB(t)
+	defer dbSession.Close()
+
+	testDpuExtensionServiceSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org"
+	ipRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	ipu := util.TestBuildUser(t, dbSession, uuid.NewString(), []string{ipOrg}, ipRoles)
+	ip := util.TestBuildInfrastructureProvider(t, dbSession, "test-provider", ipOrg, ipu)
+
+	// Build test user and tenant
+	user := util.TestBuildUser(t, dbSession, uuid.NewString(), []string{"test-org"}, []string{"ADMIN"})
+	tenant := util.TestBuildTenant(t, dbSession, "test-tenant", "test-org", nil, user)
+
+	st := util.TestBuildSite(t, dbSession, ip, "test-site", cdbm.SiteStatusRegistered, nil, user)
+	st2 := util.TestBuildSite(t, dbSession, ip, "test-site-2", cdbm.SiteStatusRegistered, nil, user)
+	st3 := util.TestBuildSite(t, dbSession, ip, "test-site-3", cdbm.SiteStatusRegistered, nil, user)
+
+	// Create DPU Extension Services with different statuses
+	dpuExtensionService1 := testDpuExtensionServiceBuildDpuExtensionService(t, dbSession, "test-dpuextensionservice-1", st, tenant, "ovs-offload", cdb.GetStrPtr("1"), nil, []string{}, cdbm.DpuExtensionServiceStatusPending, user)
+	dpuExtensionService2 := testDpuExtensionServiceBuildDpuExtensionService(t, dbSession, "test-dpuextensionservice-2", st, tenant, "ovs-offload", cdb.GetStrPtr("1"), nil, []string{}, cdbm.DpuExtensionServiceStatusPending, user)
+	dpuExtensionService3 := testDpuExtensionServiceBuildDpuExtensionService(t, dbSession, "test-dpuextensionservice-3", st, tenant, "ovs-offload", cdb.GetStrPtr("1"), nil, []string{}, cdbm.DpuExtensionServiceStatusReady, user)
+	dpuExtensionService4 := testDpuExtensionServiceBuildDpuExtensionService(t, dbSession, "test-dpuextensionservice-4", st, tenant, "ovs-offload", nil, nil, []string{}, cdbm.DpuExtensionServiceStatusPending, user)
+	dpuExtensionService5 := testDpuExtensionServiceBuildDpuExtensionService(t, dbSession, "test-dpuextensionservice-5", st, tenant, "ovs-offload", nil, nil, []string{}, cdbm.DpuExtensionServiceStatusDeleting, user)
+
+	// Build DPU Extension Services for paged testing
+	pagedDpuExtensionServices := []*cdbm.DpuExtensionService{}
+	pagedInvIds := []string{}
+
+	for i := 0; i < 34; i++ {
+		dpuExtService := testDpuExtensionServiceBuildDpuExtensionService(t, dbSession, fmt.Sprintf("test-dpuextensionservice-paged-%d", i), st3, tenant, "ovs-offload", cdb.GetStrPtr("1"), nil, []string{}, cdbm.DpuExtensionServiceStatusPending, user)
+		pagedDpuExtensionServices = append(pagedDpuExtensionServices, dpuExtService)
+		pagedInvIds = append(pagedInvIds, dpuExtService.ID.String())
+	}
+
+	pagedCtrlDpuExtensionServices := []*cwssaws.DpuExtensionService{}
+	for i := 0; i < 30; i++ {
+		ctrlDpuExtService := &cwssaws.DpuExtensionService{
+			ServiceId:  pagedDpuExtensionServices[i].ID.String(),
+			VersionCtr: 2,
+			LatestVersionInfo: &cwssaws.DpuExtensionServiceVersionInfo{
+				Version: "v1.0.0",
+				Data:    "test-data",
+			},
+			ActiveVersions: []string{"v1.0.0"},
+		}
+		pagedCtrlDpuExtensionServices = append(pagedCtrlDpuExtensionServices, ctrlDpuExtService)
+	}
+
+	tSiteClientPool := testTemporalSiteClientPool(t)
+	assert.NotNil(t, tSiteClientPool)
+
+	temporalsuit := testsuite.WorkflowTestSuite{}
+	env := temporalsuit.NewTestWorkflowEnvironment()
+
+	type fields struct {
+		dbSession      *cdb.Session
+		siteClientPool *sc.ClientPool
+		env            *testsuite.TestWorkflowEnvironment
+	}
+
+	type args struct {
+		ctx                          context.Context
+		siteID                       uuid.UUID
+		dpuExtensionServiceInventory *cwssaws.DpuExtensionServiceInventory
+	}
+
+	tests := []struct {
+		name                        string
+		fields                      fields
+		args                        args
+		updatedDpuExtensionServices []*cdbm.DpuExtensionService
+		deletedDpuExtensionServices []*cdbm.DpuExtensionService
+		wantErr                     bool
+	}{
+		{
+			name: "test DPU Extension Service inventory processing error, non-existent Site",
+			fields: fields{
+				dbSession:      dbSession,
+				siteClientPool: tSiteClientPool,
+				env:            env,
+			},
+			args: args{
+				ctx:    ctx,
+				siteID: uuid.New(),
+				dpuExtensionServiceInventory: &cwssaws.DpuExtensionServiceInventory{
+					DpuExtensionServices: []*cwssaws.DpuExtensionService{},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "test DPU Extension Service inventory processing success with updates",
+			fields: fields{
+				dbSession:      dbSession,
+				siteClientPool: tSiteClientPool,
+				env:            env,
+			},
+			args: args{
+				ctx:    ctx,
+				siteID: st.ID,
+				dpuExtensionServiceInventory: &cwssaws.DpuExtensionServiceInventory{
+					DpuExtensionServices: []*cwssaws.DpuExtensionService{
+						{
+							ServiceId:  dpuExtensionService1.ID.String(),
+							VersionCtr: 2,
+							LatestVersionInfo: &cwssaws.DpuExtensionServiceVersionInfo{
+								Version: "v1.0.0",
+								Data:    "test-data",
+							},
+							ActiveVersions: []string{"v1.0.0"},
+						},
+						{
+							ServiceId:  dpuExtensionService2.ID.String(),
+							VersionCtr: 3,
+						},
+						{
+							ServiceId:  dpuExtensionService3.ID.String(),
+							VersionCtr: 1,
+						},
+						{
+							ServiceId:      dpuExtensionService4.ID.String(),
+							VersionCtr:     1,
+							ActiveVersions: []string{"v1.0.0", "v1.1.0"},
+						},
+					},
+					InventoryStatus: cwssaws.InventoryStatus_INVENTORY_STATUS_SUCCESS,
+				},
+			},
+			updatedDpuExtensionServices: []*cdbm.DpuExtensionService{dpuExtensionService1, dpuExtensionService2, dpuExtensionService3, dpuExtensionService4},
+			deletedDpuExtensionServices: []*cdbm.DpuExtensionService{dpuExtensionService5},
+			wantErr:                     false,
+		},
+		{
+			name: "test DPU Extension Service inventory processing with failed status",
+			fields: fields{
+				dbSession:      dbSession,
+				siteClientPool: tSiteClientPool,
+				env:            env,
+			},
+			args: args{
+				ctx:    ctx,
+				siteID: st2.ID,
+				dpuExtensionServiceInventory: &cwssaws.DpuExtensionServiceInventory{
+					DpuExtensionServices: []*cwssaws.DpuExtensionService{},
+					InventoryStatus:      cwssaws.InventoryStatus_INVENTORY_STATUS_FAILED,
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "test paged DPU Extension Service inventory processing, first page",
+			fields: fields{
+				dbSession:      dbSession,
+				siteClientPool: tSiteClientPool,
+				env:            env,
+			},
+			args: args{
+				ctx:    ctx,
+				siteID: st3.ID,
+				dpuExtensionServiceInventory: &cwssaws.DpuExtensionServiceInventory{
+					DpuExtensionServices: pagedCtrlDpuExtensionServices[0:10],
+					Timestamp:            timestamppb.Now(),
+					InventoryStatus:      cwssaws.InventoryStatus_INVENTORY_STATUS_SUCCESS,
+					InventoryPage: &cwssaws.InventoryPage{
+						CurrentPage: 1,
+						TotalPages:  3,
+						PageSize:    10,
+						TotalItems:  30,
+						ItemIds:     pagedInvIds[0:30],
+					},
+				},
+			},
+			updatedDpuExtensionServices: pagedDpuExtensionServices[0:10],
+			wantErr:                     false,
+		},
+		{
+			name: "test paged DPU Extension Service inventory processing, last page",
+			fields: fields{
+				dbSession:      dbSession,
+				siteClientPool: tSiteClientPool,
+				env:            env,
+			},
+			args: args{
+				ctx:    ctx,
+				siteID: st3.ID,
+				dpuExtensionServiceInventory: &cwssaws.DpuExtensionServiceInventory{
+					DpuExtensionServices: pagedCtrlDpuExtensionServices[20:30],
+					Timestamp:            timestamppb.Now(),
+					InventoryStatus:      cwssaws.InventoryStatus_INVENTORY_STATUS_SUCCESS,
+					InventoryPage: &cwssaws.InventoryPage{
+						CurrentPage: 3,
+						TotalPages:  3,
+						PageSize:    10,
+						TotalItems:  30,
+						ItemIds:     pagedInvIds[0:30],
+					},
+				},
+			},
+			updatedDpuExtensionServices: pagedDpuExtensionServices[20:30],
+			wantErr:                     false,
+		},
+	}
+
+	// Update dpuExtensionService5 to Deleting status and mark it as missing from inventory
+	// to test the deletion path
+	dpuExtensionServiceDAO := cdbm.NewDpuExtensionServiceDAO(dbSession)
+	_, err := dpuExtensionServiceDAO.Update(ctx, nil, cdbm.DpuExtensionServiceUpdateInput{
+		DpuExtensionServiceID: dpuExtensionService5.ID,
+		Status:                cdb.GetStrPtr(cdbm.DpuExtensionServiceStatusDeleting),
+	})
+	assert.NoError(t, err)
+
+	// Set updated timestamp to be older than the stale inventory threshold so it can be deleted
+	_, err = dbSession.DB.Exec("UPDATE dpu_extension_service SET updated = ? WHERE id = ?", time.Now().Add(-time.Duration(util.InventoryReceiptInterval)*2), dpuExtensionService5.ID.String())
+	assert.NoError(t, err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mde := ManageDpuExtensionService{
+				dbSession:      tt.fields.dbSession,
+				siteClientPool: tt.fields.siteClientPool,
+			}
+
+			err := mde.UpdateDpuExtensionServicesInDB(tt.args.ctx, tt.args.siteID, tt.args.dpuExtensionServiceInventory)
+			assert.Equal(t, tt.wantErr, err != nil)
+
+			if tt.wantErr {
+				return
+			}
+
+			dpuExtensionServiceDAO := cdbm.NewDpuExtensionServiceDAO(dbSession)
+
+			// Check that DPU Extension Service status was updated in DB
+			for _, dpuExtService := range tt.updatedDpuExtensionServices {
+				updatedDpuExtService, _ := dpuExtensionServiceDAO.GetByID(ctx, nil, dpuExtService.ID, nil)
+				if dpuExtService.Status != cdbm.DpuExtensionServiceStatusDeleting {
+					assert.Equal(t, cdbm.DpuExtensionServiceStatusReady, updatedDpuExtService.Status)
+				}
+			}
+
+			// Check that DPU Extension Services marked for deletion were deleted
+			for _, dpuExtService := range tt.deletedDpuExtensionServices {
+				_, err = dpuExtensionServiceDAO.GetByID(ctx, nil, dpuExtService.ID, nil)
+				assert.Equal(t, cdb.ErrDoesNotExist, err)
+			}
+		})
+	}
+}
+
+func TestNewManageDpuExtensionService(t *testing.T) {
+	type args struct {
+		dbSession      *cdb.Session
+		siteClientPool *sc.ClientPool
+	}
+
+	dbSession := &cdb.Session{}
+	keyPath, certPath := config.SetupTestCerts(t)
+	defer os.Remove(keyPath)
+	defer os.Remove(certPath)
+
+	cfg := config.NewConfig()
+	cfg.SetTemporalCertPath(certPath)
+	cfg.SetTemporalKeyPath(keyPath)
+	cfg.SetTemporalCaPath(certPath)
+	tcfg, err := cfg.GetTemporalConfig()
+	assert.NoError(t, err)
+	scp := sc.NewClientPool(tcfg)
+
+	tests := []struct {
+		name string
+		args args
+		want ManageDpuExtensionService
+	}{
+		{
+			name: "test new ManageDpuExtensionService instantiation",
+			args: args{
+				dbSession:      dbSession,
+				siteClientPool: scp,
+			},
+			want: ManageDpuExtensionService{
+				dbSession:      dbSession,
+				siteClientPool: scp,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NewManageDpuExtensionService(tt.args.dbSession, tt.args.siteClientPool); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewManageDpuExtensionService() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

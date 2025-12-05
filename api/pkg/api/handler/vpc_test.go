@@ -1,0 +1,2879 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ *
+ * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+ * property and proprietary rights in and to this material, related
+ * documentation and any modifications thereto. Any use, reproduction,
+ * disclosure or distribution of this material and related documentation
+ * without an express license agreement from NVIDIA CORPORATION or
+ * its affiliates is strictly prohibited.
+ */
+
+package handler
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun/extra/bundebug"
+	"github.com/nvidia/carbide-rest/api/internal/config"
+	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
+	"github.com/nvidia/carbide-rest/api/pkg/api/model"
+	"github.com/nvidia/carbide-rest/api/pkg/api/pagination"
+	sc "github.com/nvidia/carbide-rest/api/pkg/client/site"
+	"github.com/nvidia/carbide-rest/common/pkg/otelecho"
+	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
+	"github.com/nvidia/carbide-rest/db/pkg/db"
+	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
+	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
+	swe "github.com/nvidia/carbide-rest/site-workflow/pkg/error"
+	"go.temporal.io/api/enums/v1"
+	temporalClient "go.temporal.io/sdk/client"
+	tmocks "go.temporal.io/sdk/mocks"
+	tp "go.temporal.io/sdk/temporal"
+
+	oteltrace "go.opentelemetry.io/otel/trace"
+)
+
+func testVPCInitDB(t *testing.T) *cdb.Session {
+	dbSession := cdbu.GetTestDBSession(t, false)
+	dbSession.DB.AddQueryHook(bundebug.NewQueryHook(
+		bundebug.WithEnabled(false),
+		bundebug.FromEnv(""),
+	))
+	return dbSession
+}
+
+// reset the tables needed for Allocation tests
+func testVPCSetupSchema(t *testing.T, dbSession *cdb.Session) {
+	// create Infrastructure Provider table
+	err := dbSession.DB.ResetModel(context.Background(), (*cdbm.InfrastructureProvider)(nil))
+	assert.Nil(t, err)
+	// create Site table
+	err = dbSession.DB.ResetModel(context.Background(), (*cdbm.Site)(nil))
+	assert.Nil(t, err)
+	// create Tenant table
+	err = dbSession.DB.ResetModel(context.Background(), (*cdbm.Tenant)(nil))
+	assert.Nil(t, err)
+	// create User table
+	err = dbSession.DB.ResetModel(context.Background(), (*cdbm.User)(nil))
+	assert.Nil(t, err)
+	// create Allocation table
+	err = dbSession.DB.ResetModel(context.Background(), (*cdbm.Allocation)(nil))
+	assert.Nil(t, err)
+	// create VPC Prefix table
+	err = dbSession.DB.ResetModel(context.Background(), (*cdbm.VpcPrefix)(nil))
+	assert.Nil(t, err)
+	// create IP Block table
+	err = dbSession.DB.ResetModel(context.Background(), (*cdbm.IPBlock)(nil))
+	assert.Nil(t, err)
+	// create Subnet table
+	err = dbSession.DB.ResetModel(context.Background(), (*cdbm.Subnet)(nil))
+	assert.Nil(t, err)
+	// create Status Details table
+	err = dbSession.DB.ResetModel(context.Background(), (*cdbm.StatusDetail)(nil))
+	assert.Nil(t, err)
+	// create VPC table
+	err = dbSession.DB.ResetModel(context.Background(), (*cdbm.Vpc)(nil))
+	assert.Nil(t, err)
+}
+
+func testVPCSiteBuildInfrastructureProvider(t *testing.T, dbSession *cdb.Session, name string, org string, user *cdbm.User) *cdbm.InfrastructureProvider {
+	ipDAO := cdbm.NewInfrastructureProviderDAO(dbSession)
+
+	ip, err := ipDAO.CreateFromParams(context.Background(), nil, name, cdb.GetStrPtr("Test Infrastructure Provider"), org, nil, user)
+	assert.Nil(t, err)
+
+	return ip
+}
+
+func testVPCBuildSite(t *testing.T, dbSession *cdb.Session, ip *cdbm.InfrastructureProvider, name string, isNativeNetworkingEnabled bool, isNVLinkPartitionEnabled bool, status string, user *cdbm.User) *cdbm.Site {
+	stDAO := cdbm.NewSiteDAO(dbSession)
+
+	st, err := stDAO.Create(context.Background(), nil, cdbm.SiteCreateInput{
+		Name:                          name,
+		DisplayName:                   cdb.GetStrPtr("Test Site"),
+		Description:                   cdb.GetStrPtr("Test Site Description"),
+		Org:                           ip.Org,
+		InfrastructureProviderID:      ip.ID,
+		SiteControllerVersion:         cdb.GetStrPtr("1.0.0"),
+		SiteAgentVersion:              cdb.GetStrPtr("1.0.0"),
+		RegistrationToken:             cdb.GetStrPtr("1234-5678-9012-3456"),
+		RegistrationTokenExpiration:   cdb.GetTimePtr(cdb.GetCurTime()),
+		IsInfinityEnabled:             false,
+		Config:                        cdbm.SiteConfig{NativeNetworking: isNativeNetworkingEnabled, NVLinkPartition: isNVLinkPartitionEnabled},
+		SerialConsoleHostname:         cdb.GetStrPtr("TestSshHostname"),
+		IsSerialConsoleEnabled:        true,
+		SerialConsoleIdleTimeout:      cdb.GetIntPtr(30),
+		SerialConsoleMaxSessionLength: cdb.GetIntPtr(60),
+		Status:                        status,
+		CreatedBy:                     user.ID,
+	})
+	assert.Nil(t, err)
+
+	return st
+}
+
+func testVPCBuildTenant(t *testing.T, dbSession *cdb.Session, name string, org string, user *cdbm.User) *cdbm.Tenant {
+	tnDAO := cdbm.NewTenantDAO(dbSession)
+
+	tn, err := tnDAO.CreateFromParams(context.Background(), nil, name, cdb.GetStrPtr("Test Tenant"), org, nil, nil, user)
+	assert.Nil(t, err)
+
+	return tn
+}
+
+func testVPCBuildUser(t *testing.T, dbSession *cdb.Session, starfleetID string, org string, roles []string) *cdbm.User {
+	uDAO := cdbm.NewUserDAO(dbSession)
+
+	u, err := uDAO.Create(
+		context.Background(),
+		nil,
+		cdbm.UserCreateInput{
+			AuxiliaryID: nil,
+			StarfleetID: &starfleetID,
+			Email:       cdb.GetStrPtr("jdoe@test.com"),
+			FirstName:   cdb.GetStrPtr("John"),
+			LastName:    cdb.GetStrPtr("Doe"),
+			OrgData: cdbm.OrgData{
+				org: cdbm.Org{
+					ID:          123,
+					Name:        org,
+					DisplayName: org,
+					OrgType:     "ENTERPRISE",
+					Roles:       roles,
+				},
+			},
+		},
+	)
+	assert.Nil(t, err)
+
+	return u
+}
+
+func testVPCSiteBuildAllocation(t *testing.T, dbSession *cdb.Session, st *cdbm.Site, tn *cdbm.Tenant, name string, user *cdbm.User) *cdbm.Allocation {
+	alDAO := cdbm.NewAllocationDAO(dbSession)
+
+	createInput := cdbm.AllocationCreateInput{
+		Name:                     name,
+		Description:              cdb.GetStrPtr("Test Allocation Description"),
+		InfrastructureProviderID: st.InfrastructureProviderID,
+		TenantID:                 tn.ID,
+		SiteID:                   st.ID,
+		Status:                   cdbm.AllocationStatusPending,
+		CreatedBy:                user.ID,
+	}
+	al, err := alDAO.Create(context.Background(), nil, createInput)
+	assert.Nil(t, err)
+
+	return al
+}
+
+func testVPCBuildVPC(t *testing.T, dbSession *cdb.Session, name string, ip *cdbm.InfrastructureProvider, tn *cdbm.Tenant, st *cdbm.Site, nvt *string, defaultNVLinkLogicalPartitionID *uuid.UUID, labels map[string]string, status string, user *cdbm.User) *cdbm.Vpc {
+	vpcDAO := cdbm.NewVpcDAO(dbSession)
+
+	input := cdbm.VpcCreateInput{
+		Name:                      name,
+		Description:               cdb.GetStrPtr("Test Vpc"),
+		Org:                       tn.Org,
+		InfrastructureProviderID:  ip.ID,
+		TenantID:                  tn.ID,
+		SiteID:                    st.ID,
+		NetworkVirtualizationType: nvt,
+		NVLinkLogicalPartitionID:  defaultNVLinkLogicalPartitionID,
+		ControllerVpcID:           db.GetUUIDPtr(uuid.New()),
+		Labels:                    labels,
+		Status:                    status,
+		CreatedBy:                 *user,
+	}
+
+	vpc, err := vpcDAO.Create(context.Background(), nil, input)
+	assert.Nil(t, err)
+
+	return vpc
+}
+
+func testUpdateVPC(t *testing.T, dbSession *cdb.Session, vpc *cdbm.Vpc) *cdbm.Vpc {
+	_, err := dbSession.DB.NewUpdate().Where("id = ?", vpc.ID).Model(vpc).Exec(context.Background())
+	assert.Nil(t, err)
+	return vpc
+}
+
+func testVPCBuildSubnet(t *testing.T, dbSession *cdb.Session, name string, tn *cdbm.Tenant, vpc *cdbm.Vpc, user *cdbm.User) *cdbm.Subnet {
+	subnetDAO := cdbm.NewSubnetDAO(dbSession)
+
+	subnet, err := subnetDAO.Create(context.Background(), nil, cdbm.SubnetCreateInput{
+		Name:         name,
+		Description:  cdb.GetStrPtr("Test Subnet"),
+		Org:          tn.Org,
+		SiteID:       vpc.SiteID,
+		VpcID:        vpc.ID,
+		TenantID:     tn.ID,
+		PrefixLength: 0,
+		Status:       cdbm.SubnetStatusPending,
+		CreatedBy:    user.ID,
+	})
+	assert.Nil(t, err)
+
+	return subnet
+}
+
+func testVPCBuildVPCPrefix(t *testing.T, dbSession *cdb.Session, name string, tn *cdbm.Tenant, vpc *cdbm.Vpc, ipbID *uuid.UUID, prefix string, user *cdbm.User) *cdbm.VpcPrefix {
+	vpcPrefixDAO := cdbm.NewVpcPrefixDAO(dbSession)
+
+	vpcPrefix, err := vpcPrefixDAO.Create(context.Background(), nil, cdbm.VpcPrefixCreateInput{
+		Name:         name,
+		SiteID:       vpc.SiteID,
+		VpcID:        vpc.ID,
+		TenantID:     tn.ID,
+		IpBlockID:    ipbID,
+		Prefix:       prefix,
+		PrefixLength: 24,
+		Status:       cdbm.VpcPrefixStatusReady,
+		CreatedBy:    user.ID,
+	})
+	assert.Nil(t, err)
+
+	return vpcPrefix
+}
+
+func TestCreateVPCHandler_Handle(t *testing.T) {
+	ctx := context.Background()
+	type fields struct {
+		dbSession *cdb.Session
+		tc        temporalClient.Client
+		cfg       *config.Config
+	}
+	type args struct {
+		reqData     *model.APIVpcCreateRequest
+		reqOrg      string
+		reqUser     *cdbm.User
+		respCode    int
+		respMessage string
+	}
+
+	dbSession := testSiteInitDB(t)
+	defer dbSession.Close()
+
+	testVPCSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org"
+	ipOrgRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	tnOrg := "test-tenant-org"
+	tnOrgRoles := []string{"FORGE_TENANT_ADMIN"}
+
+	ipu := testVPCBuildUser(t, dbSession, "test-starfleet-id-1", ipOrg, ipOrgRoles)
+	ip := testVPCSiteBuildInfrastructureProvider(t, dbSession, "test-infrastructure-provider", ipOrg, ipu)
+
+	tnu := testVPCBuildUser(t, dbSession, "test-starfleet-id-2", tnOrg, tnOrgRoles)
+	tn := testVPCBuildTenant(t, dbSession, "test-tenant", tnOrg, tnu)
+
+	tnu2 := testVPCBuildUser(t, dbSession, "test-starfleet-id-3", tnOrg, tnOrgRoles)
+	tn2 := testVPCBuildTenant(t, dbSession, "test-tenant-2", tnOrg, tnu2)
+
+	st1 := testVPCBuildSite(t, dbSession, ip, "test-site-1", true, true, cdbm.SiteStatusRegistered, ipu)
+	assert.NotNil(t, st1)
+
+	st2 := testVPCBuildSite(t, dbSession, ip, "test-site-2", true, false, cdbm.SiteStatusRegistered, ipu)
+	assert.NotNil(t, st2)
+
+	st3 := testVPCBuildSite(t, dbSession, ip, "test-site-3", false, false, cdbm.SiteStatusRegistered, ipu)
+	assert.NotNil(t, st3)
+
+	al := testVPCSiteBuildAllocation(t, dbSession, st1, tn, "test-allocation", ipu)
+	assert.NotNil(t, al)
+
+	al2 := testVPCSiteBuildAllocation(t, dbSession, st3, tn, "test-allocation-3", ipu)
+	assert.NotNil(t, al2)
+
+	// Associate tenant 1 with site 1
+	ts1t1 := testBuildTenantSiteAssociation(t, dbSession, tnOrg, tn.ID, st1.ID, tnu.ID)
+	assert.NotNil(t, ts1t1)
+
+	// Associate tenant 1 with site 2
+	ts2t1 := testBuildTenantSiteAssociation(t, dbSession, tnOrg, tn.ID, st2.ID, tnu.ID)
+	assert.NotNil(t, ts2t1)
+
+	// Associate tenant 2 with site 1
+	ts1t2 := testBuildTenantSiteAssociation(t, dbSession, tnOrg, tn2.ID, st1.ID, tnu2.ID)
+	assert.NotNil(t, ts1t2)
+
+	// Associate tenant 2 with site 2
+	ts2t2 := testBuildTenantSiteAssociation(t, dbSession, tnOrg, tn2.ID, st2.ID, tnu2.ID)
+	assert.NotNil(t, ts2t2)
+
+	// NSG for tenant 1 on site 1
+	nsgTenant1Site1 := testBuildNetworkSecurityGroup(t, dbSession, "test-nsg-1", tn, st1, cdbm.NetworkSecurityGroupStatusReady)
+	assert.NotNil(t, nsgTenant1Site1)
+
+	// NSG for tenant 1 on site 2
+	nsgTenant1Site2 := testBuildNetworkSecurityGroup(t, dbSession, "test-nsg-2", tn, st2, cdbm.NetworkSecurityGroupStatusReady)
+	assert.NotNil(t, nsgTenant1Site2)
+
+	// NSG for tenant 2 on site 1
+	nsgTenant2Site1 := testBuildNetworkSecurityGroup(t, dbSession, "test-nsg-3", tn2, st1, cdbm.NetworkSecurityGroupStatusReady)
+	assert.NotNil(t, nsgTenant2Site1)
+
+	// NVLink Logical Partition for tenant 1 on site 1
+	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", tnOrg, st1, tn, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	assert.NotNil(t, nvllp1)
+
+	e := echo.New()
+	cfg := common.GetTestConfig()
+	tc := &tmocks.Client{}
+
+	// Mock per-Site client for st1
+	tsc := &tmocks.Client{}
+
+	// Mock per-Site client for st3
+	tst3 := &tmocks.Client{}
+
+	// Prepare client pool for sync calls
+	// to site(s).
+	tcfg, _ := cfg.GetTemporalConfig()
+	scp := sc.NewClientPool(tcfg)
+	scp.IDClientMap[st1.ID.String()] = tsc
+	scp.IDClientMap[st2.ID.String()] = tsc
+	scp.IDClientMap[st3.ID.String()] = tst3
+
+	wid := "test-workflow-id"
+	wrun := &tmocks.WorkflowRun{}
+	wrun.On("GetID").Return(wid)
+
+	wrun.Mock.On("Get", mock.Anything, mock.Anything).Return(nil)
+
+	tc.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
+		mock.AnythingOfType("func(internal.Context, uuid.UUID, uuid.UUID) error"), mock.AnythingOfType("uuid.UUID"),
+		mock.AnythingOfType("uuid.UUID")).Return(wrun, nil)
+
+	tsc.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
+		"CreateVPCV2", mock.Anything).Return(wrun, nil)
+
+	// Mock timeout error
+	wruntimeout := &tmocks.WorkflowRun{}
+	wruntimeout.On("GetID").Return("test-workflow-timeout-id")
+
+	wruntimeout.Mock.On("Get", mock.Anything, mock.Anything).Return(tp.NewTimeoutError(enums.TIMEOUT_TYPE_UNSPECIFIED, nil, nil))
+
+	tst3.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
+		"CreateVPCV2", mock.Anything).Return(wruntimeout, nil)
+
+	tst3.Mock.On("TerminateWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	// OTEL Spanner configuration
+	tracer, _, ctx := common.TestCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		name               string
+		fields             fields
+		args               args
+		wantErr            bool
+		verifyChildSpanner bool
+	}{
+		{
+			name: "test VPC create API endpoint success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcCreateRequest{
+					Name:                      "Test VPC",
+					Description:               cdb.GetStrPtr("Test VPC Description"),
+					SiteID:                    st1.ID.String(),
+					NetworkVirtualizationType: cdb.GetStrPtr(cdbm.VpcFNN),
+					NetworkSecurityGroupID:    &nsgTenant1Site1.ID,
+					Labels: map[string]string{
+						"vpc-dpu-zone": "east1",
+						"vpc-gpu-zone": "west1",
+					},
+					NVLinkLogicalPartitionID: cdb.GetStrPtr(nvllp1.ID.String()),
+				},
+				reqOrg:   tnOrg,
+				reqUser:  tnu,
+				respCode: http.StatusCreated,
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "test VPC create API endpoint NSG not owned by tenant - fail",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcCreateRequest{
+					Name:                      "Test VPC bad nsg tenant",
+					Description:               cdb.GetStrPtr("Test VPC Description"),
+					SiteID:                    st1.ID.String(),
+					NetworkVirtualizationType: cdb.GetStrPtr(cdbm.VpcFNN),
+					NetworkSecurityGroupID:    &nsgTenant2Site1.ID,
+
+					Labels: map[string]string{
+						"vpc-dpu-zone": "east1",
+						"vpc-gpu-zone": "west1",
+					},
+				},
+				reqOrg:   tnOrg,
+				reqUser:  tnu,
+				respCode: http.StatusForbidden,
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "test VPC create API endpoint NSG not owned by site - fail",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcCreateRequest{
+					Name:                      "Test VPC bad nsg tenant",
+					Description:               cdb.GetStrPtr("Test VPC Description"),
+					SiteID:                    st1.ID.String(),
+					NetworkVirtualizationType: cdb.GetStrPtr(cdbm.VpcFNN),
+					NetworkSecurityGroupID:    &nsgTenant1Site2.ID,
+
+					Labels: map[string]string{
+						"vpc-dpu-zone": "east1",
+						"vpc-gpu-zone": "west1",
+					},
+				},
+				reqOrg:   tnOrg,
+				reqUser:  tnu,
+				respCode: http.StatusForbidden,
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "test VPC create API endpoint NSG not found - fail",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcCreateRequest{
+					Name:                      "Test VPC bad nsg tenant",
+					Description:               cdb.GetStrPtr("Test VPC Description"),
+					SiteID:                    st1.ID.String(),
+					NetworkVirtualizationType: cdb.GetStrPtr(cdbm.VpcFNN),
+					NetworkSecurityGroupID:    cdb.GetStrPtr(uuid.NewString()),
+
+					Labels: map[string]string{
+						"vpc-dpu-zone": "east1",
+						"vpc-gpu-zone": "west1",
+					},
+				},
+				reqOrg:   tnOrg,
+				reqUser:  tnu,
+				respCode: http.StatusBadRequest,
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "error when VPC with same name already exists",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcCreateRequest{
+					Name:        "Test VPC",
+					Description: cdb.GetStrPtr("Test VPC Description"),
+					SiteID:      st1.ID.String(),
+				},
+				reqOrg:   tnOrg,
+				reqUser:  tnu,
+				respCode: http.StatusConflict,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC create API endpoint failure, org does not have a Tenant associated",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcCreateRequest{
+					Name:        "Test VPC",
+					Description: cdb.GetStrPtr("Test VPC Description"),
+					SiteID:      st1.ID.String(),
+				},
+				reqOrg:   ipOrg,
+				reqUser:  ipu,
+				respCode: http.StatusForbidden,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC create API endpoint failure, invalid Site ID in request",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcCreateRequest{
+					Name:        "Test VPC",
+					Description: cdb.GetStrPtr("Test VPC Description"),
+					SiteID:      uuid.NewString(),
+				},
+				reqOrg:   tnOrg,
+				reqUser:  tnu,
+				respCode: http.StatusBadRequest,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC create API endpoint failure, Tenant has no Site Allocation",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcCreateRequest{
+					Name:        "Test VPC",
+					Description: cdb.GetStrPtr("Test VPC Description"),
+					SiteID:      st2.ID.String(),
+				},
+				reqOrg:   tnOrg,
+				reqUser:  tnu,
+				respCode: http.StatusForbidden,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC create API endpoint fail, site hasn't been enabled for FNN",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tst3,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcCreateRequest{
+					Name:                      "Test VPC 3",
+					Description:               cdb.GetStrPtr("Test VPC Description 3"),
+					SiteID:                    st3.ID.String(),
+					NetworkVirtualizationType: cdb.GetStrPtr(cdbm.VpcFNN),
+				},
+				reqOrg:      tnOrg,
+				reqUser:     tnu,
+				respCode:    http.StatusBadRequest,
+				respMessage: "Site specified in request data must have native networking enabled in order to create FNN VPCs",
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "test VPC create API endpoint fail, workflow timeout",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tst3,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcCreateRequest{
+					Name:        "Test VPC 3",
+					Description: cdb.GetStrPtr("Test VPC Description 3"),
+					SiteID:      st3.ID.String(),
+					Labels: map[string]string{
+						"vpc-dpu-zone": "east1",
+						"vpc-gpu-zone": "west1",
+					},
+				},
+				reqOrg:   tnOrg,
+				reqUser:  tnu,
+				respCode: http.StatusInternalServerError,
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "test VPC create API endpoint failure, invalid label key",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcCreateRequest{
+					Name:        "Test VPC",
+					Description: cdb.GetStrPtr("Test VPC Description"),
+					SiteID:      st1.ID.String(),
+					Labels: map[string]string{
+						"ygsV9MoUjep1rCwbQskkF9wfMolE3oDTCcxuYSJCx9TLKepCIku9pnHfIkxCxHkb7ucbsBL4hyLqQaHoEqpTBmfoX4Un7sGvQdHGZ7nb68JJEJ3ocFAtyCMCBt66z3ldnTqp8SXXOIhNsOh35MLYQjI8557Pu6o91TsEBqyTz0yz68HHmfNgJoreHpXfeujq4cpElUXXbQ3xfFICkNyghXgFZ0MLs2o0u1Nd29aB113X5g3FKJBCskW6eBULNmeFFG61DMM37q": "east1",
+					},
+				},
+				reqOrg:      tnOrg,
+				reqUser:     tnu,
+				respCode:    http.StatusBadRequest,
+				respMessage: "Label key must contain at least 1 character and a maximum of 255 characters",
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			csh := CreateVPCHandler{
+				dbSession: tt.fields.dbSession,
+				tc:        tt.fields.tc,
+				scp:       scp,
+				cfg:       tt.fields.cfg,
+			}
+
+			jsonData, _ := json.Marshal(tt.args.reqData)
+
+			// Setup echo server/context
+			req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(string(jsonData)))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+
+			ec := e.NewContext(req, rec)
+			ec.SetParamNames("orgName")
+			ec.SetParamValues(tt.args.reqOrg)
+			ec.Set("user", tt.args.reqUser)
+
+			ctx = context.WithValue(ctx, otelecho.TracerKey, tracer)
+			ec.SetRequest(ec.Request().WithContext(ctx))
+
+			if err := csh.Handle(ec); (err != nil) != tt.wantErr {
+				t.Errorf("CreateVPCHandler.Handle() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if tt.args.respCode != rec.Code {
+				t.Errorf("CreateVPCHandler.Handle() resp = %v", rec.Body.String())
+			}
+
+			require.Equal(t, tt.args.respCode, rec.Code)
+			if tt.args.respMessage != "" {
+				assert.Contains(t, rec.Body.String(), tt.args.respMessage)
+			}
+			if tt.args.respCode != http.StatusCreated {
+				return
+			}
+
+			rst := &model.APIVpc{}
+
+			serr := json.Unmarshal(rec.Body.Bytes(), rst)
+			if serr != nil {
+				t.Fatal(serr)
+			}
+
+			assert.Equal(t, rst.Name, tt.args.reqData.Name)
+			assert.Equal(t, *rst.Description, *tt.args.reqData.Description)
+			if tt.args.reqData.NetworkVirtualizationType != nil {
+				assert.Equal(t, rst.NetworkVirtualizationType, tt.args.reqData.NetworkVirtualizationType)
+			} else {
+				assert.Equal(t, *rst.NetworkVirtualizationType, cdbm.VpcEthernetVirtualizer)
+			}
+			assert.Equal(t, rst.Status, cdbm.VpcStatusReady)
+			assert.Equal(t, len(rst.StatusHistory), 1)
+
+			if tt.args.reqData.NVLinkLogicalPartitionID != nil {
+				assert.Equal(t, *rst.NVLinkLogicalPartitionID, *tt.args.reqData.NVLinkLogicalPartitionID)
+			} else {
+				assert.Nil(t, rst.NVLinkLogicalPartitionID)
+			}
+
+			if tt.args.reqData.Labels != nil {
+				assert.Equal(t, len(rst.Labels), len(tt.args.reqData.Labels))
+			}
+
+			if tt.verifyChildSpanner {
+				span := oteltrace.SpanFromContext(ec.Request().Context())
+				assert.True(t, span.SpanContext().IsValid())
+			}
+		})
+	}
+}
+
+func TestUpdateVPCHandler_Handle(t *testing.T) {
+	ctx := context.Background()
+	type fields struct {
+		dbSession *cdb.Session
+		tc        temporalClient.Client
+		cfg       *config.Config
+	}
+	type args struct {
+		reqData     *model.APIVpcUpdateRequest
+		reqOrg      string
+		reqUser     *cdbm.User
+		reqVPCID    string
+		reqVPC      *cdbm.Vpc
+		respCode    int
+		respMessage string
+	}
+
+	dbSession := testSiteInitDB(t)
+	defer dbSession.Close()
+
+	testVPCSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org"
+	ipOrgRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	tnOrg := "test-tenant-org"
+	tnOrgRoles := []string{"FORGE_TENANT_ADMIN"}
+
+	ipu := testVPCBuildUser(t, dbSession, "test-starfleet-id-1", ipOrg, ipOrgRoles)
+	ip := testVPCSiteBuildInfrastructureProvider(t, dbSession, "test-infrastructure-provider", ipOrg, ipu)
+
+	tnu := testVPCBuildUser(t, dbSession, "test-starfleet-id-2", tnOrg, tnOrgRoles)
+	tn := testVPCBuildTenant(t, dbSession, "test-tenant", tnOrg, tnu)
+
+	tnu2 := testVPCBuildUser(t, dbSession, "test-starfleet-id-3", tnOrg, tnOrgRoles)
+	tn2 := testVPCBuildTenant(t, dbSession, "test-tenant-2", tnOrg, tnu2)
+
+	st := testVPCBuildSite(t, dbSession, ip, "test-site-1", false, true, cdbm.SiteStatusRegistered, ipu)
+	assert.NotNil(t, st)
+
+	// Site with no allocations
+	st2 := testVPCBuildSite(t, dbSession, ip, "test-site-2", false, false, cdbm.SiteStatusRegistered, ipu)
+	assert.NotNil(t, st2)
+
+	// Site with no allocations
+	st3 := testVPCBuildSite(t, dbSession, ip, "test-site-3", false, false, cdbm.SiteStatusRegistered, ipu)
+	assert.NotNil(t, st3)
+
+	al := testVPCSiteBuildAllocation(t, dbSession, st, tn, "test-allocation", ipu)
+	assert.NotNil(t, al)
+
+	al1 := testVPCSiteBuildAllocation(t, dbSession, st2, tn, "test-allocation-1", ipu)
+	assert.NotNil(t, al1)
+
+	// NVLink Logical Partition for tenant 1 on site 1
+	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", tnOrg, st, tn, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	assert.NotNil(t, nvllp1)
+
+	vpc := testVPCBuildVPC(t, dbSession, "test-vpc", ip, tn, st, cdb.GetStrPtr(cdbm.VpcEthernetVirtualizer), cdb.GetUUIDPtr(nvllp1.ID), map[string]string{"zone": "west1"}, cdbm.VpcStatusReady, tnu)
+	assert.NotNil(t, vpc)
+
+	vpc2 := testVPCBuildVPC(t, dbSession, "test-vpc-2", ip, tn, st, cdb.GetStrPtr(cdbm.VpcEthernetVirtualizer), nil, map[string]string{"zone": "wes2"}, cdbm.VpcStatusReady, tnu)
+	assert.NotNil(t, vpc2)
+
+	vpc3 := testVPCBuildVPC(t, dbSession, "test-vpc-3", ip, tn, st2, cdb.GetStrPtr(cdbm.VpcEthernetVirtualizer), nil, map[string]string{"zone": "west3"}, cdbm.VpcStatusReady, tnu)
+	assert.NotNil(t, vpc2)
+
+	vpc4 := testVPCBuildVPC(t, dbSession, "test-vpc-3", ip, tn, st3, cdb.GetStrPtr(cdbm.VpcEthernetVirtualizer), nil, map[string]string{"zone": "west6"}, cdbm.VpcStatusReady, tnu)
+	assert.NotNil(t, vpc4)
+
+	// Associate tenant 1 with site 1
+	ts1t1 := testBuildTenantSiteAssociation(t, dbSession, tnOrg, tn.ID, st.ID, tnu.ID)
+	assert.NotNil(t, ts1t1)
+
+	// Associate tenant 1 with site 2
+	ts2t1 := testBuildTenantSiteAssociation(t, dbSession, tnOrg, tn.ID, st2.ID, tnu.ID)
+	assert.NotNil(t, ts2t1)
+
+	// Associate tenant 2 with site 1
+	ts1t2 := testBuildTenantSiteAssociation(t, dbSession, tnOrg, tn2.ID, st.ID, tnu2.ID)
+	assert.NotNil(t, ts1t2)
+
+	// Associate tenant 2 with site 2
+	ts2t2 := testBuildTenantSiteAssociation(t, dbSession, tnOrg, tn2.ID, st2.ID, tnu2.ID)
+	assert.NotNil(t, ts2t2)
+
+	// NSG for tenant 1 on site 1
+	nsgTenant1Site1 := testBuildNetworkSecurityGroup(t, dbSession, "test-nsg-1", tn, st, cdbm.NetworkSecurityGroupStatusReady)
+	assert.NotNil(t, nsgTenant1Site1)
+
+	// NSG for tenant 1 on site 2
+	nsgTenant1Site2 := testBuildNetworkSecurityGroup(t, dbSession, "test-nsg-2", tn, st2, cdbm.NetworkSecurityGroupStatusReady)
+	assert.NotNil(t, nsgTenant1Site2)
+
+	// NSG for tenant 2 on site 1
+	nsgTenant2Site1 := testBuildNetworkSecurityGroup(t, dbSession, "test-nsg-3", tn2, st, cdbm.NetworkSecurityGroupStatusReady)
+	assert.NotNil(t, nsgTenant2Site1)
+
+	e := echo.New()
+	cfg := common.GetTestConfig()
+	tc := &tmocks.Client{}
+
+	// OTEL Spanner configuration
+	tracer, _, ctx := common.TestCommonTraceProviderSetup(t, ctx)
+
+	// Mock per-Site client for st3
+	tsc := &tmocks.Client{}
+	tst := &tmocks.Client{}
+
+	// Prepare client pool for sync calls
+	// to site(s).
+	tcfg, _ := cfg.GetTemporalConfig()
+	scp := sc.NewClientPool(tcfg)
+	scp.IDClientMap[st.ID.String()] = tsc
+	scp.IDClientMap[st2.ID.String()] = tst
+
+	wid := "test-workflow-id"
+	wrun := &tmocks.WorkflowRun{}
+	wrun.On("GetID").Return(wid)
+
+	wrun.Mock.On("Get", mock.Anything, mock.Anything).Return(nil)
+
+	tc.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
+		mock.AnythingOfType("func(internal.Context, uuid.UUID, uuid.UUID) error"), mock.AnythingOfType("uuid.UUID"),
+		mock.AnythingOfType("uuid.UUID")).Return(wrun, nil)
+
+	tsc.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
+		"UpdateVPC", mock.Anything).Return(wrun, nil)
+
+	// Mock timeout error
+	wruntimeout := &tmocks.WorkflowRun{}
+	wruntimeout.On("GetID").Return("test-workflow-timeout-id")
+
+	wruntimeout.Mock.On("Get", mock.Anything, mock.Anything).Return(tp.NewTimeoutError(enums.TIMEOUT_TYPE_UNSPECIFIED, nil, nil))
+
+	tst.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
+		"UpdateVPC", mock.Anything).Return(wruntimeout, nil)
+
+	tst.Mock.On("TerminateWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	tests := []struct {
+		name               string
+		fields             fields
+		args               args
+		wantErr            bool
+		verifyChildSpanner bool
+	}{
+		{
+			name: "test VPC update success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcUpdateRequest{
+					Name:        cdb.GetStrPtr("test-vpc"),
+					Description: cdb.GetStrPtr("Test VPC Description"),
+					Labels: map[string]string{
+						"zone": "westnew",
+					},
+					NVLinkLogicalPartitionID: cdb.GetStrPtr(nvllp1.ID.String()),
+				},
+				reqVPCID: vpc.ID.String(),
+				reqVPC:   vpc,
+				reqOrg:   tnOrg,
+				reqUser:  tnu,
+				respCode: http.StatusOK,
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "test VPC update NSG with bad tenant - fail",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcUpdateRequest{
+					Name:                   cdb.GetStrPtr(uuid.NewString()),
+					Description:            cdb.GetStrPtr("Test VPC Description"),
+					NetworkSecurityGroupID: &nsgTenant2Site1.ID,
+					Labels: map[string]string{
+						"zone": "westnew",
+					},
+				},
+				reqVPCID: vpc.ID.String(),
+				reqVPC:   vpc,
+				reqOrg:   tnOrg,
+				reqUser:  tnu,
+				respCode: http.StatusForbidden,
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "test VPC update NSG with bad site - fail",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcUpdateRequest{
+					Name:                   cdb.GetStrPtr(uuid.NewString()),
+					Description:            cdb.GetStrPtr("Test VPC Description"),
+					NetworkSecurityGroupID: &nsgTenant1Site2.ID,
+					Labels: map[string]string{
+						"zone": "westnew",
+					},
+				},
+				reqVPCID: vpc.ID.String(),
+				reqVPC:   vpc,
+				reqOrg:   tnOrg,
+				reqUser:  tnu,
+				respCode: http.StatusForbidden,
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "test VPC update NSG with NSG not found - fail",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcUpdateRequest{
+					Name:                   cdb.GetStrPtr(uuid.NewString()),
+					Description:            cdb.GetStrPtr("Test VPC Description"),
+					NetworkSecurityGroupID: cdb.GetStrPtr(uuid.NewString()),
+					Labels: map[string]string{
+						"zone": "westnew",
+					},
+				},
+				reqVPCID: vpc.ID.String(),
+				reqVPC:   vpc,
+				reqOrg:   tnOrg,
+				reqUser:  tnu,
+				respCode: http.StatusBadRequest,
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "test VPC update to clear NSG - success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcUpdateRequest{
+					Name:                   cdb.GetStrPtr(uuid.NewString()),
+					Description:            cdb.GetStrPtr("Test VPC Description"),
+					NetworkSecurityGroupID: cdb.GetStrPtr(""),
+					Labels: map[string]string{
+						"zone": "westnew",
+					},
+				},
+				reqVPCID: vpc.ID.String(),
+				reqVPC:   vpc,
+				reqOrg:   tnOrg,
+				reqUser:  tnu,
+				respCode: http.StatusOK,
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+
+		{
+			name: "test VPC update error due to name clash",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcUpdateRequest{
+					Name:        cdb.GetStrPtr("test-vpc-2"),
+					Description: cdb.GetStrPtr("Test VPC Description"),
+				},
+				reqVPCID: vpc.ID.String(),
+				reqVPC:   vpc,
+				reqOrg:   tnOrg,
+				reqUser:  tnu,
+				respCode: http.StatusConflict,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC update success with same name",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcUpdateRequest{
+					Name:        cdb.GetStrPtr("test-vpc-2"),
+					Description: cdb.GetStrPtr("Test VPC Description"),
+				},
+				reqVPCID: vpc2.ID.String(),
+				reqVPC:   vpc2,
+				reqOrg:   tnOrg,
+				reqUser:  tnu,
+				respCode: http.StatusOK,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC update error, org does not have a Tenant associated",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcUpdateRequest{
+					Name:        cdb.GetStrPtr("test-vpc"),
+					Description: cdb.GetStrPtr("Test VPC Description"),
+				},
+				reqVPCID: vpc.ID.String(),
+				reqVPC:   vpc,
+				reqOrg:   ipOrg,
+				reqUser:  ipu,
+				respCode: http.StatusForbidden,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC update error, invalid VPC ID in request",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcUpdateRequest{
+					Name:        cdb.GetStrPtr("test-vpc"),
+					Description: cdb.GetStrPtr("Test VPC Description"),
+				},
+				reqVPC:   vpc,
+				reqVPCID: "",
+				reqOrg:   tnOrg,
+				reqUser:  tnu,
+				respCode: http.StatusBadRequest,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC update error due to no allocations",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcUpdateRequest{
+					Name:        cdb.GetStrPtr("test-vpc-3"),
+					Description: cdb.GetStrPtr("Test VPC Description"),
+				},
+				reqVPCID: vpc4.ID.String(),
+				reqVPC:   vpc4,
+				reqOrg:   tnOrg,
+				reqUser:  tnu,
+				respCode: http.StatusForbidden,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC update API endpoint fail, workflow timeout",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tst,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcUpdateRequest{
+					Name:        cdb.GetStrPtr("Test VPC 3"),
+					Description: cdb.GetStrPtr("Test VPC Description 3"),
+					Labels: map[string]string{
+						"vpc-dpu-zone": "east1",
+						"vpc-gpu-zone": "west1",
+					},
+				},
+				reqOrg:      tnOrg,
+				reqVPCID:    vpc3.ID.String(),
+				reqVPC:      vpc3,
+				reqUser:     tnu,
+				respCode:    http.StatusInternalServerError,
+				respMessage: "Failed to update VPC, timeout occurred executing workflow on Site: Test timeout",
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "test VPC update API endpoint failure, invalid label key",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tsc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcUpdateRequest{
+					Name:        db.GetStrPtr("Test VPC"),
+					Description: cdb.GetStrPtr("Test VPC Description"),
+					Labels: map[string]string{
+						"ygsV9MoUjep1rCwbQskkF9wfMolE3oDTCcxuYSJCx9TLKepCIku9pnHfIkxCxHkb7ucbsBL4hyLqQaHoEqpTBmfoX4Un7sGvQdHGZ7nb68JJEJ3ocFAtyCMCBt66z3ldnTqp8SXXOIhNsOh35MLYQjI8557Pu6o91TsEBqyTz0yz68HHmfNgJoreHpXfeujq4cpElUXXbQ3xfFICkNyghXgFZ0MLs2o0u1Nd29aB113X5g3FKJBCskW6eBULNmeFFG61DMM37q": "east1",
+					},
+				},
+				reqOrg:      tnOrg,
+				reqVPCID:    vpc.ID.String(),
+				reqVPC:      vpc,
+				reqUser:     tnu,
+				respCode:    http.StatusBadRequest,
+				respMessage: "Label key must contain at least 1 character and a maximum of 255 characters",
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			csh := UpdateVPCHandler{
+				dbSession: tt.fields.dbSession,
+				tc:        tt.fields.tc,
+				scp:       scp,
+				cfg:       tt.fields.cfg,
+			}
+
+			jsonData, _ := json.Marshal(tt.args.reqData)
+
+			// Setup echo server/context
+			req := httptest.NewRequest(http.MethodPatch, "/", strings.NewReader(string(jsonData)))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+
+			ec := e.NewContext(req, rec)
+			ec.SetPath(fmt.Sprintf("/v2/org/%v/carbide/vpc/%v", tt.args.reqOrg, tt.args.reqVPCID))
+			ec.SetParamNames("orgName", "id")
+			ec.SetParamValues(tt.args.reqOrg, tt.args.reqVPCID)
+			ec.Set("user", tt.args.reqUser)
+
+			ctx = context.WithValue(ctx, otelecho.TracerKey, tracer)
+			ec.SetRequest(ec.Request().WithContext(ctx))
+
+			if err := csh.Handle(ec); (err != nil) != tt.wantErr {
+				t.Errorf("UpdateVPCHandler.Handle() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if tt.args.respCode != rec.Code {
+				t.Errorf("UpdateVPCHandler.Handle() resp = %v", rec.Body.String())
+			}
+
+			if tt.args.respMessage != "" {
+				assert.Contains(t, rec.Body.String(), tt.args.respMessage)
+			}
+
+			require.Equal(t, tt.args.respCode, rec.Code)
+			if tt.args.respCode != http.StatusOK {
+				return
+			}
+
+			rst := &model.APIVpc{}
+
+			serr := json.Unmarshal(rec.Body.Bytes(), rst)
+			if serr != nil {
+				t.Fatal(serr)
+			}
+
+			assert.Equal(t, rst.Name, *tt.args.reqData.Name)
+			assert.Equal(t, *rst.Description, *tt.args.reqData.Description)
+			assert.NotEqual(t, rst.Updated.String(), tt.args.reqVPC.Updated.String())
+
+			if tt.args.reqData.NVLinkLogicalPartitionID != nil {
+				assert.Equal(t, *rst.NVLinkLogicalPartitionID, *tt.args.reqData.NVLinkLogicalPartitionID)
+			}
+
+			if tt.args.reqData.Labels != nil {
+				assert.Equal(t, len(rst.Labels), len(tt.args.reqData.Labels))
+			}
+
+			if tt.verifyChildSpanner {
+				span := oteltrace.SpanFromContext(ec.Request().Context())
+				assert.True(t, span.SpanContext().IsValid())
+			}
+		})
+	}
+}
+
+func TestUpdateVirtualizationVPCHandler_Handle(t *testing.T) {
+	ctx := context.Background()
+	type fields struct {
+		dbSession *cdb.Session
+		tc        temporalClient.Client
+		cfg       *config.Config
+	}
+	type args struct {
+		reqData     *model.APIVpcVirtualizationUpdateRequest
+		reqOrg      string
+		reqUser     *cdbm.User
+		reqVPCID    string
+		reqVPC      *cdbm.Vpc
+		respCode    int
+		respMessage string
+	}
+
+	dbSession := testSiteInitDB(t)
+	defer dbSession.Close()
+
+	testVPCSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org"
+	ipOrgRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	tnOrg := "test-tenant-org"
+	tnOrgRoles := []string{"FORGE_TENANT_ADMIN"}
+
+	ipu := testVPCBuildUser(t, dbSession, "test-starfleet-id-1", ipOrg, ipOrgRoles)
+	ip := testVPCSiteBuildInfrastructureProvider(t, dbSession, "test-infrastructure-provider", ipOrg, ipu)
+
+	tnu := testVPCBuildUser(t, dbSession, "test-starfleet-id-2", tnOrg, tnOrgRoles)
+	tn := testVPCBuildTenant(t, dbSession, "test-tenant", tnOrg, tnu)
+
+	st := testVPCBuildSite(t, dbSession, ip, "test-site-1", false, true, cdbm.SiteStatusRegistered, ipu)
+	assert.NotNil(t, st)
+
+	ts1 := testBuildTenantSiteAssociation(t, dbSession, tnOrg, tn.ID, st.ID, tnu.ID)
+	assert.NotNil(t, ts1)
+
+	// Site with no allocations
+	st2 := testVPCBuildSite(t, dbSession, ip, "test-site-2", false, false, cdbm.SiteStatusRegistered, ipu)
+	assert.NotNil(t, st2)
+
+	ts2 := testBuildTenantSiteAssociation(t, dbSession, tnOrg, tn.ID, st2.ID, tnu.ID)
+	assert.NotNil(t, ts2)
+
+	// Site with no allocations
+	st3 := testVPCBuildSite(t, dbSession, ip, "test-site-3", false, false, cdbm.SiteStatusRegistered, ipu)
+	assert.NotNil(t, st3)
+
+	al := testVPCSiteBuildAllocation(t, dbSession, st, tn, "test-allocation", ipu)
+	assert.NotNil(t, al)
+
+	al1 := testVPCSiteBuildAllocation(t, dbSession, st2, tn, "test-allocation-1", ipu)
+	assert.NotNil(t, al1)
+
+	vpc := testVPCBuildVPC(t, dbSession, "test-vpc", ip, tn, st, cdb.GetStrPtr(cdbm.VpcEthernetVirtualizer), nil, map[string]string{"zone": "west1"}, cdbm.VpcStatusReady, tnu)
+	assert.NotNil(t, vpc)
+
+	vpc2 := testVPCBuildVPC(t, dbSession, "test-vpc-2", ip, tn, st, cdb.GetStrPtr(cdbm.VpcEthernetVirtualizer), nil, map[string]string{"zone": "wes2"}, cdbm.VpcStatusReady, tnu)
+	assert.NotNil(t, vpc2)
+
+	vpc3 := testVPCBuildVPC(t, dbSession, "test-vpc-3", ip, tn, st2, cdb.GetStrPtr(cdbm.VpcEthernetVirtualizer), nil, map[string]string{"zone": "west3"}, cdbm.VpcStatusReady, tnu)
+	assert.NotNil(t, vpc2)
+
+	vpc4 := testVPCBuildVPC(t, dbSession, "test-vpc-3", ip, tn, st2, cdb.GetStrPtr(cdbm.VpcFNN), nil, map[string]string{"zone": "west6"}, cdbm.VpcStatusReady, tnu)
+	assert.NotNil(t, vpc4)
+
+	e := echo.New()
+	cfg := common.GetTestConfig()
+	tc := &tmocks.Client{}
+
+	// OTEL Spanner configuration
+	tracer, _, ctx := common.TestCommonTraceProviderSetup(t, ctx)
+
+	// Mock per-Site client for st3
+	tsc := &tmocks.Client{}
+	tst := &tmocks.Client{}
+
+	// Prepare client pool for sync calls
+	// to site(s).
+	tcfg, _ := cfg.GetTemporalConfig()
+	scp := sc.NewClientPool(tcfg)
+	scp.IDClientMap[st.ID.String()] = tsc
+	scp.IDClientMap[st2.ID.String()] = tst
+
+	wid := "test-workflow-id"
+	wrun := &tmocks.WorkflowRun{}
+	wrun.On("GetID").Return(wid)
+
+	wrun.Mock.On("Get", mock.Anything, mock.Anything).Return(nil)
+
+	tc.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
+		mock.AnythingOfType("func(internal.Context, uuid.UUID, uuid.UUID) error"), mock.AnythingOfType("uuid.UUID"),
+		mock.AnythingOfType("uuid.UUID")).Return(wrun, nil)
+
+	tsc.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
+		"UpdateVPCVirtualization", mock.Anything).Return(wrun, nil)
+
+	// Mock timeout error
+	wruntimeout := &tmocks.WorkflowRun{}
+	wruntimeout.On("GetID").Return("test-workflow-timeout-id")
+
+	wruntimeout.Mock.On("Get", mock.Anything, mock.Anything).Return(tp.NewTimeoutError(enums.TIMEOUT_TYPE_UNSPECIFIED, nil, nil))
+
+	tst.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
+		"UpdateVPCVirtualization", mock.Anything).Return(wruntimeout, nil)
+
+	tst.Mock.On("TerminateWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	tests := []struct {
+		name               string
+		fields             fields
+		args               args
+		wantErr            bool
+		verifyChildSpanner bool
+	}{
+		{
+			name: "test VPC virtualization update success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcVirtualizationUpdateRequest{
+					NetworkVirtualizationType: "FNN",
+				},
+				reqVPCID: vpc.ID.String(),
+				reqVPC:   vpc,
+				reqOrg:   tnOrg,
+				reqUser:  tnu,
+				respCode: http.StatusOK,
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "test VPC virtualization update error, org does not have a Tenant associated",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcVirtualizationUpdateRequest{
+					NetworkVirtualizationType: "FNN",
+				},
+				reqVPCID: vpc.ID.String(),
+				reqVPC:   vpc,
+				reqOrg:   ipOrg,
+				reqUser:  ipu,
+				respCode: http.StatusForbidden,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC virtualization update error, invalid VPC ID in request",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcVirtualizationUpdateRequest{
+					NetworkVirtualizationType: "FNN",
+				},
+				reqVPC:   vpc,
+				reqVPCID: "",
+				reqOrg:   tnOrg,
+				reqUser:  tnu,
+				respCode: http.StatusBadRequest,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC virtualization update API endpoint fail, workflow timeout",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tst,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcVirtualizationUpdateRequest{
+					NetworkVirtualizationType: "FNN",
+				},
+				reqOrg:      tnOrg,
+				reqVPCID:    vpc3.ID.String(),
+				reqVPC:      vpc3,
+				reqUser:     tnu,
+				respCode:    http.StatusInternalServerError,
+				respMessage: "Failed to perform VPC UpdateVirtualization - timeout occurred executing workflow on Site",
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "test VPC virtualization update API endpoint fail, vpc already FNN",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tst,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcVirtualizationUpdateRequest{
+					NetworkVirtualizationType: "FNN",
+				},
+				reqOrg:      tnOrg,
+				reqVPCID:    vpc4.ID.String(),
+				reqVPC:      vpc4,
+				reqUser:     tnu,
+				respCode:    http.StatusBadRequest,
+				respMessage: "VPC virtualization type is already set to FNN",
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			uvvh := UpdateVPCVirtualizationHandler{
+				dbSession: tt.fields.dbSession,
+				tc:        tt.fields.tc,
+				scp:       scp,
+				cfg:       tt.fields.cfg,
+			}
+
+			jsonData, _ := json.Marshal(tt.args.reqData)
+
+			// Setup echo server/context
+			req := httptest.NewRequest(http.MethodPatch, "/", strings.NewReader(string(jsonData)))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+
+			ec := e.NewContext(req, rec)
+			ec.SetPath(fmt.Sprintf("/v2/org/%v/carbide/vpc/%v", tt.args.reqOrg, tt.args.reqVPCID))
+			ec.SetParamNames("orgName", "id")
+			ec.SetParamValues(tt.args.reqOrg, tt.args.reqVPCID)
+			ec.Set("user", tt.args.reqUser)
+
+			ctx = context.WithValue(ctx, otelecho.TracerKey, tracer)
+			ec.SetRequest(ec.Request().WithContext(ctx))
+
+			if err := uvvh.Handle(ec); (err != nil) != tt.wantErr {
+				t.Errorf("UpdateVPCVirtualizationHandler.Handle() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if tt.args.respCode != rec.Code {
+				t.Errorf("UpdateVPCVirtualizationHandler.Handle() resp = %v", rec.Body.String())
+			}
+
+			if tt.args.respMessage != "" {
+				assert.Contains(t, rec.Body.String(), tt.args.respMessage)
+			}
+
+			require.Equal(t, tt.args.respCode, rec.Code)
+			if tt.args.respCode != http.StatusOK {
+				return
+			}
+
+			rst := &model.APIVpc{}
+
+			serr := json.Unmarshal(rec.Body.Bytes(), rst)
+			if serr != nil {
+				t.Fatal(serr)
+			}
+
+			assert.Equal(t, *rst.NetworkVirtualizationType, tt.args.reqData.NetworkVirtualizationType)
+
+			if tt.verifyChildSpanner {
+				span := oteltrace.SpanFromContext(ec.Request().Context())
+				assert.True(t, span.SpanContext().IsValid())
+			}
+		})
+	}
+}
+
+func TestGetVPCHandler_Handle(t *testing.T) {
+	ctx := context.Background()
+	type fields struct {
+		dbSession *cdb.Session
+		tc        temporalClient.Client
+		cfg       *config.Config
+	}
+	type args struct {
+		reqOrg   string
+		reqUser  *cdbm.User
+		reqVPC   *cdbm.Vpc
+		reqVPCID string
+		respCode int
+	}
+
+	dbSession := testSiteInitDB(t)
+	defer dbSession.Close()
+
+	testVPCSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org"
+	ipOrgRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	tnOrg1 := "test-tenant-org-1"
+	tnOrg2 := "test-tenant-org-2"
+	tnOrgRoles := []string{"FORGE_TENANT_ADMIN"}
+
+	ipu := testVPCBuildUser(t, dbSession, "test-starfleet-id-1", ipOrg, ipOrgRoles)
+	ip := testVPCSiteBuildInfrastructureProvider(t, dbSession, "test-infrastructure-provider", ipOrg, ipu)
+
+	tnu1 := testVPCBuildUser(t, dbSession, "test-starfleet-id-2", tnOrg1, tnOrgRoles)
+	tn1 := testVPCBuildTenant(t, dbSession, "test-tenant", tnOrg1, tnu1)
+
+	tnu2 := testVPCBuildUser(t, dbSession, "test-starfleet-id-3", tnOrg1, tnOrgRoles)
+	tn2 := testVPCBuildTenant(t, dbSession, "test-tenant-1", tnOrg1, tnu2)
+	assert.NotNil(t, tn2)
+
+	st := testVPCBuildSite(t, dbSession, ip, "test-site-1", false, true, cdbm.SiteStatusRegistered, ipu)
+	assert.NotNil(t, st)
+
+	al := testVPCSiteBuildAllocation(t, dbSession, st, tn1, "test-allocation", ipu)
+	assert.NotNil(t, al)
+
+	vpc := testVPCBuildVPC(t, dbSession, "test-vpc", ip, tn1, st, cdb.GetStrPtr(cdbm.VpcEthernetVirtualizer), nil, map[string]string{"zone": "west1"}, cdbm.VpcStatusReady, tnu1)
+	assert.NotNil(t, vpc)
+
+	// Attach an NSG to this instance
+	nsg1 := testBuildNetworkSecurityGroup(t, dbSession, "network-security-group-1-for-the-win", tn1, st, cdbm.NetworkSecurityGroupStatusReady)
+	assert.NotNil(t, nsg1)
+
+	vpc.NetworkSecurityGroupID = cdb.GetStrPtr(nsg1.ID)
+	testUpdateVPC(t, dbSession, vpc)
+
+	e := echo.New()
+	cfg := common.GetTestConfig()
+	tc := &tmocks.Client{}
+
+	// OTEL Spanner configuration
+	tracer, _, ctx := common.TestCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		name                             string
+		fields                           fields
+		args                             args
+		wantErr                          bool
+		queryIncludeRelations1           *string
+		queryIncludeRelations2           *string
+		expectedTenantOrg                *string
+		expectedSiteName                 *string
+		expectedNetworkSecurityGroupName *string
+		verifyChildSpanner               bool
+	}{
+		{
+			name: "test VPC get API endpoint success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqVPC:   vpc,
+				reqVPCID: vpc.ID.String(),
+				reqOrg:   tnOrg1,
+				reqUser:  tnu1,
+				respCode: http.StatusOK,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC get API endpoint failure, org does not have a Tenant associated",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqVPC:   vpc,
+				reqVPCID: vpc.ID.String(),
+				reqOrg:   ipOrg,
+				reqUser:  ipu,
+				respCode: http.StatusForbidden,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC get API endpoint failure, invalid VPC ID in request",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqVPC:   vpc,
+				reqVPCID: "",
+				reqOrg:   tnOrg1,
+				reqUser:  tnu1,
+				respCode: http.StatusBadRequest,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC get API endpoint failure, VPC ID in request not found",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqVPC:   vpc,
+				reqVPCID: uuid.New().String(),
+				reqOrg:   tnOrg1,
+				reqUser:  tnu1,
+				respCode: http.StatusNotFound,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC get API endpoint failure, VPC not belong to current tenant",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqVPC:   vpc,
+				reqVPCID: vpc.ID.String(),
+				reqOrg:   tnOrg2,
+				reqUser:  tnu2,
+				respCode: http.StatusForbidden,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC get API endpoint success include tenant relation",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqVPC:   vpc,
+				reqVPCID: vpc.ID.String(),
+				reqOrg:   tnOrg1,
+				reqUser:  tnu1,
+				respCode: http.StatusOK,
+			},
+			queryIncludeRelations1: cdb.GetStrPtr(cdbm.TenantRelationName),
+			expectedTenantOrg:      &tn1.Org,
+			wantErr:                false,
+			verifyChildSpanner:     true,
+		},
+		{
+			name: "test VPC get API endpoint success include NSG relation",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqVPC:   vpc,
+				reqVPCID: vpc.ID.String(),
+				reqOrg:   tnOrg1,
+				reqUser:  tnu1,
+				respCode: http.StatusOK,
+			},
+			queryIncludeRelations1:           cdb.GetStrPtr(cdbm.NetworkSecurityGroupRelationName),
+			expectedNetworkSecurityGroupName: &nsg1.Name,
+			wantErr:                          false,
+			verifyChildSpanner:               true,
+		},
+		{
+			name: "test VPC get API endpoint success include tenant/site relation",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqVPC:   vpc,
+				reqVPCID: vpc.ID.String(),
+				reqOrg:   tnOrg1,
+				reqUser:  tnu1,
+				respCode: http.StatusOK,
+			},
+			queryIncludeRelations1: cdb.GetStrPtr(cdbm.TenantRelationName),
+			queryIncludeRelations2: cdb.GetStrPtr(cdbm.SiteRelationName),
+			expectedTenantOrg:      &tn1.Org,
+			expectedSiteName:       &st.Name,
+			wantErr:                false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			csh := GetVPCHandler{
+				dbSession: tt.fields.dbSession,
+				tc:        tt.fields.tc,
+				cfg:       tt.fields.cfg,
+			}
+
+			q := url.Values{}
+			if tt.queryIncludeRelations1 != nil {
+				q.Add("includeRelation", *tt.queryIncludeRelations1)
+			}
+			if tt.queryIncludeRelations2 != nil {
+				q.Add("includeRelation", *tt.queryIncludeRelations2)
+			}
+
+			// Setup echo server/context
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+			req.URL.RawQuery = q.Encode()
+
+			ec := e.NewContext(req, rec)
+
+			ec.SetPath(fmt.Sprintf("/v2/org/%v/carbide/vpc/%v", tt.args.reqOrg, tt.args.reqVPCID))
+			ec.SetParamNames("orgName", "id")
+			ec.SetParamValues(tt.args.reqOrg, tt.args.reqVPCID)
+			ec.Set("user", tt.args.reqUser)
+
+			ctx = context.WithValue(ctx, otelecho.TracerKey, tracer)
+			ec.SetRequest(ec.Request().WithContext(ctx))
+
+			if err := csh.Handle(ec); (err != nil) != tt.wantErr {
+				t.Errorf("GetVPCHandler.Handle() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if tt.args.respCode != rec.Code {
+				t.Errorf("GetVPCHandler.Handle() resp = %v", rec.Body.String())
+			}
+
+			require.Equal(t, tt.args.respCode, rec.Code)
+			if tt.args.respCode != http.StatusOK {
+				return
+			}
+
+			rst := &model.APIVpc{}
+
+			serr := json.Unmarshal(rec.Body.Bytes(), rst)
+			if serr != nil {
+				t.Fatal(serr)
+			}
+
+			assert.Equal(t, rst.Name, tt.args.reqVPC.Name)
+			assert.Equal(t, rst.Description, tt.args.reqVPC.Description)
+
+			if tt.expectedTenantOrg != nil {
+				assert.Equal(t, rst.Tenant.Org, *tt.expectedTenantOrg)
+			}
+
+			if tt.expectedNetworkSecurityGroupName != nil {
+				assert.Equal(t, rst.NetworkSecurityGroup.Name, *tt.expectedNetworkSecurityGroupName)
+			}
+
+			if tt.expectedSiteName != nil {
+				assert.Equal(t, rst.Site.Name, *tt.expectedSiteName)
+			}
+
+			if tt.verifyChildSpanner {
+				span := oteltrace.SpanFromContext(ec.Request().Context())
+				assert.True(t, span.SpanContext().IsValid())
+			}
+		})
+	}
+}
+
+func TestGetAllVPCHandler_Handle(t *testing.T) {
+	ctx := context.Background()
+	type fields struct {
+		dbSession *cdb.Session
+		tc        temporalClient.Client
+		cfg       *config.Config
+	}
+
+	type args struct {
+		org   string
+		query url.Values
+		user  *cdbm.User
+	}
+
+	dbSession := testSiteInitDB(t)
+	defer dbSession.Close()
+
+	testVPCSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org"
+	ipOrgRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	tnOrg := "test-tenant-org"
+	tnOrgRoles := []string{"FORGE_TENANT_ADMIN"}
+
+	ipu := testVPCBuildUser(t, dbSession, "test-starfleet-id-1", ipOrg, ipOrgRoles)
+	ip := testVPCSiteBuildInfrastructureProvider(t, dbSession, "test-infrastructure-provider", ipOrg, ipu)
+
+	tnu := testVPCBuildUser(t, dbSession, "test-starfleet-id-2", tnOrg, tnOrgRoles)
+	tn := testVPCBuildTenant(t, dbSession, "test-tenant", tnOrg, tnu)
+
+	st := testVPCBuildSite(t, dbSession, ip, "test-site-1", false, false, cdbm.SiteStatusRegistered, ipu)
+	assert.NotNil(t, st)
+
+	al := testVPCSiteBuildAllocation(t, dbSession, st, tn, "test-allocation", ipu)
+	assert.NotNil(t, al)
+
+	st2 := testVPCBuildSite(t, dbSession, ip, "test-site-2", false, false, cdbm.SiteStatusRegistered, ipu)
+	assert.NotNil(t, st2)
+
+	al2 := testVPCSiteBuildAllocation(t, dbSession, st2, tn, "test-allocation-2", ipu)
+	assert.NotNil(t, al2)
+
+	// Site with no allocations
+	// We'll add VPCs to simulate a site where tenant had allocations
+	// but they were deleted without deleting VPCs.
+	st3 := testVPCBuildSite(t, dbSession, ip, "test-site-3", false, false, cdbm.SiteStatusRegistered, ipu)
+	assert.NotNil(t, st3)
+
+	// NSGs
+	nsg1 := testBuildNetworkSecurityGroup(t, dbSession, "nsg1", tn, st, cdbm.NetworkSecurityGroupStatusReady)
+	assert.NotNil(t, nsg1)
+	nsg2 := testBuildNetworkSecurityGroup(t, dbSession, "nsg2", tn, st2, cdbm.NetworkSecurityGroupStatusReady)
+	assert.NotNil(t, nsg2)
+	nsg3 := testBuildNetworkSecurityGroup(t, dbSession, "nsg3", tn, st3, cdbm.NetworkSecurityGroupStatusReady)
+	assert.NotNil(t, nsg3)
+
+	nsgs := []*cdbm.NetworkSecurityGroup{nsg1, nsg2, nsg3}
+
+	sites := []*cdbm.Site{st, st2, st3}
+	siteCount := len(sites)
+
+	vpcsPerSite := 15
+
+	// Total VPC count
+	totalCount := siteCount * vpcsPerSite
+
+	vpcs := []cdbm.Vpc{}
+
+	for i := 0; i < totalCount; i++ {
+		curSite := sites[i%siteCount]
+		curNsg := nsgs[i%siteCount]
+
+		vpc := testVPCBuildVPC(t, dbSession, fmt.Sprintf("test-vpc-%02d", i), ip, tn, curSite, cdb.GetStrPtr(cdbm.VpcEthernetVirtualizer), nil, map[string]string{"zone": "test-vpc-%02d"}, cdbm.VpcStatusPending, tnu)
+		assert.NotNil(t, vpc)
+
+		// Add the NSG of the site to the VPC
+		vpc.NetworkSecurityGroupID = cdb.GetStrPtr(curNsg.ID)
+		testUpdateVPC(t, dbSession, vpc)
+
+		vpcs = append(vpcs, *vpc)
+	}
+
+	e := echo.New()
+	cfg := common.GetTestConfig()
+	tc := &tmocks.Client{}
+
+	// OTEL Spanner configuration
+	tracer, _, ctx := common.TestCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		name                             string
+		fields                           fields
+		args                             args
+		wantCount                        int
+		wantTotalCount                   int
+		wantFirstEntry                   *cdbm.Vpc
+		wantRespCode                     int
+		expectedTenantOrg                *string
+		expectedNetworkSecurityGroupName *string
+		expectedSiteName                 *string
+		verifyChildSpanner               bool
+	}{
+		{
+			name: "get all VPCs success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				org:   tnOrg,
+				query: url.Values{},
+				user:  tnu,
+			},
+			wantCount:          paginator.DefaultLimit,
+			wantTotalCount:     totalCount,
+			wantRespCode:       http.StatusOK,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "get all VPCs when no allocations, should pass",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				org: tnOrg,
+				query: url.Values{
+					"includeRelation": []string{cdbm.SiteRelationName},
+					"siteId":          []string{st3.ID.String()},
+				},
+				user: tnu,
+			},
+			wantCount:        vpcsPerSite,
+			wantTotalCount:   vpcsPerSite,
+			wantRespCode:     http.StatusOK,
+			expectedSiteName: &st3.Name,
+		},
+		{
+			name: "get all VPCs with Site filter success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				org: tnOrg,
+				query: url.Values{
+					"siteId": []string{st.ID.String()},
+				},
+				user: tnu,
+			},
+			wantCount:      vpcsPerSite,
+			wantTotalCount: vpcsPerSite,
+			wantRespCode:   http.StatusOK,
+		},
+		{
+			name: "get all VPCs failure, org does not have a Tenant associated",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				org:   ipOrg,
+				query: url.Values{},
+				user:  ipu,
+			},
+			wantRespCode: http.StatusForbidden,
+		},
+		{
+			name: "get all VPCs failure, invalid Site ID in request",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				org: tnOrg,
+				query: url.Values{
+					"siteId": []string{"invalid-site-id"},
+				},
+				user: tnu,
+			},
+			wantRespCode: http.StatusBadRequest,
+		},
+		{
+			name: "get all VPCs failure, non-existent Site ID in request",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				org: tnOrg,
+				query: url.Values{
+					"siteId": []string{uuid.New().String()},
+				},
+				user: tnu,
+			},
+			wantRespCode: http.StatusBadRequest,
+		},
+		{
+			name: "get all VPCs with pagination success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				org: tnOrg,
+				query: url.Values{
+					"pageNumber": []string{"2"},
+					"pageSize":   []string{"5"},
+					"orderBy":    []string{"NAME_DESC"},
+				},
+				user: tnu,
+			},
+			wantCount:      5,
+			wantTotalCount: totalCount,
+			wantFirstEntry: &vpcs[39],
+			wantRespCode:   http.StatusOK,
+		},
+		{
+			name: "get all VPCs with pagination failure, invalid page size",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				org: tnOrg,
+				query: url.Values{
+					"pageNumber": []string{"1"},
+					"pageSize":   []string{"200"},
+					"orderBy":    []string{"NAME_ASC"},
+				},
+				user: tnu,
+			},
+			wantRespCode: http.StatusBadRequest,
+		},
+		{
+			name: "get all VPCs with Site include relation success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				org: tnOrg,
+				query: url.Values{
+					"includeRelation": []string{cdbm.SiteRelationName, cdbm.NetworkSecurityGroupRelationName},
+					"siteId":          []string{st.ID.String()},
+				},
+				user: tnu,
+			},
+			wantCount:                        vpcsPerSite,
+			wantTotalCount:                   vpcsPerSite,
+			wantRespCode:                     http.StatusOK,
+			expectedSiteName:                 &st.Name,
+			expectedNetworkSecurityGroupName: &nsg1.Name,
+		},
+		{
+			name: "get all VPCs with infrastructure provider success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				org: tnOrg,
+				query: url.Values{
+					"includeRelation":          []string{cdbm.InfrastructureProviderRelationName},
+					"infrastructureProviderId": []string{ip.ID.String()},
+					"pageSize":                 []string{"30"},
+				},
+				user: tnu,
+			},
+			wantCount:      30,
+			wantTotalCount: totalCount,
+			wantRespCode:   http.StatusOK,
+		},
+		{
+			name: "get all VPCs by name as query full text search success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				org: tnOrg,
+				query: url.Values{
+					"query": []string{"test-vpc-"},
+				},
+				user: tnu,
+			},
+			wantCount:      paginator.DefaultLimit,
+			wantTotalCount: totalCount,
+			wantRespCode:   http.StatusOK,
+		},
+		{
+			name: "get all VPCs by description as query full text search success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				org: tnOrg,
+				query: url.Values{
+					"query": []string{"Test VPC"},
+				},
+				user: tnu,
+			},
+			wantCount:      paginator.DefaultLimit,
+			wantTotalCount: totalCount,
+			wantRespCode:   http.StatusOK,
+		},
+		{
+			name: "get all VPCs by status as query full text search success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				org: tnOrg,
+				query: url.Values{
+					"query": []string{cdbm.VpcStatusPending},
+				},
+				user: tnu,
+			},
+			wantCount:      paginator.DefaultLimit,
+			wantTotalCount: totalCount,
+			wantRespCode:   http.StatusOK,
+		},
+		{
+			name: "get all VPCs by status as query full text search success returns no object",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				org: tnOrg,
+				query: url.Values{
+					"query": []string{cdbm.VpcStatusDeleting},
+				},
+				user: tnu,
+			},
+			wantCount:      0,
+			wantTotalCount: 0,
+			wantRespCode:   http.StatusOK,
+		},
+		{
+			name: "get all VPCs by combination of name and status as query full text search success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				org: tnOrg,
+				query: url.Values{
+					"query": []string{"test-vpc- pending"},
+				},
+				user: tnu,
+			},
+			wantCount:      paginator.DefaultLimit,
+			wantTotalCount: totalCount,
+			wantRespCode:   http.StatusOK,
+		},
+		{
+			name: "get all VPCs by VpcStatusPending status success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				org: tnOrg,
+				query: url.Values{
+					"status": []string{cdbm.VpcStatusPending},
+				},
+				user: tnu,
+			},
+			wantCount:      paginator.DefaultLimit,
+			wantTotalCount: totalCount,
+			wantRespCode:   http.StatusOK,
+		},
+		{
+			name: "get all VPCs by VpcStatusDeleting status success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				org: tnOrg,
+				query: url.Values{
+					"status": []string{cdbm.VpcStatusDeleting},
+				},
+				user: tnu,
+			},
+			wantCount:      0,
+			wantTotalCount: 0,
+			wantRespCode:   http.StatusOK,
+		},
+		{
+			name: "get all VPCs failure, BadStatus status value in request",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				org: tnOrg,
+				query: url.Values{
+					"status": []string{"BadStatus"},
+				},
+				user: tnu,
+			},
+			wantCount:      0,
+			wantTotalCount: 0,
+			wantRespCode:   http.StatusBadRequest,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			csh := GetAllVPCHandler{
+				dbSession: tt.fields.dbSession,
+				tc:        tt.fields.tc,
+				cfg:       tt.fields.cfg,
+			}
+
+			path := fmt.Sprintf("/v2/org/%s/carbide/vpc?%s", tt.args.org, tt.args.query.Encode())
+
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+
+			rec := httptest.NewRecorder()
+
+			ec := e.NewContext(req, rec)
+			ec.SetParamNames("orgName")
+			ec.SetParamValues(tt.args.org)
+			ec.Set("user", tt.args.user)
+
+			ctx = context.WithValue(ctx, otelecho.TracerKey, tracer)
+			ec.SetRequest(ec.Request().WithContext(ctx))
+
+			err := csh.Handle(ec)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.wantRespCode, rec.Code)
+			if tt.wantRespCode != http.StatusOK {
+				return
+			}
+
+			resp := []model.APIVpc{}
+
+			err = json.Unmarshal(rec.Body.Bytes(), &resp)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.wantCount, len(resp))
+
+			ph := rec.Header().Get(pagination.ResponseHeaderName)
+			require.NotEmpty(t, ph)
+
+			pr := &pagination.PageResponse{}
+			err = json.Unmarshal([]byte(ph), pr)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.wantTotalCount, pr.Total)
+
+			if tt.wantFirstEntry != nil {
+				assert.Equal(t, tt.wantFirstEntry.Name, resp[0].Name)
+			}
+
+			if len(resp) > 0 {
+				if tt.expectedTenantOrg != nil {
+					assert.Equal(t, resp[0].Tenant.Org, *tt.expectedTenantOrg)
+				} else {
+					assert.Nil(t, resp[0].Tenant)
+				}
+				if tt.expectedSiteName != nil {
+					assert.Equal(t, resp[0].Site.Name, *tt.expectedSiteName)
+				} else {
+					assert.Nil(t, resp[0].Site)
+				}
+
+				for _, apivpc := range resp {
+					if tt.expectedNetworkSecurityGroupName != nil {
+						assert.NotNil(t, apivpc.NetworkSecurityGroupID, "NetworkSecurityGroupID for VPC in api response was unexpectedly nil.  Did you forget to set it for this test?")
+						assert.NotNil(t, apivpc.NetworkSecurityGroup, "NetworkSecurityGroup for VPC in api response was unexpectedly nil.  Did you forget to include the relation for this test?")
+						assert.Equal(t, *tt.expectedNetworkSecurityGroupName, apivpc.NetworkSecurityGroup.Name)
+					}
+					assert.Equal(t, 0, len(apivpc.StatusHistory))
+				}
+			}
+
+			if tt.verifyChildSpanner {
+				span := oteltrace.SpanFromContext(ec.Request().Context())
+				assert.True(t, span.SpanContext().IsValid())
+			}
+		})
+	}
+}
+
+func TestDeleteVPCHandler_Handle(t *testing.T) {
+	ctx := context.Background()
+	type fields struct {
+		dbSession *cdb.Session
+		tc        temporalClient.Client
+		cfg       *config.Config
+		scp       *sc.ClientPool
+	}
+	type args struct {
+		reqOrg   string
+		reqUser  *cdbm.User
+		reqVPC   string
+		respCode int
+	}
+
+	dbSession := testSiteInitDB(t)
+	defer dbSession.Close()
+
+	testVPCSetupSchema(t, dbSession)
+
+	ipOrg := "test-provider-org"
+	ipOrgRoles := []string{"FORGE_PROVIDER_ADMIN"}
+
+	tnOrg1 := "test-tenant-org-1"
+	tnOrg2 := "test-tenant-org-2"
+	tnOrgRoles := []string{"FORGE_TENANT_ADMIN"}
+
+	ipu := testVPCBuildUser(t, dbSession, "test-starfleet-id-1", ipOrg, ipOrgRoles)
+	ip := testVPCSiteBuildInfrastructureProvider(t, dbSession, "test-infrastructure-provider", ipOrg, ipu)
+
+	tnu1 := testVPCBuildUser(t, dbSession, "test-starfleet-id-2", tnOrg1, tnOrgRoles)
+	tn1 := testVPCBuildTenant(t, dbSession, "test-tenant-1", tnOrg1, tnu1)
+
+	tnu2 := testVPCBuildUser(t, dbSession, "test-starfleet-id-3", tnOrg2, tnOrgRoles)
+	tn2 := testVPCBuildTenant(t, dbSession, "test-tenant-2", tnOrg2, tnu1)
+	assert.NotNil(t, tn2)
+
+	st := testVPCBuildSite(t, dbSession, ip, "test-site-1", false, true, cdbm.SiteStatusRegistered, ipu)
+	assert.NotNil(t, st)
+
+	al := testVPCSiteBuildAllocation(t, dbSession, st, tn1, "test-allocation", ipu)
+	assert.NotNil(t, al)
+
+	ipb1 := common.TestBuildVpcPrefixIPBlock(t, dbSession, "testipb1", st, ip, &tn1.ID, cdbm.IPBlockRoutingTypeDatacenterOnly, "10.0.0.0", 24, cdbm.IPBlockProtocolVersionV4, false, cdbm.IPBlockStatusReady, tnu1)
+	assert.NotNil(t, ipb1)
+
+	// NVLink Logical Partition for tenant 1 on site 1
+	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", tnOrg1, st, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	assert.NotNil(t, nvllp1)
+
+	vpc1 := testVPCBuildVPC(t, dbSession, "test-vpc-1", ip, tn1, st, cdb.GetStrPtr(cdbm.VpcEthernetVirtualizer), cdb.GetUUIDPtr(nvllp1.ID), map[string]string{"zone": "east1"}, cdbm.VpcStatusReady, tnu1)
+	assert.NotNil(t, vpc1)
+
+	vpc2 := testVPCBuildVPC(t, dbSession, "test-vpc-2", ip, tn1, st, cdb.GetStrPtr(cdbm.VpcEthernetVirtualizer), nil, map[string]string{"zone": "east1"}, cdbm.VpcStatusReady, tnu1)
+	assert.NotNil(t, vpc2)
+
+	vpc3 := testVPCBuildVPC(t, dbSession, "test-vpc-3", ip, tn1, st, cdb.GetStrPtr(cdbm.VpcFNN), nil, map[string]string{"zone": "east1"}, cdbm.VpcStatusReady, tnu1)
+	assert.NotNil(t, vpc3)
+
+	os := common.TestBuildOperatingSystem(t, dbSession, "test-os", tn1, cdbm.OperatingSystemStatusReady, tnu1)
+	assert.NotNil(t, os)
+
+	it := common.TestBuildInstanceType(t, dbSession, "testIT", cdb.GetUUIDPtr(uuid.New()), st, ipu)
+	assert.NotNil(t, it)
+
+	machine := common.TestBuildMachine(t, dbSession, ip, st, &it.ID, cdb.GetStrPtr("test-controller-machine-type"), cdbm.MachineStatusReady)
+	assert.NotNil(t, machine)
+
+	alc := common.TestBuildAllocationConstraint(t, dbSession, al, it, nil, 1, ipu)
+	assert.NotNil(t, alc)
+
+	instance := common.TestBuildInstance(t, dbSession, "test-instance", al.ID, alc.ID, tn1.ID, ip.ID, st.ID, it.ID, vpc3.ID, &machine.ID, os.ID)
+	assert.NotNil(t, instance)
+
+	subnet := testVPCBuildSubnet(t, dbSession, "test-subnet", tn1, vpc2, tnu1)
+	assert.NotNil(t, subnet)
+
+	vpcPrefix := testVPCBuildVPCPrefix(t, dbSession, "test-vpc-prefix", tn1, vpc3, db.GetUUIDPtr(ipb1.ID), "10.0.0.0/24", tnu1)
+	assert.NotNil(t, vpcPrefix)
+
+	nvllp := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp", tn1.Org, st, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	assert.NotNil(t, nvllp)
+
+	e := echo.New()
+	cfg := common.GetTestConfig()
+	tc := &tmocks.Client{}
+	tcfg, _ := cfg.GetTemporalConfig()
+
+	//
+	// Timeout mocking
+	//
+	scpWithTimeout := sc.NewClientPool(tcfg)
+	tscWithTimeout := &tmocks.Client{}
+
+	scpWithTimeout.IDClientMap[st.ID.String()] = tscWithTimeout
+
+	wrunTimeout := &tmocks.WorkflowRun{}
+	wrunTimeout.On("GetID").Return("workflow-with-timeout")
+
+	wrunTimeout.Mock.On("Get", mock.Anything, mock.Anything).Return(tp.NewTimeoutError(enums.TIMEOUT_TYPE_UNSPECIFIED, nil, nil))
+
+	tscWithTimeout.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
+		"DeleteVPCV2", mock.Anything).Return(wrunTimeout, nil)
+
+	tscWithTimeout.Mock.On("TerminateWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	//
+	// Carbide not-found mocking
+	//
+	scpWithCarbideNotFound := sc.NewClientPool(tcfg)
+	tscWithCarbideNotFound := &tmocks.Client{}
+
+	scpWithCarbideNotFound.IDClientMap[st.ID.String()] = tscWithCarbideNotFound
+
+	wrunWithCarbideNotFound := &tmocks.WorkflowRun{}
+	wrunWithCarbideNotFound.On("GetID").Return("workflow-WithCarbideNotFound")
+
+	wrunWithCarbideNotFound.Mock.On("Get", mock.Anything, mock.Anything).Return(tp.NewNonRetryableApplicationError("Carbide went bananas", swe.ErrTypeCarbideObjectNotFound, errors.New("Carbide went bananas")))
+
+	tscWithCarbideNotFound.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
+		"DeleteVPCV2", mock.Anything).Return(wrunWithCarbideNotFound, nil)
+
+	tscWithCarbideNotFound.Mock.On("TerminateWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	// Prepare client pool for sync calls
+	// to site(s).
+
+	// Mock per-Site client for st1
+	tsc := &tmocks.Client{}
+	scp := sc.NewClientPool(tcfg)
+	scp.IDClientMap[st.ID.String()] = tsc
+
+	wid := "test-workflow-id"
+	wrun := &tmocks.WorkflowRun{}
+	wrun.On("GetID").Return(wid)
+
+	wrun.Mock.On("Get", mock.Anything, mock.Anything).Return(nil)
+
+	tc.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
+		mock.AnythingOfType("func(internal.Context, uuid.UUID, uuid.UUID) error"), mock.AnythingOfType("uuid.UUID"),
+		mock.AnythingOfType("uuid.UUID")).Return(wrun, nil)
+
+	tsc.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
+		"DeleteVPCV2", mock.Anything).Return(wrun, nil)
+
+	// OTEL Spanner configurations
+	tracer, _, ctx := common.TestCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		name               string
+		fields             fields
+		args               args
+		wantErr            bool
+		verifyChildSpanner bool
+	}{
+		{
+			name: "test VPC delete API endpoint success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				scp:       scp,
+				cfg:       cfg,
+			},
+			args: args{
+				reqVPC:   vpc1.ID.String(),
+				reqOrg:   tnOrg1,
+				reqUser:  tnu1,
+				respCode: http.StatusAccepted,
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "test VPC delete API endpoint carbide not-found, still success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tscWithCarbideNotFound,
+				scp:       scpWithCarbideNotFound,
+				cfg:       cfg,
+			},
+			args: args{
+				reqVPC:   vpc1.ID.String(),
+				reqOrg:   tnOrg1,
+				reqUser:  tnu1,
+				respCode: http.StatusAccepted,
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "test VPC delete API endpoint workflow timeout failure",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tscWithTimeout,
+				scp:       scpWithTimeout,
+				cfg:       cfg,
+			},
+			args: args{
+				reqVPC:   vpc1.ID.String(),
+				reqOrg:   tnOrg1,
+				reqUser:  tnu1,
+				respCode: http.StatusInternalServerError,
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "test VPC delete API endpoint failure, org does not have a Tenant associated",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				scp:       scp,
+				cfg:       cfg,
+			},
+			args: args{
+				reqVPC:   vpc1.ID.String(),
+				reqOrg:   ipOrg,
+				reqUser:  ipu,
+				respCode: http.StatusForbidden,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC delete API endpoint failure, invalid VPC ID in request",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				scp:       scp,
+				cfg:       cfg,
+			},
+			args: args{
+				reqVPC:   "",
+				reqOrg:   tnOrg1,
+				reqUser:  tnu1,
+				respCode: http.StatusBadRequest,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC delete API endpoint failure, VPC not found",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				scp:       scp,
+				cfg:       cfg,
+			},
+			args: args{
+				reqVPC:   uuid.New().String(),
+				reqOrg:   tnOrg1,
+				reqUser:  tnu1,
+				respCode: http.StatusNotFound,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC delete API endpoint failure, VPC not belong to current tenant",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				scp:       scp,
+				cfg:       cfg,
+			},
+			args: args{
+				reqVPC:   vpc1.ID.String(),
+				reqOrg:   tnOrg2,
+				reqUser:  tnu2,
+				respCode: http.StatusBadRequest,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC delete API endpoint failure, VPC has subnet attached",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				scp:       scp,
+				cfg:       cfg,
+			},
+			args: args{
+				reqVPC:   vpc2.ID.String(),
+				reqOrg:   tnOrg1,
+				reqUser:  tnu1,
+				respCode: http.StatusBadRequest,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC delete API endpoint failure, VPC has VPC prefix attached",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				scp:       scp,
+				cfg:       cfg,
+			},
+			args: args{
+				reqVPC:   vpc3.ID.String(),
+				reqOrg:   tnOrg1,
+				reqUser:  tnu1,
+				respCode: http.StatusBadRequest,
+			},
+			wantErr: false,
+		},
+		{
+			name: "test VPC delete API endpoint failure, VPC has instance attached",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				scp:       scp,
+				cfg:       cfg,
+			},
+			args: args{
+				reqVPC:   vpc3.ID.String(),
+				reqOrg:   tnOrg1,
+				reqUser:  tnu1,
+				respCode: http.StatusBadRequest,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			csh := DeleteVPCHandler{
+				dbSession: tt.fields.dbSession,
+				tc:        tt.fields.tc,
+				scp:       tt.fields.scp,
+				cfg:       tt.fields.cfg,
+			}
+
+			// Setup echo server/context
+			req := httptest.NewRequest(http.MethodDelete, "/", nil)
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+
+			ec := e.NewContext(req, rec)
+			ec.SetPath(fmt.Sprintf("/v2/org/%v/carbide/vpc/%v", tt.args.reqOrg, tt.args.reqVPC))
+			ec.SetParamNames("orgName", "id")
+			ec.SetParamValues(tt.args.reqOrg, tt.args.reqVPC)
+			ec.Set("user", tt.args.reqUser)
+
+			ctx = context.WithValue(ctx, otelecho.TracerKey, tracer)
+			ec.SetRequest(ec.Request().WithContext(ctx))
+
+			if err := csh.Handle(ec); (err != nil) != tt.wantErr {
+				t.Errorf("DeleteVPCHandler.Handle() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if tt.args.respCode != rec.Code {
+				t.Errorf("DeleteVPCHandler.Handle() resp = %v", rec.Body.String())
+			}
+
+			require.Equal(t, tt.args.respCode, rec.Code)
+			if tt.args.respCode != http.StatusAccepted {
+				return
+			}
+			assert.Contains(t, rec.Body.String(), "Deletion request was accepted")
+
+			// Verify VPC in deleting state
+			vpcDAO := cdbm.NewVpcDAO(dbSession)
+			vpcID, _ := uuid.Parse(tt.args.reqVPC)
+			dvpc, terr := vpcDAO.GetByID(context.Background(), nil, vpcID, nil)
+			assert.Nil(t, terr)
+			assert.Equal(t, cdbm.VpcStatusDeleting, dvpc.Status)
+
+			if tt.verifyChildSpanner {
+				span := oteltrace.SpanFromContext(ec.Request().Context())
+				assert.True(t, span.SpanContext().IsValid())
+			}
+		})
+	}
+}
+
+func TestNewCreateVPCHandler(t *testing.T) {
+	type args struct {
+		dbSession *cdb.Session
+		tc        temporalClient.Client
+		cfg       *config.Config
+	}
+
+	dbSession := testVPCInitDB(t)
+	defer dbSession.Close()
+	tc := &tmocks.Client{}
+	cfg := common.GetTestConfig()
+
+	// Prepare client pool for sync calls
+	// to site(s).
+	tcfg, _ := cfg.GetTemporalConfig()
+	scp := sc.NewClientPool(tcfg)
+
+	tests := []struct {
+		name string
+		args args
+		want CreateVPCHandler
+	}{
+		{
+			name: "test CreateVPCHandler initialization",
+			args: args{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			want: CreateVPCHandler{
+				dbSession:  dbSession,
+				tc:         tc,
+				scp:        scp,
+				cfg:        cfg,
+				tracerSpan: sutil.NewTracerSpan(),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NewCreateVPCHandler(tt.args.dbSession, tt.args.tc, scp, tt.args.cfg); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewCreateVPCHandler() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewUpdateVPCHandler(t *testing.T) {
+	type args struct {
+		dbSession *cdb.Session
+		tc        temporalClient.Client
+		cfg       *config.Config
+	}
+
+	dbSession := testVPCInitDB(t)
+	defer dbSession.Close()
+	tc := &tmocks.Client{}
+	cfg := common.GetTestConfig()
+
+	// Prepare client pool for sync calls
+	// to site(s).
+	tcfg, _ := cfg.GetTemporalConfig()
+	scp := sc.NewClientPool(tcfg)
+
+	tests := []struct {
+		name string
+		args args
+		want UpdateVPCHandler
+	}{
+		{
+			name: "test UpdateVPCHandler initialization",
+			args: args{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			want: UpdateVPCHandler{
+				dbSession:  dbSession,
+				tc:         tc,
+				scp:        scp,
+				cfg:        cfg,
+				tracerSpan: sutil.NewTracerSpan(),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NewUpdateVPCHandler(tt.args.dbSession, tt.args.tc, scp, tt.args.cfg); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewUpdateVPCHandler() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewGetVPCHandler(t *testing.T) {
+	type args struct {
+		dbSession *cdb.Session
+		tc        temporalClient.Client
+		cfg       *config.Config
+	}
+
+	dbSession := testVPCInitDB(t)
+	defer dbSession.Close()
+	tc := &tmocks.Client{}
+	cfg := common.GetTestConfig()
+
+	tests := []struct {
+		name string
+		args args
+		want GetVPCHandler
+	}{
+		{
+			name: "test GetVPCHandler initialization",
+			args: args{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			want: GetVPCHandler{
+				dbSession:  dbSession,
+				tc:         tc,
+				cfg:        cfg,
+				tracerSpan: sutil.NewTracerSpan(),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NewGetVPCHandler(tt.args.dbSession, tt.args.tc, tt.args.cfg); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewGetVPCHandler() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewGetAllVPCHandler(t *testing.T) {
+	type args struct {
+		dbSession *cdb.Session
+		tc        temporalClient.Client
+		cfg       *config.Config
+	}
+
+	dbSession := testVPCInitDB(t)
+	defer dbSession.Close()
+	tc := &tmocks.Client{}
+	cfg := common.GetTestConfig()
+
+	tests := []struct {
+		name string
+		args args
+		want GetAllVPCHandler
+	}{
+		{
+			name: "test GetAllVPCHandler initialization",
+			args: args{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			want: GetAllVPCHandler{
+				dbSession:  dbSession,
+				tc:         tc,
+				cfg:        cfg,
+				tracerSpan: sutil.NewTracerSpan(),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NewGetAllVPCHandler(tt.args.dbSession, tt.args.tc, tt.args.cfg); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewGetAllVPCHandler() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewDeleteVPCHandler(t *testing.T) {
+	type args struct {
+		dbSession *cdb.Session
+		tc        temporalClient.Client
+		cfg       *config.Config
+	}
+
+	dbSession := testVPCInitDB(t)
+	defer dbSession.Close()
+	tc := &tmocks.Client{}
+	cfg := common.GetTestConfig()
+
+	// Prepare client pool for sync calls
+	// to site(s).
+	tcfg, _ := cfg.GetTemporalConfig()
+	scp := sc.NewClientPool(tcfg)
+
+	tests := []struct {
+		name string
+		args args
+		want DeleteVPCHandler
+	}{
+		{
+			name: "test DeleteVPCHandler initialization",
+			args: args{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			want: DeleteVPCHandler{
+				dbSession:  dbSession,
+				tc:         tc,
+				cfg:        cfg,
+				scp:        scp,
+				tracerSpan: sutil.NewTracerSpan(),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NewDeleteVPCHandler(tt.args.dbSession, tt.args.tc, scp, tt.args.cfg); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("NewDeleteVPCHandler() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

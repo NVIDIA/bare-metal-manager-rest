@@ -1,0 +1,2684 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ *
+ * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+ * property and proprietary rights in and to this material, related
+ * documentation and any modifications thereto. Any use, reproduction,
+ * disclosure or distribution of this material and related documentation
+ * without an express license agreement from NVIDIA CORPORATION or
+ * its affiliates is strictly prohibited.
+ */
+
+
+package model
+
+import (
+	"context"
+	"fmt"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	otrace "go.opentelemetry.io/otel/trace"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/google/uuid"
+	"github.com/uptrace/bun/extra/bundebug"
+	"github.com/nvidia/carbide-rest/db/pkg/db"
+	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
+	"github.com/nvidia/carbide-rest/db/pkg/util"
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+)
+
+func testInstanceInitDB(t *testing.T) *db.Session {
+	dbSession := util.GetTestDBSession(t, false)
+	dbSession.DB.AddQueryHook(bundebug.NewQueryHook(
+		bundebug.WithEnabled(false),
+		bundebug.FromEnv("BUNDEBUG"),
+	))
+	return dbSession
+}
+
+// reset the tables needed for Instance tests
+func testInstanceSetupSchema(t *testing.T, dbSession *db.Session) {
+	// create Allocation table
+	err := dbSession.DB.ResetModel(context.Background(), (*Allocation)(nil))
+	assert.Nil(t, err)
+	// create Tenant table
+	err = dbSession.DB.ResetModel(context.Background(), (*Tenant)(nil))
+	assert.Nil(t, err)
+	// create Infrastructure Provider table
+	err = dbSession.DB.ResetModel(context.Background(), (*InfrastructureProvider)(nil))
+	assert.Nil(t, err)
+	// create Site table
+	err = dbSession.DB.ResetModel(context.Background(), (*Site)(nil))
+	assert.Nil(t, err)
+	// create InstanceType table
+	err = dbSession.DB.ResetModel(context.Background(), (*InstanceType)(nil))
+	assert.Nil(t, err)
+	// create NetworkSecurityGroup table
+	err = dbSession.DB.ResetModel(context.Background(), (*NetworkSecurityGroup)(nil))
+	assert.Nil(t, err)
+	// create Vpc table
+	err = dbSession.DB.ResetModel(context.Background(), (*Vpc)(nil))
+	assert.Nil(t, err)
+	// create IPBlock table
+	err = dbSession.DB.ResetModel(context.Background(), (*IPBlock)(nil))
+	assert.Nil(t, err)
+	// create Machine table
+	err = dbSession.DB.ResetModel(context.Background(), (*Machine)(nil))
+	assert.Nil(t, err)
+	// create Machine table
+	err = dbSession.DB.ResetModel(context.Background(), (*MachineCapability)(nil))
+	assert.Nil(t, err)
+	// create OperatingSystem table
+	err = dbSession.DB.ResetModel(context.Background(), (*OperatingSystem)(nil))
+	assert.Nil(t, err)
+	// create User table
+	err = dbSession.DB.ResetModel(context.Background(), (*User)(nil))
+	assert.Nil(t, err)
+	// create Instance table
+	err = dbSession.DB.ResetModel(context.Background(), (*Instance)(nil))
+	assert.Nil(t, err)
+	// create SSHKey table
+	err = dbSession.DB.ResetModel(context.Background(), (*SSHKey)(nil))
+	assert.Nil(t, err)
+	// create SSHKeyGroup table
+	err = dbSession.DB.ResetModel(context.Background(), (*SSHKeyGroup)(nil))
+	assert.Nil(t, err)
+}
+
+func testInstanceBuildInfrastructureProvider(t *testing.T, dbSession *db.Session, name string) *InfrastructureProvider {
+	ip := &InfrastructureProvider{
+		ID:          uuid.New(),
+		Name:        name,
+		DisplayName: db.GetStrPtr("TestInfraProvider"),
+		Org:         "test",
+	}
+	_, err := dbSession.DB.NewInsert().Model(ip).Exec(context.Background())
+	assert.Nil(t, err)
+	return ip
+}
+
+func testInstanceBuildSite(t *testing.T, dbSession *db.Session, ip *InfrastructureProvider, name string) *Site {
+	st := &Site{
+		ID:                          uuid.New(),
+		Name:                        name,
+		DisplayName:                 db.GetStrPtr("Test"),
+		Org:                         "test",
+		InfrastructureProviderID:    ip.ID,
+		SiteControllerVersion:       db.GetStrPtr("1.0.0"),
+		SiteAgentVersion:            db.GetStrPtr("1.0.0"),
+		RegistrationToken:           db.GetStrPtr("1234-5678-9012-3456"),
+		RegistrationTokenExpiration: db.GetTimePtr(db.GetCurTime()),
+		Status:                      SiteStatusPending,
+		CreatedBy:                   uuid.New(),
+	}
+	_, err := dbSession.DB.NewInsert().Model(st).Exec(context.Background())
+	assert.Nil(t, err)
+	return st
+}
+
+func testInstanceBuildTenant(t *testing.T, dbSession *db.Session, name string) *Tenant {
+	tenant := &Tenant{
+		ID:             uuid.New(),
+		Name:           name,
+		Org:            "test",
+		OrgDisplayName: db.GetStrPtr(name + "-display"),
+	}
+	_, err := dbSession.DB.NewInsert().Model(tenant).Exec(context.Background())
+	assert.Nil(t, err)
+	return tenant
+}
+
+func testInstanceBuildVpc(t *testing.T, dbSession *db.Session, infrastructureProvider *InfrastructureProvider, site *Site, tenant *Tenant, name string) *Vpc {
+	vpc := &Vpc{
+		ID:                       uuid.New(),
+		Name:                     name,
+		Org:                      "test",
+		InfrastructureProviderID: infrastructureProvider.ID,
+		SiteID:                   site.ID,
+		TenantID:                 tenant.ID,
+		Status:                   VpcStatusPending,
+		CreatedBy:                uuid.New(),
+	}
+	_, err := dbSession.DB.NewInsert().Model(vpc).Exec(context.Background())
+	assert.Nil(t, err)
+	return vpc
+}
+
+func testInstanceBuildSubnet(t *testing.T, dbSession *db.Session, tenant *Tenant, vpc *Vpc, name string) *Subnet {
+	subnet := &Subnet{
+		ID:        uuid.New(),
+		Name:      name,
+		SiteID:    vpc.SiteID,
+		VpcID:     vpc.ID,
+		TenantID:  tenant.ID,
+		Status:    SubnetStatusPending,
+		CreatedBy: uuid.New(),
+	}
+	_, err := dbSession.DB.NewInsert().Model(subnet).Exec(context.Background())
+	assert.Nil(t, err)
+	return subnet
+}
+
+func testInstanceBuildInstanceType(t *testing.T, dbSession *db.Session, ip *InfrastructureProvider, name string) *InstanceType {
+	instanceType := &InstanceType{
+		ID:                       uuid.New(),
+		Name:                     name,
+		InfrastructureProviderID: ip.ID,
+		Status:                   InstanceTypeStatusPending,
+	}
+	_, err := dbSession.DB.NewInsert().Model(instanceType).Exec(context.Background())
+	assert.Nil(t, err)
+	return instanceType
+}
+
+func testInstanceBuildNetworkSecurityGroup(t *testing.T, dbSession *db.Session, tenant *Tenant, site *Site, name string) *NetworkSecurityGroup {
+	networkSecurityGroup := &NetworkSecurityGroup{
+		ID:        uuid.NewString(),
+		Name:      name,
+		SiteID:    site.ID,
+		TenantOrg: tenant.Org,
+		TenantID:  tenant.ID,
+		Status:    InstanceTypeStatusReady,
+		Rules: []*NetworkSecurityGroupRule{
+			&NetworkSecurityGroupRule{
+				&cwssaws.NetworkSecurityGroupRuleAttributes{
+					Id:     db.GetStrPtr(uuid.NewString()),
+					Action: cwssaws.NetworkSecurityGroupRuleAction_NSG_RULE_ACTION_DENY,
+				},
+			},
+		},
+	}
+
+	_, err := dbSession.DB.NewInsert().Model(networkSecurityGroup).Exec(context.Background())
+	assert.Nil(t, err)
+	return networkSecurityGroup
+}
+
+func testInstanceBuildAllocation(t *testing.T, dbSession *db.Session, ip *InfrastructureProvider, tenant *Tenant, site *Site, name string) *Allocation {
+	allocation := &Allocation{
+		ID:                       uuid.New(),
+		Name:                     name,
+		InfrastructureProviderID: ip.ID,
+		TenantID:                 tenant.ID,
+		SiteID:                   site.ID,
+		Status:                   AllocationStatusPending,
+		CreatedBy:                uuid.New(),
+	}
+	_, err := dbSession.DB.NewInsert().Model(allocation).Exec(context.Background())
+	assert.Nil(t, err)
+	return allocation
+}
+
+func testInstanceBuildOperatingSystem(t *testing.T, dbSession *db.Session, name string) *OperatingSystem {
+	operatingSystem := &OperatingSystem{
+		ID:        uuid.New(),
+		Name:      name,
+		Status:    OperatingSystemStatusPending,
+		CreatedBy: uuid.New(),
+	}
+	_, err := dbSession.DB.NewInsert().Model(operatingSystem).Exec(context.Background())
+	assert.Nil(t, err)
+	return operatingSystem
+}
+
+func testInstanceBuildUser(t *testing.T, dbSession *db.Session, starfleetID string) *User {
+	user := &User{
+		ID:          uuid.New(),
+		StarfleetID: db.GetStrPtr(starfleetID),
+		Email:       db.GetStrPtr("jdoe@test.com"),
+		FirstName:   db.GetStrPtr("John"),
+		LastName:    db.GetStrPtr("Doe"),
+	}
+	_, err := dbSession.DB.NewInsert().Model(user).Exec(context.Background())
+	assert.Nil(t, err)
+	return user
+}
+
+func TestInstanceSQLDAO_Create(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInstanceInitDB(t)
+	defer dbSession.Close()
+	testInstanceSetupSchema(t, dbSession)
+	ip := testInstanceBuildInfrastructureProvider(t, dbSession, "testIP")
+	site := testInstanceBuildSite(t, dbSession, ip, "testSite")
+	tenant := testInstanceBuildTenant(t, dbSession, "testTenant")
+	vpc := testInstanceBuildVpc(t, dbSession, ip, site, tenant, "testVpc")
+	instanceType := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType")
+	networkSecurityGroup := testInstanceBuildNetworkSecurityGroup(t, dbSession, tenant, site, "testNetworkSecurityGroup")
+	machine := testMachineBuildMachine(t, dbSession, ip.ID, site.ID, &instanceType.ID, db.GetStrPtr("mcTypeTest"))
+	allocation := testInstanceBuildAllocation(t, dbSession, ip, tenant, site, "testAllocation")
+	allocationConstraint := testBuildAllocationConstraint(t, dbSession, allocation, AllocationResourceTypeInstanceType, instanceType.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+	operatingSystem := testInstanceBuildOperatingSystem(t, dbSession, "testOS")
+	user := testInstanceBuildUser(t, dbSession, "testUser")
+	ossd := NewInstanceDAO(dbSession)
+	dummyUUID := uuid.New()
+	dummyMachineID := uuid.NewString()
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc               string
+		is                 []Instance
+		expectError        bool
+		verifyChildSpanner bool
+	}{
+		{
+			desc: "create one",
+			is: []Instance{
+				{
+					Name:                     "test",
+					Description:              db.GetStrPtr("Test description"),
+					AllocationID:             &allocation.ID,
+					AllocationConstraintID:   &allocationConstraint.ID,
+					TenantID:                 tenant.ID,
+					InfrastructureProviderID: ip.ID,
+					SiteID:                   site.ID,
+					InstanceTypeID:           &instanceType.ID,
+					NetworkSecurityGroupID:   &networkSecurityGroup.ID,
+					NetworkSecurityGroupPropagationDetails: &NetworkSecurityGroupPropagationDetails{
+						NetworkSecurityGroupPropagationObjectStatus: &cwssaws.NetworkSecurityGroupPropagationObjectStatus{
+							Id:                      "",
+							RelatedInstanceIds:      []string{},
+							UnpropagatedInstanceIds: []string{},
+						},
+					},
+					VpcID:                    vpc.ID,
+					MachineID:                &machine.ID,
+					Hostname:                 db.GetStrPtr("test.com"),
+					OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+					Status:                   InstanceStatusPending,
+					PowerStatus:              db.GetStrPtr(InstancePowerStatusBootCompleted),
+					IpxeScript:               db.GetStrPtr("ipxe"),
+					AlwaysBootWithCustomIpxe: true,
+					PhoneHomeEnabled:         true,
+					UserData:                 db.GetStrPtr("data"),
+					CreatedBy:                user.ID,
+					Labels:                   map[string]string{},
+				},
+			},
+			expectError:        false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc: "create multiple, some with null fields",
+			is: []Instance{
+				{
+					Name: "test1", Description: db.GetStrPtr("Test description"), AllocationID: &allocation.ID, AllocationConstraintID: &allocationConstraint.ID, TenantID: tenant.ID, InfrastructureProviderID: ip.ID, SiteID: site.ID, InstanceTypeID: &instanceType.ID, VpcID: vpc.ID, MachineID: &machine.ID, Hostname: db.GetStrPtr("test.com"), OperatingSystemID: db.GetUUIDPtr(operatingSystem.ID), Status: InstanceStatusPending, IpxeScript: db.GetStrPtr("ipxe"), AlwaysBootWithCustomIpxe: true, PhoneHomeEnabled: true, UserData: db.GetStrPtr("data"), IsUpdatePending: true, CreatedBy: user.ID, Labels: map[string]string{},
+				},
+				{
+					Name: "test2", AllocationID: &allocation.ID, AllocationConstraintID: &allocationConstraint.ID, TenantID: tenant.ID, InfrastructureProviderID: ip.ID, SiteID: site.ID, InstanceTypeID: &instanceType.ID, VpcID: vpc.ID, MachineID: &machine.ID, Hostname: nil, OperatingSystemID: db.GetUUIDPtr(operatingSystem.ID), InfinityRCRStatus: db.GetStrPtr("RESOURCE_GRANTED"), Status: InstanceStatusPending, IpxeScript: nil, PhoneHomeEnabled: false, UserData: nil, CreatedBy: user.ID, Labels: map[string]string{},
+				},
+				{
+					Name: "test3", Description: db.GetStrPtr("Test description 3"), AllocationID: &allocation.ID, AllocationConstraintID: &allocationConstraint.ID, TenantID: tenant.ID, InfrastructureProviderID: ip.ID, SiteID: site.ID, InstanceTypeID: &instanceType.ID, VpcID: vpc.ID, MachineID: &machine.ID, Hostname: db.GetStrPtr("test.com"), OperatingSystemID: db.GetUUIDPtr(operatingSystem.ID), InfinityRCRStatus: db.GetStrPtr("RESOURCE_GRANTED"), Status: InstanceStatusPending, IpxeScript: db.GetStrPtr("ipxe"), AlwaysBootWithCustomIpxe: true, UserData: db.GetStrPtr("data"), CreatedBy: user.ID, Labels: map[string]string{},
+				},
+			},
+			expectError: false,
+		},
+		{
+			desc: "failure - foreign key violation on allocation_id",
+			is: []Instance{
+				{
+					Name: "test", AllocationID: &dummyUUID, TenantID: tenant.ID, InfrastructureProviderID: ip.ID, SiteID: site.ID, InstanceTypeID: &instanceType.ID, VpcID: vpc.ID, MachineID: &machine.ID, Hostname: db.GetStrPtr("test.com"), OperatingSystemID: db.GetUUIDPtr(operatingSystem.ID), Status: InstanceStatusPending, IpxeScript: db.GetStrPtr("ipxe"), UserData: db.GetStrPtr("data"), CreatedBy: user.ID, Labels: map[string]string{},
+				},
+			},
+			expectError: true,
+		},
+		{
+			desc: "failure - foreign key violation on tenant_id",
+			is: []Instance{
+				{
+					Name: "test", AllocationID: &allocation.ID, AllocationConstraintID: &allocationConstraint.ID, TenantID: dummyUUID, InfrastructureProviderID: ip.ID, SiteID: site.ID, InstanceTypeID: &instanceType.ID, VpcID: vpc.ID, MachineID: &machine.ID, Hostname: db.GetStrPtr("test.com"), OperatingSystemID: db.GetUUIDPtr(operatingSystem.ID), Status: InstanceStatusPending, IpxeScript: db.GetStrPtr("ipxe"), UserData: db.GetStrPtr("data"), CreatedBy: user.ID, Labels: map[string]string{},
+				},
+			},
+			expectError: true,
+		},
+		{
+			desc: "failure - foreign key violation on infrastructure_provider_id",
+			is: []Instance{
+				{
+					Name: "test", AllocationID: &allocation.ID, AllocationConstraintID: &allocationConstraint.ID, TenantID: tenant.ID, InfrastructureProviderID: dummyUUID, SiteID: site.ID, InstanceTypeID: &instanceType.ID, VpcID: vpc.ID, MachineID: &machine.ID, Hostname: db.GetStrPtr("test.com"), OperatingSystemID: db.GetUUIDPtr(operatingSystem.ID), Status: InstanceStatusPending, IpxeScript: db.GetStrPtr("ipxe"), UserData: db.GetStrPtr("data"), CreatedBy: user.ID, Labels: map[string]string{},
+				},
+			},
+			expectError: true,
+		},
+		{
+			desc: "failure - foreign key violation on site_id",
+			is: []Instance{
+				{
+					Name: "test", AllocationID: &allocation.ID, AllocationConstraintID: &allocationConstraint.ID, TenantID: tenant.ID, InfrastructureProviderID: ip.ID, SiteID: dummyUUID, InstanceTypeID: &instanceType.ID, VpcID: vpc.ID, MachineID: &machine.ID, Hostname: db.GetStrPtr("test.com"), OperatingSystemID: db.GetUUIDPtr(operatingSystem.ID), Status: InstanceStatusPending, IpxeScript: db.GetStrPtr("ipxe"), UserData: db.GetStrPtr("data"), CreatedBy: user.ID, Labels: map[string]string{},
+				},
+			},
+			expectError: true,
+		},
+		{
+			desc: "failure - foreign key violation on instance_type_id",
+			is: []Instance{
+				{
+					Name: "test", AllocationID: &allocation.ID, AllocationConstraintID: &allocationConstraint.ID, TenantID: tenant.ID, InfrastructureProviderID: ip.ID, SiteID: site.ID, InstanceTypeID: &dummyUUID, VpcID: vpc.ID, MachineID: &machine.ID, Hostname: db.GetStrPtr("test.com"), OperatingSystemID: db.GetUUIDPtr(operatingSystem.ID), Status: InstanceStatusPending, IpxeScript: db.GetStrPtr("ipxe"), UserData: db.GetStrPtr("data"), CreatedBy: user.ID, Labels: map[string]string{},
+				},
+			},
+			expectError: true,
+		},
+		{
+			desc: "failure - foreign key violation on vpc_id",
+			is: []Instance{
+				{
+					Name: "test", AllocationID: &allocation.ID, AllocationConstraintID: &allocationConstraint.ID, TenantID: tenant.ID, InfrastructureProviderID: ip.ID, SiteID: site.ID, InstanceTypeID: &instanceType.ID, VpcID: dummyUUID, MachineID: &machine.ID, Hostname: db.GetStrPtr("test.com"), OperatingSystemID: db.GetUUIDPtr(operatingSystem.ID), Status: InstanceStatusPending, IpxeScript: db.GetStrPtr("ipxe"), UserData: db.GetStrPtr("data"), CreatedBy: user.ID, Labels: map[string]string{},
+				},
+			},
+			expectError: true,
+		},
+		{
+			desc: "failure - foreign key violation on machine_id",
+			is: []Instance{
+				{
+					Name: "test", AllocationID: &allocation.ID, AllocationConstraintID: &allocationConstraint.ID, TenantID: tenant.ID, InfrastructureProviderID: ip.ID, SiteID: site.ID, InstanceTypeID: &instanceType.ID, VpcID: vpc.ID, MachineID: &dummyMachineID, Hostname: db.GetStrPtr("test.com"), OperatingSystemID: db.GetUUIDPtr(operatingSystem.ID), Status: InstanceStatusPending, IpxeScript: db.GetStrPtr("ipxe"), UserData: db.GetStrPtr("data"), CreatedBy: user.ID, Labels: map[string]string{},
+				},
+			},
+			expectError: true,
+		},
+		{
+			desc: "failure - foreign key violation on operating_system_id",
+			is: []Instance{
+				{
+					Name: "test", AllocationID: &allocation.ID, AllocationConstraintID: &allocationConstraint.ID, TenantID: tenant.ID, InfrastructureProviderID: ip.ID, SiteID: site.ID, InstanceTypeID: &instanceType.ID, VpcID: vpc.ID, MachineID: &machine.ID, Hostname: db.GetStrPtr("test.com"), OperatingSystemID: db.GetUUIDPtr(dummyUUID), Status: InstanceStatusPending, IpxeScript: db.GetStrPtr("ipxe"), UserData: db.GetStrPtr("data"), CreatedBy: user.ID, Labels: map[string]string{},
+				},
+			},
+			expectError: true,
+		},
+		{
+			desc: "failure - foreign key violation on network_security_group_id",
+			is: []Instance{
+				{
+					Name: "test", AllocationID: &allocation.ID, AllocationConstraintID: &allocationConstraint.ID, TenantID: tenant.ID, InfrastructureProviderID: ip.ID, SiteID: site.ID, InstanceTypeID: &instanceType.ID, NetworkSecurityGroupID: db.GetStrPtr(uuid.NewString()), VpcID: vpc.ID, MachineID: &machine.ID, Hostname: db.GetStrPtr("test.com"), OperatingSystemID: db.GetUUIDPtr(dummyUUID), Status: InstanceStatusPending, IpxeScript: db.GetStrPtr("ipxe"), UserData: db.GetStrPtr("data"), CreatedBy: user.ID, Labels: map[string]string{},
+				},
+			},
+			expectError: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			for _, i := range tc.is {
+				got, err := ossd.Create(
+					ctx, nil,
+					InstanceCreateInput{
+						Name:                                   i.Name,
+						Description:                            i.Description,
+						AllocationID:                           i.AllocationID,
+						AllocationConstraintID:                 i.AllocationConstraintID,
+						TenantID:                               i.TenantID,
+						InfrastructureProviderID:               i.InfrastructureProviderID,
+						SiteID:                                 i.SiteID,
+						InstanceTypeID:                         i.InstanceTypeID,
+						NetworkSecurityGroupID:                 i.NetworkSecurityGroupID,
+						NetworkSecurityGroupPropagationDetails: i.NetworkSecurityGroupPropagationDetails,
+						VpcID:                                  i.VpcID,
+						MachineID:                              i.MachineID,
+						Hostname:                               i.Hostname,
+						OperatingSystemID:                      i.OperatingSystemID,
+						IpxeScript:                             i.IpxeScript,
+						AlwaysBootWithCustomIpxe:               i.AlwaysBootWithCustomIpxe,
+						PhoneHomeEnabled:                       i.PhoneHomeEnabled,
+						UserData:                               i.UserData,
+						Labels:                                 i.Labels,
+						IsUpdatePending:                        i.IsUpdatePending,
+						InfinityRCRStatus:                      i.InfinityRCRStatus,
+						Status:                                 i.Status,
+						PowerStatus:                            i.PowerStatus,
+						CreatedBy:                              i.CreatedBy,
+					},
+				)
+				assert.Equal(t, tc.expectError, err != nil)
+				if !tc.expectError {
+					assert.NotNil(t, got)
+				}
+				if i.NetworkSecurityGroupPropagationDetails != nil {
+					assert.True(t, proto.Equal(i.NetworkSecurityGroupPropagationDetails, got.NetworkSecurityGroupPropagationDetails))
+				}
+
+				if tc.verifyChildSpanner {
+					span := otrace.SpanFromContext(ctx)
+					assert.True(t, span.SpanContext().IsValid())
+					_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+					assert.True(t, ok)
+				}
+			}
+		})
+	}
+}
+
+func TestInstanceSQLDAO_GetByID(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInstanceInitDB(t)
+	defer dbSession.Close()
+	testInstanceSetupSchema(t, dbSession)
+	ip := testInstanceBuildInfrastructureProvider(t, dbSession, "testIP")
+	site := testInstanceBuildSite(t, dbSession, ip, "testSite")
+	tenant := testInstanceBuildTenant(t, dbSession, "testTenant")
+	vpc := testInstanceBuildVpc(t, dbSession, ip, site, tenant, "testVpc")
+	instanceType := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType")
+	networkSecurityGroup := testInstanceBuildNetworkSecurityGroup(t, dbSession, tenant, site, "testNetworkSecurityGroup")
+	machine := testMachineBuildMachine(t, dbSession, ip.ID, site.ID, &instanceType.ID, db.GetStrPtr("mcTypeTest"))
+	allocation := testInstanceBuildAllocation(t, dbSession, ip, tenant, site, "testAllocation")
+	allocationConstraint := testBuildAllocationConstraint(t, dbSession, allocation, AllocationResourceTypeInstanceType, instanceType.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+	operatingSystem := testInstanceBuildOperatingSystem(t, dbSession, "testOS")
+	user := testInstanceBuildUser(t, dbSession, "testUser")
+	isd := NewInstanceDAO(dbSession)
+	dummyUUID := uuid.New()
+	i1, err := isd.Create(
+		ctx, nil,
+		InstanceCreateInput{
+			Name:                     "test1",
+			Description:              db.GetStrPtr("Test description"),
+			AllocationID:             &allocation.ID,
+			AllocationConstraintID:   &allocationConstraint.ID,
+			TenantID:                 tenant.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			NetworkSecurityGroupID:   &networkSecurityGroup.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			Hostname:                 db.GetStrPtr("test.com"),
+			OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               db.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			PhoneHomeEnabled:         true,
+			UserData:                 db.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			InfinityRCRStatus:        db.GetStrPtr("RESOURCE_GRANTED"),
+			Status:                   InstanceStatusPending,
+			CreatedBy:                user.ID,
+		},
+	)
+	assert.Nil(t, err)
+	assert.NotNil(t, i1)
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc                           string
+		id                             uuid.UUID
+		instance                       *Instance
+		paramRelations                 []string
+		expectedError                  bool
+		expectedErrVal                 error
+		expectedAllocation             bool
+		expectedAllocationConstraint   bool
+		expectedTenant                 bool
+		expectedInfrastructureProvider bool
+		expectedSite                   bool
+		expectedInstanceType           bool
+		expectedNetworkSecurityGroup   bool
+		expectedVpc                    bool
+		expectedMachine                bool
+		expectedOperatingSystem        bool
+		verifyChildSpanner             bool
+	}{
+		{
+			desc:                           "GetById success when Instance exists",
+			id:                             i1.ID,
+			instance:                       i1,
+			paramRelations:                 []string{},
+			expectedError:                  false,
+			expectedAllocation:             false,
+			expectedAllocationConstraint:   false,
+			expectedTenant:                 false,
+			expectedInfrastructureProvider: false,
+			expectedSite:                   false,
+			expectedInstanceType:           false,
+			expectedVpc:                    false,
+			expectedMachine:                false,
+			expectedOperatingSystem:        false,
+			verifyChildSpanner:             true,
+		},
+		{
+			desc:                           "GetById error when not found",
+			id:                             dummyUUID,
+			instance:                       i1,
+			paramRelations:                 []string{},
+			expectedError:                  true,
+			expectedErrVal:                 db.ErrDoesNotExist,
+			expectedAllocation:             false,
+			expectedAllocationConstraint:   false,
+			expectedTenant:                 false,
+			expectedInfrastructureProvider: false,
+			expectedSite:                   false,
+			expectedInstanceType:           false,
+			expectedVpc:                    false,
+			expectedMachine:                false,
+			expectedOperatingSystem:        false,
+		},
+		{
+			desc:                           "GetById with all relations",
+			id:                             i1.ID,
+			instance:                       i1,
+			paramRelations:                 []string{AllocationRelationName, TenantRelationName, InfrastructureProviderRelationName, SiteRelationName, InstanceTypeRelationName, VpcRelationName, MachineRelationName, OperatingSystemRelationName, NetworkSecurityGroupRelationName},
+			expectedError:                  false,
+			expectedAllocation:             true,
+			expectedAllocationConstraint:   true,
+			expectedTenant:                 true,
+			expectedInfrastructureProvider: true,
+			expectedSite:                   true,
+			expectedInstanceType:           true,
+			expectedNetworkSecurityGroup:   true,
+			expectedVpc:                    true,
+			expectedMachine:                true,
+			expectedOperatingSystem:        true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, err := isd.GetByID(ctx, nil, tc.id, tc.paramRelations)
+			assert.Equal(t, tc.expectedError, err != nil)
+			if tc.expectedError {
+				assert.Equal(t, tc.expectedErrVal, err)
+			}
+			if err == nil {
+				assert.EqualValues(t, tc.instance.ID, got.ID)
+				if tc.expectedAllocation {
+					assert.EqualValues(t, *tc.instance.AllocationID, got.Allocation.ID)
+				}
+				if tc.expectedTenant {
+					assert.EqualValues(t, tc.instance.TenantID, got.Tenant.ID)
+				}
+				if tc.expectedInfrastructureProvider {
+					assert.EqualValues(t, tc.instance.InfrastructureProviderID, got.InfrastructureProvider.ID)
+				}
+				if tc.expectedSite {
+					assert.EqualValues(t, tc.instance.SiteID, got.Site.ID)
+				}
+				if tc.expectedInstanceType {
+					assert.EqualValues(t, *tc.instance.InstanceTypeID, got.InstanceType.ID)
+				}
+				if tc.expectedVpc {
+					assert.EqualValues(t, tc.instance.VpcID, got.Vpc.ID)
+				}
+				if tc.expectedMachine {
+					assert.EqualValues(t, *tc.instance.MachineID, got.Machine.ID)
+				}
+				if tc.expectedOperatingSystem {
+					assert.EqualValues(t, *tc.instance.OperatingSystemID, got.OperatingSystem.ID)
+				}
+				assert.Equal(t, got.AlwaysBootWithCustomIpxe, true)
+				if tc.verifyChildSpanner {
+					span := otrace.SpanFromContext(ctx)
+					assert.True(t, span.SpanContext().IsValid())
+					_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+					assert.True(t, ok)
+				}
+			}
+		})
+	}
+}
+
+func TestInstanceSQLDAO_GetCountByStatus(t *testing.T) {
+	type fields struct {
+		dbSession *db.Session
+	}
+	type args struct {
+		ctx context.Context
+	}
+
+	ctx := context.Background()
+	dbSession := testInstanceInitDB(t)
+	defer dbSession.Close()
+
+	testInstanceSetupSchema(t, dbSession)
+	ip := testInstanceBuildInfrastructureProvider(t, dbSession, "testIP")
+	site := testInstanceBuildSite(t, dbSession, ip, "testSite")
+	tenant1 := testInstanceBuildTenant(t, dbSession, "testTenant1")
+	tenant2 := testInstanceBuildTenant(t, dbSession, "testTenant2")
+	vpc := testInstanceBuildVpc(t, dbSession, ip, site, tenant1, "testVpc")
+	instanceType := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType")
+	networkSecurityGroup := testInstanceBuildNetworkSecurityGroup(t, dbSession, tenant1, site, "testNetworkSecurityGroup")
+	machine := testMachineBuildMachine(t, dbSession, ip.ID, site.ID, &instanceType.ID, db.GetStrPtr("mcTypeTest"))
+	allocation := testInstanceBuildAllocation(t, dbSession, ip, tenant1, site, "testAllocation")
+	allocationConstraint := testBuildAllocationConstraint(t, dbSession, allocation, AllocationResourceTypeInstanceType, instanceType.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+	operatingSystem := testInstanceBuildOperatingSystem(t, dbSession, "testOS")
+	user := testInstanceBuildUser(t, dbSession, "testUser")
+	isd := NewInstanceDAO(dbSession)
+
+	i1, err := isd.Create(
+		ctx, nil,
+		InstanceCreateInput{
+			Name:                     "test1",
+			Description:              db.GetStrPtr("Test description"),
+			AllocationID:             &allocation.ID,
+			AllocationConstraintID:   &allocationConstraint.ID,
+			TenantID:                 tenant1.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			NetworkSecurityGroupID:   &networkSecurityGroup.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			Hostname:                 db.GetStrPtr("test.com"),
+			OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               db.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			PhoneHomeEnabled:         true,
+			UserData:                 db.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			Status:                   InstanceStatusPending,
+			CreatedBy:                user.ID,
+		},
+	)
+	assert.NoError(t, err)
+	assert.NotNil(t, i1)
+
+	i2, err := isd.Create(
+		ctx, nil,
+		InstanceCreateInput{
+			Name:                     "test2",
+			AllocationID:             &allocation.ID,
+			AllocationConstraintID:   &allocationConstraint.ID,
+			TenantID:                 tenant1.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			Hostname:                 db.GetStrPtr("test.com"),
+			OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               db.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			PhoneHomeEnabled:         true,
+			UserData:                 db.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			Status:                   InstanceStatusPending,
+			CreatedBy:                user.ID,
+		},
+	)
+	assert.NoError(t, err)
+	assert.NotNil(t, i2)
+
+	i3, err := isd.Create(
+		ctx, nil,
+		InstanceCreateInput{
+			Name:                     "test3",
+			AllocationID:             &allocation.ID,
+			AllocationConstraintID:   &allocationConstraint.ID,
+			TenantID:                 tenant1.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			Hostname:                 db.GetStrPtr("test.com"),
+			OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               db.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			PhoneHomeEnabled:         true,
+			UserData:                 db.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			Status:                   InstanceStatusProvisioning,
+			CreatedBy:                user.ID,
+		},
+	)
+	assert.NoError(t, err)
+	assert.NotNil(t, i3)
+
+	i4, err := isd.Create(
+		ctx, nil,
+		InstanceCreateInput{
+			Name:                     "test4",
+			AllocationID:             &allocation.ID,
+			AllocationConstraintID:   &allocationConstraint.ID,
+			TenantID:                 tenant1.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			Hostname:                 db.GetStrPtr("test.com"),
+			OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               db.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			UserData:                 db.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			Status:                   InstanceStatusReady,
+			CreatedBy:                user.ID,
+		},
+	)
+	assert.NoError(t, err)
+	assert.NotNil(t, i4)
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		name               string
+		id                 uuid.UUID
+		fields             fields
+		args               args
+		wantErr            error
+		wantEmpty          bool
+		wantCount          int
+		wantStatusMap      map[string]int
+		reqTenant          *uuid.UUID
+		reqSite            *uuid.UUID
+		verifyChildSpanner bool
+	}{
+		{
+			name: "get instance status count by tenant with instance returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx: context.Background(),
+			},
+			wantErr:   nil,
+			wantEmpty: false,
+			wantCount: 4,
+			wantStatusMap: map[string]int{
+				InstanceStatusPending:      2,
+				InstanceStatusProvisioning: 1,
+				InstanceStatusConfiguring:  0,
+				InstanceStatusReady:        1,
+				InstanceStatusUpdating:     0,
+				InstanceStatusTerminating:  0,
+				InstanceStatusError:        0,
+				"total":                    4,
+			},
+			reqTenant:          db.GetUUIDPtr(tenant1.ID),
+			verifyChildSpanner: true,
+		},
+		{
+			name: "get instance status count by tenant with no instance returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx: context.Background(),
+			},
+			wantErr:   nil,
+			wantEmpty: true,
+			reqTenant: db.GetUUIDPtr(tenant2.ID),
+		},
+		{
+			name: "get instance status count with no filter instance returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx: context.Background(),
+			},
+			wantErr:   nil,
+			wantEmpty: false,
+			wantCount: 4,
+			wantStatusMap: map[string]int{
+				InstanceStatusPending:      2,
+				InstanceStatusProvisioning: 1,
+				InstanceStatusConfiguring:  0,
+				InstanceStatusReady:        1,
+				InstanceStatusUpdating:     0,
+				InstanceStatusTerminating:  0,
+				InstanceStatusError:        0,
+				"total":                    4,
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			isd := InstanceSQLDAO{
+				dbSession: tt.fields.dbSession,
+			}
+			got, err := isd.GetCountByStatus(tt.args.ctx, nil, tt.reqTenant, tt.reqSite)
+			if tt.wantErr != nil {
+				assert.ErrorAs(t, err, &tt.wantErr)
+				return
+			}
+			if tt.wantEmpty {
+				assert.EqualValues(t, got["total"], 0)
+			}
+			if err == nil && !tt.wantEmpty {
+				assert.EqualValues(t, tt.wantStatusMap, got)
+				if len(got) > 0 {
+					assert.EqualValues(t, got[InstanceStatusPending], 2)
+					assert.EqualValues(t, got["total"], tt.wantCount)
+				}
+			}
+			if tt.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}
+
+func TestInstanceSQLDAO_GetAll(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInstanceInitDB(t)
+	defer dbSession.Close()
+	testInstanceSetupSchema(t, dbSession)
+	ip := testInstanceBuildInfrastructureProvider(t, dbSession, "testIP")
+	site := testInstanceBuildSite(t, dbSession, ip, "testSite")
+	site2 := testInstanceBuildSite(t, dbSession, ip, "testSite2")
+	tenant := testInstanceBuildTenant(t, dbSession, "testTenant1")
+	tenant2 := testInstanceBuildTenant(t, dbSession, "testTenant2")
+	vpc := testInstanceBuildVpc(t, dbSession, ip, site, tenant, "testVpc")
+	vpc2 := testInstanceBuildVpc(t, dbSession, ip, site2, tenant2, "testVpc2")
+	allocation := testInstanceBuildAllocation(t, dbSession, ip, tenant, site, "testAllocation")
+	allocation2 := testInstanceBuildAllocation(t, dbSession, ip, tenant2, site2, "testAllocation2")
+	instanceType := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType")
+	networkSecurityGroup := testInstanceBuildNetworkSecurityGroup(t, dbSession, tenant, site, "testNetworkSecurityGroup")
+	instanceType2 := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType2")
+	networkSecurityGroup2 := testInstanceBuildNetworkSecurityGroup(t, dbSession, tenant2, site2, "testNetworkSecurityGroup2")
+	allocationConstraint := testBuildAllocationConstraint(t, dbSession, allocation, AllocationResourceTypeInstanceType, instanceType.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+	testBuildAllocationConstraint(t, dbSession, allocation2, AllocationResourceTypeInstanceType, instanceType2.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+
+	operatingSystem := testInstanceBuildOperatingSystem(t, dbSession, "testOS")
+	operatingSystem2 := testInstanceBuildOperatingSystem(t, dbSession, "testOS2")
+	user := testInstanceBuildUser(t, dbSession, "testUser")
+	isd := NewInstanceDAO(dbSession)
+	dummyUUID := uuid.New()
+
+	mcd := NewMachineCapabilityDAO(dbSession)
+
+	totalCount := 30
+
+	instanceGroup1 := []Instance{}
+	for i := 0; i < totalCount/2; i++ {
+		machine := testMachineBuildMachineWithID(t, dbSession, ip.ID, site.ID, &instanceType.ID, db.GetStrPtr("mcTypeTest1"), fmt.Sprintf("fm100-%d", i))
+
+		_, err := mcd.Create(ctx, nil, MachineCapabilityCreateInput{MachineID: &machine.ID, InstanceTypeID: &instanceType.ID, Type: MachineCapabilityTypeInfiniBand, Name: "Test Capability",
+			Frequency: db.GetStrPtr("3 GHz"), Capacity: db.GetStrPtr("12 TB"), Vendor: db.GetStrPtr("Test Vendor"), Count: db.GetIntPtr(1)})
+		assert.NoError(t, err)
+
+		instance, err := isd.Create(
+			ctx, nil,
+			InstanceCreateInput{
+				Name:                     fmt.Sprintf("test-%d", i),
+				AllocationID:             &allocation.ID,
+				AllocationConstraintID:   &allocationConstraint.ID,
+				TenantID:                 tenant.ID,
+				InfrastructureProviderID: ip.ID,
+				SiteID:                   site.ID,
+				InstanceTypeID:           &instanceType.ID,
+				NetworkSecurityGroupID:   &networkSecurityGroup.ID,
+				VpcID:                    vpc.ID,
+				MachineID:                &machine.ID,
+				Hostname:                 db.GetStrPtr("test.com"),
+				OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+				IpxeScript:               db.GetStrPtr("ipxe"),
+				AlwaysBootWithCustomIpxe: true,
+				UserData:                 db.GetStrPtr("userdata"),
+				Labels:                   map[string]string{fmt.Sprintf("region%v", i): fmt.Sprintf("west%v", i)},
+				Status:                   InstanceStatusPending,
+				PowerStatus:              db.GetStrPtr(InstancePowerStatusBootCompleted),
+				CreatedBy:                user.ID,
+			},
+		)
+
+		assert.Nil(t, err)
+		assert.NotNil(t, instance)
+		instanceGroup1 = append(instanceGroup1, *instance)
+	}
+
+	instanceGroup2 := []Instance{}
+	for i := 0; i < totalCount/2; i++ {
+		machine := testMachineBuildMachineWithID(t, dbSession, ip.ID, site2.ID, &instanceType2.ID, db.GetStrPtr("mcTypeTest1"), fmt.Sprintf("fm200-%d", i))
+
+		instance, err := isd.Create(
+			ctx, nil,
+			InstanceCreateInput{
+				Name:                     fmt.Sprintf("test-%d", i),
+				TenantID:                 tenant2.ID,
+				InfrastructureProviderID: ip.ID,
+				SiteID:                   site2.ID,
+				InstanceTypeID:           &instanceType2.ID,
+				NetworkSecurityGroupID:   &networkSecurityGroup2.ID,
+				VpcID:                    vpc2.ID,
+				MachineID:                &machine.ID,
+				Hostname:                 db.GetStrPtr("test.com"),
+				OperatingSystemID:        db.GetUUIDPtr(operatingSystem2.ID),
+				IpxeScript:               db.GetStrPtr("ipxe"),
+				AlwaysBootWithCustomIpxe: true,
+				UserData:                 db.GetStrPtr("userdata"),
+				Labels:                   map[string]string{},
+				Status:                   InstanceStatusPending,
+				CreatedBy:                user.ID,
+			},
+		)
+		assert.Nil(t, err)
+		assert.NotNil(t, instance)
+		instanceGroup2 = append(instanceGroup2, *instance)
+	}
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc                string
+		filter              InstanceFilterInput
+		PageInput           paginator.PageInput
+		firstEntry          *Instance
+		expectedCount       int
+		expectedTotal       *int
+		expectedError       bool
+		paramRelations      []string
+		expectedPowerStatus *string
+		verifyChildSpanner  bool
+	}{
+		{
+			desc:                "GetAll with no filters returns objects",
+			expectedCount:       paginator.DefaultLimit,
+			expectedTotal:       &totalCount,
+			expectedError:       false,
+			expectedPowerStatus: db.GetStrPtr(InstancePowerStatusBootCompleted),
+			verifyChildSpanner:  true,
+		},
+		{
+			desc:          "GetAll with all relations",
+			expectedCount: paginator.DefaultLimit,
+			expectedTotal: &totalCount,
+			expectedError: false,
+			paramRelations: []string{
+				InfrastructureProviderRelationName,
+				SiteRelationName,
+				InstanceTypeRelationName,
+				AllocationRelationName,
+				TenantRelationName,
+				VpcRelationName,
+				OperatingSystemRelationName,
+			},
+		},
+		{
+			desc: "GetAll with allocation filter returns objects",
+			filter: InstanceFilterInput{
+				AllocationID: &allocation.ID,
+			},
+			expectedCount: totalCount / 2,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with allocation filter returns no objects",
+			filter: InstanceFilterInput{
+				AllocationID: &dummyUUID,
+			},
+			expectedCount: 0,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with allocation constraint filter returns objects",
+			filter: InstanceFilterInput{
+				AllocationConstraintID: &allocationConstraint.ID,
+			},
+			expectedCount: totalCount / 2,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with allocation constraint filter returns no objects",
+			filter: InstanceFilterInput{
+				AllocationConstraintID: &dummyUUID,
+			},
+			expectedCount: 0,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with tenant filter returns objects",
+			filter: InstanceFilterInput{
+				TenantIDs: []uuid.UUID{tenant.ID},
+			},
+			expectedCount: totalCount / 2,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with multiple values in tenant filter returns objects",
+			filter: InstanceFilterInput{
+				TenantIDs: []uuid.UUID{tenant.ID, tenant2.ID},
+			},
+			expectedCount: paginator.DefaultLimit,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with tenant and name filters returns objects",
+			filter: InstanceFilterInput{
+				Name:      db.GetStrPtr("test-0"),
+				TenantIDs: []uuid.UUID{tenant.ID},
+			},
+			expectedCount: 1,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with infrastructureprovider filter returns objects",
+			filter: InstanceFilterInput{
+				InfrastructureProviderID: &ip.ID,
+			},
+			expectedCount: paginator.DefaultLimit,
+			expectedTotal: &totalCount,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with site filter returns objects",
+			filter: InstanceFilterInput{
+				SiteIDs: []uuid.UUID{site.ID},
+			},
+			expectedCount: totalCount / 2,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with multiple site filter values returns objects",
+			filter: InstanceFilterInput{
+				SiteIDs: []uuid.UUID{site.ID, site2.ID},
+			},
+			expectedCount: paginator.DefaultLimit,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with instancetype filter returns objects",
+			filter: InstanceFilterInput{
+				InstanceTypeIDs: []uuid.UUID{instanceType.ID},
+			},
+			expectedCount: totalCount / 2,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with multiple values for instancetype filter returns objects",
+			filter: InstanceFilterInput{
+				InstanceTypeIDs: []uuid.UUID{instanceType.ID, instanceType2.ID},
+			},
+			expectedCount: paginator.DefaultLimit,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with vpc filter returns objects",
+			filter: InstanceFilterInput{
+				VpcIDs: []uuid.UUID{vpc.ID},
+			},
+			expectedCount: totalCount / 2,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with multiple values for vpc filter returns objects",
+			filter: InstanceFilterInput{
+				VpcIDs: []uuid.UUID{vpc.ID, vpc2.ID},
+			},
+			expectedCount: paginator.DefaultLimit,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with machine filter returns objects",
+			filter: InstanceFilterInput{
+				MachineIDs: []string{*instanceGroup1[0].MachineID, *instanceGroup1[1].MachineID, *instanceGroup1[2].MachineID},
+			},
+			expectedCount: 3,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with operatingsystem filter returns objects",
+			filter: InstanceFilterInput{
+				OperatingSystemIDs: []uuid.UUID{operatingSystem.ID},
+			},
+			expectedCount: totalCount / 2,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with multiple values for operatingsystem filter returns objects",
+			filter: InstanceFilterInput{
+				OperatingSystemIDs: []uuid.UUID{operatingSystem.ID, operatingSystem2.ID},
+			},
+			expectedCount: paginator.DefaultLimit,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with all filters returns objects",
+			filter: InstanceFilterInput{
+				AllocationID:             &allocation.ID,
+				AllocationConstraintID:   &allocationConstraint.ID,
+				TenantIDs:                []uuid.UUID{tenant.ID},
+				InfrastructureProviderID: &ip.ID,
+				SiteIDs:                  []uuid.UUID{site.ID},
+				InstanceTypeIDs:          []uuid.UUID{instanceType.ID},
+				NetworkSecurityGroupIDs:  []string{networkSecurityGroup.ID},
+				VpcIDs:                   []uuid.UUID{vpc.ID},
+				MachineIDs:               []string{*instanceGroup1[0].MachineID},
+				OperatingSystemIDs:       []uuid.UUID{operatingSystem.ID},
+			},
+			expectedCount: 1,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with all filters returns no objects",
+			filter: InstanceFilterInput{
+				AllocationID:             &allocation.ID,
+				AllocationConstraintID:   &allocationConstraint.ID,
+				TenantIDs:                []uuid.UUID{tenant2.ID},
+				InfrastructureProviderID: &ip.ID,
+				SiteIDs:                  []uuid.UUID{site.ID},
+				InstanceTypeIDs:          []uuid.UUID{instanceType.ID},
+				NetworkSecurityGroupIDs:  []string{networkSecurityGroup.ID},
+				VpcIDs:                   []uuid.UUID{vpc2.ID},
+				MachineIDs:               []string{*instanceGroup2[0].MachineID},
+				OperatingSystemIDs:       []uuid.UUID{operatingSystem.ID},
+			},
+			expectedCount: 0,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with some filters returns objects",
+			filter: InstanceFilterInput{
+				AllocationID:             &allocation.ID,
+				AllocationConstraintID:   &allocationConstraint.ID,
+				TenantIDs:                []uuid.UUID{tenant.ID},
+				InfrastructureProviderID: &ip.ID,
+				SiteIDs:                  []uuid.UUID{site.ID},
+			},
+			expectedCount: totalCount / 2,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with some filters returns no objects",
+			filter: InstanceFilterInput{
+				AllocationID:             &allocation.ID,
+				AllocationConstraintID:   &allocationConstraint.ID,
+				TenantIDs:                []uuid.UUID{tenant2.ID},
+				InfrastructureProviderID: &ip.ID,
+				SiteIDs:                  []uuid.UUID{site.ID},
+			},
+			expectedCount: 0,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with limit returns objects",
+			filter: InstanceFilterInput{
+				InfrastructureProviderID: &ip.ID,
+				SiteIDs:                  []uuid.UUID{site.ID},
+			},
+			PageInput: paginator.PageInput{
+				Offset: db.GetIntPtr(0),
+				Limit:  db.GetIntPtr(5),
+			},
+			expectedCount: 5,
+			expectedTotal: db.GetIntPtr(totalCount / 2),
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with offset returns objects",
+			filter: InstanceFilterInput{
+				InfrastructureProviderID: &ip.ID,
+				SiteIDs:                  []uuid.UUID{site.ID},
+			},
+			PageInput: paginator.PageInput{
+				Offset: db.GetIntPtr(5),
+			},
+			expectedCount: 10,
+			expectedTotal: db.GetIntPtr(totalCount / 2),
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with order by returns objects",
+			filter: InstanceFilterInput{
+				InfrastructureProviderID: &ip.ID,
+				SiteIDs:                  []uuid.UUID{site.ID},
+			},
+			PageInput: paginator.PageInput{
+				OrderBy: &paginator.OrderBy{
+					Field: "name",
+					Order: paginator.OrderAscending,
+				},
+			},
+			firstEntry:    &instanceGroup1[0],
+			expectedCount: totalCount / 2,
+			expectedTotal: db.GetIntPtr(totalCount / 2),
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with name search query returns objects",
+			filter: InstanceFilterInput{
+				SearchQuery: db.GetStrPtr("test-"),
+			},
+			expectedCount: paginator.DefaultLimit,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with status search query returns objects",
+			filter: InstanceFilterInput{
+				SearchQuery: db.GetStrPtr(InstanceStatusPending),
+			},
+			expectedCount: paginator.DefaultLimit,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with label query returns no objects",
+			filter: InstanceFilterInput{
+				SearchQuery: db.GetStrPtr("region250"),
+			},
+			expectedCount: 0,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with label query returns multiple objects",
+			filter: InstanceFilterInput{
+				SearchQuery: db.GetStrPtr("region1"),
+			},
+			expectedCount: 6,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with status search query returns no objects",
+			filter: InstanceFilterInput{
+				SearchQuery: db.GetStrPtr(InstanceStatusReady),
+			},
+			expectedCount: 0,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with combination of name and status search query returns objects",
+			filter: InstanceFilterInput{
+				SearchQuery: db.GetStrPtr("test- ready"),
+			},
+			expectedCount: paginator.DefaultLimit,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with empty search query returns objects",
+			filter: InstanceFilterInput{
+				SearchQuery: db.GetStrPtr(""),
+			},
+			expectedCount: paginator.DefaultLimit,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with InstanceStatusPending status returns objects",
+			filter: InstanceFilterInput{
+				Statuses: []string{InstanceStatusPending},
+			},
+			expectedCount: paginator.DefaultLimit,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with InstanceStatusError status returns no objects",
+			filter: InstanceFilterInput{
+				Statuses: []string{InstanceStatusError},
+			},
+			expectedCount: 0,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with status of InstanceStatusError or InstanceStatusPending returns objects",
+			filter: InstanceFilterInput{
+				Statuses: []string{InstanceStatusError, InstanceStatusPending},
+			},
+			expectedCount: paginator.DefaultLimit,
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with order by machine id",
+			filter: InstanceFilterInput{
+				InfrastructureProviderID: &ip.ID,
+				SiteIDs:                  []uuid.UUID{site.ID},
+			},
+			PageInput: paginator.PageInput{
+				OrderBy: &paginator.OrderBy{
+					Field: instanceOrderByMachineID,
+					Order: paginator.OrderAscending,
+				},
+			},
+			firstEntry:    &instanceGroup1[0],
+			expectedCount: totalCount / 2,
+			expectedTotal: db.GetIntPtr(totalCount / 2),
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with order by tenant name no tenant relation",
+			filter: InstanceFilterInput{
+				InfrastructureProviderID: &ip.ID,
+			},
+			PageInput: paginator.PageInput{
+				OrderBy: &paginator.OrderBy{
+					Field: instanceOrderByTenantOrgDisplayNameExt,
+					Order: paginator.OrderAscending,
+				},
+			},
+			firstEntry:    &instanceGroup1[0],
+			expectedCount: 20,
+			expectedTotal: db.GetIntPtr(totalCount),
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with order by tenant name with tenant relation",
+			filter: InstanceFilterInput{
+				InfrastructureProviderID: &ip.ID,
+			},
+			PageInput: paginator.PageInput{
+				OrderBy: &paginator.OrderBy{
+					Field: instanceOrderByTenantOrgDisplayNameExt,
+					Order: paginator.OrderAscending,
+				},
+			},
+			firstEntry:     &instanceGroup1[0],
+			expectedCount:  20,
+			expectedTotal:  db.GetIntPtr(totalCount),
+			expectedError:  false,
+			paramRelations: []string{TenantRelationName},
+		},
+		{
+			desc: "GetAll with order by instance type name no instance type relation",
+			filter: InstanceFilterInput{
+				InfrastructureProviderID: &ip.ID,
+			},
+			PageInput: paginator.PageInput{
+				OrderBy: &paginator.OrderBy{
+					Field: instanceOrderByInstanceTypeNameExt,
+					Order: paginator.OrderAscending,
+				},
+			},
+			firstEntry:    &instanceGroup1[0],
+			expectedCount: 20,
+			expectedTotal: db.GetIntPtr(totalCount),
+			expectedError: false,
+		},
+		{
+			desc: "GetAll with order by instance type name with instance type relation",
+			filter: InstanceFilterInput{
+				InfrastructureProviderID: &ip.ID,
+			},
+			PageInput: paginator.PageInput{
+				OrderBy: &paginator.OrderBy{
+					Field: instanceOrderByInstanceTypeNameExt,
+					Order: paginator.OrderAscending,
+				},
+			},
+			firstEntry:     &instanceGroup1[0],
+			expectedCount:  20,
+			expectedTotal:  db.GetIntPtr(totalCount),
+			expectedError:  false,
+			paramRelations: []string{InstanceTypeRelationName},
+		},
+		{
+			desc: "GetAll with order by has infinibad",
+			filter: InstanceFilterInput{
+				InfrastructureProviderID: &ip.ID,
+			},
+			PageInput: paginator.PageInput{
+				OrderBy: &paginator.OrderBy{
+					Field: instanceOrderByHasInfiniBandExt,
+					Order: paginator.OrderAscending,
+				},
+			},
+			firstEntry:    &instanceGroup1[0],
+			expectedCount: 20,
+			expectedTotal: db.GetIntPtr(totalCount),
+			expectedError: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, total, err := isd.GetAll(ctx, nil,
+				tc.filter,
+				tc.PageInput,
+				tc.paramRelations,
+			)
+			if err != nil && !tc.expectedError {
+				fmt.Printf("\n%s\n", err)
+			}
+			assert.Equal(t, tc.expectedError, err != nil)
+			if tc.expectedError {
+				assert.Equal(t, nil, got)
+			} else {
+				assert.Equal(t, tc.expectedCount, len(got))
+				for _, relation := range tc.paramRelations {
+					if relation == AllocationRelationName && got[0].AllocationID != nil {
+						assert.NotNil(t, got[0].Allocation)
+					} else if relation == TenantRelationName {
+						assert.NotNil(t, got[0].Tenant)
+					} else if relation == InfrastructureProviderRelationName {
+						assert.NotNil(t, got[0].InfrastructureProvider)
+					} else if relation == SiteRelationName {
+						assert.NotNil(t, got[0].Site)
+					} else if relation == InstanceTypeRelationName {
+						assert.NotNil(t, got[0].InstanceType)
+					} else if relation == VpcRelationName {
+						assert.NotNil(t, got[0].Vpc)
+					} else if relation == OperatingSystemRelationName {
+						assert.NotNil(t, got[0].OperatingSystem)
+					}
+				}
+				if tc.expectedPowerStatus != nil {
+					assert.Equal(t, *got[0].PowerStatus, InstancePowerStatusBootCompleted)
+				}
+			}
+
+			if tc.expectedTotal != nil {
+				assert.Equal(t, *tc.expectedTotal, total)
+			}
+
+			if tc.firstEntry != nil {
+				assert.Equal(t, tc.firstEntry.ID, got[0].ID, fmt.Sprintf("%v - %v", tc.firstEntry.ID, got[0].ID))
+			}
+
+			if tc.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}
+
+func TestInstanceSQLDAO_GetCount(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInstanceInitDB(t)
+	defer dbSession.Close()
+	testInstanceSetupSchema(t, dbSession)
+	ip := testInstanceBuildInfrastructureProvider(t, dbSession, "testIP")
+	site := testInstanceBuildSite(t, dbSession, ip, "testSite")
+	site2 := testInstanceBuildSite(t, dbSession, ip, "testSite2")
+	tenant := testInstanceBuildTenant(t, dbSession, "testTenant")
+	tenant2 := testInstanceBuildTenant(t, dbSession, "testTenant2")
+	vpc := testInstanceBuildVpc(t, dbSession, ip, site, tenant, "testVpc")
+	vpc2 := testInstanceBuildVpc(t, dbSession, ip, site2, tenant2, "testVpc2")
+	allocation := testInstanceBuildAllocation(t, dbSession, ip, tenant, site, "testAllocation")
+	allocation2 := testInstanceBuildAllocation(t, dbSession, ip, tenant2, site2, "testAllocation2")
+	instanceType := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType")
+	instanceType2 := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType2")
+	networkSecurityGroup := testInstanceBuildNetworkSecurityGroup(t, dbSession, tenant, site, "testNetworkSecurityGroup")
+	networkSecurityGroup2 := testInstanceBuildNetworkSecurityGroup(t, dbSession, tenant2, site2, "testNetworkSecurityGroup2")
+	allocationConstraint := testBuildAllocationConstraint(t, dbSession, allocation, AllocationResourceTypeInstanceType, instanceType.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+	allocationConstraint2 := testBuildAllocationConstraint(t, dbSession, allocation2, AllocationResourceTypeInstanceType, instanceType2.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+
+	operatingSystem := testInstanceBuildOperatingSystem(t, dbSession, "testOS")
+	operatingSystem2 := testInstanceBuildOperatingSystem(t, dbSession, "testOS2")
+	user := testInstanceBuildUser(t, dbSession, "testUser")
+	isd := NewInstanceDAO(dbSession)
+	dummyUUID := uuid.New()
+
+	totalCount := 30
+
+	instanceGroup1 := []Instance{}
+	for i := 0; i < totalCount/2; i++ {
+		machine := testMachineBuildMachine(t, dbSession, ip.ID, site.ID, &instanceType.ID, db.GetStrPtr("mcTypeTest1"))
+
+		instance, err := isd.Create(
+			ctx, nil,
+			InstanceCreateInput{
+				Name:                     fmt.Sprintf("test-%d", i),
+				AllocationID:             &allocation.ID,
+				AllocationConstraintID:   &allocationConstraint.ID,
+				TenantID:                 tenant.ID,
+				InfrastructureProviderID: ip.ID,
+				SiteID:                   site.ID,
+				InstanceTypeID:           &instanceType.ID,
+				NetworkSecurityGroupID:   &networkSecurityGroup.ID,
+				VpcID:                    vpc.ID,
+				MachineID:                &machine.ID,
+				Hostname:                 db.GetStrPtr("test.com"),
+				OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+				IpxeScript:               db.GetStrPtr("ipxe"),
+				AlwaysBootWithCustomIpxe: true,
+				UserData:                 db.GetStrPtr("userdata"),
+				Labels:                   map[string]string{fmt.Sprintf("region%v", i): fmt.Sprintf("west%v", i)},
+				Status:                   InstanceStatusPending,
+				PowerStatus:              db.GetStrPtr(InstancePowerStatusBootCompleted),
+				CreatedBy:                user.ID,
+			},
+		)
+
+		assert.Nil(t, err)
+		assert.NotNil(t, instance)
+		instanceGroup1 = append(instanceGroup1, *instance)
+	}
+
+	instanceGroup2 := []Instance{}
+	for i := 0; i < totalCount/2; i++ {
+		machine := testMachineBuildMachine(t, dbSession, ip.ID, site2.ID, &instanceType2.ID, db.GetStrPtr("mcTypeTest1"))
+
+		instance, err := isd.Create(
+			ctx, nil,
+			InstanceCreateInput{
+				Name:                     fmt.Sprintf("test-%d", i),
+				AllocationID:             &allocation2.ID,
+				AllocationConstraintID:   &allocationConstraint2.ID,
+				TenantID:                 tenant2.ID,
+				InfrastructureProviderID: ip.ID,
+				SiteID:                   site2.ID,
+				InstanceTypeID:           &instanceType2.ID,
+				NetworkSecurityGroupID:   &networkSecurityGroup2.ID,
+				VpcID:                    vpc2.ID,
+				MachineID:                &machine.ID,
+				Hostname:                 db.GetStrPtr("test.com"),
+				OperatingSystemID:        db.GetUUIDPtr(operatingSystem2.ID),
+				IpxeScript:               db.GetStrPtr("ipxe"),
+				AlwaysBootWithCustomIpxe: true,
+				UserData:                 db.GetStrPtr("userdata"),
+				Labels:                   map[string]string{},
+				Status:                   InstanceStatusPending,
+				CreatedBy:                user.ID,
+			},
+		)
+		assert.Nil(t, err)
+		assert.NotNil(t, instance)
+		instanceGroup2 = append(instanceGroup2, *instance)
+	}
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc               string
+		filter             InstanceFilterInput
+		expectedCount      int
+		expectedError      bool
+		verifyChildSpanner bool
+	}{
+		{
+			desc:               "GetCount with no filters returns objects",
+			expectedCount:      totalCount,
+			expectedError:      false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc: "GetCount with allocation filter returns objects",
+			filter: InstanceFilterInput{
+				AllocationID: &allocation.ID,
+			},
+			expectedCount: totalCount / 2,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with allocation filter returns no objects",
+			filter: InstanceFilterInput{
+				AllocationID: &dummyUUID,
+			},
+			expectedCount: 0,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with allocation constraint filter returns objects",
+			filter: InstanceFilterInput{
+				AllocationConstraintID: &allocationConstraint.ID,
+			},
+			expectedCount: totalCount / 2,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with allocation constraint filter returns no objects",
+			filter: InstanceFilterInput{
+				AllocationConstraintID: &dummyUUID,
+			},
+			expectedCount: 0,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with tenant filter returns objects",
+			filter: InstanceFilterInput{
+				TenantIDs: []uuid.UUID{tenant.ID},
+			},
+			expectedCount: totalCount / 2,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with multiple values in tenant filter returns objects",
+			filter: InstanceFilterInput{
+				TenantIDs: []uuid.UUID{tenant.ID, tenant2.ID},
+			},
+			expectedCount: totalCount,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with tenant and name filters returns objects",
+			filter: InstanceFilterInput{
+				Name:      db.GetStrPtr("test-0"),
+				TenantIDs: []uuid.UUID{tenant.ID},
+			},
+			expectedCount: 1,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with infrastructureprovider filter returns objects",
+			filter: InstanceFilterInput{
+				InfrastructureProviderID: &ip.ID,
+			},
+			expectedCount: totalCount,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with site filter returns objects",
+			filter: InstanceFilterInput{
+				SiteIDs: []uuid.UUID{site.ID},
+			},
+			expectedCount: totalCount / 2,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with multiple site filter values returns objects",
+			filter: InstanceFilterInput{
+				SiteIDs: []uuid.UUID{site.ID, site2.ID},
+			},
+			expectedCount: totalCount,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with instancetype filter returns objects",
+			filter: InstanceFilterInput{
+				InstanceTypeIDs: []uuid.UUID{instanceType.ID},
+			},
+			expectedCount: totalCount / 2,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with multiple values for instancetype filter returns objects",
+			filter: InstanceFilterInput{
+				InstanceTypeIDs: []uuid.UUID{instanceType.ID, instanceType2.ID},
+			},
+			expectedCount: totalCount,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with vpc filter returns objects",
+			filter: InstanceFilterInput{
+				VpcIDs: []uuid.UUID{vpc.ID},
+			},
+			expectedCount: totalCount / 2,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with multiple values for vpc filter returns objects",
+			filter: InstanceFilterInput{
+				VpcIDs: []uuid.UUID{vpc.ID, vpc2.ID},
+			},
+			expectedCount: totalCount,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with machine filter returns objects",
+			filter: InstanceFilterInput{
+				MachineIDs: []string{*instanceGroup1[0].MachineID, *instanceGroup1[1].MachineID, *instanceGroup1[2].MachineID},
+			},
+			expectedCount: 3,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with operatingsystem filter returns objects",
+			filter: InstanceFilterInput{
+				OperatingSystemIDs: []uuid.UUID{operatingSystem.ID},
+			},
+			expectedCount: totalCount / 2,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with multiple values for operatingsystem filter returns objects",
+			filter: InstanceFilterInput{
+				OperatingSystemIDs: []uuid.UUID{operatingSystem.ID, operatingSystem2.ID},
+			},
+			expectedCount: totalCount,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with all filters returns objects",
+			filter: InstanceFilterInput{
+				AllocationID:             &allocation.ID,
+				AllocationConstraintID:   &allocationConstraint.ID,
+				TenantIDs:                []uuid.UUID{tenant.ID},
+				InfrastructureProviderID: &ip.ID,
+				SiteIDs:                  []uuid.UUID{site.ID},
+				InstanceTypeIDs:          []uuid.UUID{instanceType.ID},
+				VpcIDs:                   []uuid.UUID{vpc.ID},
+				MachineIDs:               []string{*instanceGroup1[0].MachineID},
+				OperatingSystemIDs:       []uuid.UUID{operatingSystem.ID},
+			},
+			expectedCount: 1,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with all filters returns no objects",
+			filter: InstanceFilterInput{
+				AllocationID:             &allocation.ID,
+				AllocationConstraintID:   &allocationConstraint.ID,
+				TenantIDs:                []uuid.UUID{tenant2.ID},
+				InfrastructureProviderID: &ip.ID,
+				SiteIDs:                  []uuid.UUID{site.ID},
+				InstanceTypeIDs:          []uuid.UUID{instanceType.ID},
+				VpcIDs:                   []uuid.UUID{vpc2.ID},
+				MachineIDs:               []string{*instanceGroup1[0].MachineID},
+				OperatingSystemIDs:       []uuid.UUID{operatingSystem.ID},
+			},
+			expectedCount: 0,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with some filters returns objects",
+			filter: InstanceFilterInput{
+				AllocationID:             &allocation.ID,
+				AllocationConstraintID:   &allocationConstraint.ID,
+				TenantIDs:                []uuid.UUID{tenant.ID},
+				InfrastructureProviderID: &ip.ID,
+				SiteIDs:                  []uuid.UUID{site.ID},
+			},
+			expectedCount: totalCount / 2,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with some filters returns no objects",
+			filter: InstanceFilterInput{
+				AllocationID:             &allocation.ID,
+				AllocationConstraintID:   &allocationConstraint.ID,
+				TenantIDs:                []uuid.UUID{tenant2.ID},
+				InfrastructureProviderID: &ip.ID,
+				SiteIDs:                  []uuid.UUID{site.ID},
+			},
+			expectedCount: 0,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with name search query returns objects",
+			filter: InstanceFilterInput{
+				SearchQuery: db.GetStrPtr("test-"),
+			},
+			expectedCount: totalCount,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with status search query returns objects",
+			filter: InstanceFilterInput{
+				SearchQuery: db.GetStrPtr(InstanceStatusPending),
+			},
+			expectedCount: totalCount,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with label query returns no objects",
+			filter: InstanceFilterInput{
+				SearchQuery: db.GetStrPtr("region250"),
+			},
+			expectedCount: 0,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with label query returns multiple objects",
+			filter: InstanceFilterInput{
+				SearchQuery: db.GetStrPtr("region1"),
+			},
+			expectedCount: 6,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with status search query returns no objects",
+			filter: InstanceFilterInput{
+				SearchQuery: db.GetStrPtr(InstanceStatusReady),
+			},
+			expectedCount: 0,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with combination of name and status search query returns objects",
+			filter: InstanceFilterInput{
+				SearchQuery: db.GetStrPtr("test- ready"),
+			},
+			expectedCount: totalCount,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with empty search query returns objects",
+			filter: InstanceFilterInput{
+				SearchQuery: db.GetStrPtr(""),
+			},
+			expectedCount: totalCount,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with InstanceStatusPending status returns objects",
+			filter: InstanceFilterInput{
+				Statuses: []string{InstanceStatusPending},
+			},
+			expectedCount: totalCount,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with InstanceStatusError status returns no objects",
+			filter: InstanceFilterInput{
+				Statuses: []string{InstanceStatusError},
+			},
+			expectedCount: 0,
+			expectedError: false,
+		},
+		{
+			desc: "GetCount with status of InstanceStatusError or InstanceStatusPending returns objects",
+			filter: InstanceFilterInput{
+				Statuses: []string{InstanceStatusError, InstanceStatusPending},
+			},
+			expectedCount: totalCount,
+			expectedError: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			count, err := isd.GetCount(ctx, nil, tc.filter)
+			assert.Equal(t, tc.expectedError, err != nil)
+			if tc.expectedError {
+				assert.Equal(t, nil, count)
+			} else {
+				assert.Equal(t, tc.expectedCount, count)
+			}
+
+			if tc.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}
+
+func TestInstanceSQLDAO_Update(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInstanceInitDB(t)
+	defer dbSession.Close()
+	testInstanceSetupSchema(t, dbSession)
+	ip := testInstanceBuildInfrastructureProvider(t, dbSession, "testIP")
+	ip2 := testInstanceBuildInfrastructureProvider(t, dbSession, "testIP2")
+	site := testInstanceBuildSite(t, dbSession, ip, "testSite")
+	site2 := testInstanceBuildSite(t, dbSession, ip, "testSite2")
+	tenant := testInstanceBuildTenant(t, dbSession, "testTenant")
+	tenant2 := testInstanceBuildTenant(t, dbSession, "testTenant2")
+	vpc := testInstanceBuildVpc(t, dbSession, ip, site, tenant, "testVpc")
+	vpc2 := testInstanceBuildVpc(t, dbSession, ip, site2, tenant2, "testVpc2")
+	instanceType := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType")
+	instanceType2 := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType2")
+	networkSecurityGroup := testInstanceBuildNetworkSecurityGroup(t, dbSession, tenant, site, "testNetworkSecurityGroup")
+	networkSecurityGroup2 := testInstanceBuildNetworkSecurityGroup(t, dbSession, tenant2, site2, "testNetworkSecurityGroup2")
+	machine := testMachineBuildMachine(t, dbSession, ip.ID, site.ID, &instanceType.ID, db.GetStrPtr("mcTypeTest"))
+	machine2 := testMachineBuildMachine(t, dbSession, ip2.ID, site2.ID, &instanceType2.ID, db.GetStrPtr("mcTypeTest2"))
+
+	allocation := testInstanceBuildAllocation(t, dbSession, ip, tenant, site, "testAllocation")
+	allocation2 := testInstanceBuildAllocation(t, dbSession, ip, tenant2, site2, "testAllocation2")
+	allocationConstraint := testBuildAllocationConstraint(t, dbSession, allocation, AllocationResourceTypeInstanceType, instanceType.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+	allocationConstraint2 := testBuildAllocationConstraint(t, dbSession, allocation2, AllocationResourceTypeInstanceType, instanceType2.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+
+	operatingSystem := testInstanceBuildOperatingSystem(t, dbSession, "testOS")
+	operatingSystem2 := testInstanceBuildOperatingSystem(t, dbSession, "testOS2")
+	user := testInstanceBuildUser(t, dbSession, "testUser")
+	isd := NewInstanceDAO(dbSession)
+
+	dummyUUID := uuid.New()
+	dummyMachineID := uuid.NewString()
+
+	i1, err := isd.Create(
+		ctx, nil,
+		InstanceCreateInput{
+			Name:                     "test1",
+			Description:              db.GetStrPtr("Test description"),
+			AllocationID:             &allocation.ID,
+			AllocationConstraintID:   &allocationConstraint.ID,
+			TenantID:                 tenant.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			NetworkSecurityGroupID:   &networkSecurityGroup.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			Hostname:                 db.GetStrPtr("test.com"),
+			OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               db.GetStrPtr("ipxe"),
+			UserData:                 db.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			Status:                   InstanceStatusPending,
+			PowerStatus:              db.GetStrPtr(InstancePowerStatusBootCompleted),
+			CreatedBy:                user.ID,
+		},
+	)
+	assert.Nil(t, err)
+	assert.NotNil(t, i1)
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc                                        string
+		id                                          uuid.UUID
+		instance                                    *Instance
+		paramName                                   *string
+		paramDescription                            *string
+		paramAllocationID                           *uuid.UUID
+		paramAllocationConstraintID                 *uuid.UUID
+		paramTenantID                               *uuid.UUID
+		paramInfrastructureProviderID               *uuid.UUID
+		paramSiteID                                 *uuid.UUID
+		paramInstanceTypeID                         *uuid.UUID
+		paramNetworkSecurityGroupID                 *string
+		paramNetworkSecurityGroupPropagationDetails *NetworkSecurityGroupPropagationDetails
+		paramVpcID                                  *uuid.UUID
+		paramMachineID                              *string
+		paramControlledInstanceID                   *uuid.UUID
+		paramHostname                               *string
+		paramOperatingSystemID                      *uuid.UUID
+		paramIpxeScript                             *string
+		paramAlwaysBootWithCustomIpxe               *bool
+		paramEnablePhoneHome                        *bool
+		paramUserData                               *string
+		paramIsUpdatePending                        *bool
+		paramInfinityRCRStatus                      *string
+		paramStatus                                 *string
+		paramPowerStatus                            *string
+		paramIsMissingOnSite                        *bool
+		paramLabels                                 map[string]string
+		paramTpmEkCertificate                       *string
+
+		expectedError                                  bool
+		expectedName                                   *string
+		expectedDescription                            *string
+		expectedAllocationID                           *uuid.UUID
+		expectedAllocationConstraintID                 *uuid.UUID
+		expectedTenantID                               *uuid.UUID
+		expectedInfrastructureProviderID               *uuid.UUID
+		expectedSiteID                                 *uuid.UUID
+		expectedInstanceTypeID                         *uuid.UUID
+		expectedNetworkSecurityGroupID                 *string
+		expectedNetworkSecurityGroupPropagationDetails *NetworkSecurityGroupPropagationDetails
+		expectedVpcID                                  *uuid.UUID
+		expectedMachineID                              *string
+		expectedControllerInstanceID                   *uuid.UUID
+		expectedHostname                               *string
+		expectedOperatingSystemID                      *uuid.UUID
+		expectedIpxeScript                             *string
+		expectAlwaysBootWithCustomIpxe                 *bool
+		expectEnablePhoneHome                          *bool
+		expectedUserData                               *string
+		expectIsUpdatePending                          *bool
+		expectedInfinityRCRStatus                      *string
+		expectedStatus                                 *string
+		expectedPowerStatus                            *string
+		expectedIsMissingOnSite                        *bool
+		expectedLabels                                 map[string]string
+		expectedTpmEkCertificate                       *string
+		verifyChildSpanner                             bool
+	}{
+		{
+			desc:                          "Can update string fields",
+			id:                            i1.ID,
+			instance:                      i1,
+			paramName:                     db.GetStrPtr("updatedName"),
+			paramDescription:              db.GetStrPtr("Updated description"),
+			paramAllocationID:             nil,
+			paramAllocationConstraintID:   nil,
+			paramTenantID:                 nil,
+			paramInfrastructureProviderID: nil,
+			paramSiteID:                   nil,
+			paramInstanceTypeID:           nil,
+			paramVpcID:                    nil,
+			paramMachineID:                nil,
+			paramNetworkSecurityGroupID:   &networkSecurityGroup2.ID,
+			paramNetworkSecurityGroupPropagationDetails: nil,
+
+			paramHostname:          db.GetStrPtr("updated.com"),
+			paramOperatingSystemID: nil,
+			paramIpxeScript:        db.GetStrPtr("updatedIpxe"),
+			paramUserData:          db.GetStrPtr("updatedUserData"),
+			paramInfinityRCRStatus: db.GetStrPtr("RESOURCE_GRANTED"),
+			paramStatus:            db.GetStrPtr(InstanceStatusReady),
+			paramPowerStatus:       db.GetStrPtr(InstancePowerStatusRebooting),
+			paramLabels: map[string]string{
+				"region": "us-west",
+				"env":    "test",
+			},
+			expectedError:                                  false,
+			expectedName:                                   db.GetStrPtr("updatedName"),
+			expectedDescription:                            db.GetStrPtr("Updated description"),
+			expectedAllocationID:                           &allocation.ID,
+			expectedAllocationConstraintID:                 &allocationConstraint.ID,
+			expectedTenantID:                               &tenant.ID,
+			expectedInfrastructureProviderID:               &ip.ID,
+			expectedSiteID:                                 &site.ID,
+			expectedInstanceTypeID:                         &instanceType.ID,
+			expectedNetworkSecurityGroupID:                 &networkSecurityGroup2.ID,
+			expectedNetworkSecurityGroupPropagationDetails: nil,
+			expectedVpcID:                                  &vpc.ID,
+			expectedMachineID:                              &machine.ID,
+			expectedHostname:                               db.GetStrPtr("updated.com"),
+			expectedOperatingSystemID:                      db.GetUUIDPtr(operatingSystem.ID),
+			expectedIpxeScript:                             db.GetStrPtr("updatedIpxe"),
+			expectedUserData:                               db.GetStrPtr("updatedUserData"),
+			expectedInfinityRCRStatus:                      db.GetStrPtr("RESOURCE_GRANTED"),
+			expectedStatus:                                 db.GetStrPtr(InstanceStatusReady),
+			expectedPowerStatus:                            db.GetStrPtr(InstancePowerStatusRebooting),
+			expectedLabels: map[string]string{
+				"region": "us-west",
+				"env":    "test",
+			},
+			verifyChildSpanner: true,
+		},
+		{
+			desc:                          "Can update non-string fields",
+			id:                            i1.ID,
+			instance:                      i1,
+			paramName:                     nil,
+			paramAllocationID:             &allocation2.ID,
+			paramAllocationConstraintID:   &allocationConstraint2.ID,
+			paramTenantID:                 &tenant2.ID,
+			paramInfrastructureProviderID: &ip2.ID,
+			paramSiteID:                   &site2.ID,
+			paramInstanceTypeID:           &instanceType2.ID,
+			paramVpcID:                    &vpc2.ID,
+			paramMachineID:                &machine2.ID,
+			paramControlledInstanceID:     &dummyUUID,
+			paramHostname:                 nil,
+			paramOperatingSystemID:        &operatingSystem2.ID,
+			paramNetworkSecurityGroupPropagationDetails: &NetworkSecurityGroupPropagationDetails{NetworkSecurityGroupPropagationObjectStatus: &cwssaws.NetworkSecurityGroupPropagationObjectStatus{}},
+			paramAlwaysBootWithCustomIpxe:               db.GetBoolPtr(true),
+			paramEnablePhoneHome:                        db.GetBoolPtr(true),
+			paramIsUpdatePending:                        db.GetBoolPtr(true),
+			paramIpxeScript:                             nil,
+			paramUserData:                               nil,
+			paramStatus:                                 nil,
+			paramPowerStatus:                            nil,
+			paramIsMissingOnSite:                        db.GetBoolPtr(true),
+			paramLabels:                                 map[string]string{},
+
+			expectedError:                    false,
+			expectedName:                     db.GetStrPtr("updatedName"),
+			expectedAllocationID:             &allocation2.ID,
+			expectedAllocationConstraintID:   &allocationConstraint2.ID,
+			expectedTenantID:                 &tenant2.ID,
+			expectedInfrastructureProviderID: &ip2.ID,
+			expectedSiteID:                   &site2.ID,
+			expectedInstanceTypeID:           &instanceType2.ID,
+			expectedNetworkSecurityGroupID:   &networkSecurityGroup2.ID,
+
+			expectedVpcID:                                  &vpc2.ID,
+			expectedMachineID:                              &machine2.ID,
+			expectedControllerInstanceID:                   &dummyUUID,
+			expectedHostname:                               db.GetStrPtr("updated.com"),
+			expectedOperatingSystemID:                      &operatingSystem2.ID,
+			expectedNetworkSecurityGroupPropagationDetails: &NetworkSecurityGroupPropagationDetails{NetworkSecurityGroupPropagationObjectStatus: &cwssaws.NetworkSecurityGroupPropagationObjectStatus{}},
+			expectedIpxeScript:                             db.GetStrPtr("updatedIpxe"),
+			expectAlwaysBootWithCustomIpxe:                 db.GetBoolPtr(true),
+			expectEnablePhoneHome:                          db.GetBoolPtr(true),
+			expectIsUpdatePending:                          db.GetBoolPtr(true),
+			expectedUserData:                               db.GetStrPtr("updatedUserData"),
+			expectedStatus:                                 db.GetStrPtr(InstanceStatusReady),
+			expectedPowerStatus:                            db.GetStrPtr(InstancePowerStatusRebooting),
+			expectedIsMissingOnSite:                        db.GetBoolPtr(true),
+		},
+		{
+			desc:                          "Error on update of unknown object",
+			id:                            dummyUUID,
+			instance:                      i1,
+			paramName:                     nil,
+			paramAllocationID:             &dummyUUID,
+			paramAllocationConstraintID:   &dummyUUID,
+			paramTenantID:                 &dummyUUID,
+			paramInfrastructureProviderID: &dummyUUID,
+			paramSiteID:                   &dummyUUID,
+			paramInstanceTypeID:           &dummyUUID,
+			paramNetworkSecurityGroupID:   db.GetStrPtr(dummyUUID.String()),
+			paramVpcID:                    &dummyUUID,
+			paramMachineID:                &dummyMachineID,
+			paramHostname:                 nil,
+			paramOperatingSystemID:        &dummyUUID,
+			paramIpxeScript:               nil,
+			paramUserData:                 nil,
+			paramStatus:                   nil,
+			paramLabels:                   map[string]string{},
+
+			expectedError: true,
+		},
+		{
+			desc:                          "Error on update due to foreign key violation",
+			id:                            i1.ID,
+			instance:                      i1,
+			paramName:                     nil,
+			paramAllocationID:             &dummyUUID,
+			paramAllocationConstraintID:   &dummyUUID,
+			paramTenantID:                 &dummyUUID,
+			paramInfrastructureProviderID: &dummyUUID,
+			paramSiteID:                   &dummyUUID,
+			paramInstanceTypeID:           &dummyUUID,
+			paramNetworkSecurityGroupID:   db.GetStrPtr(dummyUUID.String()),
+			paramVpcID:                    &dummyUUID,
+			paramMachineID:                &dummyMachineID,
+			paramHostname:                 nil,
+			paramOperatingSystemID:        &dummyUUID,
+			paramIpxeScript:               nil,
+			paramUserData:                 nil,
+			paramStatus:                   nil,
+			paramLabels:                   map[string]string{},
+
+			expectedError: true,
+		},
+		{
+			desc:                          "OK when nothing is updated !",
+			id:                            i1.ID,
+			instance:                      i1,
+			paramName:                     nil,
+			paramDescription:              nil,
+			paramAllocationID:             nil,
+			paramAllocationConstraintID:   nil,
+			paramTenantID:                 nil,
+			paramInfrastructureProviderID: nil,
+			paramSiteID:                   nil,
+			paramInstanceTypeID:           nil,
+			paramNetworkSecurityGroupID:   nil,
+			paramVpcID:                    nil,
+			paramMachineID:                nil,
+			paramHostname:                 nil,
+			paramOperatingSystemID:        nil,
+			paramIpxeScript:               nil,
+			paramEnablePhoneHome:          nil,
+			paramUserData:                 nil,
+			paramInfinityRCRStatus:        nil,
+			paramStatus:                   nil,
+			paramPowerStatus:              nil,
+			paramIsMissingOnSite:          nil,
+			paramLabels:                   map[string]string{},
+
+			expectedError:                    false,
+			expectedName:                     db.GetStrPtr("updatedName"),
+			expectedDescription:              db.GetStrPtr("Updated description"),
+			expectedAllocationID:             &allocation2.ID,
+			expectedAllocationConstraintID:   &allocationConstraint2.ID,
+			expectedTenantID:                 &tenant2.ID,
+			expectedInfrastructureProviderID: &ip2.ID,
+			expectedSiteID:                   &site2.ID,
+			expectedInstanceTypeID:           &instanceType2.ID,
+			expectedVpcID:                    &vpc2.ID,
+			expectedMachineID:                &machine2.ID,
+			expectedHostname:                 db.GetStrPtr("updated.com"),
+			expectedOperatingSystemID:        &operatingSystem2.ID,
+			expectedIpxeScript:               db.GetStrPtr("updatedIpxe"),
+
+			expectedUserData:          db.GetStrPtr("updatedUserData"),
+			expectedInfinityRCRStatus: db.GetStrPtr("RESOURCE_GRANTED"),
+			expectedStatus:            db.GetStrPtr(InstanceStatusReady),
+			expectedPowerStatus:       db.GetStrPtr(InstancePowerStatusRebooting),
+			expectedIsMissingOnSite:   db.GetBoolPtr(true),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, err := isd.Update(ctx, nil,
+				InstanceUpdateInput{
+					InstanceID:                             tc.id,
+					Name:                                   tc.paramName,
+					Description:                            tc.paramDescription,
+					AllocationID:                           tc.paramAllocationID,
+					AllocationConstraintID:                 tc.expectedAllocationConstraintID,
+					TenantID:                               tc.paramTenantID,
+					InfrastructureProviderID:               tc.paramInfrastructureProviderID,
+					SiteID:                                 tc.paramSiteID,
+					InstanceTypeID:                         tc.paramInstanceTypeID,
+					NetworkSecurityGroupID:                 tc.paramNetworkSecurityGroupID,
+					NetworkSecurityGroupPropagationDetails: tc.paramNetworkSecurityGroupPropagationDetails,
+					VpcID:                                  tc.paramVpcID,
+					MachineID:                              tc.paramMachineID,
+					ControllerInstanceID:                   tc.paramControlledInstanceID,
+					Hostname:                               tc.paramHostname,
+					OperatingSystemID:                      tc.paramOperatingSystemID,
+					IpxeScript:                             tc.paramIpxeScript,
+					AlwaysBootWithCustomIpxe:               tc.paramAlwaysBootWithCustomIpxe,
+					PhoneHomeEnabled:                       tc.paramEnablePhoneHome,
+					UserData:                               tc.paramUserData,
+					Labels:                                 tc.paramLabels,
+					IsUpdatePending:                        tc.paramIsUpdatePending,
+					InfinityRCRStatus:                      tc.paramInfinityRCRStatus,
+					Status:                                 tc.paramStatus,
+					PowerStatus:                            tc.paramPowerStatus,
+					IsMissingOnSite:                        tc.paramIsMissingOnSite,
+					TpmEkCertificate:                       tc.paramTpmEkCertificate,
+				},
+			)
+			assert.Equal(t, tc.expectedError, err != nil)
+			if err == nil {
+				assert.EqualValues(t, tc.instance.ID, got.ID)
+
+				if tc.expectedName != nil {
+					assert.Equal(t, *tc.expectedName, got.Name)
+				}
+				if tc.expectedDescription != nil {
+					assert.Equal(t, *tc.expectedDescription, *got.Description)
+				}
+				if len(got.Labels) > 0 {
+					assert.EqualValues(t, tc.expectedLabels["region"], got.Labels["region"])
+					assert.EqualValues(t, tc.expectedLabels["env"], got.Labels["env"])
+				}
+
+				assert.Equal(t, *tc.expectedTenantID, got.TenantID)
+				assert.Equal(t, *tc.expectedInfrastructureProviderID, got.InfrastructureProviderID)
+				assert.Equal(t, *tc.expectedSiteID, got.SiteID)
+				assert.Equal(t, *tc.expectedInstanceTypeID, *got.InstanceTypeID)
+				if tc.expectedNetworkSecurityGroupID != nil {
+					assert.NotNil(t, got.NetworkSecurityGroupID)
+					assert.Equal(t, *tc.expectedNetworkSecurityGroupID, *got.NetworkSecurityGroupID)
+				}
+				assert.Equal(t, *tc.expectedVpcID, got.VpcID)
+				if tc.expectedMachineID != nil {
+					assert.Equal(t, *tc.expectedMachineID, *got.MachineID)
+				}
+				if tc.expectedControllerInstanceID != nil {
+					assert.Equal(t, *tc.expectedControllerInstanceID, *got.ControllerInstanceID)
+				}
+
+				if tc.expectedNetworkSecurityGroupPropagationDetails != nil {
+					assert.Equal(t, tc.expectedNetworkSecurityGroupPropagationDetails.Details, got.NetworkSecurityGroupPropagationDetails.Details)
+					assert.Equal(t, tc.expectedNetworkSecurityGroupPropagationDetails.Id, got.NetworkSecurityGroupPropagationDetails.Id)
+					assert.Equal(t, tc.expectedNetworkSecurityGroupPropagationDetails.RelatedInstanceIds, got.NetworkSecurityGroupPropagationDetails.RelatedInstanceIds)
+					assert.Equal(t, tc.expectedNetworkSecurityGroupPropagationDetails.UnpropagatedInstanceIds, got.NetworkSecurityGroupPropagationDetails.UnpropagatedInstanceIds)
+					assert.Equal(t, tc.expectedNetworkSecurityGroupPropagationDetails.Status, got.NetworkSecurityGroupPropagationDetails.Status)
+				}
+
+				if tc.expectedNetworkSecurityGroupID != nil {
+					assert.Equal(t, *tc.expectedNetworkSecurityGroupID, *got.NetworkSecurityGroupID)
+				}
+
+				if tc.expectedHostname != nil {
+					assert.Equal(t, *tc.expectedHostname, *got.Hostname)
+				}
+				assert.Equal(t, *tc.expectedOperatingSystemID, *got.OperatingSystemID)
+				if tc.expectedIpxeScript != nil {
+					assert.Equal(t, *tc.expectedIpxeScript, *got.IpxeScript)
+				}
+				if tc.expectAlwaysBootWithCustomIpxe != nil {
+					assert.Equal(t, *tc.expectAlwaysBootWithCustomIpxe, got.AlwaysBootWithCustomIpxe)
+				}
+				if tc.expectEnablePhoneHome != nil {
+					assert.Equal(t, *tc.expectEnablePhoneHome, got.PhoneHomeEnabled)
+				}
+				if tc.expectedUserData != nil {
+					assert.Equal(t, *tc.expectedUserData, *got.UserData)
+				}
+
+				if tc.expectIsUpdatePending != nil {
+					assert.Equal(t, *tc.expectIsUpdatePending, got.IsUpdatePending)
+				}
+
+				assert.Equal(t, *tc.expectedStatus, got.Status)
+
+				if tc.expectedPowerStatus != nil {
+					assert.Equal(t, *tc.expectedPowerStatus, *got.PowerStatus)
+				}
+
+				if tc.expectedIsMissingOnSite != nil {
+					assert.Equal(t, *tc.expectedIsMissingOnSite, got.IsMissingOnSite)
+				}
+				if tc.expectedTpmEkCertificate != nil {
+					assert.Equal(t, *tc.expectedTpmEkCertificate, *got.TpmEkCertificate)
+				}
+
+				if got.Updated.String() == tc.instance.Updated.String() {
+					t.Errorf("got.Updated = %v, want different value", got.Updated)
+				}
+
+				if tc.verifyChildSpanner {
+					span := otrace.SpanFromContext(ctx)
+					assert.True(t, span.SpanContext().IsValid())
+					_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+					assert.True(t, ok)
+				}
+			}
+		})
+	}
+}
+
+func TestInstanceSQLDAO_Clear(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInstanceInitDB(t)
+	defer dbSession.Close()
+	testInstanceSetupSchema(t, dbSession)
+	ip := testInstanceBuildInfrastructureProvider(t, dbSession, "testIP")
+	site := testInstanceBuildSite(t, dbSession, ip, "testSite")
+	tenant := testInstanceBuildTenant(t, dbSession, "testTenant")
+	vpc := testInstanceBuildVpc(t, dbSession, ip, site, tenant, "testVpc")
+	instanceType := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType")
+	networkSecurityGroup := testInstanceBuildNetworkSecurityGroup(t, dbSession, tenant, site, "testNetworkSecurityGroup")
+	machine := testMachineBuildMachine(t, dbSession, ip.ID, site.ID, &instanceType.ID, db.GetStrPtr("mcTypeTest"))
+	allocation := testInstanceBuildAllocation(t, dbSession, ip, tenant, site, "testAllocation")
+	allocationConstraint := testBuildAllocationConstraint(t, dbSession, allocation, AllocationResourceTypeInstanceType, instanceType.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+	operatingSystem := testInstanceBuildOperatingSystem(t, dbSession, "testOS")
+	user := testInstanceBuildUser(t, dbSession, "testUser")
+	isd := NewInstanceDAO(dbSession)
+	dummyUUID := uuid.New()
+	i1, err := isd.Create(
+		ctx, nil,
+		InstanceCreateInput{
+			Name:                     "test1",
+			Description:              db.GetStrPtr("Test description"),
+			AllocationID:             &allocation.ID,
+			AllocationConstraintID:   &allocationConstraint.ID,
+			TenantID:                 tenant.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			NetworkSecurityGroupID:   &networkSecurityGroup.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			ControllerInstanceID:     &dummyUUID,
+			Hostname:                 db.GetStrPtr("test.com"),
+			OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               db.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			UserData:                 db.GetStrPtr("userdata"),
+			Labels:                   map[string]string{"label1": "value1"},
+			Status:                   InstanceStatusPending,
+			CreatedBy:                user.ID,
+			NetworkSecurityGroupPropagationDetails: &NetworkSecurityGroupPropagationDetails{
+				NetworkSecurityGroupPropagationObjectStatus: &cwssaws.NetworkSecurityGroupPropagationObjectStatus{},
+			},
+		},
+	)
+	assert.Nil(t, err)
+	assert.NotNil(t, i1)
+	i2, err := isd.Create(
+		ctx, nil,
+		InstanceCreateInput{
+			Name:                     "test2",
+			Description:              db.GetStrPtr("Test description 2"),
+			AllocationID:             &allocation.ID,
+			AllocationConstraintID:   &allocationConstraint.ID,
+			TenantID:                 tenant.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			NetworkSecurityGroupID:   &networkSecurityGroup.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			ControllerInstanceID:     &dummyUUID,
+			Hostname:                 db.GetStrPtr("test.com"),
+			OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               db.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			UserData:                 db.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			Status:                   InstanceStatusPending,
+			CreatedBy:                user.ID,
+		},
+	)
+	assert.Nil(t, err)
+	assert.NotNil(t, i2)
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc                                        string
+		id                                          uuid.UUID
+		instance                                    *Instance
+		paramDescription                            bool
+		paramMachineID                              bool
+		paramControlledInstanceID                   bool
+		paramHostname                               bool
+		paramOperatingSystemID                      bool
+		paramIpxeScript                             bool
+		paramRebootWithCustomIpxe                   bool
+		paramUserData                               bool
+		paramLabels                                 bool
+		paramNetworkSecurityGroupID                 bool
+		paramNetworkSecurityGroupPropagationDetails bool
+		paramTpmEkCertificate                       bool
+
+		expectedUpdate                                 bool
+		expectedError                                  bool
+		expectedName                                   *string
+		expectedDescription                            *string
+		expectedAllocationID                           *uuid.UUID
+		expectedAllocationConstraintID                 *uuid.UUID
+		expectedTenantID                               *uuid.UUID
+		expectedInfrastructureProviderID               *uuid.UUID
+		expectedSiteID                                 *uuid.UUID
+		expectedInstanceTypeID                         *uuid.UUID
+		expectedNetworkSecurityGroupID                 *string
+		expectednetworkSecurityGroupPropagationDetails *cwssaws.NetworkSecurityGroupPropagationObjectStatus
+		expectedVpcID                                  *uuid.UUID
+		expectedMachineID                              *string
+		expectedControllerInstanceID                   *uuid.UUID
+		expectedHostname                               *string
+		expectedOperatingSystemID                      *uuid.UUID
+		expectedIpxeScript                             *string
+		expectRebootWithCustomIpxe                     *bool
+		expectedUserData                               *string
+		expectedLabels                                 map[string]string
+		expectedStatus                                 *string
+		verifyChildSpanner                             bool
+	}{
+		{
+			desc:                        "Can clear fields",
+			id:                          i1.ID,
+			instance:                    i1,
+			paramDescription:            true,
+			paramOperatingSystemID:      true,
+			paramMachineID:              true,
+			paramControlledInstanceID:   true,
+			paramHostname:               true,
+			paramIpxeScript:             true,
+			paramRebootWithCustomIpxe:   true,
+			paramUserData:               true,
+			paramLabels:                 true,
+			paramNetworkSecurityGroupID: true,
+			paramNetworkSecurityGroupPropagationDetails: true,
+
+			expectedUpdate:                                 true,
+			expectedError:                                  false,
+			expectedName:                                   db.GetStrPtr("test1"),
+			expectedDescription:                            nil,
+			expectedAllocationID:                           &allocation.ID,
+			expectedAllocationConstraintID:                 &allocationConstraint.ID,
+			expectedTenantID:                               &tenant.ID,
+			expectedInfrastructureProviderID:               &ip.ID,
+			expectedSiteID:                                 &site.ID,
+			expectedInstanceTypeID:                         &instanceType.ID,
+			expectedNetworkSecurityGroupID:                 nil,
+			expectednetworkSecurityGroupPropagationDetails: nil,
+			expectedVpcID:                                  &vpc.ID,
+			expectedMachineID:                              nil,
+			expectedControllerInstanceID:                   nil,
+			expectedHostname:                               nil,
+			expectedOperatingSystemID:                      nil,
+			expectedIpxeScript:                             nil,
+			expectRebootWithCustomIpxe:                     nil,
+			expectedUserData:                               nil,
+			expectedStatus:                                 db.GetStrPtr(InstanceStatusPending),
+			verifyChildSpanner:                             true,
+			expectedLabels:                                 nil,
+		},
+		{
+			desc:            "Error when attempting to clear unknown object",
+			id:              dummyUUID,
+			instance:        i1,
+			paramHostname:   true,
+			paramIpxeScript: true,
+			paramUserData:   true,
+			paramLabels:     true,
+
+			expectedError:  true,
+			expectedLabels: nil,
+		},
+		{
+			desc:            "OK when nothing is cleared",
+			id:              i2.ID,
+			instance:        i2,
+			paramHostname:   false,
+			paramIpxeScript: false,
+			paramUserData:   false,
+
+			expectedError:                    false,
+			expectedName:                     db.GetStrPtr("test2"),
+			expectedDescription:              db.GetStrPtr("Test description 2"),
+			expectedAllocationID:             &allocation.ID,
+			expectedAllocationConstraintID:   &allocationConstraint.ID,
+			expectedTenantID:                 &tenant.ID,
+			expectedInfrastructureProviderID: &ip.ID,
+			expectedSiteID:                   &site.ID,
+			expectedInstanceTypeID:           &instanceType.ID,
+			expectedNetworkSecurityGroupID:   &networkSecurityGroup.ID,
+			expectedVpcID:                    &vpc.ID,
+			expectedMachineID:                &machine.ID,
+			expectedControllerInstanceID:     &dummyUUID,
+			expectedHostname:                 db.GetStrPtr("test.com"),
+			expectedOperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			expectedIpxeScript:               db.GetStrPtr("ipxe"),
+			expectedUserData:                 db.GetStrPtr("userdata"),
+			expectedStatus:                   db.GetStrPtr(InstanceStatusPending),
+			expectedLabels:                   map[string]string{},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, err := isd.Clear(
+				ctx, nil,
+				InstanceClearInput{
+					InstanceID:                             tc.id,
+					Description:                            tc.paramDescription,
+					MachineID:                              tc.paramMachineID,
+					ControllerInstanceID:                   tc.paramControlledInstanceID,
+					Hostname:                               tc.paramHostname,
+					OperatingSystemID:                      tc.paramOperatingSystemID,
+					IpxeScript:                             tc.paramIpxeScript,
+					UserData:                               tc.paramUserData,
+					Labels:                                 tc.paramLabels,
+					NetworkSecurityGroupID:                 tc.paramNetworkSecurityGroupID,
+					NetworkSecurityGroupPropagationDetails: tc.paramNetworkSecurityGroupPropagationDetails,
+					TpmEkCertificate:                       tc.paramTpmEkCertificate,
+				},
+			)
+			assert.Equal(t, tc.expectedError, err != nil)
+			if err == nil {
+				assert.EqualValues(t, tc.instance.ID, got.ID)
+
+				assert.Equal(t, tc.expectedAllocationID, got.AllocationID)
+				assert.Equal(t, tc.expectedAllocationConstraintID, got.AllocationConstraintID)
+				assert.Equal(t, *tc.expectedTenantID, got.TenantID)
+				assert.Equal(t, *tc.expectedInfrastructureProviderID, got.InfrastructureProviderID)
+				assert.Equal(t, *tc.expectedSiteID, got.SiteID)
+				assert.Equal(t, *tc.expectedInstanceTypeID, *got.InstanceTypeID)
+				assert.Equal(t, *tc.expectedVpcID, got.VpcID)
+
+				if tc.paramNetworkSecurityGroupPropagationDetails {
+					assert.Nil(t, got.NetworkSecurityGroupPropagationDetails)
+				}
+
+				if tc.expectedNetworkSecurityGroupID != nil {
+					assert.NotNil(t, got.NetworkSecurityGroupID)
+					assert.Equal(t, *tc.expectedNetworkSecurityGroupID, *got.NetworkSecurityGroupID)
+				}
+
+				if tc.expectedHostname != nil {
+					assert.Equal(t, *tc.expectedHostname, *got.Hostname)
+				}
+
+				if tc.paramOperatingSystemID {
+					assert.Nil(t, got.OperatingSystemID)
+				} else if tc.expectedOperatingSystemID != nil {
+					assert.NotNil(t, got.OperatingSystemID)
+					assert.Equal(t, *tc.expectedOperatingSystemID, *got.OperatingSystemID)
+				}
+
+				if tc.expectedIpxeScript != nil {
+					assert.Equal(t, *tc.expectedIpxeScript, *got.IpxeScript)
+				}
+				if tc.expectedUserData != nil {
+					assert.Equal(t, *tc.expectedUserData, *got.UserData)
+				}
+
+				assert.Equal(t, tc.expectedLabels, got.Labels)
+
+				if tc.expectedMachineID != nil {
+					assert.Equal(t, *tc.expectedMachineID, *got.MachineID)
+				}
+				if tc.expectedControllerInstanceID != nil {
+					assert.Equal(t, *tc.expectedControllerInstanceID, *got.ControllerInstanceID)
+				}
+				assert.Equal(t, *tc.expectedStatus, got.Status)
+
+				if tc.expectedUpdate {
+					assert.True(t, got.Updated.After(tc.instance.Updated))
+				}
+			}
+		})
+	}
+}
+
+func TestInstanceSQLDAO_Delete(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInstanceInitDB(t)
+	defer dbSession.Close()
+	testInstanceSetupSchema(t, dbSession)
+	ip := testInstanceBuildInfrastructureProvider(t, dbSession, "testIP")
+	site := testInstanceBuildSite(t, dbSession, ip, "testSite")
+	tenant := testInstanceBuildTenant(t, dbSession, "testTenant")
+	vpc := testInstanceBuildVpc(t, dbSession, ip, site, tenant, "testVpc")
+	instanceType := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType")
+	networkSecurityGroup := testInstanceBuildNetworkSecurityGroup(t, dbSession, tenant, site, "testNetworkSecurityGroup")
+	machine := testMachineBuildMachine(t, dbSession, ip.ID, site.ID, &instanceType.ID, db.GetStrPtr("mcTypeTest"))
+	allocation := testInstanceBuildAllocation(t, dbSession, ip, tenant, site, "testAllocation")
+	allocationConstraint := testBuildAllocationConstraint(t, dbSession, allocation, AllocationResourceTypeInstanceType, instanceType.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+	operatingSystem := testInstanceBuildOperatingSystem(t, dbSession, "testOS")
+	user := testInstanceBuildUser(t, dbSession, "testUser")
+	isd := NewInstanceDAO(dbSession)
+	dummyUUID := uuid.New()
+	i1, err := isd.Create(
+		ctx, nil,
+		InstanceCreateInput{
+			Name:                     "test1",
+			AllocationID:             &allocation.ID,
+			AllocationConstraintID:   &allocationConstraint.ID,
+			TenantID:                 tenant.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			NetworkSecurityGroupID:   &networkSecurityGroup.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			ControllerInstanceID:     &dummyUUID,
+			Hostname:                 db.GetStrPtr("test.com"),
+			OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               db.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			UserData:                 db.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			InfinityRCRStatus:        db.GetStrPtr("RESOURCE_RELEASED"),
+			Status:                   InstanceStatusPending,
+			CreatedBy:                user.ID,
+		},
+	)
+	assert.Nil(t, err)
+	assert.NotNil(t, i1)
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc               string
+		id                 uuid.UUID
+		expectedError      bool
+		verifyChildSpanner bool
+	}{
+		{
+			desc:               "can delete existing object",
+			id:                 i1.ID,
+			expectedError:      false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc:          "delete non-existing object",
+			id:            dummyUUID,
+			expectedError: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			err := isd.Delete(ctx, nil, tc.id)
+			assert.Equal(t, tc.expectedError, err != nil)
+			if !tc.expectedError {
+				tmp, err := isd.GetByID(ctx, nil, tc.id, nil)
+				assert.NotNil(t, err)
+				assert.Nil(t, tmp)
+			}
+			if tc.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}

@@ -1,0 +1,35 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+syntax = "proto3";
+
+package workflows.v1;
+
+import "google/protobuf/timestamp.proto";
+
+import "workflow.proto";
+import "common_carbide.proto";
+import "forge_carbide.proto";
+
+option go_package = "github.com/nvidia/carbide-rest/workflow-schema/proto";
+
+// DpuExtensionServiceInventory - inventory of all DpuExtensionServices on Site collected periodically
+message DpuExtensionServiceInventory {
+  // Status of Inventory
+  InventoryStatus inventory_status = 1;
+  // Status message
+  string status_msg = 2;
+  // Reported timestamp of DpuExtensionService inventory
+  google.protobuf.Timestamp timestamp = 3;
+  // List of DpuExtensionServices
+  repeated forge.DpuExtensionService dpu_extension_services = 4;
+  // Inventory page information
+  InventoryPage inventory_page = 5;
+}

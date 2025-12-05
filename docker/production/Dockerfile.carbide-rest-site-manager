@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+
+# Build stage
+FROM golang:1.25.1 AS builder
+
+# Set environment variables
+ENV CGO_ENABLED=0
+ENV GOOS=linux
+ENV GOARCH=amd64
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+# Copy go module files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source files
+COPY site-manager/ ./site-manager/
+COPY cert-manager/ ./cert-manager/
+
+# Build the site manager
+WORKDIR /workspace/site-manager
+RUN VERSION=$(cat VERSION 2>/dev/null || echo "dev") && \
+    BUILD_TIME=$(date +"%Y-%m-%d %H:%M:%S") && \
+    go build \
+        -ldflags "-extldflags '-static' -w -s" \
+        -o /app/sitemgr \
+        ./cmd/sitemgr
+
+# Final stage
+FROM nvcr.io/nvidia/distroless/go:v3.2.1 AS final
+
+WORKDIR /app
+
+# Copy binary from builder
+COPY --from=builder --chown=nonroot:nonroot /app/sitemgr /app/sitemgr
+
+# Switch to non-root user
+USER nonroot
+
+# Expose port
+EXPOSE 8100
+
+# Run the application
+ENTRYPOINT ["/app/sitemgr"]

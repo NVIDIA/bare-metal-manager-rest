@@ -1,0 +1,1073 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ *
+ * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+ * property and proprietary rights in and to this material, related
+ * documentation and any modifications thereto. Any use, reproduction,
+ * disclosure or distribution of this material and related documentation
+ * without an express license agreement from NVIDIA CORPORATION or
+ * its affiliates is strictly prohibited.
+ */
+
+
+package model
+
+import (
+	"context"
+	"database/sql"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/nvidia/carbide-rest/db/pkg/db"
+	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
+
+	"github.com/uptrace/bun"
+)
+
+const (
+	// InstanceStatusPending indicates that the Instance provisioning hasn't started yet
+	InstanceStatusPending = "Pending"
+	// InstanceStatusProvisioning indicates that the Instance provisioning is in progress
+	InstanceStatusProvisioning = "Provisioning"
+	// InstanceStatusConfiguring indicates that the Instance is being configured
+	InstanceStatusConfiguring = "Configuring"
+	// InstanceStatusReady indicates that the Instance provisioning is complete
+	InstanceStatusReady = "Ready"
+	// InstanceStatusUpdating indicates that the Instance is receiving system updates
+	InstanceStatusUpdating = "Updating"
+	// InstanceStatusError indicates that the Instance provisioning has failed
+	InstanceStatusError = "Error"
+	// InstanceStatusTerminating indicates that the Instance is being terminated
+	InstanceStatusTerminating = "Terminating"
+	// InstanceStatusTerminated indicates that the Instance has been terminated
+	InstanceStatusTerminated = "Terminated"
+	// InstanceStatusUnknown indicates that the Instance status is unknown
+	InstanceStatusUnknown = "Unknown"
+
+	// InstancePowerStatusBootCompleted status is bootcompleted
+	InstancePowerStatusBootCompleted = "BootCompleted"
+	// InstancePowerStatusRebooting status is rebooting
+	InstancePowerStatusRebooting = "Rebooting"
+	// InstancePowerStatusError status is error
+	InstancePowerStatusError = "Error"
+
+	// InstanceRelationName is the relation name for the Instance model
+	InstanceRelationName = "Instance"
+
+	// The possible values for the InfinityRCRStatus field are specified here:
+	// https://gitlab-master.nvidia.com/nvmetal/cloud-infinity-client/-/blob/main/pkg/client/async.go#L25
+
+	// names of order by fields
+	instanceOrderByName                        = "name"
+	instanceOrderByStatus                      = "status"
+	instanceOrderByCreated                     = "created"
+	instanceOrderByUpdated                     = "updated"
+	instanceOrderByMachineID                   = "machine_id"
+	instanceOrderByTenantOrgDisplayNameExt     = "tenant_org_display_name"
+	instanceOrderByTenantOrgDisplayNameInt     = "tenant.org_display_name"
+	instanceOrderByInstanceTypeNameExt         = "instance_type_name"
+	instanceOrderByInstanceTypeNameInt         = "instance_type.name"
+	instanceOrderByNetworkSecurityGroupNameExt = "network_security_group.name"
+	instanceOrderByNetworkSecurityGroupNameInt = "network_security_group.name"
+	instanceOrderByHasInfiniBandExt            = "has_infiniband"
+	instanceOrderByHasInfiniBandInt            = "mc_type"
+	// InstanceOrderByDefault default field to be used for ordering when none specified
+	InstanceOrderByDefault = instanceOrderByCreated
+)
+
+var (
+	// InstanceOrderByFields is a list of valid order by fields for the Instance model
+	InstanceOrderByFields = []string{
+		instanceOrderByName,
+		instanceOrderByStatus,
+		instanceOrderByCreated,
+		instanceOrderByUpdated,
+		instanceOrderByMachineID,
+		instanceOrderByTenantOrgDisplayNameExt,
+		instanceOrderByInstanceTypeNameExt,
+		instanceOrderByHasInfiniBandExt,
+		instanceOrderByNetworkSecurityGroupNameExt,
+		instanceOrderByNetworkSecurityGroupNameInt,
+	}
+	// internal list of fields that can be used for ordering
+	instanceOrderByFieldsInt = []string{
+		instanceOrderByName,
+		instanceOrderByStatus,
+		instanceOrderByCreated,
+		instanceOrderByUpdated,
+		instanceOrderByMachineID,
+		instanceOrderByTenantOrgDisplayNameInt,
+		instanceOrderByInstanceTypeNameInt,
+		instanceOrderByHasInfiniBandInt,
+		instanceOrderByNetworkSecurityGroupNameInt,
+	}
+	// mapping of sort fields and required relation (for those that need it)
+	instanceOrderByFieldToRelation = map[string]string{
+		instanceOrderByTenantOrgDisplayNameExt:     TenantRelationName,
+		instanceOrderByInstanceTypeNameExt:         InstanceTypeRelationName,
+		instanceOrderByNetworkSecurityGroupNameExt: NetworkSecurityGroupRelationName,
+	}
+	// mapping of external sort by field to internal
+	instanceOrderByFieldExtToInt = map[string]string{
+		instanceOrderByTenantOrgDisplayNameExt: instanceOrderByTenantOrgDisplayNameInt,
+		instanceOrderByInstanceTypeNameExt:     instanceOrderByInstanceTypeNameInt,
+		instanceOrderByHasInfiniBandExt:        instanceOrderByHasInfiniBandInt,
+	}
+	// InstanceRelatedEntities is a list of valid relation by fields for the Instance model
+	InstanceRelatedEntities = map[string]bool{
+		InfrastructureProviderRelationName: true,
+		SiteRelationName:                   true,
+		InstanceTypeRelationName:           true,
+		NetworkSecurityGroupRelationName:   true,
+		AllocationRelationName:             true,
+		TenantRelationName:                 true,
+		VpcRelationName:                    true,
+		MachineRelationName:                true,
+		OperatingSystemRelationName:        true,
+	}
+	// InstanceStatusMap is a list of valid status for the Instance model
+	InstanceStatusMap = map[string]bool{
+		InstanceStatusPending:            true,
+		InstanceStatusReady:              true,
+		InstanceStatusUpdating:           true,
+		InstanceStatusError:              true,
+		InstanceStatusConfiguring:        true,
+		InstanceStatusProvisioning:       true,
+		InstanceStatusTerminating:        true,
+		InstanceStatusTerminated:         true,
+		InstancePowerStatusBootCompleted: true,
+		InstancePowerStatusRebooting:     true,
+	}
+)
+
+// Instance is a bare-metal machine that has been provisioned for a tenant
+type Instance struct {
+	bun.BaseModel `bun:"table:instance,alias:i"`
+
+	ID                                     uuid.UUID                               `bun:"type:uuid,pk"`
+	Name                                   string                                  `bun:"name,notnull"`
+	Description                            *string                                 `bun:"description"`
+	AllocationID                           *uuid.UUID                              `bun:"allocation_id,type:uuid"`
+	Allocation                             *Allocation                             `bun:"rel:belongs-to,join:allocation_id=id"`
+	AllocationConstraintID                 *uuid.UUID                              `bun:"allocation_constraint_id,type:uuid"`
+	AllocationConstraint                   *AllocationConstraint                   `bun:"rel:belongs-to,join:allocation_constraint_id=id"`
+	TenantID                               uuid.UUID                               `bun:"tenant_id,type:uuid,notnull"`
+	Tenant                                 *Tenant                                 `bun:"rel:belongs-to,join:tenant_id=id"`
+	InfrastructureProviderID               uuid.UUID                               `bun:"infrastructure_provider_id,type:uuid,notnull"`
+	InfrastructureProvider                 *InfrastructureProvider                 `bun:"rel:belongs-to,join:infrastructure_provider_id=id"`
+	SiteID                                 uuid.UUID                               `bun:"site_id,type:uuid,notnull"`
+	Site                                   *Site                                   `bun:"rel:belongs-to,join:site_id=id"`
+	NetworkSecurityGroupID                 *string                                 `bun:"network_security_group_id"`
+	NetworkSecurityGroup                   *NetworkSecurityGroup                   `bun:"rel:belongs-to,join:network_security_group_id=id"`
+	NetworkSecurityGroupPropagationDetails *NetworkSecurityGroupPropagationDetails `bun:"network_security_group_propagation_details,type:jsonb"`
+	InstanceTypeID                         *uuid.UUID                              `bun:"instance_type_id,type:uuid"`
+	InstanceType                           *InstanceType                           `bun:"rel:belongs-to,join:instance_type_id=id"`
+	VpcID                                  uuid.UUID                               `bun:"vpc_id,type:uuid,notnull"`
+	Vpc                                    *Vpc                                    `bun:"rel:belongs-to,join:vpc_id=id"`
+	MachineID                              *string                                 `bun:"machine_id"`
+	Machine                                *Machine                                `bun:"rel:belongs-to,join:machine_id=id"`
+	ControllerInstanceID                   *uuid.UUID                              `bun:"controller_instance_id,type:uuid"`
+	Hostname                               *string                                 `bun:"hostname"`
+	OperatingSystemID                      *uuid.UUID                              `bun:"operating_system_id,type:uuid"`
+	OperatingSystem                        *OperatingSystem                        `bun:"rel:belongs-to,join:operating_system_id=id"`
+	IpxeScript                             *string                                 `bun:"ipxe_script"`
+	AlwaysBootWithCustomIpxe               bool                                    `bun:"always_boot_with_custom_ipxe,notnull"`
+	PhoneHomeEnabled                       bool                                    `bun:"phone_home_enabled,notnull"`
+	UserData                               *string                                 `bun:"user_data"`
+	Labels                                 map[string]string                       `bun:"labels,type:jsonb"`
+	IsUpdatePending                        bool                                    `bun:"is_update_pending,notnull"`
+	InfinityRCRStatus                      *string                                 `bun:"infinity_rcr_status"`
+	TpmEkCertificate                       *string                                 `bun:"tpm_ek_certificate"`
+	Status                                 string                                  `bun:"status,notnull"`
+	PowerStatus                            *string                                 `bun:"power_status"`
+	IsMissingOnSite                        bool                                    `bun:"is_missing_on_site,notnull"`
+	Created                                time.Time                               `bun:"created,nullzero,notnull,default:current_timestamp"`
+	Updated                                time.Time                               `bun:"updated,nullzero,notnull,default:current_timestamp"`
+	Deleted                                *time.Time                              `bun:"deleted,soft_delete"`
+	CreatedBy                              uuid.UUID                               `bun:"created_by,type:uuid,notnull"`
+	// Not for display, used by the query that sorts on machine capability type, specifically InfiniBand type
+	MCType string `bun:"mc_type,scanonly"`
+}
+
+// InstanceCreateInput input parameters for Create method
+type InstanceCreateInput struct {
+	Name                                   string
+	Description                            *string
+	AllocationID                           *uuid.UUID
+	AllocationConstraintID                 *uuid.UUID
+	TenantID                               uuid.UUID
+	InfrastructureProviderID               uuid.UUID
+	SiteID                                 uuid.UUID
+	InstanceTypeID                         *uuid.UUID
+	NetworkSecurityGroupID                 *string
+	NetworkSecurityGroupPropagationDetails *NetworkSecurityGroupPropagationDetails
+	VpcID                                  uuid.UUID
+	MachineID                              *string
+	ControllerInstanceID                   *uuid.UUID
+	Hostname                               *string
+	OperatingSystemID                      *uuid.UUID
+	IpxeScript                             *string
+	AlwaysBootWithCustomIpxe               bool
+	PhoneHomeEnabled                       bool
+	UserData                               *string
+	Labels                                 map[string]string
+	IsUpdatePending                        bool
+	InfinityRCRStatus                      *string
+	TpmEkCertificate                       *string
+	Status                                 string
+	PowerStatus                            *string
+	CreatedBy                              uuid.UUID
+}
+
+// InstanceUpdateInput input parameters for Update method
+type InstanceUpdateInput struct {
+	InstanceID                             uuid.UUID
+	Name                                   *string
+	Description                            *string
+	AllocationID                           *uuid.UUID
+	AllocationConstraintID                 *uuid.UUID
+	TenantID                               *uuid.UUID
+	InfrastructureProviderID               *uuid.UUID
+	SiteID                                 *uuid.UUID
+	InstanceTypeID                         *uuid.UUID
+	NetworkSecurityGroupID                 *string
+	NetworkSecurityGroupPropagationDetails *NetworkSecurityGroupPropagationDetails
+	VpcID                                  *uuid.UUID
+	MachineID                              *string
+	ControllerInstanceID                   *uuid.UUID
+	Hostname                               *string
+	OperatingSystemID                      *uuid.UUID
+	IpxeScript                             *string
+	AlwaysBootWithCustomIpxe               *bool
+	PhoneHomeEnabled                       *bool
+	UserData                               *string
+	Labels                                 map[string]string
+	IsUpdatePending                        *bool
+	InfinityRCRStatus                      *string
+	TpmEkCertificate                       *string
+	Status                                 *string
+	PowerStatus                            *string
+	IsMissingOnSite                        *bool
+}
+
+// InstanceClearInput input parameters for Clear method
+type InstanceClearInput struct {
+	InstanceID                             uuid.UUID
+	Description                            bool
+	MachineID                              bool
+	ControllerInstanceID                   bool
+	NetworkSecurityGroupID                 bool
+	NetworkSecurityGroupPropagationDetails bool
+	Hostname                               bool
+	OperatingSystemID                      bool
+	IpxeScript                             bool
+	UserData                               bool
+	Labels                                 bool
+	TpmEkCertificate                       bool
+}
+
+// InstanceFilterInput input parameters for GetAll method
+type InstanceFilterInput struct {
+	Name                     *string
+	AllocationID             *uuid.UUID
+	AllocationConstraintID   *uuid.UUID
+	TenantIDs                []uuid.UUID
+	InfrastructureProviderID *uuid.UUID
+	SiteIDs                  []uuid.UUID
+	InstanceTypeIDs          []uuid.UUID
+	NetworkSecurityGroupIDs  []string
+	VpcIDs                   []uuid.UUID
+	MachineIDs               []string
+	ControllerInstanceIDs    []uuid.UUID
+	OperatingSystemIDs       []uuid.UUID
+	Statuses                 []string
+	SearchQuery              *string
+}
+
+var _ bun.BeforeAppendModelHook = (*Instance)(nil)
+
+// BeforeAppendModel is a hook that is called before the model is appended to the query
+func (i *Instance) BeforeAppendModel(ctx context.Context, query bun.Query) error {
+	switch query.(type) {
+	case *bun.InsertQuery:
+		i.Created = db.GetCurTime()
+		i.Updated = db.GetCurTime()
+	case *bun.UpdateQuery:
+		i.Updated = db.GetCurTime()
+	}
+	return nil
+}
+
+var _ bun.BeforeCreateTableHook = (*Instance)(nil)
+
+// BeforeCreateTable is a hook that is called before the table is created
+func (i *Instance) BeforeCreateTable(ctx context.Context, query *bun.CreateTableQuery) error {
+	query.ForeignKey(`("allocation_id") REFERENCES "allocation" ("id")`).
+		ForeignKey(`("allocation_constraint_id") REFERENCES "allocation_constraint" ("id")`).
+		ForeignKey(`("tenant_id") REFERENCES "tenant" ("id")`).
+		ForeignKey(`("infrastructure_provider_id") REFERENCES "infrastructure_provider" ("id")`).
+		ForeignKey(`("site_id") REFERENCES "site" ("id")`).
+		ForeignKey(`("instance_type_id") REFERENCES "instance_type" ("id")`).
+		ForeignKey(`("vpc_id") REFERENCES "vpc" ("id")`).
+		ForeignKey(`("machine_id") REFERENCES "machine" ("id")`).
+		ForeignKey(`("operating_system_id") REFERENCES "operating_system" ("id")`).
+		ForeignKey(`("network_security_group_id") REFERENCES "network_security_group" ("id")`)
+	return nil
+}
+
+// InstanceDAO is an interface for interacting with the Instance model
+type InstanceDAO interface {
+	//
+	Create(ctx context.Context, tx *db.Tx, input InstanceCreateInput) (*Instance, error)
+	//
+	GetByID(ctx context.Context, tx *db.Tx, id uuid.UUID, includeRelations []string) (*Instance, error)
+	//
+	GetCountByStatus(ctx context.Context, tx *db.Tx, tenantID *uuid.UUID, siteID *uuid.UUID) (map[string]int, error)
+	//
+	GetAll(ctx context.Context, tx *db.Tx, filter InstanceFilterInput, page paginator.PageInput, includeRelations []string) ([]Instance, int, error)
+	//
+	Update(ctx context.Context, tx *db.Tx, input InstanceUpdateInput) (*Instance, error)
+	//
+	Clear(ctx context.Context, tx *db.Tx, input InstanceClearInput) (*Instance, error)
+	//
+	Delete(ctx context.Context, tx *db.Tx, id uuid.UUID) error
+	// GetCount returns total count of rows for specified filter
+	GetCount(ctx context.Context, tx *db.Tx, filter InstanceFilterInput) (count int, err error)
+}
+
+// InstanceSQLDAO is an implementation of the InstanceDAO interface
+type InstanceSQLDAO struct {
+	dbSession *db.Session
+	InstanceDAO
+	tracerSpan *stracer.TracerSpan
+}
+
+// Create creates a new Instance from the given parameters
+// The returned Instance will not have any related structs (InfrastructureProvider/Site etc) filled in
+// since there are 2 operations (INSERT, SELECT), in this, it is required that
+// this library call happens within a transaction
+func (isd InstanceSQLDAO) Create(ctx context.Context, tx *db.Tx, input InstanceCreateInput) (*Instance, error) {
+	// Create a child span and set the attributes for current request
+	ctx, instanceDAOSpan := isd.tracerSpan.CreateChildInCurrentContext(ctx, "InstanceDAO.Create")
+	if instanceDAOSpan != nil {
+		defer instanceDAOSpan.End()
+		isd.tracerSpan.SetAttribute(instanceDAOSpan, "name", input.Name)
+	}
+
+	i := &Instance{
+		ID:                                     uuid.New(),
+		Name:                                   input.Name,
+		Description:                            input.Description,
+		AllocationID:                           input.AllocationID,
+		AllocationConstraintID:                 input.AllocationConstraintID,
+		TenantID:                               input.TenantID,
+		InfrastructureProviderID:               input.InfrastructureProviderID,
+		SiteID:                                 input.SiteID,
+		InstanceTypeID:                         input.InstanceTypeID,
+		NetworkSecurityGroupID:                 input.NetworkSecurityGroupID,
+		NetworkSecurityGroupPropagationDetails: input.NetworkSecurityGroupPropagationDetails,
+		VpcID:                                  input.VpcID,
+		MachineID:                              input.MachineID,
+		ControllerInstanceID:                   input.ControllerInstanceID,
+		Hostname:                               input.Hostname,
+		OperatingSystemID:                      input.OperatingSystemID,
+		IpxeScript:                             input.IpxeScript,
+		AlwaysBootWithCustomIpxe:               input.AlwaysBootWithCustomIpxe,
+		PhoneHomeEnabled:                       input.PhoneHomeEnabled,
+		UserData:                               input.UserData,
+		IsUpdatePending:                        input.IsUpdatePending,
+		InfinityRCRStatus:                      input.InfinityRCRStatus,
+		TpmEkCertificate:                       input.TpmEkCertificate,
+		Status:                                 input.Status,
+		PowerStatus:                            input.PowerStatus,
+		CreatedBy:                              input.CreatedBy,
+		Labels:                                 input.Labels,
+	}
+
+	_, err := db.GetIDB(tx, isd.dbSession).NewInsert().Model(i).Exec(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	nv, err := isd.GetByID(ctx, tx, i.ID, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return nv, nil
+}
+
+// GetByID returns a Instance by ID
+// includeRelation can be a subset of "Allocation", "Tenant", "InfrastructureProvider"
+// "Site", "InstanceType", "Vpc", "Subnet", "OperatingSystem"
+// returns db.ErrDoesNotExist error if the record is not found
+func (isd InstanceSQLDAO) GetByID(ctx context.Context, tx *db.Tx, id uuid.UUID, includeRelations []string) (*Instance, error) {
+	i := &Instance{}
+	// Create a child span and set the attributes for current request
+	ctx, instanceDAOSpan := isd.tracerSpan.CreateChildInCurrentContext(ctx, "InstanceDAO.GetByID")
+	if instanceDAOSpan != nil {
+		defer instanceDAOSpan.End()
+		isd.tracerSpan.SetAttribute(instanceDAOSpan, "id", id.String())
+	}
+
+	query := db.GetIDB(tx, isd.dbSession).NewSelect().Model(i).Where("i.id = ?", id)
+
+	for _, relation := range includeRelations {
+		query = query.Relation(relation)
+	}
+
+	err := query.Scan(ctx)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, db.ErrDoesNotExist
+		}
+		return nil, err
+	}
+
+	return i, nil
+}
+
+// GetCountByStatus returns count of Instances for given status
+// Errors are returned only when there is a db related error
+// if records not found, then error is nil, but length of returned map is 0
+func (isd InstanceSQLDAO) GetCountByStatus(ctx context.Context, tx *db.Tx, tenantID *uuid.UUID, siteID *uuid.UUID) (map[string]int, error) {
+	i := &Instance{}
+	// Create a child span and set the attributes for current request
+	ctx, instanceDAOSpan := isd.tracerSpan.CreateChildInCurrentContext(ctx, "InstanceDAO.GetCountByStatus")
+	if instanceDAOSpan != nil {
+		defer instanceDAOSpan.End()
+	}
+
+	var statusQueryResults []map[string]interface{}
+	query := db.GetIDB(tx, isd.dbSession).NewSelect().Model(i)
+	if tenantID != nil {
+		query = query.Where("i.tenant_id = ?", *tenantID)
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "tenant_id", tenantID.String())
+		}
+	}
+	if siteID != nil {
+		query = query.Where("i.site_id = ?", *siteID)
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "site_id", siteID.String())
+		}
+	}
+
+	err := query.Column("i.status").ColumnExpr("COUNT(*) AS total_count").GroupExpr("i.status").Scan(ctx, &statusQueryResults)
+	if err != nil {
+		return nil, err
+	}
+
+	// creare results map by holding key as status value with total count
+	results := map[string]int{
+		"total":                    0,
+		InstanceStatusPending:      0,
+		InstanceStatusProvisioning: 0,
+		InstanceStatusConfiguring:  0,
+		InstanceStatusReady:        0,
+		InstanceStatusUpdating:     0,
+		InstanceStatusTerminating:  0,
+		InstanceStatusError:        0,
+	}
+	if len(statusQueryResults) > 0 {
+		for _, statusMap := range statusQueryResults {
+			results[statusMap["status"].(string)] = int(statusMap["total_count"].(int64))
+
+			results["total"] += int(statusMap["total_count"].(int64))
+		}
+	}
+	return results, nil
+}
+
+func (isd InstanceSQLDAO) setQueryWithFilter(filter InstanceFilterInput, query *bun.SelectQuery, instanceDAOSpan *stracer.CurrentContextSpan) (*bun.SelectQuery, error) {
+	if filter.Name != nil {
+		query = query.Where("i.name = ?", *filter.Name)
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "name", *filter.Name)
+		}
+	}
+
+	if filter.AllocationID != nil {
+		query = query.Where("i.allocation_id = ?", *filter.AllocationID)
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "allocation_id", filter.AllocationID.String())
+		}
+	}
+
+	if filter.AllocationConstraintID != nil {
+		query = query.Where("i.allocation_constraint_id = ?", *filter.AllocationConstraintID)
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "allocation_constraint_id", filter.AllocationConstraintID.String())
+		}
+	}
+
+	if filter.TenantIDs != nil {
+		if len(filter.TenantIDs) == 1 {
+			query = query.Where("i.tenant_id = ?", filter.TenantIDs[0])
+		} else {
+			query = query.Where("i.tenant_id IN (?)", bun.In(filter.TenantIDs))
+		}
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "tenant_ids", filter.TenantIDs)
+		}
+	}
+
+	if filter.InfrastructureProviderID != nil {
+		query = query.Where("i.infrastructure_provider_id = ?", *filter.InfrastructureProviderID)
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "infrastructure_provider_id", filter.InfrastructureProviderID.String())
+		}
+	}
+
+	if filter.SiteIDs != nil {
+		if len(filter.SiteIDs) == 1 {
+			query = query.Where("i.site_id = ?", filter.SiteIDs[0])
+		} else {
+			query = query.Where("i.site_id IN (?)", bun.In(filter.SiteIDs))
+		}
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "site_ids", filter.SiteIDs)
+		}
+	}
+
+	if filter.InstanceTypeIDs != nil {
+		if len(filter.InstanceTypeIDs) == 1 {
+			query = query.Where("i.instance_type_id = ?", filter.InstanceTypeIDs[0])
+		} else {
+			query = query.Where("i.instance_type_id IN (?)", bun.In(filter.InstanceTypeIDs))
+		}
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "instance_type_ids", filter.InstanceTypeIDs)
+		}
+	}
+
+	if filter.NetworkSecurityGroupIDs != nil {
+		// Single-item IN queries are optimized by the query planner to =
+		query = query.Where("i.network_security_group_id IN (?)", bun.In(filter.NetworkSecurityGroupIDs))
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "network_security_group_ids", filter.NetworkSecurityGroupIDs)
+		}
+	}
+
+	if filter.VpcIDs != nil {
+		if len(filter.VpcIDs) == 1 {
+			query = query.Where("i.vpc_id = ?", filter.VpcIDs[0])
+		} else {
+			query = query.Where("i.vpc_id IN (?)", bun.In(filter.VpcIDs))
+		}
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "vpc_ids", filter.VpcIDs)
+		}
+	}
+
+	if filter.MachineIDs != nil {
+		if len(filter.MachineIDs) == 1 {
+			query = query.Where("i.machine_id = ?", filter.MachineIDs[0])
+		} else {
+			query = query.Where("i.machine_id IN (?)", bun.In(filter.MachineIDs))
+		}
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "machine_ids", filter.MachineIDs)
+		}
+	}
+
+	if filter.ControllerInstanceIDs != nil {
+		if len(filter.ControllerInstanceIDs) == 1 {
+			query = query.Where("i.controller_instance_id = ?", filter.ControllerInstanceIDs[0])
+		} else {
+			query = query.Where("i.controller_instance_id IN (?)", bun.In(filter.ControllerInstanceIDs))
+		}
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "controller_instance_ids", filter.ControllerInstanceIDs)
+		}
+	}
+
+	if filter.OperatingSystemIDs != nil {
+		if len(filter.OperatingSystemIDs) == 1 {
+			query = query.Where("i.operating_system_id = ?", filter.OperatingSystemIDs[0])
+		} else {
+			query = query.Where("i.operating_system_id iN (?)", bun.In(filter.OperatingSystemIDs))
+		}
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "operating_system_ids", filter.OperatingSystemIDs)
+		}
+	}
+
+	if filter.Statuses != nil {
+		if len(filter.Statuses) == 1 {
+			query = query.Where("i.status = ?", filter.Statuses[0])
+		} else {
+			query = query.Where("i.status IN (?)", bun.In(filter.Statuses))
+		}
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "statuses", filter.Statuses)
+		}
+	}
+
+	if filter.SearchQuery != nil {
+		normalizedTokens := db.GetStrPtr(db.GetStringToTsQuery(*filter.SearchQuery))
+		query = query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.
+				Where("to_tsvector('english', (coalesce(i.name, ' ') || ' ' || coalesce(i.status, ' ') || ' ' || coalesce(i.labels::text, ' '))) @@ to_tsquery('english', ?)", *normalizedTokens).
+				WhereOr("i.name ILIKE ?", "%"+*filter.SearchQuery+"%").
+				WhereOr("i.status ILIKE ?", "%"+*filter.SearchQuery+"%").
+				WhereOr("i.description ILIKE ?", "%"+*filter.SearchQuery+"%").
+				WhereOr("i.labels::text ILIKE ?", "%"+*filter.SearchQuery+"%")
+		})
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "search_query", *filter.SearchQuery)
+		}
+	}
+	return query, nil
+}
+
+// GetAll returns all Instances filtering by
+// allocationID, tenantIDs, infrastructureProviderID, siteIDs, instanceTypeIDs, vpcIDs, machineIDs, controllerInstanceIDs, operatingSystemIDs
+// errors are returned only when there is a db related error
+// if records not found, then error is nil, but length of returned slice is 0
+// if page.OrderBy is nil, then records are ordered by column specified in InstanceOrderByDefault in ascending order
+func (isd InstanceSQLDAO) GetAll(ctx context.Context, tx *db.Tx, filter InstanceFilterInput, page paginator.PageInput, includeRelations []string) ([]Instance, int, error) {
+	// Create a child span and set the attributes for current request
+	ctx, instanceDAOSpan := isd.tracerSpan.CreateChildInCurrentContext(ctx, "InstanceDAO.GetAll")
+	if instanceDAOSpan != nil {
+		defer instanceDAOSpan.End()
+	}
+
+	var instances []Instance
+
+	query := db.GetIDB(tx, isd.dbSession).NewSelect().Model(&instances)
+
+	query, err := isd.setQueryWithFilter(filter, query, instanceDAOSpan)
+	if err != nil {
+		return instances, 0, err
+	}
+
+	var multiOrderBy []*paginator.OrderBy
+	if page.OrderBy != nil {
+		multiOrderBy = append(multiOrderBy, page.OrderBy)
+		// handle sorting by presence of infiniband
+		if page.OrderBy.Field == instanceOrderByHasInfiniBandExt {
+			query = query.ColumnExpr("i.*").ColumnExpr("mc.type AS mc_type")
+			query = query.Join("LEFT JOIN machine_capability AS mc ON i.machine_id = mc.machine_id AND mc.type = 'InfiniBand'").Distinct()
+		}
+	}
+	if page.OrderBy == nil || page.OrderBy.Field != InstanceOrderByDefault {
+		// add default sort to make sure objects returned in same order
+		multiOrderBy = append(multiOrderBy, paginator.NewDefaultOrderBy(InstanceOrderByDefault))
+	}
+
+	for _, orderBy := range multiOrderBy {
+		// validate order by
+		if relationName := instanceOrderByFieldToRelation[orderBy.Field]; relationName != "" {
+			if !db.IsStrInSlice(relationName, includeRelations) {
+				// add relation, so that we can sort on joined data
+				includeRelations = append(includeRelations, relationName)
+			}
+		}
+		// convert to internal
+		if internalName := instanceOrderByFieldExtToInt[orderBy.Field]; internalName != "" {
+			orderBy.Field = internalName
+		}
+	}
+
+	for _, relation := range includeRelations {
+		query = query.Relation(relation)
+	}
+
+	paginator, err := paginator.NewPaginatorMultiOrderBy(ctx, query, page.Offset, page.Limit, multiOrderBy, instanceOrderByFieldsInt)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	err = paginator.Query.Limit(paginator.Limit).Offset(paginator.Offset).Scan(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return instances, paginator.Total, nil
+}
+
+// GetCount returns total count of rows for specified filter
+func (isd InstanceSQLDAO) GetCount(ctx context.Context, tx *db.Tx, filter InstanceFilterInput) (count int, err error) {
+	// Create a child span and set the attributes for current request
+	ctx, instanceDAOSpan := isd.tracerSpan.CreateChildInCurrentContext(ctx, "InstanceDAO.GetCount")
+	if instanceDAOSpan != nil {
+		defer instanceDAOSpan.End()
+	}
+
+	query := db.GetIDB(tx, isd.dbSession).NewSelect().Model((*Instance)(nil))
+	query, err = isd.setQueryWithFilter(filter, query, instanceDAOSpan)
+	if err != nil {
+		return 0, err
+	}
+
+	return query.Count(ctx)
+}
+
+// Update updates specified fields of an existing Instance
+// The updated fields are assumed to be set to non-null values
+// For setting to null values, use: Clear
+// since there are 2 operations (UPDATE, SELECT), in this, it is required that
+// this library call happens within a transaction
+func (isd InstanceSQLDAO) Update(ctx context.Context, tx *db.Tx, input InstanceUpdateInput) (*Instance, error) {
+	// Create a child span and set the attributes for current request
+	ctx, instanceDAOSpan := isd.tracerSpan.CreateChildInCurrentContext(ctx, "InstanceDAO.Update")
+	if instanceDAOSpan != nil {
+		defer instanceDAOSpan.End()
+	}
+
+	i := &Instance{
+		ID: input.InstanceID,
+	}
+
+	updatedFields := []string{}
+
+	if input.Name != nil {
+		i.Name = *input.Name
+		updatedFields = append(updatedFields, "name")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "name", *input.Name)
+		}
+	}
+	if input.Description != nil {
+		i.Description = input.Description
+		updatedFields = append(updatedFields, "description")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "description", *input.Description)
+		}
+	}
+	if input.AllocationID != nil {
+		i.AllocationID = input.AllocationID
+		updatedFields = append(updatedFields, "allocation_id")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "allocation_id", input.AllocationID.String())
+		}
+	}
+	if input.AllocationConstraintID != nil {
+		i.AllocationConstraintID = input.AllocationConstraintID
+		updatedFields = append(updatedFields, "allocation_constraint_id")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "allocation_constraint_id", input.AllocationConstraintID.String())
+		}
+	}
+	if input.TenantID != nil {
+		i.TenantID = *input.TenantID
+		updatedFields = append(updatedFields, "tenant_id")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "tenant_id", input.TenantID.String())
+		}
+	}
+	if input.InfrastructureProviderID != nil {
+		i.InfrastructureProviderID = *input.InfrastructureProviderID
+		updatedFields = append(updatedFields, "infrastructure_provider_id")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "infrastructure_provider_id", input.InfrastructureProviderID.String())
+		}
+	}
+	if input.SiteID != nil {
+		i.SiteID = *input.SiteID
+		updatedFields = append(updatedFields, "site_id")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "site_id", input.SiteID.String())
+		}
+	}
+	if input.InstanceTypeID != nil {
+		i.InstanceTypeID = input.InstanceTypeID
+		updatedFields = append(updatedFields, "instance_type_id")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "instance_type_id", input.InstanceTypeID.String())
+		}
+	}
+	if input.NetworkSecurityGroupID != nil {
+		i.NetworkSecurityGroupID = input.NetworkSecurityGroupID
+		updatedFields = append(updatedFields, "network_security_group_id")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "network_security_group_id", input.NetworkSecurityGroupID)
+		}
+	}
+	if input.VpcID != nil {
+		i.VpcID = *input.VpcID
+		updatedFields = append(updatedFields, "vpc_id")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "vpc_id", input.VpcID.String())
+		}
+	}
+	if input.MachineID != nil {
+		i.MachineID = input.MachineID
+		updatedFields = append(updatedFields, "machine_id")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "machine_id", *input.MachineID)
+		}
+	}
+	if input.ControllerInstanceID != nil {
+		i.ControllerInstanceID = input.ControllerInstanceID
+		updatedFields = append(updatedFields, "controller_instance_id")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "controller_instance_id", input.ControllerInstanceID.String())
+		}
+	}
+	if input.Hostname != nil {
+		i.Hostname = input.Hostname
+		updatedFields = append(updatedFields, "hostname")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "hostname", *input.Hostname)
+		}
+	}
+	if input.OperatingSystemID != nil {
+		i.OperatingSystemID = input.OperatingSystemID
+		updatedFields = append(updatedFields, "operating_system_id")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "operating_system_id", input.OperatingSystemID.String())
+		}
+	}
+	if input.IpxeScript != nil {
+		i.IpxeScript = input.IpxeScript
+		updatedFields = append(updatedFields, "ipxe_script")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "ipxe_script", *input.IpxeScript)
+		}
+	}
+	if input.AlwaysBootWithCustomIpxe != nil {
+		i.AlwaysBootWithCustomIpxe = *input.AlwaysBootWithCustomIpxe
+		updatedFields = append(updatedFields, "always_boot_with_custom_ipxe")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "always_boot_with_custom_ipxe", *input.AlwaysBootWithCustomIpxe)
+		}
+	}
+	if input.PhoneHomeEnabled != nil {
+		i.PhoneHomeEnabled = *input.PhoneHomeEnabled
+		updatedFields = append(updatedFields, "phone_home_enabled")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "phone_home_enabled", *input.PhoneHomeEnabled)
+		}
+	}
+	if input.UserData != nil {
+		i.UserData = input.UserData
+		updatedFields = append(updatedFields, "user_data")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "user_data", *input.UserData)
+		}
+	}
+	if input.IsUpdatePending != nil {
+		i.IsUpdatePending = *input.IsUpdatePending
+		updatedFields = append(updatedFields, "is_update_pending")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "is_update_pending", *input.IsUpdatePending)
+		}
+	}
+	if input.InfinityRCRStatus != nil {
+		i.InfinityRCRStatus = input.InfinityRCRStatus
+		updatedFields = append(updatedFields, "infinity_rcr_status")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "infinity_rcr_status", *input.InfinityRCRStatus)
+		}
+	}
+	if input.Status != nil {
+		i.Status = *input.Status
+		updatedFields = append(updatedFields, "status")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "status", *input.Status)
+		}
+	}
+	if input.PowerStatus != nil {
+		i.PowerStatus = input.PowerStatus
+		updatedFields = append(updatedFields, "power_status")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "power_status", *input.PowerStatus)
+		}
+	}
+	if input.IsMissingOnSite != nil {
+		i.IsMissingOnSite = *input.IsMissingOnSite
+		updatedFields = append(updatedFields, "is_missing_on_site")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "is_missing_on_site", *input.IsMissingOnSite)
+		}
+	}
+	if input.Labels != nil {
+		i.Labels = input.Labels
+		updatedFields = append(updatedFields, "labels")
+	}
+	if input.NetworkSecurityGroupPropagationDetails != nil {
+		i.NetworkSecurityGroupPropagationDetails = input.NetworkSecurityGroupPropagationDetails
+		updatedFields = append(updatedFields, "network_security_group_propagation_details")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "network_security_group_propagation_details", input.NetworkSecurityGroupPropagationDetails)
+		}
+	}
+	if input.TpmEkCertificate != nil {
+		i.TpmEkCertificate = input.TpmEkCertificate
+		updatedFields = append(updatedFields, "tpm_ek_certificate")
+
+		if instanceDAOSpan != nil {
+			isd.tracerSpan.SetAttribute(instanceDAOSpan, "tpm_ek_certificate", *input.TpmEkCertificate)
+		}
+	}
+
+	if len(updatedFields) > 0 {
+		updatedFields = append(updatedFields, "updated")
+
+		_, err := db.GetIDB(tx, isd.dbSession).NewUpdate().Model(i).Column(updatedFields...).Where("id = ?", input.InstanceID).Exec(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	nv, err := isd.GetByID(ctx, tx, i.ID, nil)
+
+	if err != nil {
+		return nil, err
+	}
+	return nv, nil
+}
+
+// Clear sets parameters of an existing Instance to null values in db
+// parameters when true, the are set to null in db
+// since there are 2 operations (UPDATE, SELECT), it is required that
+// this must be within a transaction
+func (isd InstanceSQLDAO) Clear(ctx context.Context, tx *db.Tx, input InstanceClearInput) (*Instance, error) {
+	// Create a child span and set the attributes for current request
+	ctx, instanceDAOSpan := isd.tracerSpan.CreateChildInCurrentContext(ctx, "InstanceDAO.Clear")
+	if instanceDAOSpan != nil {
+		defer instanceDAOSpan.End()
+	}
+
+	i := &Instance{
+		ID: input.InstanceID,
+	}
+
+	updatedFields := []string{}
+
+	if input.Description {
+		i.Description = nil
+		updatedFields = append(updatedFields, "description")
+	}
+	if input.MachineID {
+		i.MachineID = nil
+		updatedFields = append(updatedFields, "machine_id")
+	}
+	if input.ControllerInstanceID {
+		i.ControllerInstanceID = nil
+		updatedFields = append(updatedFields, "controller_instance_id")
+	}
+	if input.Hostname {
+		i.Hostname = nil
+		updatedFields = append(updatedFields, "hostname")
+	}
+	if input.OperatingSystemID {
+		i.OperatingSystemID = nil
+		updatedFields = append(updatedFields, "operating_system_id")
+	}
+	if input.IpxeScript {
+		i.IpxeScript = nil
+		updatedFields = append(updatedFields, "ipxe_script")
+	}
+	if input.UserData {
+		i.UserData = nil
+		updatedFields = append(updatedFields, "user_data")
+	}
+	if input.Labels {
+		i.Labels = nil
+		updatedFields = append(updatedFields, "labels")
+	}
+	if input.NetworkSecurityGroupID {
+		i.NetworkSecurityGroupID = nil
+		updatedFields = append(updatedFields, "network_security_group_id")
+	}
+	if input.NetworkSecurityGroupPropagationDetails {
+		i.NetworkSecurityGroupPropagationDetails = nil
+		updatedFields = append(updatedFields, "network_security_group_propagation_details")
+	}
+	if input.TpmEkCertificate {
+		i.TpmEkCertificate = nil
+		updatedFields = append(updatedFields, "tpm_ek_certificate")
+	}
+
+	if len(updatedFields) > 0 {
+		updatedFields = append(updatedFields, "updated")
+
+		_, err := db.GetIDB(tx, isd.dbSession).NewUpdate().Model(i).Column(updatedFields...).Where("id = ?", input.InstanceID).Exec(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	nv, err := isd.GetByID(ctx, tx, i.ID, nil)
+	if err != nil {
+		return nil, err
+	}
+	return nv, nil
+}
+
+// Delete deletes an Instance by ID
+// error is returned only if there is a db error
+// if the object being deleted doesnt exist, error is not returned (idempotent delete)
+func (isd InstanceSQLDAO) Delete(ctx context.Context, tx *db.Tx, id uuid.UUID) error {
+	// Create a child span and set the attributes for current request
+	ctx, instanceDAOSpan := isd.tracerSpan.CreateChildInCurrentContext(ctx, "InstanceDAO.Delete")
+	if instanceDAOSpan != nil {
+		defer instanceDAOSpan.End()
+
+		isd.tracerSpan.SetAttribute(instanceDAOSpan, "id", id.String())
+	}
+
+	i := &Instance{
+		ID: id,
+	}
+
+	_, err := db.GetIDB(tx, isd.dbSession).NewDelete().Model(i).Where("id = ?", id).Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// NewInstanceDAO returns a new InstanceDAO
+func NewInstanceDAO(dbSession *db.Session) InstanceDAO {
+	return &InstanceSQLDAO{
+		dbSession:  dbSession,
+		tracerSpan: stracer.NewTracerSpan(),
+	}
+}

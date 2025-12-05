@@ -1,0 +1,228 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package activity
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/rs/zerolog/log"
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	swe "github.com/nvidia/carbide-rest/site-workflow/pkg/error"
+	"github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
+	cClient "github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
+	"go.temporal.io/sdk/temporal"
+	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+// ManageSSHKeyGroupInventory is an activity wrapper for SSHKeyGroup inventory collection and publishing
+type ManageSSHKeyGroupInventory struct {
+	config ManageInventoryConfig
+}
+
+// DiscoverSSHKeyGroupInventory is an activity to collect SSHKeyGroup inventory and publish to Temporal queue
+func (mmi *ManageSSHKeyGroupInventory) DiscoverSSHKeyGroupInventory(ctx context.Context) error {
+	logger := log.With().Str("Activity", "DiscoverSSHKeyGroupInventory").Logger()
+	logger.Info().Msg("Starting activity")
+	inventoryImpl := manageInventoryImpl[*cwssaws.TenantKeysetIdentifier, *cwssaws.TenantKeyset, *cwssaws.SSHKeyGroupInventory]{
+		itemType:               "SSHKeyGroup",
+		config:                 mmi.config,
+		internalFindIDs:        sshKeyGroupFindIDs,
+		internalFindByIDs:      sshKeyGroupFindByIDs,
+		internalPagedInventory: sshKeyGroupPagedInventory,
+		internalFindFallback:   sshKeyGroupFindFallback,
+	}
+	return inventoryImpl.CollectAndPublishInventory(ctx, &logger)
+}
+
+// NewManageSSHKeyGroupInventory returns a ManageInventory implementation for SSHKeyGroup activity
+func NewManageSSHKeyGroupInventory(config ManageInventoryConfig) ManageSSHKeyGroupInventory {
+	return ManageSSHKeyGroupInventory{
+		config: config,
+	}
+}
+
+func sshKeyGroupFindIDs(ctx context.Context, carbideClient *cClient.CarbideClient) ([]*cwssaws.TenantKeysetIdentifier, error) {
+	idList, err := carbideClient.Compute().FindSSHKeyGroupIDs(ctx, &cwssaws.TenantKeysetSearchFilter{})
+	if err != nil {
+		return nil, err
+	}
+	return idList.GetKeysetIds(), nil
+}
+
+func sshKeyGroupFindByIDs(ctx context.Context, carbideClient *cClient.CarbideClient, ids []*cwssaws.TenantKeysetIdentifier) ([]*cwssaws.TenantKeyset, error) {
+	list, err := carbideClient.Compute().FindSSHKeyGroupsByIDs(ctx, &cwssaws.TenantKeysetsByIdsRequest{
+		KeysetIds: ids,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return list.GetKeyset(), nil
+}
+
+func sshKeyGroupPagedInventory(allItemIDs []*cwssaws.TenantKeysetIdentifier, pagedItems []*cwssaws.TenantKeyset, input *pagedInventoryInput) *cwssaws.SSHKeyGroupInventory {
+	itemIDs := []string{}
+	for _, id := range allItemIDs {
+		itemIDs = append(itemIDs, id.GetKeysetId())
+	}
+
+	// Create an inventory page
+	inventory := &cwssaws.SSHKeyGroupInventory{
+		TenantKeysets: pagedItems,
+		Timestamp: &timestamppb.Timestamp{
+			Seconds: time.Now().Unix(),
+		},
+		InventoryStatus: input.status,
+		StatusMsg:       input.statusMessage,
+		InventoryPage:   input.buildPage(),
+	}
+	if inventory.InventoryPage != nil {
+		inventory.InventoryPage.ItemIds = itemIDs
+	}
+	return inventory
+}
+
+func sshKeyGroupFindFallback(ctx context.Context, carbideClient *cClient.CarbideClient) ([]*cwssaws.TenantKeysetIdentifier, []*cwssaws.TenantKeyset, error) {
+	items, err := carbideClient.Compute().GetAllSSHKeyGroupsOld(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	var ids []*cwssaws.TenantKeysetIdentifier
+	for _, it := range items.GetKeyset() {
+		ids = append(ids, it.KeysetIdentifier)
+	}
+	return ids, items.GetKeyset(), nil
+}
+
+// ManageSSHKeyGroup is an activity wrapper for SSHKeyGroup management
+type ManageSSHKeyGroup struct {
+	CarbideAtomicClient *client.CarbideAtomicClient
+}
+
+// NewManageSSHKeyGroup returns a new ManageSSHKeyGroup client
+func NewManageSSHKeyGroup(carbideClient *client.CarbideAtomicClient) ManageSSHKeyGroup {
+	return ManageSSHKeyGroup{
+		CarbideAtomicClient: carbideClient,
+	}
+}
+
+// Function to create SSH Key Group with Carbide
+func (mmi *ManageSSHKeyGroup) CreateSSHKeyGroupOnSite(ctx context.Context, request *cwssaws.CreateTenantKeysetRequest) error {
+	logger := log.With().Str("Activity", "CreateSSHKeyGroupOnSite").Logger()
+
+	logger.Info().Msg("Starting activity")
+
+	var err error
+
+	// Validate request
+	if request == nil {
+		err = errors.New("received empty create SSH Key Group request")
+	} else if request.KeysetIdentifier == nil || request.GetKeysetIdentifier().GetKeysetId() == "" {
+		err = errors.New("received create SSH Key Group request missing KeysetIdentifier")
+	} else if request.KeysetIdentifier.OrganizationId == "" {
+		err = errors.New("received create SSH Key Group request missing OrganizationId")
+	} else if request.Version == "" {
+		err = errors.New("received create SSH Key Group request missing Version")
+	}
+
+	if err != nil {
+		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
+	}
+
+	// Call Site Controller gRPC endpoint
+	carbideClient := mmi.CarbideAtomicClient.GetClient()
+	forgeClient := carbideClient.Carbide()
+
+	_, err = forgeClient.CreateTenantKeyset(ctx, request)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to create SSH Key Group using Site Controller API")
+		return swe.WrapErr(err)
+	}
+
+	logger.Info().Msg("Completed activity")
+
+	return nil
+}
+
+// Function to Update SSH Key Group with Carbide
+func (mmi *ManageSSHKeyGroup) UpdateSSHKeyGroupOnSite(ctx context.Context, request *cwssaws.UpdateTenantKeysetRequest) error {
+	logger := log.With().Str("Activity", "UpdateSSHKeyGroupOnSite").Logger()
+
+	logger.Info().Msg("Starting activity")
+
+	var err error
+
+	// Validate request
+	if request == nil {
+		err = errors.New("received empty update SSH Key Group request")
+	} else if request.KeysetIdentifier == nil || request.GetKeysetIdentifier().GetKeysetId() == "" {
+		err = errors.New("received update SSH Key Group request missing KeysetIdentifier")
+	} else if request.KeysetIdentifier.OrganizationId == "" {
+		err = errors.New("received update SSH Key Group request missing OrganizationId")
+	} else if request.Version == "" {
+		err = errors.New("received update SSH Key Group request missing Version")
+	}
+
+	if err != nil {
+		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
+	}
+
+	// Call Site Controller gRPC endpoint
+	carbideClient := mmi.CarbideAtomicClient.GetClient()
+	forgeClient := carbideClient.Carbide()
+
+	_, err = forgeClient.UpdateTenantKeyset(ctx, request)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to update SSH Key Group using Site Controller API")
+		return swe.WrapErr(err)
+	}
+
+	logger.Info().Msg("Completed activity")
+
+	return nil
+}
+
+// Function to Delete SSH Key Group with Carbide
+func (mmi *ManageSSHKeyGroup) DeleteSSHKeyGroupOnSite(ctx context.Context, request *cwssaws.DeleteTenantKeysetRequest) error {
+	logger := log.With().Str("Activity", "DeleteSSHKeyGroupOnSite").Logger()
+
+	logger.Info().Msg("Starting activity")
+
+	var err error
+
+	// Validate request
+	if request == nil {
+		err = errors.New("received empty delete SSH Key Group request")
+	} else if request.KeysetIdentifier == nil || request.GetKeysetIdentifier().GetKeysetId() == "" {
+		err = errors.New("received delete SSH Key Group request missing KeysetIdentifier")
+	} else if request.KeysetIdentifier.OrganizationId == "" {
+		err = errors.New("received delete SSH Key Group request missing OrganizationId")
+	}
+
+	if err != nil {
+		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
+	}
+
+	// Call Site Controller gRPC endpoint
+	carbideClient := mmi.CarbideAtomicClient.GetClient()
+	forgeClient := carbideClient.Carbide()
+
+	_, err = forgeClient.DeleteTenantKeyset(ctx, request)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to delete SSH Key Group using Site Controller API")
+		return swe.WrapErr(err)
+	}
+
+	logger.Info().Msg("Completed activity")
+
+	return nil
+}

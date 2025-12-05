@@ -1,0 +1,1801 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ *
+ * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+ * property and proprietary rights in and to this material, related
+ * documentation and any modifications thereto. Any use, reproduction,
+ * disclosure or distribution of this material and related documentation
+ * without an express license agreement from NVIDIA CORPORATION or
+ * its affiliates is strictly prohibited.
+ */
+
+
+package handler
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"slices"
+	"strconv"
+
+	"go.opentelemetry.io/otel/attribute"
+	temporalClient "go.temporal.io/sdk/client"
+	tp "go.temporal.io/sdk/temporal"
+
+	validation "github.com/go-ozzo/ozzo-validation/v4"
+	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
+
+	"github.com/labstack/echo/v4"
+
+	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
+	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	cdbp "github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+	swe "github.com/nvidia/carbide-rest/site-workflow/pkg/error"
+
+	cwma "github.com/nvidia/carbide-rest/workflow/pkg/activity/machine"
+	cwu "github.com/nvidia/carbide-rest/workflow/pkg/util"
+
+	"github.com/nvidia/carbide-rest/api/internal/config"
+	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util"
+	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
+	ch "github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
+	"github.com/nvidia/carbide-rest/api/pkg/api/model"
+	"github.com/nvidia/carbide-rest/api/pkg/api/pagination"
+	sc "github.com/nvidia/carbide-rest/api/pkg/client/site"
+	auth "github.com/nvidia/carbide-rest/auth/pkg/authorization"
+	cerr "github.com/nvidia/carbide-rest/common/pkg/util"
+	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	"github.com/nvidia/carbide-rest/workflow/pkg/queue"
+)
+
+// ~~~~~ Create Handler ~~~~~ //
+
+// CreateInstanceTypeHandler is the API Handler for creating new InstanceType
+type CreateInstanceTypeHandler struct {
+	dbSession  *cdb.Session
+	tc         temporalClient.Client
+	scp        *sc.ClientPool
+	cfg        *config.Config
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewCreateInstanceTypeHandler initializes and returns a new handler for creating Instance Type
+func NewCreateInstanceTypeHandler(dbSession *cdb.Session, tc temporalClient.Client, scp *sc.ClientPool, cfg *config.Config) CreateInstanceTypeHandler {
+	return CreateInstanceTypeHandler{
+		dbSession:  dbSession,
+		tc:         tc,
+		scp:        scp,
+		cfg:        cfg,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Create an Instance Type for a Site
+// @Description Create an Instance Type for a Site. Only Infrastructure Providers can create an Instance Type
+// @Tags instancetype
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param org path string true "Name of NGC organization"
+// @Param message body model.APIInstanceTypeCreateRequest true "Instance Type create request"
+// @Success 201 {object} model.APIInstanceType
+// @Router /v2/org/{org}/carbide/instance/type [post]
+func (cith CreateInstanceTypeHandler) Handle(c echo.Context) error {
+	// Get context
+	ctx := c.Request().Context()
+
+	// Get org
+	org := c.Param("orgName")
+
+	// Initialize logger
+	logger := log.With().Str("Model", "InstanceType").Str("Handler", "Create").Str("Org", org).Logger()
+
+	logger.Info().Msg("started API handler")
+
+	// Create a child span and set the attributes for current request
+	newctx, handlerSpan := cith.tracerSpan.CreateChildInContext(ctx, "CreateInstanceTypeHandler", logger)
+	if handlerSpan != nil {
+		// Set newly created span context as a current context
+		ctx = newctx
+
+		defer handlerSpan.End()
+
+		cith.tracerSpan.SetAttribute(handlerSpan, attribute.String("org", org), logger)
+	}
+
+	dbUser, logger, err := common.GetUserAndEnrichLogger(c, logger, cith.tracerSpan, handlerSpan)
+	if err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// Validate org
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Validate role, only Provider Admins are allowed to create Instance Types
+	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Tenant Admin role, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Provider Admin role with org", nil)
+	}
+
+	// Validate request data
+	// Bind request data to API model
+	apiRequest := model.APIInstanceTypeCreateRequest{}
+	err = c.Bind(&apiRequest)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error binding request data into API model")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data, potentially invalid structure", nil)
+	}
+
+	// Validate request attributes
+	verr := apiRequest.Validate()
+	if verr != nil {
+		logger.Warn().Err(verr).Msg("error validating Instance Type creation request data")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Error validating Instance Type creation request data", verr)
+	}
+
+	// Get Infrastructure Provider for the Org
+	ip, err := common.GetInfrastructureProviderForOrg(ctx, nil, cith.dbSession, org)
+	if err != nil {
+		logger.Error().Err(err).Msg("error getting Infrastructure Provider for org")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get Infrastructure Provider for org", nil)
+	}
+
+	site, err := common.GetSiteFromIDString(ctx, nil, apiRequest.SiteID, cith.dbSession)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Site specified in request")
+		if err == cdb.ErrDoesNotExist {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Could not find Site specified in request", nil)
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site specified in request", nil)
+	}
+
+	if site.InfrastructureProviderID != ip.ID {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request is not associated with the Infrastructure Provider for the Org", nil)
+	}
+
+	// Check if an Instance Type already exists for the given name and Site ID
+	itDAO := cdbm.NewInstanceTypeDAO(cith.dbSession)
+	ists, tot, err := itDAO.GetAll(ctx, nil, cdbm.InstanceTypeFilterInput{Name: &apiRequest.Name, InfrastructureProviderID: &ip.ID, SiteIDs: []uuid.UUID{site.ID}}, nil, nil, nil, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error checking for existing Instance Types")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to check for existing Instance Types", nil)
+	}
+	if tot > 0 {
+		return cerr.NewAPIErrorResponse(c, http.StatusConflict, fmt.Sprintf("Instance Type with name: %s for Site: %s already exists", apiRequest.Name, apiRequest.SiteID), validation.Errors{
+			"id": errors.New(ists[0].ID.String()),
+		})
+	}
+
+	// Begin transaction
+	tx, err := cdb.BeginTx(ctx, cith.dbSession, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error beginning transaction")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Instance Type", nil)
+	}
+	txCommitted := false
+	defer common.RollbackTx(ctx, tx, &txCommitted)
+
+	// Create Instance Type
+	it, err := itDAO.Create(ctx, tx, cdbm.InstanceTypeCreateInput{
+		Name:                     apiRequest.Name,
+		Description:              apiRequest.Description,
+		ControllerMachineType:    apiRequest.ControllerMachineType,
+		InfrastructureProviderID: ip.ID,
+		SiteID:                   &site.ID,
+		Status:                   cdbm.InstanceTypeStatusReady,
+		CreatedBy:                dbUser.ID,
+	})
+	if err != nil {
+		logger.Error().Err(err).Msg("error creating Instance Type")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Instance Type", nil)
+	}
+
+	// Create Machine Capabilities if it is provided
+	mcDAO := cdbm.NewMachineCapabilityDAO(cith.dbSession)
+	if apiRequest.MachineCapabilities != nil {
+		for i, apimc := range apiRequest.MachineCapabilities {
+			mcinfo := map[string]interface{}{}
+			if apimc.Cores != nil {
+				mcinfo[cwma.MachineCPUCoreCount] = *apimc.Cores
+			}
+			if apimc.Threads != nil {
+				mcinfo[cwma.MachineCPUThreadCount] = *apimc.Threads
+			}
+			_, serr := mcDAO.Create(ctx, tx, cdbm.MachineCapabilityCreateInput{
+				Index:            i,
+				InstanceTypeID:   &it.ID,
+				Type:             apimc.Type,
+				Name:             apimc.Name,
+				Frequency:        apimc.Frequency,
+				Capacity:         apimc.Capacity,
+				Vendor:           apimc.Vendor,
+				HardwareRevision: apimc.HardwareRevision,
+				Count:            apimc.Count,
+				DeviceType:       apimc.DeviceType,
+				InactiveDevices:  apimc.InactiveDevices,
+				Info:             mcinfo,
+			})
+			if serr != nil {
+				logger.Error().Err(serr).Msg("error creating Machine Capability")
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Machine Capability for Instance Type", nil)
+			}
+		}
+	}
+
+	// Create a status detail record for Instance Type
+	sdDAO := cdbm.NewStatusDetailDAO(cith.dbSession)
+	ssd, serr := sdDAO.CreateFromParams(ctx, tx, it.ID.String(), *cdb.GetStrPtr(cdbm.InstanceTypeStatusReady),
+		cdb.GetStrPtr("Instance type is ready for use"))
+	if serr != nil {
+		logger.Error().Err(serr).Msg("error creating Status Detail DB entry")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Status Detail for Instance Type", nil)
+	}
+	if ssd == nil {
+		logger.Error().Msg("Status Detail DB entry not returned from CreateFromParams")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get new Status Detail for Instance Type", nil)
+	}
+
+	// Get Machine capabilities for the Instance Type
+	mcs, _, err := mcDAO.GetAll(ctx, tx, nil, []uuid.UUID{it.ID}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, cdb.GetIntPtr(pagination.MaxPageSize), nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving Machine capabilities for Instance Type")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Machine capabilities for Instance Type", nil)
+	}
+
+	// Get the temporal client for the site we are working with.
+	stc, err := cith.scp.GetClientByID(site.ID)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Temporal client for Site")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
+	}
+
+	id := it.ID.String()
+	createInstanceTypeRequest := &cwssaws.CreateInstanceTypeRequest{
+		Id: &id,
+	}
+
+	capabilities := make([]*cwssaws.InstanceTypeMachineCapabilityFilterAttributes, len(mcs))
+
+	// Sort the capabilities list.  Carbide will deny later updates
+	// if an InstanceType is associated with machines and a change
+	// in capabilities is attempted, so we'll sort here and
+	// in the update handler so that users can update metadata
+	// as long as capabilities are the same, and order matters.
+	slices.SortFunc(mcs, func(a, b cdbm.MachineCapability) int {
+		if a.Index < b.Index {
+			return -1
+		}
+
+		if a.Index > b.Index {
+			return 1
+		}
+
+		return 0
+	})
+
+	for i, machineCap := range mcs {
+		count, err := util.GetIntPtrToUint32Ptr(machineCap.Count)
+		if err != nil {
+			logger.Error().Err(err).Msg("invalid Count value for MachineCapability")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Invalid Count value for MachineCapability", nil)
+		}
+
+		cores, err := util.GetIntPtrToUint32Ptr(machineCap.Cores)
+		if err != nil {
+			logger.Error().Err(err).Msg("invalid Cores value for MachineCapability")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Invalid Cores value for MachineCapability", nil)
+		}
+
+		threads, err := util.GetIntPtrToUint32Ptr(machineCap.Threads)
+		if err != nil {
+			logger.Error().Err(err).Msg("invalid Threads value for MachineCapability")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Invalid Threads value for MachineCapability", nil)
+		}
+
+		var capType cwssaws.MachineCapabilityType
+
+		switch machineCap.Type {
+		case cdbm.MachineCapabilityTypeCPU:
+			capType = cwssaws.MachineCapabilityType_CAP_TYPE_CPU
+		case cdbm.MachineCapabilityTypeMemory:
+			capType = cwssaws.MachineCapabilityType_CAP_TYPE_MEMORY
+		case cdbm.MachineCapabilityTypeGPU:
+			capType = cwssaws.MachineCapabilityType_CAP_TYPE_GPU
+		case cdbm.MachineCapabilityTypeStorage:
+			capType = cwssaws.MachineCapabilityType_CAP_TYPE_STORAGE
+		case cdbm.MachineCapabilityTypeNetwork:
+			capType = cwssaws.MachineCapabilityType_CAP_TYPE_NETWORK
+		case cdbm.MachineCapabilityTypeInfiniBand:
+			capType = cwssaws.MachineCapabilityType_CAP_TYPE_INFINIBAND
+		case cdbm.MachineCapabilityTypeDPU:
+			capType = cwssaws.MachineCapabilityType_CAP_TYPE_DPU
+		default:
+			logger.Error().Msg("unsupported MachineCapabilityType requested")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Unsupported MachineCapabilityType requested", nil)
+		}
+
+		// Validate device type for network capabilities
+		var deviceType *cwssaws.MachineCapabilityDeviceType
+		if machineCap.DeviceType != nil {
+			if machineCap.Type == cdbm.MachineCapabilityTypeNetwork {
+				// For Network Capability, we only support DPU
+				if *machineCap.DeviceType != cdbm.MachineCapabilityDeviceTypeDPU {
+					logger.Error().Str("Device Type", *machineCap.DeviceType).Msg("unsupported Device Type specified for Network Capability")
+					return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Unsupported Device Type specified for Network Capability "+*machineCap.DeviceType, nil)
+				}
+				deviceType = cwssaws.MachineCapabilityDeviceType_MACHINE_CAPABILITY_DEVICE_TYPE_DPU.Enum()
+			} else {
+				logger.Error().Str("Capability Type", machineCap.Type).Str("Device Type", *machineCap.DeviceType).Msg("unsupported Device Type specified for Capability Type")
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Unsupported Device Type: %s specified for Capability type %s", *machineCap.DeviceType, machineCap.Type), nil)
+			}
+		}
+
+		var inactiveDevices *cwssaws.Uint32List
+
+		if machineCap.InactiveDevices != nil {
+			if machineCap.Type != cdbm.MachineCapabilityTypeInfiniBand {
+				logger.Error().Str("Capability Type", machineCap.Type).Msg("InactiveDevices specified for non-InfiniBand Capability Type")
+				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "InactiveDevices specified for non-InfiniBand Capability Type", nil)
+			}
+
+			inactiveDevices = &cwssaws.Uint32List{}
+			for _, inactiveDevice := range machineCap.InactiveDevices {
+				inactiveDevices.Items = append(inactiveDevices.Items, uint32(inactiveDevice))
+			}
+		}
+
+		capabilities[i] = &cwssaws.InstanceTypeMachineCapabilityFilterAttributes{
+			CapabilityType:   capType,
+			Name:             &machineCap.Name,
+			Frequency:        machineCap.Frequency,
+			Capacity:         machineCap.Capacity,
+			Vendor:           machineCap.Vendor,
+			Count:            count,
+			HardwareRevision: machineCap.HardwareRevision,
+			Cores:            cores,
+			Threads:          threads,
+			InactiveDevices:  inactiveDevices,
+			DeviceType:       deviceType,
+		}
+	}
+
+	createInstanceTypeRequest.InstanceTypeAttributes = &cwssaws.InstanceTypeAttributes{
+		DesiredCapabilities: capabilities,
+	}
+
+	workflowOptions := temporalClient.StartWorkflowOptions{
+		ID:                       "instance-type-create-" + it.ID.String(),
+		TaskQueue:                queue.SiteTaskQueue,
+		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+	}
+
+	// InstanceType metadata info
+	metadata := &cwssaws.Metadata{
+		Name: it.Name,
+	}
+
+	// Include description if present
+	if it.Description != nil {
+		metadata.Description = *it.Description
+	}
+
+	createInstanceTypeRequest.Metadata = metadata
+
+	logger.Info().Msg("triggering InstanceType create workflow")
+
+	// Add context deadlines
+	ctx, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
+	defer cancel()
+
+	// Trigger Site workflow
+	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "CreateInstanceType", createInstanceTypeRequest)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to synchronously start Temporal workflow to create InstanceType")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed start sync workflow to create InstanceType on Site: %s", err), nil)
+	}
+
+	wid := we.GetID()
+	logger.Info().Str("Workflow ID", wid).Msg("executed synchronous create InstanceType workflow")
+
+	// Block until the workflow has completed and returned success/error.
+	err = we.Get(ctx, nil)
+
+	// Handle skippable errors
+	if err != nil {
+		var applicationErr *tp.ApplicationError
+		// Carbide _could_ respond with an unimplemented if it's an
+		// older Carbide that doesn't have the endpoint yet, but it's more
+		// likely to respond with a PermissionDenied because the permission
+		// for the path isn't there either, but we can watch for both just to
+		// be safe.
+		if errors.As(err, &applicationErr) && (applicationErr.Type() == swe.ErrTypeCarbideUnimplemented || applicationErr.Type() == swe.ErrTypeCarbideDenied) {
+			logger.Warn().Msg("Carbide endpoint unimplemented or restricted response received from Site")
+			// Reset error to nil because we'll want to ignore while
+			// Carbide is being rolled out.
+			err = nil
+		}
+	}
+
+	if err != nil {
+		var timeoutErr *tp.TimeoutError
+		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
+			return common.TerminateWorkflowOnTimeOut(c, logger, stc, wid, err, "InstanceType", "CreateInstanceType")
+		}
+
+		code, err := common.UnwrapWorkflowError(err)
+		logger.Error().Err(err).Msg("failed to synchronously execute Temporal workflow to create InstanceType")
+		return cerr.NewAPIErrorResponse(c, code, fmt.Sprintf("Failed to execute sync workflow to create InstanceType on Site: %s", err), nil)
+	}
+
+	logger.Info().Str("Workflow ID", wid).Msg("completed synchronous create InstanceType workflow")
+
+	err = tx.Commit()
+	if err != nil {
+		logger.Error().Err(err).Msg("error committing transaction")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Instance Type", nil)
+	}
+	txCommitted = true
+
+	// Create API response
+	ait := model.NewAPIInstanceType(it, []cdbm.StatusDetail{*ssd}, mcs, nil, nil)
+
+	logger.Info().Msg("finishing API handler")
+
+	return c.JSON(http.StatusCreated, ait)
+}
+
+// ~~~~~ GetAll Handler ~~~~~ //
+
+// GetAllInstanceTypeHandler is the API Handler for getting all Instance Types
+type GetAllInstanceTypeHandler struct {
+	dbSession  *cdb.Session
+	tc         temporalClient.Client
+	cfg        *config.Config
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewGetAllInstanceTypeHandler initializes and returns a new handler for getting all Instance Types
+func NewGetAllInstanceTypeHandler(dbSession *cdb.Session, tc temporalClient.Client, cfg *config.Config) GetAllInstanceTypeHandler {
+	return GetAllInstanceTypeHandler{
+		dbSession:  dbSession,
+		tc:         tc,
+		cfg:        cfg,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Get all Instance Types
+// @Description Get all Instance Types for a given Site
+// @Tags instancetype
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param org path string true "Name of NGC organization"
+// @Param siteId query string true "ID of Site"
+// @Param infrastructureProviderId query string true "ID of Infrastructure Provider"
+// @Param tenantId query string true "ID of Tenant"
+// @Param status query string false "Query input for status"
+// @Param query query string false "Query input for full text search"
+// @Param includeAllocationStats query boolean false "Allocation stats to include in response"
+// @Param includeMachineAssignment query boolean false "Machine associations entity to include in response"
+// @Param includeRelation query string false "Related entities to include in response e.g. 'InfrastructureProvider', 'Tenant', 'Site'"
+// @Param pageNumber query integer false "Page number of results returned"
+// @Param pageSize query integer false "Number of results per page"
+// @Param orderBy query string false "Order by field"
+// @Success 200 {object} []model.APIInstanceType
+// @Router /v2/org/{org}/carbide/instance/type [get]
+func (gaith GetAllInstanceTypeHandler) Handle(c echo.Context) error {
+	// Get context
+	ctx := c.Request().Context()
+
+	// Get org
+	org := c.Param("orgName")
+
+	// Initialize logger
+	logger := log.With().Str("Model", "InstanceType").Str("Handler", "GetAll").Str("Org", org).Logger()
+
+	logger.Info().Msg("started API handler")
+
+	// Create a child span and set the attributes for current request
+	newctx, handlerSpan := gaith.tracerSpan.CreateChildInContext(ctx, "GetAllInstanceTypeHandler", logger)
+	if handlerSpan != nil {
+		// Set newly created span context as a current context
+		ctx = newctx
+
+		defer handlerSpan.End()
+
+		gaith.tracerSpan.SetAttribute(handlerSpan, attribute.String("org", org), logger)
+	}
+
+	dbUser, logger, err := common.GetUserAndEnrichLogger(c, logger, gaith.tracerSpan, handlerSpan)
+	if err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// Validate org
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Validate paginantion request
+	// Bind request data to API model
+	pageRequest := pagination.PageRequest{}
+	err = c.Bind(&pageRequest)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error binding pagination request data into API model")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request pagination data", nil)
+	}
+
+	// Validate request attributes
+	err = pageRequest.Validate(cdbm.InstanceTypeOrderByFields)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error validating pagination request data")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate pagination request data", err)
+	}
+
+	// Get Site ID from query
+	var st *cdbm.Site
+	var stID *uuid.UUID
+	qstID := c.QueryParam("siteId")
+	if qstID != "" {
+		siteID, err := uuid.Parse(qstID)
+		if err != nil {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid Site ID in query", nil)
+		}
+		stID = &siteID
+
+		// Get Site from DB if Site ID is provided
+		stDAO := cdbm.NewSiteDAO(gaith.dbSession)
+		st, err = stDAO.GetByID(ctx, nil, *stID, nil, false)
+		if err != nil {
+			logger.Error().Err(err).Msg("error retrieving Site from DB")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site specified in query", nil)
+		}
+	}
+
+	// Check `includeMachineAssignment` in query
+	includeMachineAssignment := false
+	qima := c.QueryParam("includeMachineAssignment")
+	if qima != "" {
+		includeMachineAssignment, err = strconv.ParseBool(qima)
+		if err != nil {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid value specified for `includeMachineAssignment` query param", nil)
+		}
+	}
+
+	// Check `includeAllocationStats` in query
+	includeAllocationStats := false
+	qias := c.QueryParam("includeAllocationStats")
+	if qias != "" {
+		includeAllocationStats, err = strconv.ParseBool(qias)
+		if err != nil {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid value specified for `includeAllocationStats` query param", nil)
+		}
+	}
+
+	// Check `excludeUnallocated` in query
+	excludeUnallocated := false
+	qias = c.QueryParam("excludeUnallocated")
+	if qias != "" {
+		excludeUnallocated, err = strconv.ParseBool(qias)
+		if err != nil {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid value specified for `excludeUnallocated` query param", nil)
+		}
+	}
+
+	// Get query text for full text search from query param
+	var searchQuery *string
+
+	searchQueryStr := c.QueryParam("query")
+	if searchQueryStr != "" {
+		searchQuery = &searchQueryStr
+		gaith.tracerSpan.SetAttribute(handlerSpan, attribute.String("query", searchQueryStr), logger)
+	}
+
+	// Get status from query param
+	var status *string
+
+	statusQuery := c.QueryParam("status")
+	if statusQuery != "" {
+		_, ok := cdbm.InstanceTypeStatusMap[statusQuery]
+		if !ok {
+			logger.Warn().Msg(fmt.Sprintf("invalid value in status query: %v", statusQuery))
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid Status value in query", nil)
+		}
+		status = &statusQuery
+		gaith.tracerSpan.SetAttribute(handlerSpan, attribute.String("status", statusQuery), logger)
+	}
+
+	// Get and validate includeRelation params
+	qParams := c.QueryParams()
+	qIncludeRelations, errMsg := common.GetAndValidateQueryRelations(qParams, cdbm.InstanceTypeRelatedEntities)
+	if errMsg != "" {
+		logger.Warn().Msg(errMsg)
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, errMsg, nil)
+	}
+
+	// Validate role, user must be either Provider or Tenant Admin to retrieve a Site
+	isProviderRequest, orgProvider, orgTenant, apiErr := common.GetIsProviderRequest(ctx, logger, gaith.dbSession, org, dbUser,
+		[]string{auth.ProviderAdminRole, auth.ProviderViewerRole}, []string{auth.TenantAdminRole}, c.QueryParams())
+	if apiErr != nil {
+		return c.JSON(apiErr.Code, apiErr)
+	}
+
+	// Check Provider/Tenant's ability to make this request
+	tsDAO := cdbm.NewTenantSiteDAO(gaith.dbSession)
+
+	var siteIDs []uuid.UUID
+	var tenantID *uuid.UUID
+
+	// We'll need this later to filter instance types by provider
+	// if the request is a provider request but they've _not_ specified
+	// site IDs.
+	var infrastructureProviderID *uuid.UUID
+
+	if isProviderRequest {
+		infrastructureProviderID = &orgProvider.ID
+		if st != nil {
+			// Check if Provider is associated with Site only if stID is available in the request.
+			if st.InfrastructureProviderID != orgProvider.ID {
+				return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Provider is not associated with Site specified in query", nil)
+			}
+
+			siteIDs = []uuid.UUID{*stID}
+		}
+	} else {
+		// for Tenants
+		if stID == nil {
+			// siteId has not been provided in the request
+			tss, _, err := tsDAO.GetAll(
+				ctx,
+				nil,
+				cdbm.TenantSiteFilterInput{
+					TenantIDs: []uuid.UUID{orgTenant.ID},
+				},
+				cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)},
+				nil,
+			)
+			if err != nil {
+				logger.Error().Err(err).Msg("error retrieving Tenant Site association from DB")
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Tenant Site association", nil)
+			}
+
+			for _, ts := range tss {
+				siteIDs = append(siteIDs, ts.SiteID)
+			}
+		} else {
+			// Check if Tenant is associated with Site
+			_, err = tsDAO.GetByTenantIDAndSiteID(ctx, nil, orgTenant.ID, *stID, nil)
+			if err != nil {
+				if err == cdb.ErrDoesNotExist {
+					return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Tenant is not associated with Site specified in query", nil)
+				}
+				logger.Error().Err(err).Msg("error retrieving Tenant Site association from DB")
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to determine if Tenant is associated with Site, DB error", nil)
+			}
+			siteIDs = []uuid.UUID{*stID}
+		}
+
+		// Check if `includeMachineAssignment` is being requested by Tenant Admin
+		if includeMachineAssignment {
+			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Tenant cannot specify query param `includeMachineAssignment`", nil)
+		}
+
+		tenantID = &orgTenant.ID
+	}
+
+	// Get all Instance Types
+	itDAO := cdbm.NewInstanceTypeDAO(gaith.dbSession)
+
+	// SiteIDs will be
+	// - Provider:
+	//		- If siteID not provided, we 'll return all sites associated with the Provider
+	//		- If siteID provided, we 'll return Instance Types for that Site
+	// - Tenant:
+	// 		- Either single siteID passed to the query
+	//		- All sites associated with the TenantID
+	filter := cdbm.InstanceTypeFilterInput{InfrastructureProviderID: infrastructureProviderID, SiteIDs: siteIDs, Status: status, SearchQuery: searchQuery}
+	if excludeUnallocated {
+		if tenantID == nil {
+			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Only Tenant can specify query param `excludeUnallocated`", nil)
+		}
+		filter.TenantIDs = []uuid.UUID{*tenantID}
+	}
+
+	its, total, err := itDAO.GetAll(ctx, nil, filter, qIncludeRelations, pageRequest.Offset, pageRequest.Limit, pageRequest.OrderBy)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving Instance Types for Site specified in query")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Instance Types for Site in query", nil)
+	}
+
+	// Get status details
+	sdDAO := cdbm.NewStatusDetailDAO(gaith.dbSession)
+
+	sdEntityIDs := []string{}
+	for _, it := range its {
+		sdEntityIDs = append(sdEntityIDs, it.ID.String())
+	}
+	ssds, serr := sdDAO.GetRecentByEntityIDs(ctx, nil, sdEntityIDs, common.RECENT_STATUS_DETAIL_COUNT)
+	if serr != nil {
+		logger.Warn().Err(serr).Msg("error retrieving Status Details for Instance Types from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to populate status history for Instance Types", nil)
+	}
+	ssdMap := map[string][]cdbm.StatusDetail{}
+	for _, ssd := range ssds {
+		cssd := ssd
+		ssdMap[ssd.EntityID] = append(ssdMap[ssd.EntityID], cssd)
+	}
+
+	// Create response
+	aits := make([]model.APIInstanceType, 0, len(its))
+
+	mcDAO := cdbm.NewMachineCapabilityDAO(gaith.dbSession)
+	mitDAO := cdbm.NewMachineInstanceTypeDAO(gaith.dbSession)
+
+	itIDs := []uuid.UUID{}
+
+	for _, it := range its {
+		itIDs = append(itIDs, it.ID)
+	}
+
+	mcs, _, serr := mcDAO.GetAll(ctx, nil, nil, itIDs, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+	if serr != nil {
+		logger.Error().Err(serr).Msg("error retrieving Machine Capabilities for Instance Type from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Machine Capabilities for Instance Type", nil)
+	}
+
+	itMcsMap := map[uuid.UUID][]cdbm.MachineCapability{}
+	for _, mc := range mcs {
+		itMcsMap[*mc.InstanceTypeID] = append(itMcsMap[*mc.InstanceTypeID], mc)
+	}
+	var mit []cdbm.MachineInstanceType
+	if includeMachineAssignment {
+		mit, _, err = mitDAO.GetAll(ctx, nil, nil, itIDs, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+		if err != nil {
+			logger.Error().Err(err).Msg("error retrieving Machine assignments for Instance Type")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve  Machine assignments for Instance Type", nil)
+		}
+	}
+	instanceTypeIDsToMachineInstanceTypeMap := map[uuid.UUID][]cdbm.MachineInstanceType{}
+
+	for _, mi := range mit {
+		cmi := mi
+		instanceTypeIDsToMachineInstanceTypeMap[mi.InstanceTypeID] = append(instanceTypeIDsToMachineInstanceTypeMap[mi.InstanceTypeID], cmi)
+	}
+
+	var instantTypeIDsToAllocStatsMap map[uuid.UUID]*model.APIAllocationStats
+	if includeAllocationStats {
+		instantTypeIDsToAllocStatsMap, apiErr = common.GetAllInstanceTypeAllocationStats(ctx, gaith.dbSession, stID, itIDs, logger, tenantID)
+		if apiErr != nil {
+			return c.JSON(apiErr.Code, apiErr)
+		}
+	}
+
+	for _, it := range its {
+		cit := it
+		allocStat := instantTypeIDsToAllocStatsMap[it.ID]
+
+		machineInstanceTypes := instanceTypeIDsToMachineInstanceTypeMap[it.ID]
+
+		ait := model.NewAPIInstanceType(&cit, ssdMap[it.ID.String()], itMcsMap[it.ID], machineInstanceTypes, allocStat)
+		aits = append(aits, *ait)
+	}
+
+	// Create pagination response header
+	pageReponse := pagination.NewPageResponse(*pageRequest.PageNumber, *pageRequest.PageSize, total, pageRequest.OrderByStr)
+	pageHeader, err := json.Marshal(pageReponse)
+	if err != nil {
+		logger.Error().Err(err).Msg("error marshaling pagination response")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to generate pagination response header", nil)
+	}
+
+	c.Response().Header().Set(pagination.ResponseHeaderName, string(pageHeader))
+
+	// Create response
+	logger.Info().Msg("finishing API handler")
+
+	return c.JSON(http.StatusOK, aits)
+}
+
+// ~~~~~ Get Handler ~~~~~ //
+
+// GetInstanceTypeHandler is the API Handler for getting details of a specific instance type
+type GetInstanceTypeHandler struct {
+	dbSession  *cdb.Session
+	tc         temporalClient.Client
+	cfg        *config.Config
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewGetInstanceTypeHandler initializes and returns a new handler for getting an Instance Type
+func NewGetInstanceTypeHandler(dbSession *cdb.Session, tc temporalClient.Client, cfg *config.Config) GetInstanceTypeHandler {
+	return GetInstanceTypeHandler{
+		dbSession:  dbSession,
+		tc:         tc,
+		cfg:        cfg,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Get details of an Instance Type
+// @Description Get details of a specific Instance Type by ID
+// @Tags instancetype
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param org path string true "Name of NGC organization"
+// @Param id query string true "ID of Instance Type"
+// @Param includeAllocationStats query boolean false "Allocation stats to include in response"
+// @Param includeMachineAssignment query boolean false "Machine associations entity to include in response"
+// @Param includeRelation query string false "Related entities to include in response e.g. 'InfrastructureProvider', 'Site'"
+// @Success 200 {object} []model.APIInstanceType
+// @Router /v2/org/{org}/carbide/instance/type/{id} [get]
+func (gith GetInstanceTypeHandler) Handle(c echo.Context) error {
+	// Get context
+	ctx := c.Request().Context()
+
+	// Get org
+	org := c.Param("orgName")
+
+	// Initialize logger
+	logger := log.With().Str("Model", "InstanceType").Str("Handler", "Get").Str("Org", org).Logger()
+
+	logger.Info().Msg("started API handler")
+
+	// Create a child span and set the attributes for current request
+	newctx, handlerSpan := gith.tracerSpan.CreateChildInContext(ctx, "GetInstanceTypeHandler", logger)
+	if handlerSpan != nil {
+		// Set newly created span context as a current context
+		ctx = newctx
+
+		defer handlerSpan.End()
+
+		gith.tracerSpan.SetAttribute(handlerSpan, attribute.String("org", org), logger)
+	}
+
+	dbUser, logger, err := common.GetUserAndEnrichLogger(c, logger, gith.tracerSpan, handlerSpan)
+	if err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// Validate org
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Get Instance Type ID
+	itStrID := c.Param("id")
+
+	itID, err := uuid.Parse(itStrID)
+	if err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid Instance Type ID in URL", nil)
+	}
+
+	gith.tracerSpan.SetAttribute(handlerSpan, attribute.String("instancetype_id", itStrID), logger)
+
+	// Get and validate includeRelation params
+	qParams := c.QueryParams()
+	qIncludeRelations, errMsg := common.GetAndValidateQueryRelations(qParams, cdbm.InstanceTypeRelatedEntities)
+	if errMsg != "" {
+		logger.Warn().Msg(errMsg)
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, errMsg, nil)
+	}
+
+	// Check `includeMachineAssignment` in query
+	includeMachineAssignment := false
+	qimag := c.QueryParam("includeMachineAssignment")
+	if qimag != "" {
+		includeMachineAssignment, err = strconv.ParseBool(qimag)
+		if err != nil {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid value specified for `includeMachineAssignment` query param", nil)
+		}
+	}
+
+	// Check `includeAllocationStats` in query
+	includeAllocationStats := false
+	qiasg := c.QueryParam("includeAllocationStats")
+	if qiasg != "" {
+		includeAllocationStats, err = strconv.ParseBool(qiasg)
+		if err != nil {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid value specified for `includeAllocationStats` query param", nil)
+		}
+	}
+
+	// Validate role, user must be either Provider or Tenant Admin to retrieve a Site
+	isProviderRequest, orgProvider, orgTenant, apiErr := common.GetIsProviderRequest(ctx, logger, gith.dbSession, org, dbUser,
+		[]string{auth.ProviderAdminRole, auth.ProviderViewerRole}, []string{auth.TenantAdminRole}, c.QueryParams())
+	if apiErr != nil {
+		return c.JSON(apiErr.Code, apiErr)
+	}
+
+	// Get Instance Type
+	itDAO := cdbm.NewInstanceTypeDAO(gith.dbSession)
+
+	it, err := itDAO.GetByID(ctx, nil, itID, qIncludeRelations)
+	if err != nil {
+		if err == cdb.ErrDoesNotExist {
+			return cerr.NewAPIErrorResponse(c, http.StatusNotFound, "Could not find InstanceType with specified ID", nil)
+		}
+		logger.Error().Err(err).Msg("error retrieving Instance Type from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Instance Type", nil)
+	}
+
+	// Check Provider/Tenant's ability to make this request
+	tsDAO := cdbm.NewTenantSiteDAO(gith.dbSession)
+
+	var tenantID *uuid.UUID
+
+	if isProviderRequest {
+		// Check if Provider is associated with Site
+		if it.InfrastructureProviderID != orgProvider.ID {
+			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Provider is not associated with this Instance Type", nil)
+		}
+	} else {
+		// Check if Tenant is associated with Site
+		_, err = tsDAO.GetByTenantIDAndSiteID(ctx, nil, orgTenant.ID, *it.SiteID, nil)
+		if err != nil {
+			if err == cdb.ErrDoesNotExist {
+				return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Tenant is not associated with Site the Instance Type belongs to", nil)
+			}
+			logger.Error().Err(err).Msg("error retrieving Tenant Site association from DB")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to determine if Tenant ha saccess to Instance Type, DB error", nil)
+		}
+
+		// Check if `includeMachineAssignment` is being requested by Tenant Admin
+		if includeMachineAssignment {
+			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Tenant cannot specify query param `includeMachineAssignment`", nil)
+		}
+
+		tenantID = &orgTenant.ID
+	}
+
+	// Get Instance Type status details
+	sdDAO := cdbm.NewStatusDetailDAO(gith.dbSession)
+
+	ssds, serr := sdDAO.GetRecentByEntityIDs(ctx, nil, []string{it.ID.String()}, common.RECENT_STATUS_DETAIL_COUNT)
+	if serr != nil {
+		logger.Error().Err(serr).Msg("error retrieving Status Details for Instance Type from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve status history for Instance Type", nil)
+	}
+
+	// Get Machine capabilities for the Instance Type
+	mcDAO := cdbm.NewMachineCapabilityDAO(gith.dbSession)
+	mcs, _, err := mcDAO.GetAll(ctx, nil, nil, []uuid.UUID{it.ID}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, cdb.GetIntPtr(pagination.MaxPageSize), nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving Machine capabilities for Instance Type")
+		// rollback transaction
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Machine capabilities for Instance Type", nil)
+	}
+
+	// Get Machine Instance Type for this Instance Type.
+	var mit []cdbm.MachineInstanceType
+	if includeMachineAssignment {
+		// Check if Machine/InstanceType association already exists
+		mitDAO := cdbm.NewMachineInstanceTypeDAO(gith.dbSession)
+		mit, _, err = mitDAO.GetAll(ctx, nil, nil, []uuid.UUID{it.ID}, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+		if err != nil {
+			logger.Error().Err(err).Msg("error retrieving Machine assignments for Instance Type")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve  Machine assignments for Instance Type", nil)
+		}
+	}
+
+	// Allocation stats info for this Tnstance Type
+	var aas *model.APIAllocationStats
+
+	if includeAllocationStats {
+		aas, apiErr = common.GetInstanceTypeAllocationStats(ctx, gith.dbSession, logger, *it, tenantID)
+		if apiErr != nil {
+			return c.JSON(apiErr.Code, apiErr)
+		}
+	}
+
+	ait := model.NewAPIInstanceType(it, ssds, mcs, mit, aas)
+
+	// Create response
+	logger.Info().Msg("finishing API handler")
+
+	return c.JSON(http.StatusOK, ait)
+}
+
+// ~~~~~ Update Handler ~~~~~ //
+
+// UpdateInstanceTypeHandler is the API Handler for updating an Instance Type
+type UpdateInstanceTypeHandler struct {
+	dbSession  *cdb.Session
+	tc         temporalClient.Client
+	scp        *sc.ClientPool
+	cfg        *config.Config
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewUpdateInstanceTypeHandler initializes and returns a new handler for updating Instance Type
+func NewUpdateInstanceTypeHandler(dbSession *cdb.Session, tc temporalClient.Client, scp *sc.ClientPool, cfg *config.Config) UpdateInstanceTypeHandler {
+	return UpdateInstanceTypeHandler{
+		dbSession:  dbSession,
+		tc:         tc,
+		scp:        scp,
+		cfg:        cfg,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Update an existing Instance Type
+// @Description Update an existing Instance Type. Org's Infrastructure Provider must be associated with the Instance Type.
+// @Tags instancetype
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param org path string true "Name of NGC organization"
+// @Param id query string true "ID of Instance Type"
+// @Param message body model.APIInstanceTypeUpdateRequest true "Instance Type update request"
+// @Success 200 {object} model.APIInstanceType
+// @Router /v2/org/{org}/carbide/instance/type/{id} [patch]
+func (uith UpdateInstanceTypeHandler) Handle(c echo.Context) error {
+	// Get context
+	ctx := c.Request().Context()
+
+	// Get org
+	org := c.Param("orgName")
+
+	// Initialize logger
+	logger := log.With().Str("Model", "InstanceType").Str("Handler", "Update").Str("Org", org).Logger()
+
+	logger.Info().Msg("started API handler")
+
+	// Create a child span and set the attributes for current request
+	newctx, handlerSpan := uith.tracerSpan.CreateChildInContext(ctx, "UpdateInstanceTypeHandler", logger)
+	if handlerSpan != nil {
+		// Set newly created span context as a current context
+		ctx = newctx
+
+		defer handlerSpan.End()
+
+		uith.tracerSpan.SetAttribute(handlerSpan, attribute.String("org", org), logger)
+	}
+
+	dbUser, logger, err := common.GetUserAndEnrichLogger(c, logger, uith.tracerSpan, handlerSpan)
+	if err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// Validate org
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Validate role, only Provider Admins are allowed to proceed from here
+	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Provider Admin role, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Provider Admin role with org", nil)
+	}
+
+	// Get Instance Type ID
+	itStrID := c.Param("id")
+
+	itID, err := uuid.Parse(itStrID)
+	if err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid Instance Type ID in URL", nil)
+	}
+
+	uith.tracerSpan.SetAttribute(handlerSpan, attribute.String("instancetype_id", itStrID), logger)
+
+	// Check if org has an Infrastructure Provider
+	ipDAO := cdbm.NewInfrastructureProviderDAO(uith.dbSession)
+
+	ips, err := ipDAO.GetAllByOrg(ctx, nil, org, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving Infrastructure Provider for org")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to to retrieve Infrastructure Provider for org", nil)
+	}
+
+	if len(ips) == 0 {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Org does not have an Infrastructure Provider", nil)
+	}
+
+	orgIP := &ips[0]
+
+	// Get Instance Type
+	itDAO := cdbm.NewInstanceTypeDAO(uith.dbSession)
+
+	it, err := itDAO.GetByID(ctx, nil, itID, nil)
+	if err != nil {
+		if err == cdb.ErrDoesNotExist {
+			return cerr.NewAPIErrorResponse(c, http.StatusNotFound, "Could not find Instance Type with specified ID", nil)
+		}
+		logger.Error().Err(err).Msg("error retrieving Instance Type from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Instance Type", nil)
+	}
+
+	// Check if Instance Type is associated with the Org's Provider
+	if orgIP.ID != it.InfrastructureProviderID {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Instance Type is not associated with org's Infrastructure Provider", nil)
+	}
+
+	// Validate request
+	// Bind request data to API model
+	apiRequest := model.APIInstanceTypeUpdateRequest{}
+	err = c.Bind(&apiRequest)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error binding request data into API model")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data, potentially invalid structure", nil)
+	}
+
+	// Validate request attributes
+	verr := apiRequest.Validate()
+	if verr != nil {
+		logger.Warn().Err(verr).Msg("error validating Instance Type update request data")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Error validating Instance Type update request data", verr)
+	}
+
+	// Check for name uniqueness, i.e. there cannot be another Instance Type with same name for the same Site
+	if apiRequest.Name != nil && *apiRequest.Name != it.Name {
+		ists, tot, serr := itDAO.GetAll(ctx, nil, cdbm.InstanceTypeFilterInput{Name: apiRequest.Name, InfrastructureProviderID: &it.InfrastructureProviderID, SiteIDs: []uuid.UUID{*it.SiteID}}, nil, nil, nil, nil)
+		if serr != nil {
+			logger.Error().Err(serr).Msg("error checking for existing Instance Types")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to check for existing Instance Types", nil)
+		}
+		if tot > 0 && ists[0].ID != it.ID {
+			return cerr.NewAPIErrorResponse(c, http.StatusConflict, "Another Instance Type with specified name already exists for Site and Provider", validation.Errors{
+				"id": errors.New(ists[0].ID.String()),
+			})
+		}
+	}
+
+	// Begin transaction
+	tx, err := cdb.BeginTx(ctx, uith.dbSession, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error beginning transaction")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to update Instance Type", nil)
+	}
+	txCommitted := false
+	defer ch.RollbackTx(ctx, tx, &txCommitted)
+
+	mcDAO := cdbm.NewMachineCapabilityDAO(uith.dbSession)
+
+	if apiRequest.MachineCapabilities != nil {
+
+		// If a capabilities update was requested, we'll need to make sure
+		// we don't have associated machines.
+
+		// Get the machines for instance type
+		mDAO := cdbm.NewMachineDAO(uith.dbSession)
+
+		// We don't get any useful locks here, so it's technically possible for someone to
+		// slip in a request to associate machines to an instance type after this query returns,
+		// but it's an unlikely case, and Carbide already has all the proper locking to protect
+		// against it because it could technically be done directly on a site.
+		_, total, err := mDAO.GetAll(ctx, tx, cdbm.MachineFilterInput{InstanceTypeIDs: []uuid.UUID{it.ID}}, cdbp.PageInput{Limit: cdb.GetIntPtr(0)}, nil)
+		if err != nil {
+			logger.Error().Err(err).Msg("error retrieving Machines for Instance Type from DB")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Machines for Instance Type", nil)
+		}
+
+		if total > 0 {
+			logger.Error().Msg("MachineCapabilities cannot be updated when there are associated Machines")
+			return cerr.NewAPIErrorResponse(c, http.StatusPreconditionFailed, "MachineCapabilities cannot be updated when there are associated Machines", nil)
+		}
+
+		// If we got here, then we're allowed to update the capabilities.
+
+		// Get Machine capabilities for the Instance Type because we'll need to compare.
+		mcs, _, err := mcDAO.GetAll(ctx, tx, nil, []uuid.UUID{it.ID}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, cdb.GetIntPtr(pagination.MaxPageSize), nil)
+		if err != nil {
+			logger.Error().Err(err).Msg("error retrieving Machine capabilities for Instance Type")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Machine capabilities for Instance Type", nil)
+		}
+
+		addCapabilities := []*cdbm.MachineCapabilityCreateInput{}
+
+		// Create a map to track capabilities that already exist
+		// in the DB so we can compare against the incoming request.
+		existingMacCapMap := map[string]*cdbm.MachineCapability{}
+		for _, mc := range mcs {
+			existingMacCapMap[mc.Type+"-"+mc.Name] = &mc
+		}
+
+		for pos, reqMacCap := range apiRequest.MachineCapabilities {
+			capKey := reqMacCap.Type + "-" + reqMacCap.Name
+
+			existingCap := existingMacCapMap[capKey]
+			// The incoming requested capability doesn't exist at all currently,
+			// so it's brand new.
+			if existingCap != nil && cwu.MachineCapabilitiesEqual(existingCap, &cdbm.MachineCapability{
+				Type:             reqMacCap.Type,
+				Name:             reqMacCap.Name,
+				Frequency:        reqMacCap.Frequency,
+				Capacity:         reqMacCap.Capacity,
+				HardwareRevision: reqMacCap.HardwareRevision,
+				Cores:            reqMacCap.Cores,
+				Threads:          reqMacCap.Threads,
+				Vendor:           reqMacCap.Vendor,
+				Count:            reqMacCap.Count,
+				DeviceType:       reqMacCap.DeviceType,
+				InactiveDevices:  reqMacCap.InactiveDevices,
+				Index:            pos,
+			}) {
+				// If the capability existed and the requested settings
+				// and existing settings matched, it shouldn't be touched,
+				// so delete from the map so we're left with only entries
+				// that need to be deleted.
+				delete(existingMacCapMap, capKey)
+
+			} else {
+				// If there's no existing capability for the one in the request or the
+				// capabilities were not equal, then we'll recreate with the new values.
+				addCapabilities = append(addCapabilities, &cdbm.MachineCapabilityCreateInput{
+					InstanceTypeID:   &it.ID,
+					Type:             reqMacCap.Type,
+					Name:             reqMacCap.Name,
+					Frequency:        reqMacCap.Frequency,
+					Capacity:         reqMacCap.Capacity,
+					HardwareRevision: reqMacCap.HardwareRevision,
+					Cores:            reqMacCap.Cores,
+					Threads:          reqMacCap.Threads,
+					Vendor:           reqMacCap.Vendor,
+					Count:            reqMacCap.Count,
+					DeviceType:       reqMacCap.DeviceType,
+					InactiveDevices:  reqMacCap.InactiveDevices,
+					Index:            pos,
+				})
+			}
+		}
+
+		// Now we can remove the capabilities that changed or were deleted
+		for _, macCap := range existingMacCapMap {
+			serr := mcDAO.DeleteByID(ctx, tx, macCap.ID, false)
+			if serr != nil {
+				logger.Error().Err(serr).Msg("error deleting Machine Capability")
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to delete Machine Capability for Instance Type", nil)
+			}
+		}
+
+		// Now we can add the capabilities that are new or updated
+		for _, mc := range addCapabilities {
+			_, serr := mcDAO.Create(ctx, tx, *mc)
+			if serr != nil {
+				logger.Error().Err(serr).Msg("error creating Machine Capability")
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Machine Capability for Instance Type", nil)
+			}
+		}
+	}
+
+	// Update Instance Type
+	it, err = itDAO.Update(ctx, tx, cdbm.InstanceTypeUpdateInput{ID: itID, Name: apiRequest.Name, Description: apiRequest.Description})
+	if err != nil {
+		logger.Error().Err(err).Msg("error updating Instance Type in DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to update Instance Type", nil)
+	}
+
+	// Get the most up-to-date capabilities for the instance type
+	mcs, _, err := mcDAO.GetAll(ctx, tx, nil, []uuid.UUID{it.ID}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, cdb.GetIntPtr(pagination.MaxPageSize), nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving Machine capabilities for Instance Type")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Machine capabilities for Instance Type", nil)
+	}
+
+	// Return API response
+
+	// Get Instance Type status details
+	sdDAO := cdbm.NewStatusDetailDAO(uith.dbSession)
+
+	ssds, _, serr := sdDAO.GetAllByEntityID(ctx, tx, it.ID.String(), nil, cdb.GetIntPtr(pagination.MaxPageSize), nil)
+	if serr != nil {
+		logger.Error().Err(serr).Msg("error retrieving Status Details for Instance Type from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve status history for Instance Type", nil)
+	}
+
+	// Get the temporal client for the site we are working with.
+	stc, err := uith.scp.GetClientByID(*it.SiteID)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Temporal client for Site")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
+	}
+
+	updateInstanceTypeRequest := &cwssaws.UpdateInstanceTypeRequest{
+		Id: it.ID.String(),
+	}
+
+	capabilities := make([]*cwssaws.InstanceTypeMachineCapabilityFilterAttributes, len(mcs))
+
+	// Sort the capabilities list.  Carbide will deny updates
+	// if an InstanceType is associated with machines and a change
+	// in capabilities is attempted, and order matters.
+
+	slices.SortFunc(mcs, func(a, b cdbm.MachineCapability) int {
+		if a.Index < b.Index {
+			return -1
+		}
+
+		if a.Index > b.Index {
+			return 1
+		}
+
+		return 0
+	})
+
+	for i, machineCap := range mcs {
+
+		count, err := util.GetIntPtrToUint32Ptr(machineCap.Count)
+		if err != nil {
+			logger.Error().Err(err).Msg("invalid Count value for MachineCapability")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Invalid Count value for MachineCapability", nil)
+		}
+
+		cores, err := util.GetIntPtrToUint32Ptr(machineCap.Cores)
+		if err != nil {
+			logger.Error().Err(err).Msg("invalid Cores value for MachineCapability")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Invalid Cores value for MachineCapability", nil)
+		}
+
+		threads, err := util.GetIntPtrToUint32Ptr(machineCap.Threads)
+		if err != nil {
+			logger.Error().Err(err).Msg("invalid Threads value for MachineCapability")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Invalid Threads value for MachineCapability", nil)
+		}
+
+		var capType cwssaws.MachineCapabilityType
+
+		switch machineCap.Type {
+		case cdbm.MachineCapabilityTypeCPU:
+			capType = cwssaws.MachineCapabilityType_CAP_TYPE_CPU
+		case cdbm.MachineCapabilityTypeMemory:
+			capType = cwssaws.MachineCapabilityType_CAP_TYPE_MEMORY
+		case cdbm.MachineCapabilityTypeGPU:
+			capType = cwssaws.MachineCapabilityType_CAP_TYPE_GPU
+		case cdbm.MachineCapabilityTypeStorage:
+			capType = cwssaws.MachineCapabilityType_CAP_TYPE_STORAGE
+		case cdbm.MachineCapabilityTypeNetwork:
+			capType = cwssaws.MachineCapabilityType_CAP_TYPE_NETWORK
+		case cdbm.MachineCapabilityTypeInfiniBand:
+			capType = cwssaws.MachineCapabilityType_CAP_TYPE_INFINIBAND
+		case cdbm.MachineCapabilityTypeDPU:
+			capType = cwssaws.MachineCapabilityType_CAP_TYPE_DPU
+		default:
+			logger.Error().Msg("unsupported MachineCapabilityType requested")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Unsupported MachineCapabilityType requested", nil)
+		}
+
+		// Update device type for network capabilities if provided
+		// Since we are validating the device type in the API model,
+		// we can safely set the device type to DPU for network capabilities
+		// as currently we only support DPU device type for network capabilities
+		var deviceType *cwssaws.MachineCapabilityDeviceType
+		if machineCap.DeviceType != nil {
+			if machineCap.Type == cdbm.MachineCapabilityTypeNetwork {
+				// For Network Capability, we only support DPU
+				if *machineCap.DeviceType != cdbm.MachineCapabilityDeviceTypeDPU {
+					logger.Error().Str("Device Type", *machineCap.DeviceType).Msg("unsupported Device Type specified for Network Capability")
+					return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Unsupported Device Type specified for Network Capability "+*machineCap.DeviceType, nil)
+				}
+				deviceType = cwssaws.MachineCapabilityDeviceType_MACHINE_CAPABILITY_DEVICE_TYPE_DPU.Enum()
+			} else {
+				logger.Error().Str("Capability Type", machineCap.Type).Str("Device Type", *machineCap.DeviceType).Msg("unsupported Device Type specified for Capability Type")
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Unsupported Device Type: %s specified for Capability type %s", *machineCap.DeviceType, machineCap.Type), nil)
+			}
+		}
+
+		capabilities[i] = &cwssaws.InstanceTypeMachineCapabilityFilterAttributes{
+			CapabilityType:   capType,
+			Name:             &machineCap.Name,
+			Frequency:        machineCap.Frequency,
+			Capacity:         machineCap.Capacity,
+			Vendor:           machineCap.Vendor,
+			Count:            count,
+			HardwareRevision: machineCap.HardwareRevision,
+			Cores:            cores,
+			Threads:          threads,
+			DeviceType:       deviceType,
+		}
+	}
+
+	updateInstanceTypeRequest.InstanceTypeAttributes = &cwssaws.InstanceTypeAttributes{
+		DesiredCapabilities: capabilities,
+	}
+
+	workflowOptions := temporalClient.StartWorkflowOptions{
+		ID:                       "instance-type-update-" + it.ID.String(),
+		TaskQueue:                queue.SiteTaskQueue,
+		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+	}
+
+	// InstanceType metadata info
+	metadata := &cwssaws.Metadata{
+		Name: it.Name,
+	}
+
+	// Include description if present
+	if it.Description != nil {
+		metadata.Description = *it.Description
+	}
+
+	updateInstanceTypeRequest.Metadata = metadata
+
+	logger.Info().Msg("triggering InstanceType update workflow")
+
+	// Add context deadlines
+	ctx, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
+	defer cancel()
+
+	// Trigger Site workflow
+	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "UpdateInstanceType", updateInstanceTypeRequest)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to synchronously start Temporal workflow to update InstanceType")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed start sync workflow to update InstanceType on Site: %s", err), nil)
+	}
+
+	wid := we.GetID()
+	logger.Info().Str("Workflow ID", wid).Msg("executed synchronous update InstanceType workflow")
+
+	// Block until the workflow has completed and returned success/error.
+	err = we.Get(ctx, nil)
+
+	// Handle skippable errors
+	if err != nil {
+		// TODO:
+		// If this was a 404 back from Carbide, we'll need to ignore until the
+		// process for syncing cloud to site is done and the SOT has fully moved
+		// to Carbide.  At that point, all of these guard rails should be removed
+		// and it should no longer be possible for the cloud to know about an
+		// instance type that the site does not know about.
+		var applicationErr *tp.ApplicationError
+		if errors.As(err, &applicationErr) {
+			if applicationErr.Type() == swe.ErrTypeCarbideObjectNotFound {
+				logger.Warn().Msg(swe.ErrTypeCarbideObjectNotFound + " received from Site")
+				// Reset error to nil
+				err = nil
+			} else if applicationErr.Type() == swe.ErrTypeCarbideUnimplemented || applicationErr.Type() == swe.ErrTypeCarbideDenied {
+				// Carbide _could_ respond with an unimplemented if it's an
+				// older Carbide that doesn't have the endpoint yet, but it's more
+				// likely to respond with a PermissionDenied because the permission
+				// for the path isn't there either, but we can watch for both just to
+				// be safe.
+
+				logger.Warn().Msg("Carbide endpoint unimplemented or restricted response received from Site")
+				// Reset error to nil because we'll want to ignore while
+				// Carbide is being rolled out.
+				err = nil
+			}
+		}
+	}
+
+	if err != nil {
+		var timeoutErr *tp.TimeoutError
+		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
+			return common.TerminateWorkflowOnTimeOut(c, logger, stc, wid, err, "InstanceType", "UpdateInstanceType")
+		}
+
+		code, err := common.UnwrapWorkflowError(err)
+		logger.Error().Err(err).Msg("failed to synchronously execute Temporal workflow to update InstanceType")
+		return cerr.NewAPIErrorResponse(c, code, fmt.Sprintf("Failed to execute sync workflow to update InstanceType on Site: %s", err), nil)
+	}
+
+	logger.Info().Str("Workflow ID", wid).Msg("completed synchronous update InstanceType workflow")
+
+	err = tx.Commit()
+	if err != nil {
+		logger.Error().Err(err).Msg("error committing transaction")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to update Instance Type", nil)
+	}
+	txCommitted = true
+
+	ait := model.NewAPIInstanceType(it, ssds, mcs, nil, nil)
+
+	// Create response
+	logger.Info().Msg("finishing API handler")
+
+	return c.JSON(http.StatusOK, ait)
+}
+
+// ~~~~~ Delete Handler ~~~~~ //
+
+// DeleteInstanceTypeHandler is the API Handler for deleting a Site
+type DeleteInstanceTypeHandler struct {
+	dbSession  *cdb.Session
+	tc         temporalClient.Client
+	scp        *sc.ClientPool
+	cfg        *config.Config
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewDeleteInstanceTypeHandler initializes and returns a new handler for deleting an Instance Type
+func NewDeleteInstanceTypeHandler(dbSession *cdb.Session, tc temporalClient.Client, scp *sc.ClientPool, cfg *config.Config) DeleteInstanceTypeHandler {
+	return DeleteInstanceTypeHandler{
+		dbSession:  dbSession,
+		tc:         tc,
+		scp:        scp,
+		cfg:        cfg,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Delete an Instance Type
+// @Description Delete an Instance Type. Org's Infrastructure Provider must be associated with the Instance Type.
+// @Tags instancetype
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param org path string true "Name of NGC organization"
+// @Param id path string true "ID of Instance Type"
+// @Success 204
+// @Router /v2/org/{org}/carbide/instance/type/{id} [delete]
+func (dith DeleteInstanceTypeHandler) Handle(c echo.Context) error {
+	// Get context
+	ctx := c.Request().Context()
+
+	// Get org
+	org := c.Param("orgName")
+
+	// Initialize logger
+	logger := log.With().Str("Model", "InstanceType").Str("Handler", "Delete").Str("Org", org).Logger()
+
+	logger.Info().Msg("started API handler")
+
+	// Create a child span and set the attributes for current request
+	newctx, handlerSpan := dith.tracerSpan.CreateChildInContext(ctx, "DeleteInstanceTypeHandler", logger)
+	if handlerSpan != nil {
+		// Set newly created span context as a current context
+		ctx = newctx
+
+		defer handlerSpan.End()
+
+		dith.tracerSpan.SetAttribute(handlerSpan, attribute.String("org", org), logger)
+	}
+
+	dbUser, logger, err := common.GetUserAndEnrichLogger(c, logger, dith.tracerSpan, handlerSpan)
+	if err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// Validate org
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Validate role, only Provider Admins are allowed to proceed from here
+	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Provider Admin role, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Provider Admin role with org", nil)
+	}
+
+	// Get Instance Type ID
+	itStrID := c.Param("id")
+
+	dith.tracerSpan.SetAttribute(handlerSpan, attribute.String("instancetype_id", itStrID), logger)
+
+	itID, err := uuid.Parse(itStrID)
+	if err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid Instance Type ID in URL", nil)
+	}
+
+	// Check if org has an Infrastructure Provider
+	ipDAO := cdbm.NewInfrastructureProviderDAO(dith.dbSession)
+
+	ips, serr := ipDAO.GetAllByOrg(ctx, nil, org, nil)
+	if serr != nil {
+		logger.Error().Err(serr).Msg("error retrieving Infrastructure Provider for org")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to to retrieve Org entities to check Instance Type association", nil)
+	}
+
+	if len(ips) == 0 {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Org does not have an Infrastructure Provider", nil)
+	}
+
+	orgIP := &ips[0]
+
+	// Get Instance Type
+	itDAO := cdbm.NewInstanceTypeDAO(dith.dbSession)
+
+	it, err := itDAO.GetByID(ctx, nil, itID, []string{"Site"})
+	if err != nil {
+		if err == cdb.ErrDoesNotExist {
+			return cerr.NewAPIErrorResponse(c, http.StatusNotFound, "Could not find InstanceType with specified ID", nil)
+		}
+		logger.Error().Err(err).Msg("error retrieving Instance Type from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Instance Type", nil)
+	}
+
+	// Check if Instance Type is associated with the Org's Provider
+	if orgIP.ID != it.InfrastructureProviderID {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Instance Type is not associated with org's Infrastructure Provider", nil)
+	}
+
+	// Check if this Instance Type is being used
+	iDAO := cdbm.NewInstanceDAO(dith.dbSession)
+
+	instances, _, err := iDAO.GetAll(ctx, nil, cdbm.InstanceFilterInput{InstanceTypeIDs: []uuid.UUID{it.ID}}, cdbp.PageInput{}, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving Instances for Instance Type from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Instances for Instance Type", nil)
+	}
+
+	if len(instances) > 0 {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Instance Type is being used by one or more Instances and cannot be deleted", nil)
+	}
+
+	// Check if this Instance Type is part of an Allocation
+	acDAO := cdbm.NewAllocationConstraintDAO(dith.dbSession)
+
+	resourceType := cdbm.AllocationResourceTypeInstanceType
+	acs, _, err := acDAO.GetAll(ctx, nil, nil, &resourceType, []uuid.UUID{it.ID}, nil, nil, nil, nil, nil, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving Allocation Constraints for Instance Type from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Allocation Constraints for Instance Type", nil)
+	}
+	if len(acs) > 0 {
+		logger.Warn().Msg("error deleting instance type as allocation constraints are present")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Instance Type is being used by one or more Allocations and cannot be deleted", nil)
+	}
+
+	// Begin transaction
+	tx, err := cdb.BeginTx(ctx, dith.dbSession, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error beginning transaction")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to delete Instance Type", nil)
+	}
+	txCommitted := false
+	defer ch.RollbackTx(ctx, tx, &txCommitted)
+
+	// Delete Machine/Instance Type associations
+	mitDAO := cdbm.NewMachineInstanceTypeDAO(dith.dbSession)
+	err = mitDAO.DeleteAllByInstanceTypeID(ctx, tx, itID, false)
+	if err != nil {
+		logger.Error().Err(err).Msg("error deleting Machine/Instance Type associations for Instance Type")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to delete Instance Type", nil)
+	}
+
+	//
+	// Get the machines for instance type
+	mDAO := cdbm.NewMachineDAO(dith.dbSession)
+	mcs, _, err := mDAO.GetAll(ctx, tx, cdbm.MachineFilterInput{InstanceTypeIDs: []uuid.UUID{it.ID}}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving Machines for Instance Type from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Machines for Instance Type", nil)
+	}
+
+	// Clear InstanceType from respective machines
+	for _, mc := range mcs {
+		_, err = mDAO.Clear(ctx, tx, cdbm.MachineClearInput{MachineID: mc.ID, InstanceTypeID: true})
+		if err != nil {
+			logger.Error().Err(err).Msg("error clearing Machine associations for Instance Type")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to dissociate one or more Machines from Instance Type", nil)
+		}
+	}
+
+	// Delete Instance Type
+	err = itDAO.DeleteByID(ctx, tx, itID)
+	if err != nil {
+		logger.Error().Err(err).Msg("error deleting Instance Type from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to delete Instance Type", nil)
+	}
+
+	// Get the temporal client for the site we are working with.
+	stc, err := dith.scp.GetClientByID(*it.SiteID)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Temporal client for Site")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
+	}
+
+	deleteInstanceTypeRequest := &cwssaws.DeleteInstanceTypeRequest{
+		Id: it.ID.String(),
+	}
+
+	workflowOptions := temporalClient.StartWorkflowOptions{
+		ID:                       "instance-type-delete-" + it.ID.String(),
+		TaskQueue:                queue.SiteTaskQueue,
+		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+	}
+
+	logger.Info().Msg("triggering InstanceType delete workflow")
+
+	// Add context deadlines
+	ctx, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
+	defer cancel()
+
+	// Trigger Site workflow
+	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "DeleteInstanceType", deleteInstanceTypeRequest)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to synchronously start Temporal workflow to delete InstanceType")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed start sync workflow to delete InstanceType on Site: %s", err), nil)
+	}
+
+	wid := we.GetID()
+	logger.Info().Str("Workflow ID", wid).Msg("executed synchronous delete InstanceType workflow")
+
+	// Block until the workflow has completed and returned success/error.
+	err = we.Get(ctx, nil)
+
+	// Handle skippable errors
+	if err != nil {
+		// If this was a 404 back from Carbide, we can treat the object as already having been deleted and allow things to proceed.
+		var applicationErr *tp.ApplicationError
+		if errors.As(err, &applicationErr) {
+			if applicationErr.Type() == swe.ErrTypeCarbideObjectNotFound {
+				logger.Warn().Msg(swe.ErrTypeCarbideObjectNotFound + " received from Site")
+				// Reset error to nil
+				err = nil
+			} else if applicationErr.Type() == swe.ErrTypeCarbideUnimplemented || applicationErr.Type() == swe.ErrTypeCarbideDenied {
+				// Carbide _could_ respond with an unimplemented if it's an
+				// older Carbide that doesn't have the endpoint yet, but it's more
+				// likely to respond with a PermissionDenied because the permission
+				// for the path isn't there either, but we can watch for both just to
+				// be safe.
+
+				logger.Warn().Msg("Carbide endpoint unimplemented or restricted response received from Site")
+				// Reset error to nil because we'll want to ignore while
+				// Carbide is being rolled out.
+				err = nil
+			}
+		}
+	}
+
+	if err != nil {
+		var timeoutErr *tp.TimeoutError
+		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
+			return common.TerminateWorkflowOnTimeOut(c, logger, stc, wid, err, "InstanceType", "DeleteInstanceType")
+		}
+
+		code, err := common.UnwrapWorkflowError(err)
+		logger.Error().Err(err).Msg("failed to synchronously execute Temporal workflow to delete InstanceType")
+		return cerr.NewAPIErrorResponse(c, code, fmt.Sprintf("Failed to execute sync workflow to delete InstanceType on Site: %s", err), nil)
+	}
+
+	logger.Info().Str("Workflow ID", wid).Msg("completed synchronous delete InstanceType workflow")
+
+	err = tx.Commit()
+	if err != nil {
+		logger.Error().Err(err).Msg("error committing transaction")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to delete Instance Type", nil)
+	}
+	txCommitted = true
+
+	// Create response
+	logger.Info().Msg("finishing API handler")
+
+	return c.String(http.StatusAccepted, "Deletion request was accepted")
+}

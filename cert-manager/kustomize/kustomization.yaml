@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+#
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+resources:
+  - namespace.yaml
+  - imagepullsecret.yaml
+  - sa-role.yaml
+  - sa-rolebinding.yaml
+  - sa.yaml
+  - vault-config-configmap.yaml
+  - cluster-role.yaml
+  - cert-approval-policy.yaml
+  - cluster-role-binding.yaml
+  - cluster-issuer.yaml
+  - deployment.yaml
+  - service.yaml
+
+images:
+  - name: credsmgr
+    newName: nvcr.io/nvidian/nvforge-devel/cloud-cert-manager
+    newTag: v0.1.16-5-g03a059c
+  - name: vault
+    newName: nvcr.io/nvidian/nvforge-devel/vault
+    newTag: 1.19.0

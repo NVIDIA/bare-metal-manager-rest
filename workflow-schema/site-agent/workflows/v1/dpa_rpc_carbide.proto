@@ -1,0 +1,40 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+syntax = "proto3";
+
+package dpa_rpc;
+
+option go_package = "github.com/nvidia/carbide-rest/workflow-schema/proto";
+
+// This should be sent to topic dpa/command/<macaddrwithout:chars>/SetVni
+// Example for topic: dpa/command/001122334455/SetVni
+
+message SetVNI {
+  DpaMetadata metadata = 1;
+  PFVNI pf_info = 2;
+}
+
+message DpaMetadata {
+  string dpa_id = 1;
+  string host_id = 2;
+  string revision = 3;
+  string transaction = 4;
+}
+
+message PFVNI {
+  int32 pf_id = 1;
+  string mac = 2;
+  int32 vni = 3;
+  string subnet_ip = 4;
+  int32 subnet_mask = 5;
+  string dhcp_ip = 6;
+  string host_ip = 7;
+}

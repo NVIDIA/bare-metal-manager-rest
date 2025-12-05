@@ -1,0 +1,1981 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package instance
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"go.temporal.io/sdk/client"
+
+	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
+	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+	cdbp "github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+
+	sc "github.com/nvidia/carbide-rest/workflow/pkg/client/site"
+	"github.com/nvidia/carbide-rest/workflow/pkg/queue"
+	"github.com/nvidia/carbide-rest/workflow/pkg/util"
+	cwu "github.com/nvidia/carbide-rest/workflow/pkg/util"
+
+	cwsv1 "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	"github.com/nvidia/carbide-rest/workflow/internal/config"
+	cwm "github.com/nvidia/carbide-rest/workflow/internal/metrics"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
+
+// ManageInstance is an activity wrapper for managing Instance lifecycle that allows
+// injecting DB access
+type ManageInstance struct {
+	dbSession      *cdb.Session
+	siteClientPool *sc.ClientPool
+	tc             client.Client
+	cfg            *config.Config
+}
+
+// Activity functions
+
+// CreateInstanceViaSiteAgent is a Temporal activity that create an Instance in Site Controller via Site agent
+func (mi ManageInstance) CreateInstanceViaSiteAgent(ctx context.Context, instanceID uuid.UUID) error {
+	logger := log.With().Str("Activity", "CreateInstanceViaSiteAgent").Str("Instance ID", instanceID.String()).Logger()
+
+	logger.Info().Msg("starting activity")
+
+	instanceDAO := cdbm.NewInstanceDAO(mi.dbSession)
+
+	instance, err := instanceDAO.GetByID(ctx, nil, instanceID, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Instance from DB by ID")
+		return err
+	}
+
+	logger.Info().Msg("retrieved Instance from DB")
+
+	tc, err := mi.siteClientPool.GetClientByID(instance.SiteID)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Temporal client for Site")
+		return err
+	}
+
+	workflowOptions := client.StartWorkflowOptions{
+		ID:        "site-instance-create-" + instanceID.String(),
+		TaskQueue: queue.SiteTaskQueue,
+	}
+
+	transactionID := &cwsv1.TransactionID{
+		ResourceId: instanceID.String(),
+		Timestamp:  timestamppb.Now(),
+	}
+
+	// find the segment-id from the subnet which we get from the instance subnet table
+	interfaceDAO := cdbm.NewInterfaceDAO(mi.dbSession)
+	interfaces, _, err := interfaceDAO.GetAll(ctx, nil, cdbm.InterfaceFilterInput{InstanceIDs: []uuid.UUID{instanceID}}, paginator.PageInput{}, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving interfaces")
+		return err
+	}
+	if len(interfaces) == 0 {
+		message := "no interfaces found for instance"
+		logger.Error().Msg(message)
+		return errors.New(message)
+	}
+
+	// get the subnet
+	subnetDAO := cdbm.NewSubnetDAO(mi.dbSession)
+
+	if instance.MachineID == nil {
+		message := "machine id in instance is nil"
+		logger.Error().Msg(message)
+		return errors.New(message)
+	}
+
+	// Check and add InfiniBand Interfaces to the Instance
+	ibiDAO := cdbm.NewInfiniBandInterfaceDAO(mi.dbSession)
+	ibinterfaces, _, err := ibiDAO.GetAll(
+		ctx,
+		nil,
+		cdbm.InfiniBandInterfaceFilterInput{
+			InstanceIDs: []uuid.UUID{instanceID},
+		},
+		paginator.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)},
+		[]string{cdbm.InfiniBandPartitionRelationName},
+	)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve InfiniBand Interfaces from DB")
+		return err
+	}
+
+	mDAO := cdbm.NewMachineDAO(mi.dbSession)
+	machine, err := mDAO.GetByID(ctx, nil, *instance.MachineID, nil, false)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Machine for Instance from DB")
+		return err
+	}
+
+	vpcDAO := cdbm.NewVpcDAO(mi.dbSession)
+	vpc, err := vpcDAO.GetByID(ctx, nil, instance.VpcID, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve VPC for Instance from DB")
+		return err
+	}
+
+	// Check and add SSH Key Groups to the Instance
+	skgiaDAO := cdbm.NewSSHKeyGroupInstanceAssociationDAO(mi.dbSession)
+	skgias, _, err := skgiaDAO.GetAll(ctx, nil, nil, nil, []uuid.UUID{instance.ID}, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve SSH Key Group Instance Associations from DB")
+		return err
+	}
+
+	tenantKeysetIDs := []string{}
+	for _, skgia := range skgias {
+		tenantKeysetIDs = append(tenantKeysetIDs, skgia.SSHKeyGroupID.String())
+	}
+
+	// Preparing create instance request
+	createInstanceRequest := &cwsv1.CreateInstanceRequest{
+		InstanceId:               &cwsv1.UUID{Value: instanceID.String()},
+		MachineId:                &cwsv1.MachineId{Id: machine.ControllerMachineID},
+		TenantOrg:                vpc.Org,
+		Interfaces:               []*cwsv1.InstanceInterfaceConfig{},
+		CustomIpxe:               instance.IpxeScript,
+		AlwaysBootWithCustomIpxe: &instance.AlwaysBootWithCustomIpxe,
+		UserData:                 instance.UserData,
+		TenantKeysetIds:          tenantKeysetIDs,
+		PhoneHomeEnabled:         instance.PhoneHomeEnabled,
+	}
+
+	for _, ifc := range interfaces {
+
+		if ifc.SubnetID == nil {
+			message := "Legacy CreateInstance workflow called without Subnet ID in interface"
+			logger.Error().Msg(message)
+			return errors.New(message)
+		}
+
+		subnet, serr := subnetDAO.GetByID(ctx, nil, *ifc.SubnetID, nil)
+		if serr != nil {
+			logger.Error().Err(serr).Msgf("failed to retrieve Subnet %v from DB", ifc.SubnetID.String())
+			return serr
+		}
+
+		if subnet.Status == cdbm.SubnetStatusDeleting {
+			message := fmt.Sprintf("Subnet: %v is in Deleting state", subnet.ID.String())
+			logger.Error().Msg(message)
+			return errors.New(message)
+		}
+
+		if subnet.ControllerNetworkSegmentID == nil {
+			message := fmt.Sprintf("Subnet: %v does not have Controller Segment ID populated", subnet.ID.String())
+			logger.Error().Msg(message)
+			return errors.New(message)
+		}
+
+		iCfg := &cwsv1.InstanceInterfaceConfig{
+			NetworkSegmentId: &cwsv1.NetworkSegmentId{Value: subnet.ControllerNetworkSegmentID.String()},
+		}
+
+		iCfg.FunctionType = cwsv1.InterfaceFunctionType_VIRTUAL_FUNCTION
+		if ifc.IsPhysical {
+			iCfg.FunctionType = cwsv1.InterfaceFunctionType_PHYSICAL_FUNCTION
+		}
+
+		createInstanceRequest.Interfaces = append(createInstanceRequest.Interfaces, iCfg)
+	}
+
+	for _, ibinterface := range ibinterfaces {
+		// InfiniBandPartition Status
+		if ibinterface.InfiniBandPartition.Status == cdbm.InfiniBandPartitionStatusDeleting {
+			message := fmt.Sprintf("InfiniBandPartition: %v is in Deleting state", ibinterface.InfiniBandPartitionID.String())
+			logger.Error().Msg(message)
+			return errors.New(message)
+		}
+
+		// InfiniBandPartition Controller IB Partition ID
+		if ibinterface.InfiniBandPartition.ControllerIBPartitionID == nil {
+			message := fmt.Sprintf("InfiniBandPartition: %v does not have Controller IB Partition ID populated", ibinterface.InfiniBandPartitionID.String())
+			logger.Error().Msg(message)
+			return errors.New(message)
+		}
+
+		ibcfg := &cwsv1.InstanceIBInterfaceConfig{
+			Device:         ibinterface.Device,
+			Vendor:         ibinterface.Vendor,
+			DeviceInstance: uint32(ibinterface.DeviceInstance),
+			IbPartitionId:  &cwsv1.IBPartitionId{Value: ibinterface.InfiniBandPartition.ControllerIBPartitionID.String()},
+		}
+
+		if ibinterface.IsPhysical {
+			ibcfg.FunctionType = cwsv1.InterfaceFunctionType_PHYSICAL_FUNCTION
+		} else if ibinterface.VirtualFunctionID != nil {
+			ibcfg.FunctionType = cwsv1.InterfaceFunctionType_VIRTUAL_FUNCTION
+			// Move the conversion of *int to *uint32 in common
+			vfID := *ibinterface.VirtualFunctionID
+			uvfID := uint32(vfID)
+			ibcfg.VirtualFunctionId = &uvfID
+		}
+
+		createInstanceRequest.IbInterfaces = append(createInstanceRequest.IbInterfaces, ibcfg)
+	}
+
+	// Instance metadata info
+	metadata := &cwsv1.Metadata{
+		Name: instance.Name,
+	}
+
+	if instance.Description != nil {
+		metadata.Description = *instance.Description
+	}
+
+	// Prepare labels for site controller
+	if len(instance.Labels) > 0 {
+		var labels []*cwsv1.Label
+		for key, value := range instance.Labels {
+			curVal := value
+			localLable := &cwsv1.Label{
+				Key:   key,
+				Value: &curVal,
+			}
+			labels = append(labels, localLable)
+		}
+		metadata.Labels = labels
+	}
+	createInstanceRequest.Metadata = metadata
+
+	we, err := tc.ExecuteWorkflow(ctx, workflowOptions, "CreateInstance",
+		// Workflow arguments
+		// Transaction ID
+		transactionID,
+		// Create Instance Request
+		createInstanceRequest,
+	)
+
+	status := cdbm.InstanceStatusProvisioning
+	statusMessage := "Provisioning request was sent to the Site"
+
+	if err != nil {
+		status = cdbm.InstanceStatusError
+		statusMessage = "Failed to initiate Instance provisioning on Site"
+	}
+
+	_ = mi.updateInstanceStatusInDB(ctx, nil, instanceID, &status, &statusMessage, nil)
+
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to execute CreateInstance workflow in Site Agent")
+		return err
+	}
+
+	logger.Info().Str("Workflow ID", we.GetID()).Msg("triggered Site Agent workflow to create Instance")
+
+	logger.Info().Msg("completed activity")
+
+	return nil
+}
+
+// OnCreateInstanceError is a Temporal activity that is invoked when
+// the activity CreateInstanceViaSiteAgent has errored
+// it sets the instance status to error, and releases the machine associated with it
+func (mi ManageInstance) OnCreateInstanceError(ctx context.Context, instanceID uuid.UUID, errMessage *string) error {
+	logger := log.With().Str("Activity", "CreateInstanceError").Str("Instance ID", instanceID.String()).Logger()
+	logger.Info().Msg("starting activity")
+
+	instanceDAO := cdbm.NewInstanceDAO(mi.dbSession)
+	instance, err := instanceDAO.GetByID(ctx, nil, instanceID, []string{cdbm.SiteRelationName})
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Instance from DB by ID")
+		return err
+	}
+	logger.Info().Msg("retrieved Instance from DB")
+
+	// Start a db tx
+	tx, serr := cdb.BeginTx(ctx, mi.dbSession, &sql.TxOptions{})
+	if serr != nil {
+		logger.Error().Err(serr).Msg("failed to start transaction")
+		return serr
+	}
+	// update instance status to error
+	status := cdb.GetStrPtr(cdbm.InstanceStatusError)
+	var statusMessage *string
+	if errMessage != nil {
+		statusMessage = errMessage
+	} else {
+		statusMessage = cdb.GetStrPtr("Failed to create Instance via Site Agent")
+	}
+	err = mi.updateInstanceStatusInDB(ctx, tx, instance.ID, status, statusMessage, nil)
+	if err != nil {
+		terr := tx.Rollback()
+		if terr != nil {
+			logger.Error().Err(terr).Msg("failed to rollback transaction")
+		}
+		return err
+	}
+	// clear the machine id in instance
+	iDAO := cdbm.NewInstanceDAO(mi.dbSession)
+	_, err = iDAO.Clear(ctx, tx, cdbm.InstanceClearInput{
+		InstanceID: instance.ID,
+		MachineID:  true,
+	})
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to clear machineID field in instance in DB")
+		terr := tx.Rollback()
+		if terr != nil {
+			logger.Error().Err(terr).Msg("failed to rollback transaction")
+		}
+		return err
+	}
+	// clear isAssigned on the machine
+	if instance.MachineID != nil {
+		err = mi.clearMachineIsAssigned(ctx, tx, logger, *instance.MachineID)
+		if err != nil {
+			logger.Error().Err(err).Msg("failed to clear isAssigned field in machine in DB")
+			terr := tx.Rollback()
+			if terr != nil {
+				logger.Error().Err(terr).Msg("failed to rollback transaction")
+			}
+			return err
+		}
+	}
+	// Commit transaction
+	err = tx.Commit()
+	if err != nil {
+		logger.Error().Err(err).Msg("error committing transaction to DB")
+		return err
+	}
+
+	logger.Info().Msg("successfully completed activity")
+	return nil
+}
+
+// DeleteInstanceViaSiteAgent is a Temporal activity that delete an Instance in Site Controller via Site agent
+func (mi ManageInstance) DeleteInstanceViaSiteAgent(ctx context.Context, instanceID uuid.UUID) error {
+	logger := log.With().Str("Activity", "DeleteInstanceViaSiteAgent").Str("Instance ID", instanceID.String()).Logger()
+
+	logger.Info().Msg("starting activity")
+
+	instanceDAO := cdbm.NewInstanceDAO(mi.dbSession)
+
+	instance, err := instanceDAO.GetByID(ctx, nil, instanceID, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Instance from DB by ID")
+		return err
+	}
+
+	logger.Info().Msg("retrieved Instance from DB")
+
+	// NOTE: This section to be removed once all Site/Site Agents have been updated with Instance ID convergence
+	if instance.ControllerInstanceID == nil {
+		logger.Warn().Msg("cannot initiate deletion via Site Agent as Instance does not have controller ID set")
+		// Return an error to schedule retry, once Instance create call update or inventory is received, controller ID will be populated
+		return fmt.Errorf("Instance does not have controller ID set")
+	}
+
+	tc, err := mi.siteClientPool.GetClientByID(instance.SiteID)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Temporal client for Site")
+		return err
+	}
+
+	workflowOptions := client.StartWorkflowOptions{
+		ID:        "site-instance-delete-" + instanceID.String(),
+		TaskQueue: queue.SiteTaskQueue,
+	}
+
+	transactionID := &cwsv1.TransactionID{
+		ResourceId: instanceID.String(),
+		Timestamp:  timestamppb.Now(),
+	}
+
+	deleteInstanceRequest := &cwsv1.DeleteInstanceRequest{
+		InstanceId: &cwsv1.UUID{Value: instance.ControllerInstanceID.String()},
+	}
+
+	we, err := tc.ExecuteWorkflow(ctx, workflowOptions, "DeleteInstance",
+		// Workflow arguments
+		// Transaction ID
+		transactionID,
+		// request
+		deleteInstanceRequest,
+	)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to initiate DeleteInstance workflow in Site Agent")
+		return err
+	}
+
+	status := cdbm.InstanceStatusTerminating
+	statusMessage := "Deletion request was sent to the Site"
+	_ = mi.updateInstanceStatusInDB(ctx, nil, instanceID, &status, &statusMessage, nil)
+
+	logger.Info().Str("Workflow ID", we.GetID()).Msg("triggered Site Agent workflow to delete Instance")
+
+	logger.Info().Msg("completed activity")
+
+	return nil
+}
+
+// RebootInstanceViaSiteAgent is a Temporal activity that reboot a machine which is associated with Instance in Site Controller via Site agent
+func (mi ManageInstance) RebootInstanceViaSiteAgent(ctx context.Context, instanceID uuid.UUID, rebootWithCustomIpxe bool, applyUpdatesOnReboot bool) error {
+	logger := log.With().Str("Activity", "RebootInstanceViaSiteAgent").Str("Instance ID", instanceID.String()).Logger()
+
+	logger.Info().Msg("starting activity")
+
+	instanceDAO := cdbm.NewInstanceDAO(mi.dbSession)
+
+	instance, err := instanceDAO.GetByID(ctx, nil, instanceID, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Instance from DB by ID")
+		return err
+	}
+
+	logger.Info().Msg("retrieved Instance from DB")
+
+	if instance.MachineID == nil {
+		message := "machine id in instance is nil"
+		logger.Error().Msg(message)
+		return errors.New(message)
+	}
+
+	mDAO := cdbm.NewMachineDAO(mi.dbSession)
+	machine, err := mDAO.GetByID(ctx, nil, *instance.MachineID, nil, false)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Machine for Instance from DB")
+		return err
+	}
+
+	tc, err := mi.siteClientPool.GetClientByID(instance.SiteID)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Temporal client for Site")
+		return err
+	}
+
+	workflowOptions := client.StartWorkflowOptions{
+		ID:        "site-instance-reboot-" + instanceID.String(),
+		TaskQueue: queue.SiteTaskQueue,
+	}
+
+	transactionID := &cwsv1.TransactionID{
+		ResourceId: instanceID.String(),
+		Timestamp:  timestamppb.Now(),
+	}
+
+	RebootInstanceRequest := &cwsv1.RebootInstanceRequest{
+		MachineId:            &cwsv1.MachineId{Id: machine.ControllerMachineID},
+		BootWithCustomIpxe:   rebootWithCustomIpxe,
+		ApplyUpdatesOnReboot: applyUpdatesOnReboot,
+	}
+
+	we, err := tc.ExecuteWorkflow(ctx, workflowOptions, "RebootInstance",
+		// Workflow arguments
+		// Transaction ID
+		transactionID,
+		// request
+		RebootInstanceRequest,
+	)
+
+	powerstatus := cdbm.InstancePowerStatusRebooting
+	statusMessage := "Initiated Instance reboot via Site Agent"
+	if RebootInstanceRequest.ApplyUpdatesOnReboot {
+		statusMessage = "Initiated Instance reboot with flag enabled to apply pending updates via Site Agent"
+	}
+
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to execute site agent RebootInstance workflow")
+		powerstatus = cdbm.InstancePowerStatusError
+		statusMessage = "Failed to initiate reboot Instance via Site Agent"
+	}
+
+	_ = mi.updateInstanceStatusInDB(ctx, nil, instanceID, nil, &statusMessage, &powerstatus)
+
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to execute RebootInstance workflow in site agent")
+		return err
+	}
+
+	logger.Info().Str("Workflow ID", we.GetID()).Msg("triggered Site Agent workflow to reboot Instance")
+
+	logger.Info().Msg("completed activity")
+
+	return nil
+}
+
+// UpdateInstanceInDB is a temporal activity which
+// updates the Instance in the DB from data pushed by Site Controller
+func (mi ManageInstance) UpdateInstanceInDB(ctx context.Context, transactionID *cwsv1.TransactionID, instanceInfo *cwsv1.InstanceInfo) error {
+	logger := log.With().Str("Activity", "UpdateInstanceInDB").Str("Instance ID", transactionID.ResourceId).Logger()
+
+	logger.Info().Msg("starting activity")
+
+	instanceDAO := cdbm.NewInstanceDAO(mi.dbSession)
+
+	instanceID, err := uuid.Parse(transactionID.ResourceId)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to parse Instance ID from transaction ID")
+		return err
+	}
+
+	instance, err := instanceDAO.GetByID(ctx, nil, instanceID, nil)
+	if err != nil {
+		if err == cdb.ErrDoesNotExist {
+			logger.Error().Err(err).Msg("could not find Instance from DB by resource ID specified in Site agent transaction ID")
+		} else {
+			logger.Error().Err(err).Msg("failed to retrieve Instance from DB by resource ID specified in Site agent transaction ID")
+		}
+		return err
+	}
+
+	logger.Info().Msg("retrieved Instance from DB")
+
+	// Start a db tx
+	tx, err := cdb.BeginTx(ctx, mi.dbSession, &sql.TxOptions{})
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to start transaction")
+		return err
+	}
+
+	interfaceDAO := cdbm.NewInterfaceDAO(mi.dbSession)
+
+	var status *string
+	var statusMessage *string
+	var interfaceStatus *string
+
+	if instanceInfo.Status == cwsv1.WorkflowStatus_WORKFLOW_STATUS_SUCCESS {
+		if instanceInfo.ObjectStatus == cwsv1.ObjectStatus_OBJECT_STATUS_CREATED {
+			status = cdb.GetStrPtr(cdbm.InstanceStatusProvisioning)
+			statusMessage = cdb.GetStrPtr("Instance provisioning was successfully initiated on Site")
+
+			// Controller Instance ID must be extracted/saved
+			if instanceInfo.Instance != nil && instanceInfo.Instance.Id != nil {
+				controllerInstanceID, serr := uuid.Parse(instanceInfo.Instance.Id.Value)
+				if serr != nil {
+					logger.Error().Err(serr).Msg("failed to parse Site Controller Instance ID from Instance Info")
+					terr := tx.Rollback()
+					if terr != nil {
+						logger.Error().Err(terr).Msg("failed to rollback transaction")
+					}
+					return serr
+				}
+
+				_, serr = instanceDAO.Update(ctx, tx, cdbm.InstanceUpdateInput{InstanceID: instanceID, ControllerInstanceID: cdb.GetUUIDPtr(controllerInstanceID)})
+				if serr != nil {
+					logger.Error().Err(serr).Msg("failed to update Controller Instance ID in DB")
+					terr := tx.Rollback()
+					if terr != nil {
+						logger.Error().Err(terr).Msg("failed to rollback transaction")
+					}
+					return serr
+				}
+
+				interfaceStatus = cdb.GetStrPtr(cdbm.InterfaceStatusProvisioning)
+			} else {
+				errMsg := "controller Instance ID is missing from object creation success response"
+				logger.Error().Msg(errMsg)
+				terr := tx.Rollback()
+				if terr != nil {
+					logger.Error().Err(terr).Msg("failed to rollback transaction")
+				}
+				return errors.New(errMsg)
+			}
+		} else if instanceInfo.ObjectStatus == cwsv1.ObjectStatus_OBJECT_STATUS_DELETED {
+			status = cdb.GetStrPtr(cdbm.InstanceStatusTerminating)
+			statusMessage = cdb.GetStrPtr("Deletion has been initiated on Site")
+
+			interfaceStatus = cdb.GetStrPtr(cdbm.InterfaceStatusDeleting)
+		}
+	} else if instanceInfo.Status == cwsv1.WorkflowStatus_WORKFLOW_STATUS_FAILURE {
+		status = cdb.GetStrPtr(cdbm.InstanceStatusError)
+		statusMessage = cdb.GetStrPtr(instanceInfo.StatusMsg)
+
+		interfaceStatus = cdb.GetStrPtr(cdbm.InterfaceStatusError)
+
+		// If the Instance is being deleted then log the error but don't change the status
+		if instance.Status == cdbm.InstanceStatusTerminating && statusMessage != nil {
+			status = cdb.GetStrPtr(cdbm.InstanceStatusTerminating)
+			interfaceStatus = nil
+		}
+	}
+
+	if status != nil {
+		err = mi.updateInstanceStatusInDB(ctx, tx, instanceID, status, statusMessage, nil)
+		if err != nil {
+			logger.Error().Err(err).Msg("failed to update Instance status detail in DB")
+			terr := tx.Rollback()
+			if terr != nil {
+				logger.Error().Err(terr).Msg("failed to rollback transaction")
+			}
+			return err
+		}
+	}
+
+	if interfaceStatus != nil {
+		// Update Instance Subnets in DB
+		iss, _, serr := interfaceDAO.GetAll(ctx, tx, cdbm.InterfaceFilterInput{InstanceIDs: []uuid.UUID{instanceID}}, paginator.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		if serr != nil {
+			logger.Error().Err(serr).Msg("failed to retrieve Instance Subnets from DB")
+			terr := tx.Rollback()
+			if terr != nil {
+				logger.Error().Err(terr).Msg("failed to rollback transaction")
+			}
+			return serr
+		}
+
+		for _, is := range iss {
+			_, serr := interfaceDAO.Update(ctx, tx, cdbm.InterfaceUpdateInput{InterfaceID: is.ID, Status: interfaceStatus})
+			if serr != nil {
+				logger.Error().Err(serr).Msg("failed to update Instance Subnet in DB")
+				terr := tx.Rollback()
+				if terr != nil {
+					logger.Error().Err(terr).Msg("failed to rollback transaction")
+				}
+				return serr
+			}
+		}
+	}
+
+	// Commit transaction
+	err = tx.Commit()
+	if err != nil {
+		logger.Error().Err(err).Msg("error committing Instance status update transaction to DB")
+		return err
+	}
+
+	logger.Info().Msg("successfully completed activity")
+
+	return nil
+}
+
+// UpdateInstancesInDB is a Temporal activity that takes a collection of Instance data pushed by Site Agent and updates the DB
+func (mi ManageInstance) UpdateInstancesInDB(ctx context.Context, siteID uuid.UUID, instanceInventory *cwsv1.InstanceInventory) ([]cwm.InventoryObjectLifecycleEvent, error) {
+	logger := log.With().Str("Activity", "UpdateInstancesInDB").Str("Site", siteID.String()).Logger()
+
+	logger.Info().Msg("starting activity")
+
+	// Initialize lifecycle events collector for metrics
+	instanceLifecycleEvents := []cwm.InventoryObjectLifecycleEvent{}
+
+	stDAO := cdbm.NewSiteDAO(mi.dbSession)
+
+	site, err := stDAO.GetByID(ctx, nil, siteID, nil, false)
+	if err != nil {
+		if err == cdb.ErrDoesNotExist {
+			logger.Warn().Err(err).Msg("received Machine inventory for unknown or deleted Site")
+		} else {
+			logger.Error().Err(err).Msg("failed to retrieve Site from DB")
+		}
+		return nil, err
+	}
+
+	if instanceInventory.InventoryStatus == cwsv1.InventoryStatus_INVENTORY_STATUS_FAILED {
+		logger.Warn().Msg("received failed inventory status from Site Agent, skipping inventory processing")
+		return nil, nil
+	}
+
+	instanceDAO := cdbm.NewInstanceDAO(mi.dbSession)
+
+	// Get all Instances for Site
+	existingInstances, _, err := instanceDAO.GetAll(ctx, nil, cdbm.InstanceFilterInput{SiteIDs: []uuid.UUID{site.ID}}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to get Instances for Site from DB")
+		return nil, err
+	}
+
+	// Construct a map of Controller Instance ID to Instance
+	existingInstanceIDMap := make(map[string]*cdbm.Instance)
+	existingInstanceCtrlIDMap := make(map[string]*cdbm.Instance)
+
+	for _, instance := range existingInstances {
+		curInstance := instance
+		existingInstanceIDMap[instance.ID.String()] = &curInstance
+
+		// Also check by Controller Instance ID
+		if instance.ControllerInstanceID != nil {
+			existingInstanceCtrlIDMap[instance.ControllerInstanceID.String()] = &curInstance
+		}
+	}
+
+	reportedInstanceIDMap := map[uuid.UUID]bool{}
+
+	if instanceInventory.InventoryPage != nil {
+		logger.Info().Msgf("Received Instance inventory page: %d of %d, page size: %d, total count: %d",
+			instanceInventory.InventoryPage.CurrentPage, instanceInventory.InventoryPage.TotalPages,
+			instanceInventory.InventoryPage.PageSize, instanceInventory.InventoryPage.TotalItems)
+
+		for _, strId := range instanceInventory.InventoryPage.ItemIds {
+			id, serr := uuid.Parse(strId)
+			if serr != nil {
+				logger.Error().Err(serr).Str("ID", strId).Msg("failed to parse Instance ID from inventory page")
+				continue
+			}
+			reportedInstanceIDMap[id] = true
+		}
+	}
+
+	// Get temporal client for specified Site
+	tc, err := mi.siteClientPool.GetClientByID(siteID)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Temporal client for Site")
+		return nil, err
+	}
+
+	// Prepare a map of ID -> propagation status
+	// so we can quickly attach it to the object
+	// when need to perform the update query.
+	instancePropagationStatus := map[string]*cdbm.NetworkSecurityGroupPropagationDetails{}
+	for _, propStatus := range instanceInventory.NetworkSecurityGroupPropagations {
+		instancePropagationStatus[propStatus.Id] = &cdbm.NetworkSecurityGroupPropagationDetails{NetworkSecurityGroupPropagationObjectStatus: propStatus}
+		logger.Debug().Str("Controller Instance ID", propStatus.Id).Msg("propagation details cached for Instance")
+	}
+
+	sdDAO := cdbm.NewStatusDetailDAO(mi.dbSession)
+
+	ethernetInterfacesToDelete := []*cdbm.Interface{}
+	infiniBandInterfacesToDelete := []*cdbm.InfiniBandInterface{}
+	nvlinkInterfacesToDelete := []*cdbm.NVLinkInterface{}
+
+	// Iterate through Instances in the inventory and update them in DB
+	for _, controllerInstance := range instanceInventory.Instances {
+		slogger := logger.With().Str("Controller Instance ID", controllerInstance.Id.Value).Logger()
+
+		instance, ok := existingInstanceCtrlIDMap[controllerInstance.Id.Value]
+		if !ok {
+			// Check if the Instance is found by ID (controllerInstance.ID.Value == cloudInstance.ID)
+			instance, ok = existingInstanceIDMap[controllerInstance.Id.Value]
+			if ok {
+				existingInstanceCtrlIDMap[controllerInstance.Id.Value] = instance
+			}
+		}
+
+		if instance == nil {
+			logger.Warn().Str("Controller Instance ID", controllerInstance.Id.Value).Msg("Instance does not have a record in DB, possibly created directly on Site")
+			continue
+		}
+
+		sitePropagationStatus := instancePropagationStatus[controllerInstance.Id.Value]
+		logger.Debug().Str("Controller Instance ID", controllerInstance.Id.Value).Msgf("cached propagation status for Instance %+v", sitePropagationStatus)
+
+		// NOTE: This will be used later to determine if we should delete
+		//       an instance from forge-cloud.  If the instance is marked as Terminating
+		//       in cloud-db an it isn't found in this map, it will be deleted.
+		//       We should _always_ track this, even if the inventory might be stale.
+		reportedInstanceIDMap[instance.ID] = true
+
+		// If the instance was updated at all since this inventory was received, we
+		// should probably consider the inventory details stale for this instance.
+		// We'll add a 5 second buffer to account for a little clock skew/drift.
+		// The only thing that might be safe to perform is propagation status clearing,
+		// but only if we never allow multiple inventory processes to run concurrently.
+		if time.Since(instance.Updated) < util.InventoryReceiptInterval+(time.Second*5) {
+			slogger.Warn().Msg("instance updated more recently than inventory received time, skipping processing")
+			continue
+		}
+
+		// Reset missing flag if necessary.
+		// If we're here, then it means we saw the instance in the
+		// inventory returned from the site.  If the instance in cloud-db
+		// had been marked as missing on site up to now, that should be
+		// reset because inventory is reporting it as on site now.
+		var isMissingOnSite *bool
+		if instance.IsMissingOnSite {
+			isMissingOnSite = cdb.GetBoolPtr(false)
+		}
+
+		// Populate controller Instance ID if necessary
+		var controllerInstanceID *uuid.UUID
+		if instance.ControllerInstanceID == nil {
+			ctrlID, serr := uuid.Parse(controllerInstance.Id.Value)
+			if serr != nil {
+				slogger.Error().Err(serr).Msg("failed to parse controller ID, not a valid UUID")
+				continue
+			}
+			controllerInstanceID = &ctrlID
+		}
+
+		// Verify if Update Instance required with Reboot
+		var isUpdatePending *bool
+		if controllerInstance.Status != nil {
+			if controllerInstance.Status.Update != nil {
+				// If Status.Update is populated and user approval has not been received
+				if !controllerInstance.Status.Update.UserApprovalReceived {
+					isUpdatePending = cdb.GetBoolPtr(true)
+				} else if instance.IsUpdatePending {
+					// An update was pending, user triggered it, Site Controller has acknowledged
+					isUpdatePending = cdb.GetBoolPtr(false)
+				}
+			} else if instance.IsUpdatePending {
+				// update was triggered by user, Site Controller has finished execution, hence Status.Update is no longer populated
+				isUpdatePending = cdb.GetBoolPtr(false)
+
+				// Update Instance update status in DB
+				err = mi.updateInstanceStatusInDB(ctx, nil, instance.ID, cdb.GetStrPtr(instance.Status), cdb.GetStrPtr("Instance updates have successfully been applied"), nil)
+				if err != nil {
+					// Log error and continue
+					slogger.Error().Err(err).Msg("failed to update Instance status detail in DB")
+				}
+			}
+		}
+
+		var tpmEkCertificateUpdated *bool
+		if controllerInstance.TpmEkCertificate != nil &&
+			(instance.TpmEkCertificate == nil || *instance.TpmEkCertificate != *controllerInstance.TpmEkCertificate) {
+			tpmEkCertificateUpdated = cdb.GetBoolPtr(true)
+		}
+
+		// NOTE:  When adding new properties, make sure to explicitly check for changes between
+		// the DB instance and the site-reported instance here.
+		//
+		// TODO:  We probably could use a function here to do the comparison for us.
+		needsUpdate := isMissingOnSite != nil ||
+			controllerInstanceID != nil ||
+			isUpdatePending != nil ||
+			tpmEkCertificateUpdated != nil ||
+			!util.NetworkSecurityGroupPropagationDetailsEqual(instance.NetworkSecurityGroupPropagationDetails, sitePropagationStatus)
+
+		if needsUpdate {
+			// If the Instance in the DB has propagation details but the site reported no propagation details
+			// then we should clear it in the DB.  Passing along the nil to the Update call would
+			// just ignore the field.
+			if instance.NetworkSecurityGroupPropagationDetails != nil && sitePropagationStatus == nil {
+				instance, err = instanceDAO.Clear(ctx, nil, cdbm.InstanceClearInput{
+					InstanceID:                             instance.ID,
+					NetworkSecurityGroupPropagationDetails: true,
+				})
+				if err != nil {
+					slogger.Error().Err(err).Msg("failed to clear NetworkSecurityGroupPropagationDetails for Instance in DB")
+					continue
+				}
+			}
+
+			// NOTE: InstanceType should NOT be updated.
+			// The type for an instance can't change because it inherits the type
+			// from its parent machine when an instance is allocated.
+
+			_, serr := instanceDAO.Update(ctx, nil, cdbm.InstanceUpdateInput{
+				InstanceID:                             instance.ID,
+				NetworkSecurityGroupID:                 controllerInstance.Config.NetworkSecurityGroupId,
+				NetworkSecurityGroupPropagationDetails: sitePropagationStatus,
+				ControllerInstanceID:                   controllerInstanceID,
+				IsUpdatePending:                        isUpdatePending,
+				IsMissingOnSite:                        isMissingOnSite,
+				TpmEkCertificate:                       controllerInstance.TpmEkCertificate,
+			})
+			if serr != nil {
+				slogger.Error().Err(serr).Msg("failed to update missing on Site flag/controller Instance ID in DB")
+				continue
+			}
+		}
+
+		var updatedInstanceStatus *string
+
+		if controllerInstance.Status != nil && controllerInstance.Status.Tenant != nil {
+			status, statusMessage := getForgeInstanceStatus(controllerInstance.Status.Tenant.State)
+			var powerStatus *string
+
+			// Get the status from the controller instance
+			updatedInstanceStatus = &status
+
+			// Even if the Instance is in a Terminating state according to the cloud DB,
+			// we should process the inventory returned from the site.
+
+			// Check if most recent status detail is the same as the current status, otherwise create a new one
+			updateStatusInDB := false
+			if instance.Status != status {
+				// Status is different, create a new status detail
+				updateStatusInDB = true
+			} else {
+				// Check if the latest status detail message is different from the current status message
+				// Leave orderBy nil since the result is sorted by create timestamp by default
+				latestsd, _, serr := sdDAO.GetAllByEntityID(ctx, nil, instance.ID.String(), nil, cdb.GetIntPtr(1), nil)
+				if serr != nil {
+					slogger.Error().Err(serr).Msg("failed to retrieve latest Status Detail for Instance")
+				} else if len(latestsd) == 0 || (latestsd[0].Message != nil && *latestsd[0].Message != statusMessage) {
+					updateStatusInDB = true
+				}
+			}
+
+			if updateStatusInDB {
+				serr := mi.updateInstanceStatusInDB(ctx, nil, instance.ID, &status, &statusMessage, nil)
+				if serr != nil {
+					slogger.Error().Err(serr).Msg("failed to update status and/or create Status Detail in DB")
+				} else {
+					// When instance becomes Ready, record a creation lifecycle event; actual duration is computed from StatusDetails
+					if status == cdbm.InstanceStatusReady {
+						slogger.Info().Str("To Status", status).Msg("recording instance create lifecycle event")
+						instanceLifecycleEvents = append(instanceLifecycleEvents, cwm.InventoryObjectLifecycleEvent{ObjectID: instance.ID, Created: cdb.GetTimePtr(time.Now())})
+					}
+				}
+			}
+
+			// Update power status if appropriate
+			if status == cdbm.InstanceStatusReady && (instance.PowerStatus == nil || *instance.PowerStatus != cdbm.InstancePowerStatusBootCompleted) {
+				powerStatus = cdb.GetStrPtr(cdbm.InstancePowerStatusBootCompleted)
+
+				// Update Instance status in DB
+				err = mi.updateInstanceStatusInDB(ctx, nil, instance.ID, nil, &statusMessage, powerStatus)
+				if err != nil {
+					// Log error and continue
+					slogger.Error().Err(err).Msg("failed to update Instance power status and add Status Detail in DB")
+				}
+			}
+		}
+
+		// Process/update Ethernet Interfaces in DB
+		// Process Interface type of VpcPrefix as well as Subnet
+		if controllerInstance.Config.Network != nil && controllerInstance.Status.Network != nil {
+			interfaceDAO := cdbm.NewInterfaceDAO(mi.dbSession)
+			interfaces, _, serr := interfaceDAO.GetAll(ctx, nil, cdbm.InterfaceFilterInput{InstanceIDs: []uuid.UUID{instance.ID}}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, []string{cdbm.SubnetRelationName, cdbm.VpcPrefixRelationName})
+			if serr != nil {
+				slogger.Error().Err(serr).Msg("failed to get Interfaces for Instance from DB")
+				continue
+			}
+
+			// Build either Subnet or VpcPrefix Map
+			interfaceMap := map[string]*cdbm.Interface{}
+			for _, ifc := range interfaces {
+				curIfc := ifc
+
+				// If the Interface is in Deleting state, add it into list of interfaces to be deleted
+				if ifc.Status == cdbm.InterfaceStatusDeleting {
+					if updatedInstanceStatus != nil && *updatedInstanceStatus == cdbm.InstanceStatusReady {
+						ethernetInterfacesToDelete = append(ethernetInterfacesToDelete, &curIfc)
+						continue
+					}
+				} else {
+					// Build multi DPU interface map where same VPC prefix can have multiple interfaces
+					if ifc.VpcPrefixID != nil && ifc.Device != nil {
+						// Multi DPU interface
+						deviceInstanceId := fmt.Sprintf("%s-%d", *ifc.Device, 0)
+						if ifc.DeviceInstance != nil {
+							deviceInstanceId = fmt.Sprintf("%s-%d", *ifc.Device, *ifc.DeviceInstance)
+						}
+						if ifc.IsPhysical {
+							deviceInstanceId = fmt.Sprintf("%s-physical", deviceInstanceId)
+						} else {
+							deviceInstanceId = fmt.Sprintf("%s-virtual-%d", deviceInstanceId, *ifc.VirtualFunctionID)
+						}
+						interfaceMap[deviceInstanceId] = &curIfc
+					} else if ifc.VpcPrefixID != nil {
+						// FNN interface
+						interfaceMap[ifc.VpcPrefixID.String()] = &curIfc
+					}
+
+					if ifc.SubnetID != nil && ifc.Status != cdbm.InterfaceStatusDeleting {
+						if ifc.Subnet.ControllerNetworkSegmentID == nil {
+							_, serr := interfaceDAO.Update(ctx, nil, cdbm.InterfaceUpdateInput{InterfaceID: ifc.ID, Status: cdb.GetStrPtr(cdbm.InterfaceStatusError)})
+							if serr != nil {
+								slogger.Error().Err(serr).Str("Interface ID", ifc.ID.String()).Msg("failed to update Interface in DB")
+							}
+						} else {
+							interfaceMap[ifc.Subnet.ControllerNetworkSegmentID.String()] = &curIfc
+						}
+					}
+				}
+
+			}
+
+			for idx, interfaceConfig := range controllerInstance.Config.Network.Interfaces {
+
+				var ok bool
+				var ifc *cdbm.Interface
+
+				// Parse the VpcPrefix if it is specified
+				if interfaceConfig.NetworkDetails != nil {
+					switch interfaceConfig.NetworkDetails.(type) {
+					case *cwsv1.InstanceInterfaceConfig_VpcPrefixId:
+						if interfaceConfig.Device != nil {
+							// Multi DPU interface
+							deviceInstanceId := fmt.Sprintf("%s-%d", *interfaceConfig.Device, interfaceConfig.DeviceInstance)
+							if interfaceConfig.FunctionType == cwsv1.InterfaceFunctionType_PHYSICAL_FUNCTION {
+								deviceInstanceId = fmt.Sprintf("%s-physical", deviceInstanceId)
+							} else {
+								deviceInstanceId = fmt.Sprintf("%s-virtual-%d", deviceInstanceId, *interfaceConfig.VirtualFunctionId)
+							}
+							ifc, ok = interfaceMap[deviceInstanceId]
+						} else {
+							// FNN interface
+							ifc, ok = interfaceMap[interfaceConfig.NetworkDetails.(*cwsv1.InstanceInterfaceConfig_VpcPrefixId).VpcPrefixId.Value]
+						}
+					case *cwsv1.InstanceInterfaceConfig_SegmentId:
+						ifc, ok = interfaceMap[interfaceConfig.NetworkDetails.(*cwsv1.InstanceInterfaceConfig_SegmentId).SegmentId.Value]
+					}
+				} else {
+					if interfaceConfig.NetworkSegmentId != nil {
+						ifc, ok = interfaceMap[interfaceConfig.NetworkSegmentId.Value]
+					}
+				}
+
+				if !ok {
+					continue
+				}
+
+				interfaceStatus := controllerInstance.Status.Network.Interfaces[idx]
+				if interfaceStatus != nil {
+					// Update Instance Subnet attributes and status in DB
+					var vfID *int
+					if interfaceStatus.VirtualFunctionId != nil {
+						vfID = cdb.GetIntPtr(int(*interfaceStatus.VirtualFunctionId))
+					}
+					macAddress := interfaceStatus.MacAddress
+					ipAddresses := []string{}
+					ipAddresses = append(ipAddresses, interfaceStatus.Addresses...)
+
+					// Update device and device_instance  if specified in the inventory
+					var device *string
+					var deviceInstance *int
+
+					if interfaceStatus.Device != nil {
+						device = interfaceStatus.Device
+						// if device is specified, consider default device instance even if it is not specified in the inventory
+						deviceInstance = cdb.GetIntPtr(int(interfaceStatus.DeviceInstance))
+					}
+
+					var status *string
+					if controllerInstance.Status.Network.ConfigsSynced == cwsv1.SyncState_SYNCED {
+						status = cdb.GetStrPtr(cdbm.InterfaceStatusReady)
+					}
+
+					_, serr := interfaceDAO.Update(ctx, nil, cdbm.InterfaceUpdateInput{InterfaceID: ifc.ID, Device: device, DeviceInstance: deviceInstance, VirtualFunctionID: vfID, MacAddress: macAddress, IpAddresses: ipAddresses, Status: status})
+					if serr != nil {
+						slogger.Error().Err(serr).Str("Interface ID", ifc.ID.String()).Msg("failed to update Interface in DB")
+					}
+				}
+			}
+		} else {
+			slogger.Error().Err(err).Msg("site controller Instance is missing network config and or status")
+		}
+
+		// Process/update InfiniBand Interfaces in DB
+		ibiDAO := cdbm.NewInfiniBandInterfaceDAO(mi.dbSession)
+		infiniBandInterfaces, _, serr := ibiDAO.GetAll(
+			ctx,
+			nil,
+			cdbm.InfiniBandInterfaceFilterInput{
+				InstanceIDs: []uuid.UUID{instance.ID},
+			},
+			paginator.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)},
+			[]string{cdbm.InfiniBandPartitionRelationName},
+		)
+		if serr != nil {
+			slogger.Error().Err(serr).Msg("failed to get InfiniBand Interfaces for Instance from DB")
+			continue
+		}
+
+		infiniBandInterfaceMap := map[string]*cdbm.InfiniBandInterface{}
+
+		for _, ibifc := range infiniBandInterfaces {
+			curIbIfc := ibifc
+			// If the InfiniBand Interface is in Deleting state, add it into list of InfiniBand Interfaces to be deleted
+			if ibifc.Status == cdbm.InfiniBandInterfaceStatusDeleting {
+				if updatedInstanceStatus != nil && *updatedInstanceStatus == cdbm.InstanceStatusReady {
+					infiniBandInterfacesToDelete = append(infiniBandInterfacesToDelete, &curIbIfc)
+					continue
+				}
+			}
+
+			if ibifc.InfiniBandPartition.ControllerIBPartitionID == nil {
+				_, serr := ibiDAO.Update(
+					ctx,
+					nil,
+					cdbm.InfiniBandInterfaceUpdateInput{
+						InfiniBandInterfaceID: ibifc.ID,
+						Status:                cdb.GetStrPtr(cdbm.InfiniBandInterfaceStatusError),
+					},
+				)
+				if serr != nil {
+					slogger.Error().Err(serr).Str("InfiniBand Interface ID", curIbIfc.ID.String()).Msg("failed to update InfiniBand Interface in DB")
+				}
+			} else {
+				// Construct a map of InfiniBand Interface ID to InfiniBand Interface
+				// using the InfiniBand Partition ID, device and device Instance
+				// as the key
+				ibifcKey := fmt.Sprintf("%s-%s-%d", ibifc.InfiniBandPartition.ControllerIBPartitionID.String(), ibifc.Device, ibifc.DeviceInstance)
+				infiniBandInterfaceMap[ibifcKey] = &curIbIfc
+			}
+		}
+
+		if controllerInstance.Config.Infiniband != nil && controllerInstance.Status.Infiniband != nil {
+			for idx, interfaceConfig := range controllerInstance.Config.Infiniband.IbInterfaces {
+				ibifcKey := fmt.Sprintf("%s-%s-%d", interfaceConfig.IbPartitionId.Value, interfaceConfig.Device, interfaceConfig.DeviceInstance)
+				ibifc, ok := infiniBandInterfaceMap[ibifcKey]
+				if !ok {
+					continue
+				}
+
+				interfaceStatus := controllerInstance.Status.Infiniband.IbInterfaces[idx]
+				if interfaceStatus != nil {
+					var physicalGUID *string
+					if interfaceStatus.PfGuid != nil && (ibifc.PhysicalGUID == nil || *ibifc.PhysicalGUID != *interfaceStatus.PfGuid) {
+						physicalGUID = interfaceStatus.PfGuid
+					}
+
+					var guid *string
+					if interfaceStatus.Guid != nil && (ibifc.GUID == nil || *ibifc.GUID != *interfaceStatus.Guid) {
+						guid = interfaceStatus.Guid
+					}
+
+					var status *string
+					if controllerInstance.Status.Infiniband.ConfigsSynced == cwsv1.SyncState_SYNCED {
+						status = cdb.GetStrPtr(cdbm.InterfaceStatusReady)
+					}
+
+					if guid == nil && status == nil {
+						continue
+					}
+
+					_, serr := ibiDAO.Update(
+						ctx,
+						nil,
+						cdbm.InfiniBandInterfaceUpdateInput{
+							InfiniBandInterfaceID: ibifc.ID,
+							PhysicalGUID:          physicalGUID,
+							GUID:                  guid,
+							Status:                status,
+						},
+					)
+					if serr != nil {
+						slogger.Error().Err(serr).Str("InfiniBand Interface ID", ibifc.ID.String()).Msg("failed to update InfiniBand Interface in DB")
+					}
+				}
+			}
+		}
+
+		// Process/update DPU Extension Service Deployments in DB
+		desdDAO := cdbm.NewDpuExtensionServiceDeploymentDAO(mi.dbSession)
+		desds, _, serr := desdDAO.GetAll(ctx, nil, cdbm.DpuExtensionServiceDeploymentFilterInput{
+			InstanceIDs: []uuid.UUID{instance.ID},
+		}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		if serr != nil {
+			slogger.Error().Err(serr).Msg("failed to get DPU Extension Service Deployments for Instance from DB")
+			continue
+		}
+
+		desdMap := map[string]*cdbm.DpuExtensionServiceDeployment{}
+		controllerDesdMap := map[string]*cdbm.DpuExtensionServiceDeployment{}
+
+		for _, desd := range desds {
+			curDesd := desd
+			desvID := fmt.Sprintf("%s-%s", curDesd.DpuExtensionServiceID.String(), curDesd.Version)
+			desdMap[desvID] = &curDesd
+		}
+
+		if controllerInstance.Config.DpuExtensionServices != nil && controllerInstance.Status.DpuExtensionServices != nil {
+			for _, desdStatus := range controllerInstance.Status.DpuExtensionServices.DpuExtensionServices {
+				desvID := fmt.Sprintf("%s-%s", desdStatus.ServiceId, desdStatus.Version)
+				desd, exists := desdMap[desvID]
+				if !exists {
+					logger.Warn().Str("DPU Extension Service Deployment ID", desvID).Msg("DPU Extension Service Deployment does not exist in DB, possibly created directly on Site")
+					// NOTE: Should we automatically create a new DPU Extension Service Deployment record in DB?
+					continue
+				}
+
+				controllerDesdMap[desvID] = desd
+
+				var status *string
+				switch desdStatus.DeploymentStatus {
+				case cwsv1.DpuExtensionServiceDeploymentStatus_DPU_EXTENSION_SERVICE_PENDING:
+					status = cdb.GetStrPtr(cdbm.DpuExtensionServiceDeploymentStatusPending)
+				case cwsv1.DpuExtensionServiceDeploymentStatus_DPU_EXTENSION_SERVICE_RUNNING:
+					status = cdb.GetStrPtr(cdbm.DpuExtensionServiceDeploymentStatusRunning)
+				case cwsv1.DpuExtensionServiceDeploymentStatus_DPU_EXTENSION_SERVICE_TERMINATING:
+					status = cdb.GetStrPtr(cdbm.DpuExtensionServiceDeploymentStatusTerminating)
+				case cwsv1.DpuExtensionServiceDeploymentStatus_DPU_EXTENSION_SERVICE_TERMINATED:
+					// This state is unlikely to be seen but in case we see it, Site is still in the process of removing the entry
+					status = cdb.GetStrPtr(cdbm.DpuExtensionServiceDeploymentStatusTerminating)
+				case cwsv1.DpuExtensionServiceDeploymentStatus_DPU_EXTENSION_SERVICE_ERROR:
+					status = cdb.GetStrPtr(cdbm.DpuExtensionServiceDeploymentStatusError)
+				case cwsv1.DpuExtensionServiceDeploymentStatus_DPU_EXTENSION_SERVICE_FAILED:
+					status = cdb.GetStrPtr(cdbm.DpuExtensionServiceDeploymentStatusFailed)
+				}
+
+				if status == nil || *status == desd.Status {
+					continue
+				}
+
+				_, serr := desdDAO.Update(ctx, nil, cdbm.DpuExtensionServiceDeploymentUpdateInput{
+					DpuExtensionServiceDeploymentID: desd.ID,
+					Status:                          status,
+				})
+				if serr != nil {
+					logger.Error().Err(serr).Str("DPU Extension Service Deployment ID", desd.ID.String()).Msg("failed to update DPU Extension Service Deployment in DB")
+				}
+			}
+		}
+
+		// Delete DPU Extension Service Deployments that are not present in the controller Instance
+		for desvID, desd := range desdMap {
+			_, exists := controllerDesdMap[desvID]
+
+			if !exists {
+				// If the DPU Extension Service Deployment was modified within stale inventory threshold, defer to next inventory update
+				if util.IsTimeWithinStaleInventoryThreshold(desd.Updated) {
+					continue
+				}
+
+				serr := desdDAO.Delete(ctx, nil, desd.ID)
+				if serr != nil {
+					logger.Error().Err(serr).Str("DPU Extension Service Deployment ID", desd.ID.String()).Msg("failed to delete DPU Extension Service Deployment from DB")
+				}
+			}
+		}
+
+		// Process/update NVLink Interfaces in DB
+		nvlinkInterfaceDAO := cdbm.NewNVLinkInterfaceDAO(mi.dbSession)
+		nvlinkInterfaces, _, serr := nvlinkInterfaceDAO.GetAll(
+			ctx,
+			nil,
+			cdbm.NVLinkInterfaceFilterInput{
+				InstanceIDs: []uuid.UUID{instance.ID},
+			},
+			paginator.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)},
+			[]string{cdbm.NVLinkLogicalPartitionRelationName},
+		)
+
+		if serr != nil {
+			slogger.Error().Err(serr).Msg("failed to get NVLink Interfaces for Instance from DB")
+			continue
+		}
+
+		nvlinkInterfaceMap := map[string]*cdbm.NVLinkInterface{}
+		for _, nvlinkInterface := range nvlinkInterfaces {
+			curNvlinkInterface := nvlinkInterface
+			// If the InfiniBand Interface is in Deleting state, add it into list of InfiniBand Interfaces to be deleted
+			if nvlinkInterface.Status == cdbm.NVLinkInterfaceStatusDeleting {
+				if updatedInstanceStatus != nil && *updatedInstanceStatus == cdbm.InstanceStatusReady {
+					nvlinkInterfacesToDelete = append(nvlinkInterfacesToDelete, &curNvlinkInterface)
+					continue
+				}
+			}
+			// Construct a map of NVLink Interface ID to NVLink Interface
+			// using the Device and Gpu Index as the key
+			nvlifcKey := fmt.Sprintf("%d", nvlinkInterface.DeviceInstance)
+			nvlinkInterfaceMap[nvlifcKey] = &curNvlinkInterface
+		}
+
+		if controllerInstance.Config.Nvlink != nil && controllerInstance.Status.Nvlink != nil {
+			for idx, nvlinkGpuConfig := range controllerInstance.Config.Nvlink.GpuConfigs {
+				nvlifcKey := fmt.Sprintf("%d", nvlinkGpuConfig.DeviceInstance)
+				nvlifc, ok := nvlinkInterfaceMap[nvlifcKey]
+				if !ok {
+					logger.Warn().Str("NVLink Interface Key", nvlifcKey).Msg("NVLink Interface does not exist in DB, possibly created directly on Site")
+					continue
+				}
+
+				nvlinkGpuStatus := controllerInstance.Status.Nvlink.GpuStatuses[idx]
+				if nvlinkGpuStatus != nil {
+					var gpuGuid *string
+					if nvlinkGpuStatus.GpuGuid != nil && (nvlifc.GpuGUID == nil || *nvlifc.GpuGUID != *nvlinkGpuStatus.GpuGuid) {
+						gpuGuid = nvlinkGpuStatus.GpuGuid
+					}
+
+					var nvlinkLogicalPartitionID *uuid.UUID
+					if nvlinkGpuStatus.LogicalPartitionId != nil {
+						nvllpID, serr := uuid.Parse(nvlinkGpuStatus.LogicalPartitionId.Value)
+						if serr != nil {
+							slogger.Error().Err(serr).Msg("failed to parse NVLink Logical Partition ID, not a valid UUID")
+							continue
+						}
+
+						if nvlifc.NVLinkLogicalPartitionID != nvllpID {
+							// Make sure NVLink Logical Partition ID is exists in DB
+							nvllpDAO := cdbm.NewNVLinkLogicalPartitionDAO(mi.dbSession)
+							nvllp, err := nvllpDAO.GetByID(ctx, nil, nvllpID, nil)
+							if err != nil {
+								slogger.Error().Err(err).Msg("failed to get NVLink Logical Partition from DB")
+								continue
+							}
+							if nvllp == nil {
+								slogger.Error().Str("NVLink Logical Partition ID", nvlinkLogicalPartitionID.String()).Msg("NVLink Logical Partition does not exist in DB")
+								continue
+							}
+							nvlinkLogicalPartitionID = &nvllpID
+						}
+					}
+
+					var nvlinkDomainID *uuid.UUID
+					if nvlinkGpuStatus.DomainId != nil {
+						domainID, serr := uuid.Parse(nvlinkGpuStatus.DomainId.Value)
+						if serr != nil {
+							slogger.Warn().Err(serr).Msg("failed to parse NVLink Domain ID, not a valid UUID")
+						} else if nvlifc.NVLinkDomainID == nil || *nvlifc.NVLinkDomainID != domainID {
+							nvlinkDomainID = &domainID
+						}
+					}
+
+					var status *string
+					if controllerInstance.Status.Nvlink.ConfigsSynced == cwsv1.SyncState_SYNCED && nvlifc.Status != cdbm.NVLinkInterfaceStatusReady {
+						status = cdb.GetStrPtr(cdbm.NVLinkInterfaceStatusReady)
+					}
+
+					if gpuGuid == nil && status == nil && nvlinkDomainID == nil && nvlinkLogicalPartitionID == nil {
+						continue
+					}
+
+					_, serr = nvlinkInterfaceDAO.Update(
+						ctx,
+						nil,
+						cdbm.NVLinkInterfaceUpdateInput{
+							NVLinkInterfaceID: nvlifc.ID,
+							GpuGUID:           gpuGuid,
+							NVLinkDomainID:    nvlinkDomainID,
+							Status:            status,
+						},
+					)
+
+					if serr != nil {
+						slogger.Error().Err(serr).Str("NVLink Interface ID", nvlifc.ID.String()).Msg("failed to update NVLink Interface in DB")
+					}
+				}
+			}
+		}
+
+		// Verify if Instance's metadata update required, if yes trigger `UpdateInstance` workflow
+		if controllerInstance.Metadata != nil {
+			triggerInstanceMetadataUpdate := false
+
+			if instance.Name != controllerInstance.Metadata.Name {
+				triggerInstanceMetadataUpdate = true
+			}
+
+			if instance.Description != nil && *instance.Description != controllerInstance.Metadata.Description {
+				triggerInstanceMetadataUpdate = true
+			}
+
+			if controllerInstance.Metadata.Labels != nil && instance.Labels != nil {
+				if len(instance.Labels) != len(controllerInstance.Metadata.Labels) {
+					triggerInstanceMetadataUpdate = true
+				} else {
+					// Verify if each label matches with Instance in cloud
+					for _, label := range controllerInstance.Metadata.Labels {
+						if label != nil {
+							// case1: Key not found
+							_, ok := instance.Labels[label.Key]
+							if !ok {
+								triggerInstanceMetadataUpdate = true
+								break
+							}
+
+							// case2: Value isn't matching
+							if label.Value != nil {
+								if instance.Labels[label.Key] != *label.Value {
+									triggerInstanceMetadataUpdate = true
+									break
+								}
+							}
+						}
+					}
+				}
+			}
+
+			// Trigger update instance metadata workflow
+			if triggerInstanceMetadataUpdate {
+				_ = mi.UpdateInstanceMetadata(ctx, siteID, tc, instance.ID, controllerInstance)
+			}
+		}
+	}
+
+	// Process Instances that were not found
+	instancesToTerminate := []*cdbm.Instance{}
+
+	// If inventory paging is enabled, we only need to do this once and we do it on the last page
+	if instanceInventory.InventoryPage == nil || instanceInventory.InventoryPage.TotalPages == 0 || (instanceInventory.InventoryPage.CurrentPage == instanceInventory.InventoryPage.TotalPages) {
+		for _, instance := range existingInstanceIDMap {
+			found := false
+
+			_, found = reportedInstanceIDMap[instance.ID]
+			if !found && instance.ControllerInstanceID != nil {
+				// Additional check if controller Instance ID != Instance ID
+				_, found = reportedInstanceIDMap[*instance.ControllerInstanceID]
+			}
+
+			if !found {
+				// The Instance was not found in the Instance Inventory, so add it to list of Instances to potentially terminate
+				instancesToTerminate = append(instancesToTerminate, instance)
+			}
+		}
+	}
+
+	// Loop through and remove controller Instance ID from Instances that were not found
+	// Ignore errors as next Inventory update will process them
+	for _, instance := range instancesToTerminate {
+		slogger := logger.With().Str("Instance ID", instance.ID.String()).Logger()
+
+		// If the Instance was terminating, we can proceed with removing it from the DB
+		if instance.Status == cdbm.InstanceStatusTerminating {
+			tx, err := cdb.BeginTx(ctx, mi.dbSession, &sql.TxOptions{})
+			if err != nil {
+				slogger.Error().Err(err).Msg("failed to start transaction")
+				return nil, err
+			}
+
+			serr := mi.deleteInstanceFromDB(ctx, tx, instance, logger)
+			if serr != nil {
+				slogger.Error().Err(serr).Str("Instance ID", instance.ID.String()).Msg("failed to delete Instance from DB")
+				terr := tx.Rollback()
+				if terr != nil {
+					slogger.Error().Err(terr).Msg("failed to rollback transaction")
+				}
+			} else {
+				err = tx.Commit()
+				if err != nil {
+					slogger.Error().Err(err).Msg("error committing Instance delete transaction to DB")
+				} else {
+					// Add delete lifecycle event for metrics
+					slogger.Info().Str("Instance ID", instance.ID.String()).Msg("recording instance delete lifecycle event")
+					instanceLifecycleEvents = append(instanceLifecycleEvents, cwm.InventoryObjectLifecycleEvent{ObjectID: instance.ID, Deleted: cdb.GetTimePtr(time.Now())})
+				}
+			}
+		} else if instance.ControllerInstanceID != nil {
+			// Was this created within inventory receipt interval? If so, we may be processing an older inventory
+			if time.Since(instance.Created) < cwu.InventoryReceiptInterval {
+				continue
+			}
+
+			status := cdbm.InstanceStatusError
+			statusMessage := "Instance is missing on Site"
+
+			// Leave orderBy as nil as the result is sorted by created timestamp by default
+			if status == instance.Status {
+				latestsd, _, serr := sdDAO.GetAllByEntityID(ctx, nil, instance.ID.String(), nil, cdb.GetIntPtr(1), nil)
+				if serr != nil {
+					slogger.Error().Err(serr).Msg("failed to retrieve latest Status Detail for Instance")
+					continue
+				}
+
+				if len(latestsd) > 0 && latestsd[0].Message != nil && *latestsd[0].Message == statusMessage {
+					continue
+				}
+			}
+
+			// Set isMissingOnSite flag to true and update status/create status detail, user can decide on deletion
+			_, serr := instanceDAO.Update(ctx, nil, cdbm.InstanceUpdateInput{InstanceID: instance.ID, IsMissingOnSite: cdb.GetBoolPtr(true)})
+			if serr != nil {
+				// Log error and continue
+				slogger.Error().Err(serr).Msg("failed to set missing on Site flag in DB")
+			}
+
+			// Only raise error Instance was created on Site and was created more than 5 minutes ago
+			serr = mi.updateInstanceStatusInDB(ctx, nil, instance.ID, &status, &statusMessage, nil)
+			if serr != nil {
+				// Log error and continue
+				slogger.Error().Err(serr).Msg("failed to update status and/or create Status Detail in DB")
+			}
+		}
+	}
+
+	// When Instance is in Ready state, we can delete the interfaces which are in Deleting state
+	if len(ethernetInterfacesToDelete) > 0 {
+		interfaceDAO := cdbm.NewInterfaceDAO(mi.dbSession)
+		for _, ifc := range ethernetInterfacesToDelete {
+			serr := interfaceDAO.Delete(ctx, nil, ifc.ID)
+			if serr != nil {
+				logger.Error().Err(serr).Str("Interface ID", ifc.ID.String()).Msg("failed to delete Interface from DB")
+			}
+		}
+	}
+
+	// When Instance is in Ready state, we can delete the InfiniBand Interfaces which are in Deleting state
+	if len(infiniBandInterfacesToDelete) > 0 {
+		ibifcDAO := cdbm.NewInfiniBandInterfaceDAO(mi.dbSession)
+		for _, ibfc := range infiniBandInterfacesToDelete {
+			serr := ibifcDAO.Delete(ctx, nil, ibfc.ID)
+			if serr != nil {
+				logger.Error().Err(serr).Str("InfiniBand Interface ID", ibfc.ID.String()).Msg("failed to delete InfiniBand Interface from DB")
+			}
+		}
+	}
+
+	if len(nvlinkInterfacesToDelete) > 0 {
+		nvlifcDAO := cdbm.NewNVLinkInterfaceDAO(mi.dbSession)
+		for _, nvlifc := range nvlinkInterfacesToDelete {
+			// If the NVLink Interface was modified within stale inventory threshold, defer to next inventory update
+			if util.IsTimeWithinStaleInventoryThreshold(nvlifc.Updated) {
+				continue
+			}
+			serr := nvlifcDAO.Delete(ctx, nil, nvlifc.ID)
+			if serr != nil {
+				logger.Error().Err(serr).Str("NVLink Interface ID", nvlifc.ID.String()).Msg("failed to delete NVLink Interface from DB")
+			}
+		}
+	}
+
+	return instanceLifecycleEvents, nil
+}
+
+// UpdateRebootInstanceInDB is a temporal activity which
+// updates the reboot Instance status in the DB from data pushed by Site Controller
+func (mi ManageInstance) UpdateRebootInstanceInDB(ctx context.Context, transactionID *cwsv1.TransactionID, instanceRebootInfo *cwsv1.InstanceRebootInfo) error {
+	logger := log.With().Str("Activity", "UpdateRebootInstanceInDB").Str("Instance ID", transactionID.ResourceId).Logger()
+
+	logger.Info().Msg("starting activity")
+
+	instanceDAO := cdbm.NewInstanceDAO(mi.dbSession)
+
+	instanceID, err := uuid.Parse(transactionID.ResourceId)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to parse Instance ID from transaction ID")
+		return err
+	}
+
+	instance, err := instanceDAO.GetByID(ctx, nil, instanceID, []string{cdbm.MachineRelationName})
+	if err != nil {
+		if err == cdb.ErrDoesNotExist {
+			logger.Error().Err(err).Msg("could not find Instance from DB by resource ID specified in Site agent transaction ID")
+		} else {
+			logger.Error().Err(err).Msg("failed to retrieve Instance from DB by resource ID specified in Site agent transaction ID")
+		}
+		return err
+	}
+
+	logger.Info().Msg("retrieved Instance from DB")
+
+	if instance.Machine == nil {
+		errMsg := "failed to retrieve Machine related to Instance"
+		logger.Error().Msg(errMsg)
+		return errors.New(errMsg)
+	}
+
+	// If Machine ID is present then check it against DB
+	if instanceRebootInfo.MachineId == nil {
+		errMsg := "Instance reboot info is mising Controller Machine ID"
+		logger.Error().Msg(errMsg)
+		return errors.New(errMsg)
+	}
+
+	controllerMachineID := instanceRebootInfo.MachineId.Id
+
+	if instance.Machine.ControllerMachineID != controllerMachineID {
+		errMsg := "Instance's Controller Machine ID does not match the ID specified in Instance Reboot info"
+		logger.Error().Str("Controller Machine ID", controllerMachineID).Msg(errMsg)
+		return errors.New(errMsg)
+	}
+
+	// Start a db tx
+	tx, err := cdb.BeginTx(ctx, mi.dbSession, &sql.TxOptions{})
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to start transaction")
+		return err
+	}
+
+	var powerStatus *string
+	var statusMessage *string
+
+	if instanceRebootInfo.Status == cwsv1.WorkflowStatus_WORKFLOW_STATUS_SUCCESS {
+		switch instanceRebootInfo.ObjectStatus {
+		case cwsv1.ObjectStatus_OBJECT_STATUS_UPDATED:
+			// NOTE: Site Controller currently does not provide any state change for rebooting. So we set the power status back to
+			// BootCompleted once Site Agent acknowledges a successful reboot request
+			powerStatus = cdb.GetStrPtr(cdbm.InstancePowerStatusBootCompleted)
+			statusMessage = cdb.GetStrPtr("Reboot successfully triggered for Instance on Site")
+		case cwsv1.ObjectStatus_OBJECT_STATUS_IN_PROGRESS:
+			powerStatus = cdb.GetStrPtr(cdbm.InstancePowerStatusRebooting)
+			statusMessage = cdb.GetStrPtr("Instance reboot is in progress on Site")
+		case cwsv1.ObjectStatus_OBJECT_STATUS_READY:
+			powerStatus = cdb.GetStrPtr(cdbm.InstancePowerStatusBootCompleted)
+			statusMessage = cdb.GetStrPtr("Instance reboot was completed")
+		}
+	} else if instanceRebootInfo.Status == cwsv1.WorkflowStatus_WORKFLOW_STATUS_FAILURE {
+		powerStatus = cdb.GetStrPtr(cdbm.InstancePowerStatusError)
+		statusMessage = cdb.GetStrPtr(instanceRebootInfo.StatusMsg)
+	}
+
+	if powerStatus != nil {
+		err = mi.updateInstanceStatusInDB(ctx, tx, instanceID, nil, statusMessage, powerStatus)
+		if err != nil {
+			logger.Error().Err(err).Msg("failed to update reboot Instance status detail in DB")
+			terr := tx.Rollback()
+			if terr != nil {
+				logger.Error().Err(terr).Msg("failed to rollback transaction")
+			}
+			return err
+		}
+	}
+
+	// Commit transaction
+	err = tx.Commit()
+	if err != nil {
+		logger.Error().Err(err).Msg("error committing reboot Instance status update transaction to DB")
+		return err
+	}
+
+	logger.Info().Msg("successfully completed activity")
+
+	return nil
+}
+
+// deleteInstanceFromDB deletes an instance from the DB
+func (mi ManageInstance) deleteInstanceFromDB(ctx context.Context, tx *cdb.Tx, instance *cdbm.Instance, logger zerolog.Logger) error {
+	instanceDAO := cdbm.NewInstanceDAO(mi.dbSession)
+
+	// Soft-delete instance
+	err := instanceDAO.Delete(ctx, tx, instance.ID)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to delete Instance from DB")
+		terr := tx.Rollback()
+		if terr != nil {
+			logger.Error().Err(terr).Msg("failed to rollback transaction")
+		}
+		return err
+	}
+
+	// Delete interface(s) corresponding to instance
+	isDAO := cdbm.NewInterfaceDAO(mi.dbSession)
+
+	iss, _, err := isDAO.GetAll(ctx, tx, cdbm.InterfaceFilterInput{InstanceIDs: []uuid.UUID{instance.ID}}, cdbp.PageInput{}, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve interfaces from DB")
+		terr := tx.Rollback()
+		if terr != nil {
+			logger.Error().Err(terr).Msg("failed to rollback transaction")
+		}
+		return err
+	}
+	for _, is := range iss {
+		serr := isDAO.Delete(ctx, tx, is.ID)
+		if serr != nil {
+			logger.Error().Err(serr).Msg("failed to delete instance subnet for instance from DB")
+			terr := tx.Rollback()
+			if terr != nil {
+				logger.Error().Err(terr).Msg("failed to rollback transaction")
+			}
+			return serr
+		}
+	}
+
+	// Delete SSH Key Group Instance associations
+	skgiaDAO := cdbm.NewSSHKeyGroupInstanceAssociationDAO(mi.dbSession)
+	skgias, _, err := skgiaDAO.GetAll(ctx, tx, nil, nil, []uuid.UUID{instance.ID}, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve SSH Key Group Instance associations from DB")
+		terr := tx.Rollback()
+		if terr != nil {
+			logger.Error().Err(terr).Msg("failed to rollback transaction")
+		}
+		return err
+	}
+	for _, skgia := range skgias {
+		serr := skgiaDAO.DeleteByID(ctx, tx, skgia.ID)
+		if serr != nil {
+			logger.Error().Err(serr).Msg("failed to delete SSH Key Group Instance association from DB")
+			terr := tx.Rollback()
+			if terr != nil {
+				logger.Error().Err(terr).Msg("failed to rollback transaction")
+			}
+			return serr
+		}
+	}
+
+	// clear isAssigned on the machine
+	if instance.MachineID != nil {
+		serr := mi.clearMachineIsAssigned(ctx, tx, logger, *instance.MachineID)
+		if serr != nil {
+			logger.Error().Err(serr).Msg("failed to clear isAssigned field in machine in DB")
+			terr := tx.Rollback()
+			if terr != nil {
+				logger.Error().Err(terr).Msg("failed to rollback transaction")
+			}
+			return serr
+		}
+	}
+
+	return nil
+}
+
+// clearMachineIsAssigned is a utility function to set the isAssigned state in the machine to false
+// tx must be non-nil when calling this function
+func (mi ManageInstance) clearMachineIsAssigned(ctx context.Context, tx *cdb.Tx, logger zerolog.Logger, machineID string) error {
+	mDAO := cdbm.NewMachineDAO(mi.dbSession)
+	machine, err := mDAO.GetByID(ctx, tx, machineID, nil, false)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve machine for instance from DB")
+		return err
+	}
+	if !machine.IsAssigned {
+		return nil
+	}
+	// Acquire an advisory lock on the machine, the lock is released when transaction
+	// commits or rollsback
+	err = tx.AcquireAdvisoryLock(ctx, cdb.GetAdvisoryLockIDFromString(machine.ID), false)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to take advisory lock on machine for update")
+		return err
+	}
+	updateInput := cdbm.MachineUpdateInput{
+		MachineID:  machine.ID,
+		IsAssigned: cdb.GetBoolPtr(false),
+	}
+	_, err = mDAO.Update(ctx, tx, updateInput)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to update machine isassigned in DB")
+		return err
+	}
+	return err
+}
+
+// updateInstanceStatusInDB is helper function to write Instance status updates to DB
+func (mi ManageInstance) updateInstanceStatusInDB(ctx context.Context, tx *cdb.Tx, instanceID uuid.UUID, status *string, statusMessage *string, powerStatus *string) error {
+	if status == nil && powerStatus == nil {
+		return nil
+	}
+	instanceDAO := cdbm.NewInstanceDAO(mi.dbSession)
+	_, err := instanceDAO.Update(ctx, tx, cdbm.InstanceUpdateInput{InstanceID: instanceID, Status: status, PowerStatus: powerStatus})
+	if err != nil {
+		return err
+	}
+
+	statusDetailDAO := cdbm.NewStatusDetailDAO(mi.dbSession)
+	if powerStatus != nil {
+		_, err = statusDetailDAO.CreateFromParams(ctx, tx, instanceID.String(), *powerStatus, statusMessage)
+	} else {
+		_, err = statusDetailDAO.CreateFromParams(ctx, tx, instanceID.String(), *status, statusMessage)
+	}
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Utility function to get Forge Instance status from Controller Instance state
+func getForgeInstanceStatus(controllerInstanceTenantState cwsv1.TenantState) (string, string) {
+	switch controllerInstanceTenantState {
+	case cwsv1.TenantState_PROVISIONING:
+		return cdbm.InstanceStatusProvisioning, "Instance is being provisioned on Site"
+	case cwsv1.TenantState_READY:
+		return cdbm.InstanceStatusReady, "Instance is ready for use"
+	case cwsv1.TenantState_CONFIGURING:
+		return cdbm.InstanceStatusConfiguring, "Instance is being configured on Site"
+	case cwsv1.TenantState_TERMINATING:
+		return cdbm.InstanceStatusTerminating, "Instance is terminating on Site"
+	case cwsv1.TenantState_TERMINATED:
+		return cdbm.InstanceStatusTerminated, "Instance has been terminated on Site"
+	case cwsv1.TenantState_FAILED:
+		return cdbm.InstanceStatusError, "Instance is in error state"
+	// Deprecated in favor of TenantState_UPDATING
+	case cwsv1.TenantState_DPU_REPROVISIONING:
+		return cdbm.InstanceStatusUpdating, "Instance is receiving system firmware updates"
+	// Deprecated in favor of TenantState_UPDATING
+	case cwsv1.TenantState_HOST_REPROVISIONING:
+		return cdbm.InstanceStatusUpdating, "Instance is receiving system firmware updates"
+	case cwsv1.TenantState_UPDATING:
+		return cdbm.InstanceStatusUpdating, "Instance is receiving system firmware updates"
+	default:
+		return cdbm.InstanceStatusError, "Instance status is unknown"
+	}
+}
+
+// UpdateInstanceMetadata is a Temporal activity that will trigger an update of an instance's metadata
+// if they are found out of sync with the cloud.
+func (mi ManageInstance) UpdateInstanceMetadata(ctx context.Context, siteID uuid.UUID, tc client.Client, instanceID uuid.UUID, controllerInstance *cwsv1.Instance) error {
+	logger := log.With().Str("Activity", "UpdateInstanceMetadata").Str("Site ID", siteID.String()).Str("Instance ID", instanceID.String()).Logger()
+
+	logger.Info().Msg("starting activity")
+
+	instanceDAO := cdbm.NewInstanceDAO(mi.dbSession)
+	instance, err := instanceDAO.GetByID(ctx, nil, instanceID, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Instance from DB by ID")
+		return err
+	}
+
+	logger.Info().Msg("retrieved Instance from DB")
+
+	description := ""
+	if instance.Description != nil {
+		description = *instance.Description
+	}
+
+	// Prepare the labels for the metadata of the carbide call.
+	labels := []*cwsv1.Label{}
+	for k, v := range instance.Labels {
+		labels = append(labels, &cwsv1.Label{
+			Key:   k,
+			Value: &v,
+		})
+	}
+
+	// Build an update request for instance that needs a sync metadata and call UpdateInstance.
+	workflowOptions := client.StartWorkflowOptions{
+		ID:        "site-instance-update-metadata-" + instanceID.String(),
+		TaskQueue: queue.SiteTaskQueue,
+	}
+
+	// Prepare the config update request workflow object
+	updateInstanceRequest := &cwsv1.InstanceConfigUpdateRequest{
+		InstanceId: controllerInstance.GetId(),
+		Metadata: &cwsv1.Metadata{
+			Name:        instance.Name,
+			Description: description,
+			Labels:      labels,
+		},
+		Config: &cwsv1.InstanceConfig{
+			Tenant: &cwsv1.TenantConfig{
+				TenantOrganizationId: controllerInstance.Config.GetTenant().GetTenantOrganizationId(),
+				TenantKeysetIds:      controllerInstance.Config.GetTenant().GetTenantKeysetIds(),
+			},
+			Os:         controllerInstance.GetConfig().GetOs(),
+			Network:    controllerInstance.GetConfig().GetNetwork(),
+			Infiniband: controllerInstance.GetConfig().GetInfiniband(),
+		},
+	}
+
+	we, err := tc.ExecuteWorkflow(ctx, workflowOptions, "UpdateInstance", updateInstanceRequest)
+	if err != nil {
+		logger.Error().Err(err).Str("Controller Instance ID", controllerInstance.GetId().String()).Msg("failed to trigger workflow to update Instance Metadata")
+	} else {
+		logger.Info().Str("Workflow ID", we.GetID()).Msg("triggered workflow to update Instance Metadata")
+	}
+
+	logger.Info().Msg("completed activity")
+
+	return nil
+}
+
+// NewManageInstance returns a new ManageInstance activity
+func NewManageInstance(dbSession *cdb.Session, siteClientPool *sc.ClientPool, tc client.Client, cfg *config.Config) ManageInstance {
+	return ManageInstance{
+		dbSession:      dbSession,
+		siteClientPool: siteClientPool,
+		tc:             tc,
+		cfg:            cfg,
+	}
+}
+
+// ManageInstanceLifecycleMetrics is an activity wrapper for managing Instance lifecycle metrics
+type ManageInstanceLifecycleMetrics struct {
+	dbSession            *cdb.Session
+	statusTransitionTime *prometheus.GaugeVec
+	siteIDNameMap        map[uuid.UUID]string
+}
+
+// RecordInstanceStatusTransitionMetrics is a Temporal activity that records duration of important status transitions for Instances
+func (milm ManageInstanceLifecycleMetrics) RecordInstanceStatusTransitionMetrics(ctx context.Context, siteID uuid.UUID, instanceLifecycleEvents []cwm.InventoryObjectLifecycleEvent) error {
+	logger := log.With().Str("Activity", "RecordInstanceStatusTransitionMetrics").Str("Site ID", siteID.String()).Logger()
+
+	logger.Info().Msg("starting activity")
+
+	siteName, ok := milm.siteIDNameMap[siteID]
+	if !ok {
+		siteDAO := cdbm.NewSiteDAO(milm.dbSession)
+		site, err := siteDAO.GetByID(context.Background(), nil, siteID, nil, false)
+		if err != nil {
+			logger.Error().Err(err).Str("Site ID", siteID.String()).Msg("failed to retrieve Site from DB")
+			return err
+		}
+		siteName = site.Name
+		milm.siteIDNameMap[siteID] = siteName
+	}
+
+	logger.Info().Int("EventCount", len(instanceLifecycleEvents)).Str("Site Name", siteName).Msg("processing instance lifecycle events")
+
+	sdDAO := cdbm.NewStatusDetailDAO(milm.dbSession)
+	metricsRecorded := 0
+
+	for _, event := range instanceLifecycleEvents {
+		statusDetails, _, err := sdDAO.GetAllByEntityID(ctx, nil, event.ObjectID.String(), nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+		if err != nil {
+			logger.Error().Err(err).Str("Instance ID", event.ObjectID.String()).Msg("failed to retrieve Status Details for Instance")
+			return err
+		}
+
+		if event.Created != nil {
+			// CREATE event: Measure time from earliest Pending to Ready
+			// Requirements:
+			// 1. Must have exactly one Ready status (ensures clean transition)
+			// 2. Find the earliest Pending status to calculate duration from
+			var readySD *cdbm.StatusDetail
+			var pendingSD *cdbm.StatusDetail
+			readyStatusCount := 0
+
+			for i := range statusDetails {
+				if statusDetails[i].Status == cdbm.InstanceStatusReady {
+					readyStatusCount++
+					// Early exit if multiple Ready statuses found - indicates abnormal state
+					if readyStatusCount > 1 {
+						break
+					}
+					readySD = &statusDetails[i]
+				} else if statusDetails[i].Status == cdbm.InstanceStatusPending {
+					// Find the earliest Pending status (statusDetails sorted by Created DESC)
+					pendingSD = &statusDetails[i]
+				}
+			}
+
+			// Only emit metric if we have exactly 1 Ready and at least 1 Pending
+			if readySD != nil && pendingSD != nil && readyStatusCount == 1 {
+				dur := readySD.Created.Sub(pendingSD.Created)
+				milm.statusTransitionTime.WithLabelValues(siteName, cwm.InventoryOperationTypeCreate, cdbm.InstanceStatusPending, cdbm.InstanceStatusReady).Set(dur.Seconds())
+				metricsRecorded++
+				logger.Info().
+					Str("Instance ID", event.ObjectID.String()).
+					Str("Operation", "CREATE").
+					Float64("Duration Seconds", dur.Seconds()).
+					Msg("recorded instance lifecycle metric")
+			} else {
+				logger.Debug().
+					Str("Instance ID", event.ObjectID.String()).
+					Msg("skipped instance CREATE metric")
+			}
+		} else if event.Deleted != nil {
+			// DELETE event: Measure time from Terminating to actual deletion
+			// Find the earliest Terminating status (iterate backwards since sorted DESC)
+			var terminatingSD *cdbm.StatusDetail
+			for i := len(statusDetails) - 1; i >= 0; i-- {
+				if statusDetails[i].Status == cdbm.InstanceStatusTerminating {
+					terminatingSD = &statusDetails[i]
+					break
+				}
+			}
+
+			if terminatingSD != nil {
+				// Calculate duration from Terminating status to deletion time
+				dur := event.Deleted.Sub(terminatingSD.Created)
+				milm.statusTransitionTime.WithLabelValues(siteName, cwm.InventoryOperationTypeDelete, cdbm.InstanceStatusTerminating, cdbm.InstanceStatusTerminated).Set(dur.Seconds())
+				metricsRecorded++
+				logger.Info().
+					Str("Instance ID", event.ObjectID.String()).
+					Str("Operation", "DELETE").
+					Float64("Duration Seconds", dur.Seconds()).
+					Msg("recorded instance lifecycle metric")
+			} else {
+				logger.Debug().
+					Str("Instance ID", event.ObjectID.String()).
+					Msg("skipped instance DELETE metric")
+			}
+		}
+	}
+
+	logger.Info().Int("MetricsRecorded", metricsRecorded).Msg("completed activity")
+	return nil
+}
+
+// NewManageInstanceLifecycleMetrics returns a new ManageInstanceLifecycleMetrics activity
+func NewManageInstanceLifecycleMetrics(reg prometheus.Registerer, dbSession *cdb.Session) ManageInstanceLifecycleMetrics {
+	inventoryMetrics := ManageInstanceLifecycleMetrics{
+		dbSession: dbSession,
+		statusTransitionTime: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: cwm.MetricsNamespace,
+				Name:      "instance_operation_latency_seconds",
+				Help:      "Current latency of instance operations",
+			},
+			[]string{"site", "operation_type", "from_status", "to_status"}),
+		siteIDNameMap: map[uuid.UUID]string{},
+	}
+	reg.MustRegister(inventoryMetrics.statusTransitionTime)
+	return inventoryMetrics
+}

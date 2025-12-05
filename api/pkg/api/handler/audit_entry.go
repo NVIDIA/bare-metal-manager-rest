@@ -1,0 +1,298 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ *
+ * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+ * property and proprietary rights in and to this material, related
+ * documentation and any modifications thereto. Any use, reproduction,
+ * disclosure or distribution of this material and related documentation
+ * without an express license agreement from NVIDIA CORPORATION or
+ * its affiliates is strictly prohibited.
+ */
+
+
+package handler
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"strconv"
+
+	goset "github.com/deckarep/golang-set/v2"
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
+	"github.com/rs/zerolog/log"
+	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
+	"github.com/nvidia/carbide-rest/api/pkg/api/model"
+	"github.com/nvidia/carbide-rest/api/pkg/api/pagination"
+	auth "github.com/nvidia/carbide-rest/auth/pkg/authorization"
+	cerr "github.com/nvidia/carbide-rest/common/pkg/util"
+	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
+	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
+	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+	"go.opentelemetry.io/otel/attribute"
+)
+
+// GetAllAuditEntryHandler is the API Handler for retrieving all AuditEntries
+type GetAllAuditEntryHandler struct {
+	dbSession  *cdb.Session
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewGetAllAuditEntryHandler initializes and returns a new handler for retrieving all AuditEntries
+func NewGetAllAuditEntryHandler(dbSession *cdb.Session) GetAllAuditEntryHandler {
+	return GetAllAuditEntryHandler{
+		dbSession:  dbSession,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Get all AuditEntries
+// @Description Get all AuditEntries in the org
+// @Tags audit
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Success 200 {array} []model.APIAuditEntry
+// @Router /v2/org/{org}/carbide/audit [get]
+func (gaaeh GetAllAuditEntryHandler) Handle(c echo.Context) error {
+	// Get context
+	ctx := c.Request().Context()
+
+	// Get org
+	orgName := c.Param("orgName")
+
+	// Initialize logger
+	logger := log.With().Str("Model", "AuditEntry").Str("Handler", "GetAll").Str("Org", orgName).Logger()
+
+	logger.Info().Msg("started API handler")
+
+	// Create a child span and set the attributes for current request
+	newctx, handlerSpan := gaaeh.tracerSpan.CreateChildInContext(ctx, "GetAllAuditEntryHandler", logger)
+	if handlerSpan != nil {
+		// Set newly created span context as a current context
+		ctx = newctx
+
+		defer handlerSpan.End()
+
+		gaaeh.tracerSpan.SetAttribute(handlerSpan, attribute.String("org", orgName), logger)
+	}
+
+	dbUser, logger, err := common.GetUserAndEnrichLogger(c, logger, gaaeh.tracerSpan, handlerSpan)
+	if err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// Validate org
+	ok, err := auth.ValidateOrgMembership(dbUser, orgName)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", orgName), nil)
+	}
+
+	// Validate role, only Provider or Tenant Admins are allowed to get audit log
+	ok = auth.ValidateUserRoles(dbUser, orgName, nil, auth.ProviderAdminRole, auth.TenantAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Provider/Tenant Admin role, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Admin role with org", nil)
+	}
+
+	// Validate paginantion request
+	pageRequest := pagination.PageRequest{}
+	err = c.Bind(&pageRequest)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error binding pagination request data into API model")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request pagination data", nil)
+	}
+
+	// Validate request attributes
+	err = pageRequest.Validate(cdbm.AuditEntryOrderByFields)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error validating pagination request data")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate pagination request data", err)
+	}
+
+	// build filter
+	filter := cdbm.AuditEntryFilterInput{OrgName: &orgName}
+
+	// Check `failedOnly` in query
+	failedOnly := false
+	qpf := c.QueryParam("failedOnly")
+	if qpf != "" {
+		failedOnly, err = strconv.ParseBool(qpf)
+		if err != nil {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid value specified for `failedOnly` query param", nil)
+		}
+		filter.FailedOnly = &failedOnly
+	}
+
+	aeDAO := cdbm.NewAuditEntryDAO(gaaeh.dbSession)
+
+	dbAuditEntries, total, err := aeDAO.GetAll(ctx, nil, filter, paginator.PageInput{Offset: pageRequest.Offset, Limit: pageRequest.Limit, OrderBy: pageRequest.OrderBy})
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving all AuditEntries by param from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve AuditEntries", nil)
+	}
+
+	// build set of user IDs
+	userIDs := goset.NewSet[uuid.UUID]()
+	for _, dbae := range dbAuditEntries {
+		if dbae.UserID != nil {
+			userIDs.Add(*dbae.UserID)
+		}
+	}
+
+	// build map of users
+	dbUsersMap := make(map[uuid.UUID]*cdbm.User)
+	userDAO := cdbm.NewUserDAO(gaaeh.dbSession)
+	dbUsers, _, err := userDAO.GetAll(ctx, nil, cdbm.UserFilterInput{UserIDs: userIDs.ToSlice()},
+		paginator.PageInput{Limit: cdb.GetIntPtr(paginator.TotalLimit)}, nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving Users from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Users", nil)
+	}
+	for i := 0; i < len(dbUsers); i++ {
+		dbUsersMap[dbUsers[i].ID] = &dbUsers[i]
+	}
+
+	// Create response
+	apiAuditEntries := []model.APIAuditEntry{}
+	for _, dbae := range dbAuditEntries {
+		var dbu *cdbm.User
+		if dbae.UserID != nil {
+			dbu = dbUsersMap[*dbae.UserID]
+		}
+		apiae := model.NewAPIAuditEntry(dbae, dbu)
+
+		apiAuditEntries = append(apiAuditEntries, apiae)
+	}
+
+	// Create pagination response header
+	pageReponse := pagination.NewPageResponse(*pageRequest.PageNumber, *pageRequest.PageSize, total, pageRequest.OrderByStr)
+	pageHeader, err := json.Marshal(pageReponse)
+	if err != nil {
+		logger.Error().Err(err).Msg("error marshaling pagination response")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to generate pagination response header", nil)
+	}
+
+	c.Response().Header().Set(pagination.ResponseHeaderName, string(pageHeader))
+
+	logger.Info().Msg("finishing API handler")
+
+	return c.JSON(http.StatusOK, apiAuditEntries)
+}
+
+// GetAuditEntryHandler is the API Handler for getting individual Audit Entry
+type GetAuditEntryHandler struct {
+	dbSession  *cdb.Session
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewGetAuditEntryHandler initializes and returns a new handler for getting individual Audit Entry
+func NewGetAuditEntryHandler(dbSession *cdb.Session) GetAuditEntryHandler {
+	return GetAuditEntryHandler{
+		dbSession:  dbSession,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Get an AuditEntry
+// @Description Get an individual AuditEntry for the org
+// @Tags site
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param org path string true "Name of NGC organization"
+// @Success 200 {object} model.APIAuditEntry
+// @Router /v2/org/{org}/carbide/audit/{id} [get]
+func (gaeh GetAuditEntryHandler) Handle(c echo.Context) error {
+	// Get context
+	ctx := c.Request().Context()
+
+	// Get org
+	orgName := c.Param("orgName")
+
+	// Initialize logger
+	logger := log.With().Str("Model", "AuditEntry").Str("Handler", "GetAll").Str("Org", orgName).Logger()
+
+	logger.Info().Msg("started API handler")
+
+	// Create a child span and set the attributes for current request
+	newctx, handlerSpan := gaeh.tracerSpan.CreateChildInContext(ctx, "GetAuditEntryHandler", logger)
+	if handlerSpan != nil {
+		// Set newly created span context as a current context
+		ctx = newctx
+
+		defer handlerSpan.End()
+
+		gaeh.tracerSpan.SetAttribute(handlerSpan, attribute.String("org", orgName), logger)
+	}
+
+	dbUser, logger, err := common.GetUserAndEnrichLogger(c, logger, gaeh.tracerSpan, handlerSpan)
+	if err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// Validate org
+	ok, err := auth.ValidateOrgMembership(dbUser, orgName)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", orgName), nil)
+	}
+
+	// Validate role, only Provider or Tenant Admins are allowed to get audit log
+	ok = auth.ValidateUserRoles(dbUser, orgName, nil, auth.ProviderAdminRole, auth.TenantAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Provider/Tenant Admin role, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Admin role with org", nil)
+	}
+
+	// Get AuditEntry ID from URL param
+	aeStrID := c.Param("id")
+
+	gaeh.tracerSpan.SetAttribute(handlerSpan, attribute.String("audit_entry_id", aeStrID), logger)
+
+	aeID, err := uuid.Parse(aeStrID)
+	if err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid Audit Entry ID in URL", nil)
+	}
+
+	// Get audit entry
+	aeDAO := cdbm.NewAuditEntryDAO(gaeh.dbSession)
+	dbAuditEntry, err := aeDAO.GetByID(ctx, nil, aeID)
+	if err != nil {
+		if errors.Is(err, cdb.ErrDoesNotExist) {
+			return cerr.NewAPIErrorResponse(c, http.StatusNotFound, "Could not find Audit Entry with specified ID", nil)
+		}
+		logger.Error().Err(err).Msg("error retrieving AuditEntry from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Audit Entry", nil)
+	}
+
+	// get user
+	var auditUser *cdbm.User
+	if dbAuditEntry.UserID != nil {
+		userDAO := cdbm.NewUserDAO(gaeh.dbSession)
+		if auditUser, err = userDAO.Get(ctx, nil, *dbAuditEntry.UserID, nil); err != nil {
+			logger.Error().Err(err).Msgf("error retrieving User %s from DB", *dbAuditEntry.UserID)
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve User", nil)
+		}
+	}
+
+	// Create response
+	apiAuditEntry := model.NewAPIAuditEntry(*dbAuditEntry, auditUser)
+
+	return c.JSON(http.StatusOK, apiAuditEntry)
+}

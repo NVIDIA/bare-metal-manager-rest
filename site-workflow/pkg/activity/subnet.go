@@ -1,0 +1,205 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package activity
+
+import (
+	"context"
+	"errors"
+	"net"
+	"time"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/rs/zerolog/log"
+	"go.temporal.io/sdk/temporal"
+
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	swe "github.com/nvidia/carbide-rest/site-workflow/pkg/error"
+	cClient "github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
+)
+
+// ManageSubnet is an activity wrapper for Subnet management tasks that allows injecting DB access
+type ManageSubnet struct {
+	CarbideAtomicClient *cClient.CarbideAtomicClient
+}
+
+// Function to Create Subnets with the Site Controller
+func (mm *ManageSubnet) CreateSubnetOnSite(ctx context.Context, request *cwssaws.NetworkSegmentCreationRequest) error {
+	logger := log.With().Str("Activity", "CreateSubnetOnSite").Logger()
+
+	logger.Info().Msg("Starting activity")
+
+	var err error
+
+	// Validate request
+	switch {
+	case request == nil:
+		err = errors.New("received empty create Subnet request")
+	case request.Name == "":
+		err = errors.New("received create Subnet request without name")
+	case request.VpcId == nil:
+		err = errors.New("received create Subnet request without VPC ID")
+	case len(request.Prefixes) == 0:
+		err = errors.New("received create Subnet request with empty prefix list")
+	case len(request.Prefixes) > 0:
+		for _, prefix := range request.Prefixes {
+			if prefix == nil {
+				err = errors.New("received create Subnet request with a nil prefix in the prefix list")
+				break
+			}
+			if _, _, err = net.ParseCIDR(prefix.Prefix); err != nil {
+				err = errors.New("received create Subnet request with an invalid prefix in the prefix list")
+				break
+			}
+		}
+	}
+
+	if err != nil {
+		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
+	}
+
+	// Call Site Controller gRPC endpoint
+	carbideClient := mm.CarbideAtomicClient.GetClient()
+	forgeClient := carbideClient.Carbide()
+
+	_, err = forgeClient.CreateNetworkSegment(ctx, request)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to create Subnet using Site Controller API")
+		return swe.WrapErr(err)
+	}
+
+	logger.Info().Msg("Completed activity")
+
+	return nil
+}
+
+// Function to Delete Subnets with the Site Controller
+func (mm *ManageSubnet) DeleteSubnetOnSite(ctx context.Context, request *cwssaws.NetworkSegmentDeletionRequest) error {
+	logger := log.With().Str("Activity", "DeleteSubnetOnSite").Logger()
+
+	logger.Info().Msg("Starting activity")
+
+	var err error
+
+	// Validate request
+	switch {
+	case request == nil:
+		err = errors.New("received empty delete Subnet request")
+	case request.Id == nil:
+		err = errors.New("received delete Subnet request without subnet ID")
+	case request.Id.Value == "":
+		err = errors.New("received delete Subnet request with empty subnet ID")
+	}
+
+	if err != nil {
+		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
+	}
+
+	// Call Site Controller gRPC endpoint
+	carbideClient := mm.CarbideAtomicClient.GetClient()
+	forgeClient := carbideClient.Carbide()
+
+	_, err = forgeClient.DeleteNetworkSegment(ctx, request)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to delete Subnet using Site Controller API")
+		return swe.WrapErr(err)
+	}
+
+	logger.Info().Msg("Completed activity")
+
+	return nil
+}
+
+// NewManageSubnet returns a new ManageSubnet client
+func NewManageSubnet(carbideClient *cClient.CarbideAtomicClient) ManageSubnet {
+	return ManageSubnet{
+		CarbideAtomicClient: carbideClient,
+	}
+}
+
+// ManageSubnetInventory is an activity wrapper for Subnet inventory collection and publishing
+type ManageSubnetInventory struct {
+	config ManageInventoryConfig
+}
+
+// DiscoverSubnetInventory is an activity to collect Subnet inventory and publish to Temporal queue
+func (mmi *ManageSubnetInventory) DiscoverSubnetInventory(ctx context.Context) error {
+	logger := log.With().Str("Activity", "DiscoverSubnetInventory").Logger()
+	logger.Info().Msg("Starting activity")
+	inventoryImpl := manageInventoryImpl[*cwssaws.NetworkSegmentId, *cwssaws.NetworkSegment, *cwssaws.SubnetInventory]{
+		itemType:               "Subnet",
+		config:                 mmi.config,
+		internalFindIDs:        subnetFindIDs,
+		internalFindByIDs:      subnetFindByIDs,
+		internalPagedInventory: subnetPagedInventory,
+		internalFindFallback:   subnetFindFallback,
+	}
+	return inventoryImpl.CollectAndPublishInventory(ctx, &logger)
+}
+
+// NewManageSubnetInventory returns a ManageInventory implementation for Subnet activity
+func NewManageSubnetInventory(config ManageInventoryConfig) ManageSubnetInventory {
+	return ManageSubnetInventory{
+		config: config,
+	}
+}
+
+func subnetFindIDs(ctx context.Context, carbideClient *cClient.CarbideClient) ([]*cwssaws.NetworkSegmentId, error) {
+	idList, err := carbideClient.Networks().FindNetworkSegmentIds(ctx, &cwssaws.NetworkSegmentSearchFilter{})
+	if err != nil {
+		return nil, err
+	}
+	return idList.GetNetworkSegmentsIds(), nil
+}
+
+func subnetFindByIDs(ctx context.Context, carbideClient *cClient.CarbideClient, ids []*cwssaws.NetworkSegmentId) ([]*cwssaws.NetworkSegment, error) {
+	list, err := carbideClient.Networks().FindNetworkSegmentsByIds(ctx, &cwssaws.NetworkSegmentsByIdsRequest{
+		NetworkSegmentsIds: ids,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return list.GetNetworkSegments(), nil
+}
+
+func subnetPagedInventory(allItemIDs []*cwssaws.NetworkSegmentId, pagedItems []*cwssaws.NetworkSegment, input *pagedInventoryInput) *cwssaws.SubnetInventory {
+	itemIDs := []string{}
+	for _, id := range allItemIDs {
+		itemIDs = append(itemIDs, id.GetValue())
+	}
+
+	// Create an inventory page
+	inventory := &cwssaws.SubnetInventory{
+		Segments: pagedItems,
+		Timestamp: &timestamppb.Timestamp{
+			Seconds: time.Now().Unix(),
+		},
+		InventoryStatus: input.status,
+		StatusMsg:       input.statusMessage,
+		InventoryPage:   input.buildPage(),
+	}
+	if inventory.InventoryPage != nil {
+		inventory.InventoryPage.ItemIds = itemIDs
+	}
+	return inventory
+}
+
+func subnetFindFallback(ctx context.Context, carbideClient *cClient.CarbideClient) ([]*cwssaws.NetworkSegmentId, []*cwssaws.NetworkSegment, error) {
+	items, err := carbideClient.Networks().GetNetworkSegmentDeprecated(ctx, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	var ids []*cwssaws.NetworkSegmentId
+	for _, it := range items.GetNetworkSegments() {
+		ids = append(ids, it.Id)
+	}
+	return ids, items.GetNetworkSegments(), nil
+}

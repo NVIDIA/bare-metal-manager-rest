@@ -1,0 +1,529 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package activity
+
+import (
+	"context"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cClient "github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
+	"github.com/nvidia/carbide-rest/site-workflow/pkg/util"
+	tmocks "go.temporal.io/sdk/mocks"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+func TestManageDpuExtensionService_CreateDpuExtensionServiceOnSite(t *testing.T) {
+	mockCarbide := cClient.NewMockCarbideClient()
+
+	carbideAtomicClient := cClient.NewCarbideAtomicClient(&cClient.CarbideClientConfig{})
+	carbideAtomicClient.SwapClient(mockCarbide)
+
+	type fields struct {
+		CarbideAtomicClient *cClient.CarbideAtomicClient
+	}
+	type args struct {
+		ctx     context.Context
+		request *cwssaws.CreateDpuExtensionServiceRequest
+	}
+
+	serviceID := "test-service-id"
+	serviceName := "test-service-name"
+	tenantOrgID := "test-tenant-org-id"
+
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "test create DpuExtensionService success",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.CreateDpuExtensionServiceRequest{
+					ServiceId:            &serviceID,
+					ServiceName:          serviceName,
+					TenantOrganizationId: tenantOrgID,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "test create DpuExtensionService fail on missing ServiceId",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.CreateDpuExtensionServiceRequest{
+					ServiceId:            nil,
+					ServiceName:          serviceName,
+					TenantOrganizationId: tenantOrgID,
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "test create DpuExtensionService fail on empty ServiceId",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.CreateDpuExtensionServiceRequest{
+					ServiceId:            util.GetStrPtr(""),
+					ServiceName:          serviceName,
+					TenantOrganizationId: tenantOrgID,
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "test create DpuExtensionService fail on missing ServiceName",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.CreateDpuExtensionServiceRequest{
+					ServiceId:            &serviceID,
+					ServiceName:          "",
+					TenantOrganizationId: tenantOrgID,
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "test create DpuExtensionService fail on missing TenantOrganizationId",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.CreateDpuExtensionServiceRequest{
+					ServiceId:            &serviceID,
+					ServiceName:          serviceName,
+					TenantOrganizationId: "",
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "test create DpuExtensionService fail on missing request",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx:     context.Background(),
+				request: nil,
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm := NewManageDpuExtensionService(tt.fields.CarbideAtomicClient)
+			result, err := mm.CreateDpuExtensionServiceOnSite(tt.args.ctx, tt.args.request)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+
+			if tt.args.request.ServiceId != nil {
+				assert.Equal(t, *tt.args.request.ServiceId, result.ServiceId)
+			}
+			assert.Equal(t, tt.args.request.ServiceName, result.ServiceName)
+			assert.Equal(t, tt.args.request.TenantOrganizationId, result.TenantOrganizationId)
+		})
+	}
+}
+
+func TestManageDpuExtensionService_UpdateDpuExtensionServiceOnSite(t *testing.T) {
+	mockCarbide := cClient.NewMockCarbideClient()
+
+	carbideAtomicClient := cClient.NewCarbideAtomicClient(&cClient.CarbideClientConfig{})
+	carbideAtomicClient.SwapClient(mockCarbide)
+
+	type fields struct {
+		CarbideAtomicClient *cClient.CarbideAtomicClient
+	}
+	type args struct {
+		ctx     context.Context
+		request *cwssaws.UpdateDpuExtensionServiceRequest
+	}
+
+	serviceID := "test-service-id"
+
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "test update DpuExtensionService success",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.UpdateDpuExtensionServiceRequest{
+					ServiceId:   serviceID,
+					ServiceName: util.GetStrPtr("test-service-name"),
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "test update DpuExtensionService fail on missing ServiceId",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.UpdateDpuExtensionServiceRequest{
+					ServiceId: "",
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "test update DpuExtensionService fail on missing request",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx:     context.Background(),
+				request: nil,
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm := NewManageDpuExtensionService(tt.fields.CarbideAtomicClient)
+			result, err := mm.UpdateDpuExtensionServiceOnSite(tt.args.ctx, tt.args.request)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.args.request.ServiceId, result.ServiceId)
+
+			if tt.args.request.ServiceName != nil {
+				assert.Equal(t, *tt.args.request.ServiceName, result.ServiceName)
+			}
+		})
+	}
+}
+
+func TestManageDpuExtensionService_DeleteDpuExtensionServiceOnSite(t *testing.T) {
+	mockCarbide := cClient.NewMockCarbideClient()
+
+	carbideAtomicClient := cClient.NewCarbideAtomicClient(&cClient.CarbideClientConfig{})
+	carbideAtomicClient.SwapClient(mockCarbide)
+
+	type fields struct {
+		CarbideAtomicClient *cClient.CarbideAtomicClient
+	}
+	type args struct {
+		ctx     context.Context
+		request *cwssaws.DeleteDpuExtensionServiceRequest
+	}
+
+	serviceID := "test-service-id"
+
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "test delete DpuExtensionService success",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.DeleteDpuExtensionServiceRequest{
+					ServiceId: serviceID,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "test delete DpuExtensionService fail on missing ServiceId",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.DeleteDpuExtensionServiceRequest{
+					ServiceId: "",
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "test delete DpuExtensionService fail on missing request",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx:     context.Background(),
+				request: nil,
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm := NewManageDpuExtensionService(tt.fields.CarbideAtomicClient)
+			err := mm.DeleteDpuExtensionServiceOnSite(tt.args.ctx, tt.args.request)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestManageDpuExtensionService_GetDpuExtensionServiceVersionsInfoOnSite(t *testing.T) {
+	mockCarbide := cClient.NewMockCarbideClient()
+
+	carbideAtomicClient := cClient.NewCarbideAtomicClient(&cClient.CarbideClientConfig{})
+	carbideAtomicClient.SwapClient(mockCarbide)
+
+	type fields struct {
+		CarbideAtomicClient *cClient.CarbideAtomicClient
+	}
+	type args struct {
+		ctx     context.Context
+		request *cwssaws.GetDpuExtensionServiceVersionsInfoRequest
+	}
+
+	serviceID := "test-service-id"
+
+	tests := []struct {
+		name      string
+		fields    fields
+		args      args
+		wantCount int
+		wantErr   bool
+	}{
+		{
+			name: "test get DpuExtensionService versions info success",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.WithValue(context.Background(), "wantCount", 20),
+				request: &cwssaws.GetDpuExtensionServiceVersionsInfoRequest{
+					ServiceId: serviceID,
+				},
+			},
+			wantCount: 20,
+			wantErr:   false,
+		},
+		{
+			name: "test get DpuExtensionService versions info fail on missing ServiceId",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.GetDpuExtensionServiceVersionsInfoRequest{
+					ServiceId: "",
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "test get DpuExtensionService versions info fail on missing request",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx:     context.Background(),
+				request: nil,
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm := NewManageDpuExtensionService(tt.fields.CarbideAtomicClient)
+			versionInfoList, err := mm.GetDpuExtensionServiceVersionsInfoOnSite(tt.args.ctx, tt.args.request)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.wantCount, len(versionInfoList.VersionInfos))
+			}
+		})
+	}
+}
+
+func TestManageDpuExtensionServiceInventory_DiscoverDpuExtensionServiceInventory(t *testing.T) {
+	mockCarbide := cClient.NewMockCarbideClient()
+
+	carbideAtomicClient := cClient.NewCarbideAtomicClient(&cClient.CarbideClientConfig{})
+	carbideAtomicClient.SwapClient(mockCarbide)
+
+	wid := "test-workflow-id"
+	wrun := &tmocks.WorkflowRun{}
+	wrun.On("GetID").Return(wid)
+
+	type fields struct {
+		siteID               uuid.UUID
+		carbideAtomicClient  *cClient.CarbideAtomicClient
+		temporalPublishQueue string
+		sitePageSize         int
+		cloudPageSize        int
+	}
+	type args struct {
+		wantTotalItems int
+		findIDsError   error
+	}
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+	}{
+		{
+			name: "test collecting and publishing dpu extension service inventory, empty inventory",
+			fields: fields{
+				siteID:               uuid.New(),
+				carbideAtomicClient:  carbideAtomicClient,
+				temporalPublishQueue: "test-queue",
+				sitePageSize:         100,
+				cloudPageSize:        25,
+			},
+			args: args{
+				wantTotalItems: 0,
+			},
+		},
+		{
+			name: "test collecting and publishing dpu extension service inventory, normal inventory",
+			fields: fields{
+				siteID:               uuid.New(),
+				carbideAtomicClient:  carbideAtomicClient,
+				temporalPublishQueue: "test-queue",
+				sitePageSize:         100,
+				cloudPageSize:        25,
+			},
+			args: args{
+				wantTotalItems: 195,
+			},
+		},
+		{
+			name: "test collecting and publishing dpu extension service inventory fallback, empty inventory",
+			fields: fields{
+				siteID:               uuid.New(),
+				carbideAtomicClient:  carbideAtomicClient,
+				temporalPublishQueue: "test-queue",
+				sitePageSize:         100,
+				cloudPageSize:        25,
+			},
+			args: args{
+				wantTotalItems: 0,
+				findIDsError:   status.Error(codes.Unimplemented, "not implemented"),
+			},
+		},
+		{
+			name: "test collecting and publishing dpu extension service inventory fallback, normal inventory",
+			fields: fields{
+				siteID:               uuid.New(),
+				carbideAtomicClient:  carbideAtomicClient,
+				temporalPublishQueue: "test-queue",
+				sitePageSize:         100,
+				cloudPageSize:        25,
+			},
+			args: args{
+				wantTotalItems: 195,
+				findIDsError:   status.Error(codes.Unimplemented, "not implemented"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tc := &tmocks.Client{}
+			tc.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
+				mock.AnythingOfType("string"), mock.AnythingOfType("uuid.UUID"), mock.Anything).Return(wrun, nil)
+			tc.AssertNumberOfCalls(t, "ExecuteWorkflow", 0)
+
+			manageDpuExtensionService := NewManageDpuExtensionServiceInventory(ManageInventoryConfig{
+				SiteID:                tt.fields.siteID,
+				CarbideAtomicClient:   tt.fields.carbideAtomicClient,
+				TemporalPublishClient: tc,
+				TemporalPublishQueue:  tt.fields.temporalPublishQueue,
+				SitePageSize:          tt.fields.sitePageSize,
+				CloudPageSize:         tt.fields.cloudPageSize,
+			})
+
+			ctx := context.Background()
+			ctx = context.WithValue(ctx, "wantCount", tt.args.wantTotalItems)
+			if tt.args.findIDsError != nil {
+				ctx = context.WithValue(ctx, "wantError", tt.args.findIDsError)
+			}
+
+			totalPages := tt.args.wantTotalItems / tt.fields.cloudPageSize
+			if tt.args.wantTotalItems%tt.fields.cloudPageSize > 0 {
+				totalPages++
+			}
+
+			err := manageDpuExtensionService.DiscoverDpuExtensionServiceInventory(ctx)
+			assert.NoError(t, err)
+
+			if tt.args.wantTotalItems == 0 {
+				tc.AssertNumberOfCalls(t, "ExecuteWorkflow", 1)
+			} else {
+				tc.AssertNumberOfCalls(t, "ExecuteWorkflow", totalPages)
+			}
+
+			inventory, ok := tc.Calls[0].Arguments[4].(*cwssaws.DpuExtensionServiceInventory)
+			assert.True(t, ok)
+
+			if tt.args.wantTotalItems == 0 {
+				assert.Equal(t, 0, len(inventory.DpuExtensionServices))
+			} else {
+				assert.Equal(t, tt.fields.cloudPageSize, len(inventory.DpuExtensionServices))
+			}
+
+			assert.Equal(t, cwssaws.InventoryStatus_INVENTORY_STATUS_SUCCESS, inventory.InventoryStatus)
+			assert.Equal(t, totalPages, int(inventory.InventoryPage.TotalPages))
+			assert.Equal(t, 1, int(inventory.InventoryPage.CurrentPage))
+			assert.Equal(t, tt.fields.cloudPageSize, int(inventory.InventoryPage.PageSize))
+			assert.Equal(t, tt.args.wantTotalItems, int(inventory.InventoryPage.TotalItems))
+			assert.Equal(t, tt.args.wantTotalItems, len(inventory.InventoryPage.ItemIds))
+		})
+	}
+}

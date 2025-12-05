@@ -1,0 +1,295 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package activity
+
+import (
+	"context"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cClient "github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
+	tmocks "go.temporal.io/sdk/mocks"
+)
+
+func TestManageVpcPeering_CreateVpcPeeringOnSite(t *testing.T) {
+	mockCarbide := cClient.NewMockCarbideClient()
+
+	carbideAtomicClient := cClient.NewCarbideAtomicClient(&cClient.CarbideClientConfig{})
+	carbideAtomicClient.SwapClient(mockCarbide)
+
+	type fields struct {
+		CarbideAtomicClient *cClient.CarbideAtomicClient
+	}
+	type args struct {
+		ctx     context.Context
+		request *cwssaws.VpcPeeringCreationRequest
+	}
+
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "test create VpcPeering success",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.VpcPeeringCreationRequest{
+					VpcId:     &cwssaws.VpcId{Value: uuid.NewString()},
+					PeerVpcId: &cwssaws.VpcId{Value: uuid.NewString()},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "test create VpcPeering fail on missing VpcId",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.VpcPeeringCreationRequest{
+					VpcId:     nil,
+					PeerVpcId: &cwssaws.VpcId{Value: uuid.NewString()},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "test create VpcPeering fail on missing PeerVpcId",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.VpcPeeringCreationRequest{
+					VpcId:     &cwssaws.VpcId{Value: uuid.NewString()},
+					PeerVpcId: nil,
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "test create VpcPeering fail on missing request",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx:     context.Background(),
+				request: nil,
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm := NewManageVpcPeering(tt.fields.CarbideAtomicClient)
+			err := mm.CreateVpcPeeringOnSite(tt.args.ctx, tt.args.request)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestManageVpcPeering_DeleteVpcPeeringOnSite(t *testing.T) {
+	mockCarbide := cClient.NewMockCarbideClient()
+
+	carbideAtomicClient := cClient.NewCarbideAtomicClient(&cClient.CarbideClientConfig{})
+	carbideAtomicClient.SwapClient(mockCarbide)
+
+	type fields struct {
+		CarbideAtomicClient *cClient.CarbideAtomicClient
+	}
+	type args struct {
+		ctx     context.Context
+		request *cwssaws.VpcPeeringDeletionRequest
+	}
+
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		wantErr bool
+	}{
+		{
+			name: "test delete VpcPeering success",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.VpcPeeringDeletionRequest{
+					Id: &cwssaws.VpcPeeringId{Value: uuid.NewString()},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "test delete VpcPeering fail on missing ID",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx: context.Background(),
+				request: &cwssaws.VpcPeeringDeletionRequest{
+					Id: nil,
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "test delete VpcPeering fail on missing request",
+			fields: fields{
+				CarbideAtomicClient: carbideAtomicClient,
+			},
+			args: args{
+				ctx:     context.Background(),
+				request: nil,
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mm := NewManageVpcPeering(tt.fields.CarbideAtomicClient)
+			err := mm.DeleteVpcPeeringOnSite(tt.args.ctx, tt.args.request)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestManageVpcPeeringInventory_DiscoverVpcPeeringInventory(t *testing.T) {
+	mockCarbide := cClient.NewMockCarbideClient()
+
+	carbideAtomicClient := cClient.NewCarbideAtomicClient(&cClient.CarbideClientConfig{})
+	carbideAtomicClient.SwapClient(mockCarbide)
+
+	wid := "test-workflow-id"
+	wrun := &tmocks.WorkflowRun{}
+	wrun.On("GetID").Return(wid)
+
+	type fields struct {
+		siteID               uuid.UUID
+		carbideAtomicClient  *cClient.CarbideAtomicClient
+		temporalPublishQueue string
+		sitePageSize         int
+		cloudPageSize        int
+	}
+	type args struct {
+		wantTotalItems int
+	}
+
+	tests := []struct {
+		name   string
+		fields fields
+		args   args
+	}{
+		{
+			name: "test collecting and publishing VpcPeering success, empty inventory",
+			fields: fields{
+				siteID:               uuid.New(),
+				carbideAtomicClient:  carbideAtomicClient,
+				temporalPublishQueue: "test-queue",
+				sitePageSize:         100,
+				cloudPageSize:        25,
+			},
+			args: args{
+				wantTotalItems: 0,
+			},
+		},
+		{
+			name: "test collecting and publishing VpcPeering success, empty inventory",
+			fields: fields{
+				siteID:               uuid.New(),
+				carbideAtomicClient:  carbideAtomicClient,
+				temporalPublishQueue: "test-queue",
+				sitePageSize:         100,
+				cloudPageSize:        25,
+			},
+			args: args{
+				wantTotalItems: 195,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tc := &tmocks.Client{}
+			tc.Mock.On(
+				"ExecuteWorkflow",
+				mock.Anything,
+				mock.AnythingOfType("internal.StartWorkflowOptions"),
+				mock.AnythingOfType("string"),
+				mock.AnythingOfType("uuid.UUID"),
+				mock.Anything).
+				Return(wrun, nil)
+			tc.AssertNumberOfCalls(t, "ExecuteWorkflow", 0)
+
+			manageVpcPeering := NewManageVpcPeeringInventory(ManageInventoryConfig{
+				SiteID:                tt.fields.siteID,
+				CarbideAtomicClient:   tt.fields.carbideAtomicClient,
+				TemporalPublishClient: tc,
+				TemporalPublishQueue:  tt.fields.temporalPublishQueue,
+				SitePageSize:          tt.fields.sitePageSize,
+				CloudPageSize:         tt.fields.cloudPageSize,
+			})
+
+			ctx := context.Background()
+			ctx = context.WithValue(ctx, "WantCount", tt.args.wantTotalItems)
+
+			totalPages := tt.args.wantTotalItems / tt.fields.cloudPageSize
+			if tt.args.wantTotalItems%tt.fields.cloudPageSize > 0 {
+				totalPages++
+			}
+
+			err := manageVpcPeering.DiscoverVpcPeeringInventory(ctx)
+			assert.NoError(t, err)
+
+			if tt.args.wantTotalItems == 0 {
+				tc.AssertNumberOfCalls(t, "ExecuteWorkflow", 1)
+			} else {
+				tc.AssertNumberOfCalls(t, "ExecuteWorkflow", totalPages)
+			}
+
+			inventory, ok := tc.Calls[0].Arguments[4].(*cwssaws.VPCPeeringInventory)
+			assert.True(t, ok)
+
+			if tt.args.wantTotalItems == 0 {
+				assert.Equal(t, 0, len(inventory.VpcPeerings))
+			} else {
+				assert.Equal(t, tt.fields.cloudPageSize, len(inventory.VpcPeerings))
+			}
+
+			assert.Equal(t, cwssaws.InventoryStatus_INVENTORY_STATUS_SUCCESS, inventory.InventoryStatus)
+			assert.Equal(t, totalPages, int(inventory.InventoryPage.TotalPages))
+			assert.Equal(t, 1, int(inventory.InventoryPage.CurrentPage))
+			assert.Equal(t, tt.fields.cloudPageSize, int(inventory.InventoryPage.PageSize))
+			assert.Equal(t, tt.args.wantTotalItems, int(inventory.InventoryPage.TotalItems))
+			assert.Equal(t, tt.args.wantTotalItems, len(inventory.InventoryPage.ItemIds))
+		})
+	}
+}
