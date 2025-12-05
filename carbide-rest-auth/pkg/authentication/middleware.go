@@ -1,0 +1,124 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package authentication
+
+import (
+	"net/http"
+	"strings"
+
+	"github.com/nvidia/carbide-rest-api/carbide-rest-auth/pkg/config"
+	commonConfig "github.com/nvidia/carbide-rest-api/carbide-rest-common/pkg/config"
+	"github.com/nvidia/carbide-rest-api/carbide-rest-common/pkg/util"
+
+	cdb "github.com/nvidia/carbide-rest-api/carbide-rest-db/pkg/db"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/rs/zerolog/log"
+
+	"github.com/labstack/echo/v4"
+
+	"github.com/nvidia/carbide-rest-api/carbide-rest-auth/pkg/processors"
+	temporalClient "go.temporal.io/sdk/client"
+)
+
+const (
+	// EchoUnmatchedPath is the path to use when no route matches the request
+	EchoUnmatchedPath              = "/v2/*"
+	ConfigTemporalEncryptionKeyEnv = "TEMPORAL_ENCRYPTION_KEY"
+)
+
+// Auth middleware reviews request parameters and validates authentication
+func Auth(dbSession *cdb.Session, tc temporalClient.Client, joCfg *config.JWTOriginConfig, encCfg *commonConfig.PayloadEncryptionConfig, kcfg *config.KeycloakConfig) echo.MiddlewareFunc {
+	// Initialize processors once during middleware creation
+	processors.InitializeProcessors(joCfg, dbSession, tc, encCfg, kcfg)
+
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			apiErr := AuthProcessor(c, joCfg)
+			if apiErr != nil {
+				return util.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, apiErr.Data)
+			}
+
+			return next(c)
+		}
+	}
+}
+
+// AuthProcessor validates auth header forwarded by NGC KAS and gets or creates/updates user record
+func AuthProcessor(c echo.Context, joCfg *config.JWTOriginConfig) *util.APIError {
+	logger := log.With().Str("Middleware", "Auth").Logger()
+
+	// Skip auth processing for unmatched path
+	if c.Path() == EchoUnmatchedPath {
+		logger.Warn().Msg("the requested path could not be found")
+		return util.NewAPIError(http.StatusNotFound, "The requested path could not be found", nil)
+	}
+
+	ngcOrgName := c.Param("orgName")
+
+	logger = logger.With().Str("Org", ngcOrgName).Logger()
+	logger.Info().Msgf("Starting auth processing for org: %s, path: %s", ngcOrgName, c.Path())
+
+	// Set org name in context
+	c.Set("ngcOrgName", ngcOrgName)
+
+	// Validate NGC token in auth header
+	// Extract auth header
+	authTypeAndToken := c.Request().Header.Get("Authorization")
+	if authTypeAndToken == "" {
+		logger.Warn().Msg("request received without Authorization header, access denied")
+		return util.NewAPIError(http.StatusUnauthorized, "Request is missing authorization header", nil)
+	}
+
+	// Extract token from Authorization header more robustly
+	parts := strings.Fields(authTypeAndToken)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		logger.Warn().Msgf("invalid Authorization header format: %s", authTypeAndToken)
+		return util.NewAPIError(http.StatusUnauthorized, "Invalid Authorization header format", nil)
+	}
+
+	tokenStr := parts[1]
+
+	// Parse the token without validating it yet to get the issuer
+	unverifiedToken, _, uErr := new(jwt.Parser).ParseUnverified(tokenStr, jwt.MapClaims{})
+	if uErr != nil {
+		logger.Error().Err(uErr).Msg("Error parsing the token claims")
+		return util.NewAPIError(http.StatusUnauthorized, "Error parsing the token claims", nil)
+	}
+
+	unverifiedClaims, ok := unverifiedToken.Claims.(jwt.MapClaims)
+	if !ok {
+		logger.Error().Msg("Failed to cast token claims to MapClaims")
+		return util.NewAPIError(http.StatusInternalServerError, "Internal error processing token claims", nil)
+	}
+
+	// Get issuer from unverified claims
+	issuer, err := unverifiedClaims.GetIssuer()
+	if err != nil || issuer == "" {
+		logger.Error().Err(err).Msg("No issuer found in token")
+		return util.NewAPIError(http.StatusUnauthorized, "Invalid authorization token in request", nil)
+	}
+
+	// Get the appropriate processor for this issuer
+	processor := joCfg.GetProcessorByIssuer(issuer)
+	if processor == nil {
+		logger.Error().Str("issuer", issuer).Msg("No processor found for token issuer")
+		return util.NewAPIError(http.StatusUnauthorized, "Invalid authorization token in request", nil)
+	}
+
+	// Use the processor to process the token
+	_, apiErr := processor.ProcessToken(c, tokenStr, joCfg.GetConfig(issuer), logger)
+	if apiErr != nil {
+		return apiErr
+	}
+
+	return nil
+}

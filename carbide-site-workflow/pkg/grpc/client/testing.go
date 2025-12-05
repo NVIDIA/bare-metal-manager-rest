@@ -1,0 +1,1124 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package client
+
+import (
+	"context"
+	"fmt"
+	"math/rand"
+	"net"
+	"time"
+
+	"github.com/gogo/status"
+	"github.com/google/uuid"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/protobuf/types/known/emptypb"
+
+	wflows "github.com/nvidia/carbide-rest-api/carbide-rest-api-schema/schema/site-agent/workflows/v1"
+)
+
+var runes = []rune("abcdefghijklmnopqrstuvwxyz0123456789")
+
+// Add utlity methods here
+// randSeq generates a random sequence of runes
+func randSeq(n int) string {
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = runes[rand.Intn(len(runes))]
+	}
+	return string(b)
+}
+
+// generateSiteVersion generates a version in the format of "V1-T<timestamp>"
+func generateSiteVersion() string {
+	// Get the current time
+	now := time.Now()
+	// Get microseconds since epoch
+	microseconds := now.UnixMicro()
+	return fmt.Sprintf("V1-T%d", microseconds)
+}
+
+// incrementMAC takes a hardware address (MAC address) and increments it by one.
+// It handles carrying over to the next byte when a byte overflows (reaches 255).
+func incrementMAC(mac net.HardwareAddr) {
+	// Iterate from the last byte to the first.
+	for i := len(mac) - 1; i >= 0; i-- {
+		// Increment the current byte.
+		mac[i]++
+		// If the byte is not 0, it means there was no overflow, so we can stop.
+		if mac[i] != 0 {
+			break
+		}
+		// If the byte is 0, it means it overflowed from 255, so we continue to the next
+		// byte to handle the "carry-over".
+	}
+}
+
+// MockForgeClient is a mock implementation of Forge gRPC protobuf Client
+type MockForgeClient struct {
+	wflows.ForgeClient
+}
+
+/* Version mock methods */
+func (c *MockForgeClient) Version(ctx context.Context, in *wflows.VersionRequest, opts ...grpc.CallOption) (*wflows.BuildInfo, error) {
+	out := new(wflows.BuildInfo)
+	out.BuildVersion = "1.0.0"
+	return out, nil
+}
+
+/* VPC mock methods */
+func (c *MockForgeClient) CreateVpc(ctx context.Context, in *wflows.VpcCreationRequest, opts ...grpc.CallOption) (*wflows.Vpc, error) {
+	out := new(wflows.Vpc)
+	out.Id = &wflows.VpcId{Value: uuid.NewString()}
+	return out, nil
+}
+
+func (c *MockForgeClient) UpdateVpc(ctx context.Context, in *wflows.VpcUpdateRequest, opts ...grpc.CallOption) (*wflows.VpcUpdateResult, error) {
+	out := new(wflows.VpcUpdateResult)
+	return out, nil
+}
+
+func (c *MockForgeClient) UpdateVpcVirtualization(ctx context.Context, in *wflows.VpcUpdateVirtualizationRequest, opts ...grpc.CallOption) (*wflows.VpcUpdateVirtualizationResult, error) {
+	out := new(wflows.VpcUpdateVirtualizationResult)
+	return out, nil
+}
+
+func (c *MockForgeClient) DeleteVpc(ctx context.Context, in *wflows.VpcDeletionRequest, opts ...grpc.CallOption) (*wflows.VpcDeletionResult, error) {
+	out := new(wflows.VpcDeletionResult)
+	return out, nil
+}
+
+func (c *MockForgeClient) FindVpcIds(ctx context.Context, in *wflows.VpcSearchFilter, opts ...grpc.CallOption) (*wflows.VpcIdList, error) {
+	if err, ok := ctx.Value("wantError").(error); ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve vpc ids")
+	}
+
+	out := &wflows.VpcIdList{}
+
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		for i := 0; i < count; i++ {
+			out.VpcIds = append(out.VpcIds, &wflows.VpcId{Value: uuid.NewString()})
+		}
+	}
+
+	return out, nil
+}
+
+func (c *MockForgeClient) FindVpcsByIds(ctx context.Context, in *wflows.VpcsByIdsRequest, opts ...grpc.CallOption) (*wflows.VpcList, error) {
+	err, ok := ctx.Value("wantError").(error)
+	if ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve vpcs")
+	}
+
+	out := &wflows.VpcList{}
+	if in != nil {
+		for _, id := range in.VpcIds {
+			out.Vpcs = append(out.Vpcs, &wflows.Vpc{
+				Id: id,
+			})
+		}
+	}
+
+	return out, nil
+}
+
+/* Network Segment mock methods */
+
+func (c *MockForgeClient) CreateNetworkSegment(ctx context.Context, in *wflows.NetworkSegmentCreationRequest, opts ...grpc.CallOption) (*wflows.NetworkSegment, error) {
+	out := new(wflows.NetworkSegment)
+	out.Id = &wflows.NetworkSegmentId{Value: uuid.NewString()}
+	return out, nil
+}
+
+func (c *MockForgeClient) DeleteNetworkSegment(ctx context.Context, in *wflows.NetworkSegmentDeletionRequest, opts ...grpc.CallOption) (*wflows.NetworkSegmentDeletionResult, error) {
+	out := new(wflows.NetworkSegmentDeletionResult)
+	return out, nil
+}
+
+func (c *MockForgeClient) FindNetworkSegmentIds(ctx context.Context, in *wflows.NetworkSegmentSearchFilter, opts ...grpc.CallOption) (*wflows.NetworkSegmentIdList, error) {
+	if err, ok := ctx.Value("wantError").(error); ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve network segment ids")
+	}
+
+	out := &wflows.NetworkSegmentIdList{}
+
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		for i := 0; i < count; i++ {
+			out.NetworkSegmentsIds = append(out.NetworkSegmentsIds, &wflows.NetworkSegmentId{Value: uuid.NewString()})
+		}
+	}
+
+	return out, nil
+}
+
+func (c *MockForgeClient) FindNetworkSegmentsByIds(ctx context.Context, in *wflows.NetworkSegmentsByIdsRequest, opts ...grpc.CallOption) (*wflows.NetworkSegmentList, error) {
+	err, ok := ctx.Value("wantError").(error)
+	if ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve network segments")
+	}
+
+	out := &wflows.NetworkSegmentList{}
+	if in != nil {
+		for _, id := range in.NetworkSegmentsIds {
+			out.NetworkSegments = append(out.NetworkSegments, &wflows.NetworkSegment{
+				Id: id,
+			})
+		}
+	}
+
+	return out, nil
+}
+
+// DEPRECATED: use FindNetworkSegmentIDs and FindNetworkSegmentsByIDs instead
+func (c *MockForgeClient) FindNetworkSegments(ctx context.Context, in *wflows.NetworkSegmentQuery, opts ...grpc.CallOption) (*wflows.NetworkSegmentList, error) {
+	out := &wflows.NetworkSegmentList{}
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		for i := 0; i < count; i++ {
+			out.NetworkSegments = append(out.NetworkSegments, &wflows.NetworkSegment{Id: &wflows.NetworkSegmentId{Value: uuid.NewString()}})
+		}
+	}
+	return out, nil
+}
+
+/* InfiniBand Partition mock methods */
+func (c *MockForgeClient) CreateIBPartition(ctx context.Context, in *wflows.IBPartitionCreationRequest, opts ...grpc.CallOption) (*wflows.IBPartition, error) {
+	out := new(wflows.IBPartition)
+	out.Id = &wflows.IBPartitionId{Value: uuid.NewString()}
+	return out, nil
+}
+
+func (c *MockForgeClient) DeleteIBPartition(ctx context.Context, in *wflows.IBPartitionDeletionRequest, opts ...grpc.CallOption) (*wflows.IBPartitionDeletionResult, error) {
+	out := new(wflows.IBPartitionDeletionResult)
+	return out, nil
+}
+
+func (c *MockForgeClient) FindIBPartitionIds(ctx context.Context, in *wflows.IBPartitionSearchFilter, opts ...grpc.CallOption) (*wflows.IBPartitionIdList, error) {
+	if err, ok := ctx.Value("wantError").(error); ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve ib partition ids")
+	}
+
+	out := &wflows.IBPartitionIdList{}
+
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		for i := 0; i < count; i++ {
+			out.IbPartitionIds = append(out.IbPartitionIds, &wflows.IBPartitionId{Value: uuid.NewString()})
+		}
+	}
+
+	return out, nil
+}
+
+func (c *MockForgeClient) FindIBPartitionsByIds(ctx context.Context, in *wflows.IBPartitionsByIdsRequest, opts ...grpc.CallOption) (*wflows.IBPartitionList, error) {
+	err, ok := ctx.Value("wantError").(error)
+	if ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve ib partitions")
+	}
+
+	out := &wflows.IBPartitionList{}
+	if in != nil {
+		for _, id := range in.IbPartitionIds {
+			out.IbPartitions = append(out.IbPartitions, &wflows.IBPartition{
+				Id: id,
+			})
+		}
+	}
+
+	return out, nil
+}
+
+// DEPRECATED: use FindIBPartitionIds and FindIBPartitionsByIds instead
+func (c *MockForgeClient) FindIBPartitions(ctx context.Context, in *wflows.IBPartitionQuery, opts ...grpc.CallOption) (*wflows.IBPartitionList, error) {
+	out := &wflows.IBPartitionList{}
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		for i := 0; i < count; i++ {
+			out.IbPartitions = append(out.IbPartitions, &wflows.IBPartition{Id: &wflows.IBPartitionId{Value: uuid.NewString()}})
+		}
+	}
+	return out, nil
+}
+
+/* Instance mock methods */
+func (c *MockForgeClient) AllocateInstance(ctx context.Context, in *wflows.InstanceAllocationRequest, opts ...grpc.CallOption) (*wflows.Instance, error) {
+	out := new(wflows.Instance)
+	out.Id = &wflows.InstanceId{Value: uuid.NewString()}
+	return out, nil
+}
+
+func (c *MockForgeClient) UpdateInstanceConfig(ctx context.Context, in *wflows.InstanceConfigUpdateRequest, opts ...grpc.CallOption) (*wflows.Instance, error) {
+	out := new(wflows.Instance)
+	out.Id = in.InstanceId
+	out.Metadata = in.Metadata
+	out.Config = in.Config
+	return out, nil
+}
+
+func (c *MockForgeClient) ReleaseInstance(ctx context.Context, in *wflows.InstanceReleaseRequest, opts ...grpc.CallOption) (*wflows.InstanceReleaseResult, error) {
+	err, ok := ctx.Value("wantError").(error)
+	if ok {
+		if status.Code(err) == codes.NotFound {
+			return nil, status.Error(codes.NotFound, "instance not found: ")
+		}
+	}
+	out := new(wflows.InstanceReleaseResult)
+	return out, nil
+}
+
+func (c *MockForgeClient) FindInstanceIds(ctx context.Context, in *wflows.InstanceSearchFilter, opts ...grpc.CallOption) (*wflows.InstanceIdList, error) {
+	if err, ok := ctx.Value("wantError").(error); ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve instance ids")
+	}
+
+	out := &wflows.InstanceIdList{}
+
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		for i := 0; i < count; i++ {
+			out.InstanceIds = append(out.InstanceIds, &wflows.InstanceId{Value: uuid.NewString()})
+		}
+	}
+
+	return out, nil
+}
+
+func (c *MockForgeClient) FindInstancesByIds(ctx context.Context, in *wflows.InstancesByIdsRequest, opts ...grpc.CallOption) (*wflows.InstanceList, error) {
+	err, ok := ctx.Value("wantError").(error)
+	if ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve instances")
+	}
+
+	out := &wflows.InstanceList{}
+	if in != nil {
+		for _, id := range in.InstanceIds {
+			out.Instances = append(out.Instances, &wflows.Instance{
+				Id: id,
+			})
+		}
+	}
+
+	return out, nil
+}
+
+// DEPRECATED: use FindInstanceIds and FindInstancesByIds instead
+func (c *MockForgeClient) FindInstances(ctx context.Context, in *wflows.InstanceSearchQuery, opts ...grpc.CallOption) (*wflows.InstanceList, error) {
+	out := new(wflows.InstanceList)
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		for i := 0; i < count; i++ {
+			out.Instances = append(out.Instances, &wflows.Instance{Id: &wflows.InstanceId{Value: uuid.NewString()}})
+		}
+	}
+	return out, nil
+}
+
+func (c *MockForgeClient) InvokeInstancePower(ctx context.Context, in *wflows.InstancePowerRequest, opts ...grpc.CallOption) (*wflows.InstancePowerResult, error) {
+	out := new(wflows.InstancePowerResult)
+	return out, nil
+}
+
+/* Machine mock methods */
+func (c *MockForgeClient) SetMaintenance(ctx context.Context, in *wflows.MaintenanceRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	return out, nil
+}
+
+func (c *MockForgeClient) UpdateMachineMetadata(ctx context.Context, in *wflows.MachineMetadataUpdateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	err, ok := ctx.Value("wantError").(error)
+	if ok {
+		return nil, status.Error(status.Code(err), "failed to update machine metadata")
+	}
+
+	out := new(emptypb.Empty)
+	return out, nil
+}
+
+func (c *MockForgeClient) FindMachineIds(ctx context.Context, in *wflows.MachineSearchConfig, opts ...grpc.CallOption) (*wflows.MachineIdList, error) {
+	err, ok := ctx.Value("wantError").(error)
+	if ok {
+		if status.Code(err) == codes.Internal {
+			return nil, status.Error(codes.Internal, "failed to retrieve machine ids")
+		}
+	}
+
+	out := &wflows.MachineIdList{}
+
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		for i := 0; i < count; i++ {
+			out.MachineIds = append(out.MachineIds, &wflows.MachineId{Id: uuid.NewString()})
+		}
+	}
+
+	return out, nil
+}
+
+func (c *MockForgeClient) FindMachinesByIds(ctx context.Context, in *wflows.MachinesByIdsRequest, opts ...grpc.CallOption) (*wflows.MachineList, error) {
+	err, ok := ctx.Value("wantError").(error)
+	if ok {
+		if status.Code(err) == codes.Internal {
+			return nil, status.Error(codes.Internal, "failed to retrieve machines by ids")
+		}
+	}
+
+	out := &wflows.MachineList{}
+	if in != nil {
+		for _, id := range in.MachineIds {
+			out.Machines = append(out.Machines, &wflows.Machine{
+				Id:    id,
+				State: "Ready",
+			})
+		}
+	}
+
+	return out, nil
+}
+
+/* Tenant Keyset mock methods */
+func (c *MockForgeClient) CreateTenantKeyset(ctx context.Context, in *wflows.CreateTenantKeysetRequest, opts ...grpc.CallOption) (*wflows.CreateTenantKeysetResponse, error) {
+	out := new(wflows.CreateTenantKeysetResponse)
+	out.Keyset = &wflows.TenantKeyset{
+		KeysetIdentifier: &wflows.TenantKeysetIdentifier{
+			OrganizationId: in.KeysetIdentifier.OrganizationId,
+			KeysetId:       uuid.NewString(),
+		},
+	}
+	out.Keyset.KeysetContent = in.KeysetContent
+	out.Keyset.Version = in.Version
+	return out, nil
+}
+
+func (c *MockForgeClient) UpdateTenantKeyset(ctx context.Context, in *wflows.UpdateTenantKeysetRequest, opts ...grpc.CallOption) (*wflows.UpdateTenantKeysetResponse, error) {
+	out := new(wflows.UpdateTenantKeysetResponse)
+	return out, nil
+}
+
+func (c *MockForgeClient) DeleteTenantKeyset(ctx context.Context, in *wflows.DeleteTenantKeysetRequest, opts ...grpc.CallOption) (*wflows.DeleteTenantKeysetResponse, error) {
+	out := new(wflows.DeleteTenantKeysetResponse)
+	return out, nil
+}
+
+func (c *MockForgeClient) FindTenantKeysetIds(ctx context.Context, in *wflows.TenantKeysetSearchFilter, opts ...grpc.CallOption) (*wflows.TenantKeysetIdList, error) {
+	if err, ok := ctx.Value("wantError").(error); ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve tenant keyset ids")
+	}
+
+	out := &wflows.TenantKeysetIdList{}
+
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		orgID := uuid.NewString()
+		for i := 0; i < count; i++ {
+			out.KeysetIds = append(out.KeysetIds, &wflows.TenantKeysetIdentifier{OrganizationId: orgID, KeysetId: uuid.NewString()})
+		}
+	}
+
+	return out, nil
+}
+
+func (c *MockForgeClient) FindTenantKeysetsByIds(ctx context.Context, in *wflows.TenantKeysetsByIdsRequest, opts ...grpc.CallOption) (*wflows.TenantKeySetList, error) {
+	err, ok := ctx.Value("wantError").(error)
+	if ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve tenant keysets")
+	}
+
+	out := &wflows.TenantKeySetList{}
+	if in != nil {
+		for _, id := range in.KeysetIds {
+			out.Keyset = append(out.Keyset, &wflows.TenantKeyset{
+				KeysetIdentifier: &wflows.TenantKeysetIdentifier{
+					OrganizationId: id.OrganizationId,
+					KeysetId:       id.KeysetId,
+				},
+			})
+		}
+	}
+
+	return out, nil
+}
+
+// DEPRECATED: use FindTenantKeysetIds and FindTenantKeysetsByIds instead
+func (c *MockForgeClient) FindTenantKeyset(ctx context.Context, in *wflows.FindTenantKeysetRequest, opts ...grpc.CallOption) (*wflows.TenantKeySetList, error) {
+	out := &wflows.TenantKeySetList{}
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		for i := 0; i < count; i++ {
+			out.Keyset = append(out.Keyset, &wflows.TenantKeyset{KeysetIdentifier: &wflows.TenantKeysetIdentifier{KeysetId: uuid.NewString()}})
+		}
+	}
+	return out, nil
+}
+
+/* OS Image mock methods */
+func (c *MockForgeClient) CreateOsImage(ctx context.Context, in *wflows.OsImageAttributes, opts ...grpc.CallOption) (*wflows.OsImage, error) {
+	out := new(wflows.OsImage)
+	out.Attributes = &wflows.OsImageAttributes{Id: &wflows.UUID{Value: uuid.NewString()}}
+	return out, nil
+}
+
+func (c *MockForgeClient) UpdateOsImage(ctx context.Context, in *wflows.OsImageAttributes, opts ...grpc.CallOption) (*wflows.OsImage, error) {
+	out := new(wflows.OsImage)
+	return out, nil
+}
+
+func (c *MockForgeClient) DeleteOsImage(ctx context.Context, in *wflows.DeleteOsImageRequest, opts ...grpc.CallOption) (*wflows.DeleteOsImageResponse, error) {
+	out := new(wflows.DeleteOsImageResponse)
+	return out, nil
+}
+
+func (c *MockForgeClient) ListOsImage(ctx context.Context, in *wflows.ListOsImageRequest, opts ...grpc.CallOption) (*wflows.ListOsImageResponse, error) {
+	if err, ok := ctx.Value("wantError").(error); ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve os image list")
+	}
+
+	out := &wflows.ListOsImageResponse{}
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		id := uuid.NewString()
+		for i := 0; i < count; i++ {
+			out.Images = append(out.Images, &wflows.OsImage{Attributes: &wflows.OsImageAttributes{Id: &wflows.UUID{Value: id}}})
+		}
+	}
+	return out, nil
+}
+
+/* Tenant mock methods */
+func (c *MockForgeClient) CreateTenant(ctx context.Context, in *wflows.CreateTenantRequest, opts ...grpc.CallOption) (*wflows.CreateTenantResponse, error) {
+	out := new(wflows.CreateTenantResponse)
+	out.Tenant = &wflows.Tenant{
+		OrganizationId: in.OrganizationId,
+	}
+	if in.Metadata != nil {
+		out.Tenant.Metadata = &wflows.Metadata{
+			Name: in.Metadata.Name,
+		}
+	}
+	return out, nil
+}
+
+func (c *MockForgeClient) FindTenant(ctx context.Context, in *wflows.FindTenantRequest, opts ...grpc.CallOption) (*wflows.FindTenantResponse, error) {
+	out := new(wflows.FindTenantResponse)
+	return out, nil
+}
+
+func (c *MockForgeClient) UpdateTenant(ctx context.Context, in *wflows.UpdateTenantRequest, opts ...grpc.CallOption) (*wflows.UpdateTenantResponse, error) {
+	out := new(wflows.UpdateTenantResponse)
+	return out, nil
+}
+
+func (c *MockForgeClient) FindTenantOrganizationIds(ctx context.Context, in *wflows.TenantSearchFilter, opts ...grpc.CallOption) (*wflows.TenantOrganizationIdList, error) {
+	if err, ok := ctx.Value("wantError").(error); ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve Tenant organization ids")
+	}
+
+	out := &wflows.TenantOrganizationIdList{}
+
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		for i := 0; i < count; i++ {
+			out.TenantOrganizationIds = append(out.TenantOrganizationIds, randSeq(10))
+		}
+	}
+
+	return out, nil
+}
+
+func (c *MockForgeClient) FindTenantsByOrganizationIds(ctx context.Context, in *wflows.TenantByOrganizationIdsRequest, opts ...grpc.CallOption) (*wflows.TenantList, error) {
+	err, ok := ctx.Value("wantError").(error)
+	if ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve Tenants")
+	}
+
+	out := &wflows.TenantList{}
+	if in != nil {
+		for _, id := range in.OrganizationIds {
+			out.Tenants = append(out.Tenants, &wflows.Tenant{
+				OrganizationId: id,
+			})
+		}
+	}
+
+	return out, nil
+}
+
+/* Instance Type mock methods */
+func (c *MockForgeClient) CreateInstanceType(ctx context.Context, in *wflows.CreateInstanceTypeRequest, opts ...grpc.CallOption) (*wflows.CreateInstanceTypeResponse, error) {
+	out := &wflows.CreateInstanceTypeResponse{InstanceType: &wflows.InstanceType{}}
+	out.InstanceType.Id = uuid.NewString()
+	return out, nil
+}
+
+func (c *MockForgeClient) UpdateInstanceType(ctx context.Context, in *wflows.UpdateInstanceTypeRequest, opts ...grpc.CallOption) (*wflows.UpdateInstanceTypeResponse, error) {
+	out := &wflows.UpdateInstanceTypeResponse{InstanceType: &wflows.InstanceType{}}
+	out.InstanceType.Id = in.Id
+	out.InstanceType.Metadata = in.Metadata
+	out.InstanceType.Attributes = in.InstanceTypeAttributes
+	return out, nil
+}
+
+func (c *MockForgeClient) DeleteInstanceType(ctx context.Context, in *wflows.DeleteInstanceTypeRequest, opts ...grpc.CallOption) (*wflows.DeleteInstanceTypeResponse, error) {
+	out := &wflows.DeleteInstanceTypeResponse{}
+	return out, nil
+}
+
+func (c *MockForgeClient) AssociateMachinesWithInstanceType(ctx context.Context, in *wflows.AssociateMachinesWithInstanceTypeRequest, opts ...grpc.CallOption) (*wflows.AssociateMachinesWithInstanceTypeResponse, error) {
+	out := &wflows.AssociateMachinesWithInstanceTypeResponse{}
+	return out, nil
+}
+
+func (c *MockForgeClient) RemoveMachineInstanceTypeAssociation(ctx context.Context, in *wflows.RemoveMachineInstanceTypeAssociationRequest, opts ...grpc.CallOption) (*wflows.RemoveMachineInstanceTypeAssociationResponse, error) {
+	out := &wflows.RemoveMachineInstanceTypeAssociationResponse{}
+	return out, nil
+}
+
+func (c *MockForgeClient) FindInstanceTypeIds(ctx context.Context, in *wflows.FindInstanceTypeIdsRequest, opts ...grpc.CallOption) (*wflows.FindInstanceTypeIdsResponse, error) {
+	if err, ok := ctx.Value("wantError").(error); ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve InstanceType ids")
+	}
+
+	out := &wflows.FindInstanceTypeIdsResponse{}
+
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		for i := 0; i < count; i++ {
+			out.InstanceTypeIds = append(out.InstanceTypeIds, randSeq(10))
+		}
+	}
+
+	return out, nil
+}
+
+func (c *MockForgeClient) FindInstanceTypesByIds(ctx context.Context, in *wflows.FindInstanceTypesByIdsRequest, opts ...grpc.CallOption) (*wflows.FindInstanceTypesByIdsResponse, error) {
+	err, ok := ctx.Value("wantError").(error)
+	if ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve InstanceTypes")
+	}
+
+	out := &wflows.FindInstanceTypesByIdsResponse{}
+	if in != nil {
+		for _, id := range in.InstanceTypeIds {
+			out.InstanceTypes = append(out.InstanceTypes, &wflows.InstanceType{
+				Id: id,
+			})
+		}
+	}
+	return out, nil
+}
+
+/* VPC Prefix mock methods */
+func (c *MockForgeClient) CreateVpcPrefix(ctx context.Context, in *wflows.VpcPrefixCreationRequest, opts ...grpc.CallOption) (*wflows.VpcPrefix, error) {
+	out := new(wflows.VpcPrefix)
+	return out, nil
+}
+
+func (c *MockForgeClient) UpdateVpcPrefix(ctx context.Context, in *wflows.VpcPrefixUpdateRequest, opts ...grpc.CallOption) (*wflows.VpcPrefix, error) {
+	out := new(wflows.VpcPrefix)
+	return out, nil
+}
+
+func (c *MockForgeClient) DeleteVpcPrefix(ctx context.Context, in *wflows.VpcPrefixDeletionRequest, opts ...grpc.CallOption) (*wflows.VpcPrefixDeletionResult, error) {
+	out := new(wflows.VpcPrefixDeletionResult)
+	return out, nil
+}
+
+func (c *MockForgeClient) SearchVpcPrefixes(ctx context.Context, in *wflows.VpcPrefixSearchQuery, opts ...grpc.CallOption) (*wflows.VpcPrefixIdList, error) {
+	if err, ok := ctx.Value("wantError").(error); ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve vpcprefix ids")
+	}
+
+	out := &wflows.VpcPrefixIdList{}
+
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		for i := 0; i < count; i++ {
+			out.VpcPrefixIds = append(out.VpcPrefixIds, &wflows.VpcPrefixId{Value: uuid.NewString()})
+		}
+	}
+
+	return out, nil
+}
+
+func (c *MockForgeClient) GetVpcPrefixes(ctx context.Context, in *wflows.VpcPrefixGetRequest, opts ...grpc.CallOption) (*wflows.VpcPrefixList, error) {
+	err, ok := ctx.Value("wantError").(error)
+	if ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve vpcprefixes")
+	}
+
+	out := &wflows.VpcPrefixList{}
+	if in != nil {
+		for _, id := range in.VpcPrefixIds {
+			out.VpcPrefixes = append(out.VpcPrefixes, &wflows.VpcPrefix{
+				Id: id,
+			})
+		}
+	}
+
+	return out, nil
+}
+
+/* VPC Peering mock methods */
+func (c *MockForgeClient) CreateVpcPeering(ctx context.Context, in *wflows.VpcPeeringCreationRequest, opts ...grpc.CallOption) (*wflows.VpcPeering, error) {
+	out := new(wflows.VpcPeering)
+	out.Id = &wflows.VpcPeeringId{Value: uuid.NewString()}
+	return out, nil
+}
+
+func (c *MockForgeClient) DeleteVpcPeering(ctx context.Context, in *wflows.VpcPeeringDeletionRequest, opts ...grpc.CallOption) (*wflows.VpcPeeringDeletionResult, error) {
+	if err, ok := ctx.Value("wantError").(error); ok {
+		return nil, status.Error(status.Code(err), "failed to delete vpc peering")
+	}
+
+	return &wflows.VpcPeeringDeletionResult{}, nil
+}
+
+func (c *MockForgeClient) FindVpcPeeringIds(ctx context.Context, in *wflows.VpcPeeringSearchFilter, opts ...grpc.CallOption) (*wflows.VpcPeeringIdList, error) {
+	if err, ok := ctx.Value("wantError").(error); ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve vpc peering ids")
+	}
+
+	out := &wflows.VpcPeeringIdList{}
+
+	count, ok := ctx.Value("WantCount").(int)
+	if ok {
+		for i := 0; i < count; i++ {
+			out.VpcPeeringIds = append(out.VpcPeeringIds, &wflows.VpcPeeringId{Value: uuid.NewString()})
+		}
+	}
+
+	return out, nil
+}
+
+func (c *MockForgeClient) FindVpcPeeringsByIds(ctx context.Context, in *wflows.VpcPeeringsByIdsRequest, opts ...grpc.CallOption) (*wflows.VpcPeeringList, error) {
+	err, ok := ctx.Value("wantError").(error)
+	if ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve vpc peerings")
+	}
+
+	out := &wflows.VpcPeeringList{}
+	for _, id := range in.VpcPeeringIds {
+		out.VpcPeerings = append(out.VpcPeerings, &wflows.VpcPeering{
+			Id:        id,
+			VpcId:     &wflows.VpcId{Value: uuid.NewString()},
+			PeerVpcId: &wflows.VpcId{Value: uuid.NewString()},
+		})
+	}
+
+	return out, nil
+}
+
+/* Machine Validation Test mock methods */
+func (c *MockForgeClient) AddMachineValidationTest(ctx context.Context, in *wflows.MachineValidationTestAddRequest, opts ...grpc.CallOption) (*wflows.MachineValidationTestAddUpdateResponse, error) {
+	out := new(wflows.MachineValidationTestAddUpdateResponse)
+	id, ok := ctx.Value("wantID").(string)
+	if ok {
+		out.TestId = id
+		out.Version = "version-1"
+	}
+	return out, nil
+}
+
+func (c *MockForgeClient) UpdateMachineValidationTest(ctx context.Context, in *wflows.MachineValidationTestUpdateRequest, opts ...grpc.CallOption) (*wflows.MachineValidationTestAddUpdateResponse, error) {
+	out := new(wflows.MachineValidationTestAddUpdateResponse)
+	out.TestId = in.TestId
+	out.Version = in.Version
+	return out, nil
+}
+
+func (c *MockForgeClient) GetMachineValidationTests(ctx context.Context, in *wflows.MachineValidationTestsGetRequest, opts ...grpc.CallOption) (*wflows.MachineValidationTestsGetResponse, error) {
+	out := new(wflows.MachineValidationTestsGetResponse)
+	return out, nil
+}
+
+func (c *MockForgeClient) MachineValidationTestEnableDisableTest(ctx context.Context, in *wflows.MachineValidationTestEnableDisableTestRequest, opts ...grpc.CallOption) (*wflows.MachineValidationTestEnableDisableTestResponse, error) {
+	out := new(wflows.MachineValidationTestEnableDisableTestResponse)
+	return out, nil
+}
+
+func (c *MockForgeClient) AddUpdateMachineValidationExternalConfig(ctx context.Context, in *wflows.AddUpdateMachineValidationExternalConfigRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	return out, nil
+}
+
+func (c *MockForgeClient) RemoveMachineValidationExternalConfig(ctx context.Context, in *wflows.RemoveMachineValidationExternalConfigRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	return out, nil
+}
+
+func (c *MockForgeClient) GetMachineValidationExternalConfigs(ctx context.Context, in *wflows.GetMachineValidationExternalConfigsRequest, opts ...grpc.CallOption) (*wflows.GetMachineValidationExternalConfigsResponse, error) {
+	out := new(wflows.GetMachineValidationExternalConfigsResponse)
+	return out, nil
+}
+
+func (c *MockForgeClient) GetMachineValidationRuns(ctx context.Context, in *wflows.MachineValidationRunListGetRequest, opts ...grpc.CallOption) (*wflows.MachineValidationRunList, error) {
+	out := new(wflows.MachineValidationRunList)
+	return out, nil
+}
+
+func (c *MockForgeClient) GetMachineValidationResults(ctx context.Context, in *wflows.MachineValidationGetRequest, opts ...grpc.CallOption) (*wflows.MachineValidationResultList, error) {
+	out := new(wflows.MachineValidationResultList)
+	return out, nil
+}
+
+func (c *MockForgeClient) PersistValidationResult(ctx context.Context, in *wflows.MachineValidationResultPostRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	return out, nil
+}
+
+/* Network Security Group mock methods */
+func (c *MockForgeClient) UpdateMachineValidationRun(ctx context.Context, in *wflows.MachineValidationRunRequest, opts ...grpc.CallOption) (*wflows.MachineValidationRunResponse, error) {
+	out := new(wflows.MachineValidationRunResponse)
+	return out, nil
+}
+
+func (c *MockForgeClient) CreateNetworkSecurityGroup(ctx context.Context, in *wflows.CreateNetworkSecurityGroupRequest, opts ...grpc.CallOption) (*wflows.CreateNetworkSecurityGroupResponse, error) {
+	out := &wflows.CreateNetworkSecurityGroupResponse{NetworkSecurityGroup: &wflows.NetworkSecurityGroup{}}
+	return out, nil
+}
+
+func (c *MockForgeClient) UpdateNetworkSecurityGroup(ctx context.Context, in *wflows.UpdateNetworkSecurityGroupRequest, opts ...grpc.CallOption) (*wflows.UpdateNetworkSecurityGroupResponse, error) {
+	out := &wflows.UpdateNetworkSecurityGroupResponse{NetworkSecurityGroup: &wflows.NetworkSecurityGroup{}}
+	return out, nil
+}
+
+func (c *MockForgeClient) DeleteNetworkSecurityGroup(ctx context.Context, in *wflows.DeleteNetworkSecurityGroupRequest, opts ...grpc.CallOption) (*wflows.DeleteNetworkSecurityGroupResponse, error) {
+	out := &wflows.DeleteNetworkSecurityGroupResponse{}
+	return out, nil
+}
+
+func (c *MockForgeClient) GetNetworkSecurityGroupAttachments(ctx context.Context, in *wflows.GetNetworkSecurityGroupAttachmentsRequest, opts ...grpc.CallOption) (*wflows.GetNetworkSecurityGroupAttachmentsResponse, error) {
+	out := &wflows.GetNetworkSecurityGroupAttachmentsResponse{}
+	return out, nil
+}
+
+func (c *MockForgeClient) GetNetworkSecurityGroupPropagationStatus(ctx context.Context, in *wflows.GetNetworkSecurityGroupPropagationStatusRequest, opts ...grpc.CallOption) (*wflows.GetNetworkSecurityGroupPropagationStatusResponse, error) {
+	out := &wflows.GetNetworkSecurityGroupPropagationStatusResponse{}
+	return out, nil
+}
+
+func (c *MockForgeClient) FindNetworkSecurityGroupIds(ctx context.Context, in *wflows.FindNetworkSecurityGroupIdsRequest, opts ...grpc.CallOption) (*wflows.FindNetworkSecurityGroupIdsResponse, error) {
+	if err, ok := ctx.Value("wantError").(error); ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve NetworkSecurityGroup ids")
+	}
+
+	out := &wflows.FindNetworkSecurityGroupIdsResponse{}
+
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		for i := 0; i < count; i++ {
+			out.NetworkSecurityGroupIds = append(out.NetworkSecurityGroupIds, randSeq(10))
+		}
+	}
+
+	return out, nil
+}
+
+func (c *MockForgeClient) FindNetworkSecurityGroupsByIds(ctx context.Context, in *wflows.FindNetworkSecurityGroupsByIdsRequest, opts ...grpc.CallOption) (*wflows.FindNetworkSecurityGroupsByIdsResponse, error) {
+	err, ok := ctx.Value("wantError").(error)
+	if ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve NetworkSecurityGroups")
+	}
+
+	out := &wflows.FindNetworkSecurityGroupsByIdsResponse{}
+	if in != nil {
+		for _, id := range in.NetworkSecurityGroupIds {
+			out.NetworkSecurityGroups = append(out.NetworkSecurityGroups, &wflows.NetworkSecurityGroup{
+				Id: id,
+			})
+		}
+	}
+	return out, nil
+}
+
+/* Expected Machine mock methods */
+func (c *MockForgeClient) AddExpectedMachine(ctx context.Context, in *wflows.ExpectedMachine, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	if in.Id == nil || in.Id.Value == "" {
+		return nil, status.Error(codes.Internal, "ID not provided for AddExpectedMachine")
+	}
+	if in.BmcMacAddress == "" {
+		return nil, status.Error(codes.Internal, "MAC address not provided for AddExpectedMachine")
+	}
+	if in.ChassisSerialNumber == "" {
+		return nil, status.Error(codes.Internal, "Chassis Serial Number not provided for AddExpectedMachine")
+	}
+	out := new(emptypb.Empty)
+	return out, nil
+}
+
+func (c *MockForgeClient) DeleteExpectedMachine(ctx context.Context, in *wflows.ExpectedMachineRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	if in.Id == nil || in.Id.Value == "" {
+		return nil, status.Error(codes.Internal, "ID not provided for DeleteExpectedMachine")
+	}
+	out := new(emptypb.Empty)
+	return out, nil
+}
+
+func (c *MockForgeClient) UpdateExpectedMachine(ctx context.Context, in *wflows.ExpectedMachine, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	if in.Id == nil || in.Id.Value == "" {
+		return nil, status.Error(codes.Internal, "ID not provided for UpdateExpectedMachine")
+	}
+	if in.BmcMacAddress == "" {
+		return nil, status.Error(codes.Internal, "MAC address not provided for UpdateExpectedMachine")
+	}
+	if in.ChassisSerialNumber == "" {
+		return nil, status.Error(codes.Internal, "Chassis Serial Number not provided for UpdateExpectedMachine")
+	}
+	out := new(emptypb.Empty)
+	return out, nil
+}
+
+func (c *MockForgeClient) GetAllExpectedMachines(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*wflows.ExpectedMachineList, error) {
+	err, ok := ctx.Value("wantError").(error)
+	if ok {
+		if status.Code(err) == codes.Internal {
+			return nil, status.Error(codes.Internal, "failed to retrieve machine ids")
+		}
+	}
+
+	out := &wflows.ExpectedMachineList{}
+
+	// we generate predictable unique IDs and values
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		mac, _ := net.ParseMAC("02:00:00:00:00:00")
+		for i := 0; i < count; i++ {
+			// Create a 16-byte array for UUID from MAC address (6 bytes) + padding
+			var uuidBytes [16]byte
+			copy(uuidBytes[:6], mac)
+			emID, _ := uuid.FromBytes(uuidBytes[:])
+			out.ExpectedMachines = append(out.ExpectedMachines, &wflows.ExpectedMachine{
+				Id:                  &wflows.UUID{Value: emID.String()},
+				BmcMacAddress:       mac.String(),
+				ChassisSerialNumber: "serial-" + mac.String()})
+			incrementMAC(mac)
+		}
+	}
+
+	return out, nil
+}
+
+func (c *MockForgeClient) GetExpectedMachine(ctx context.Context, in *wflows.ExpectedMachineRequest, opts ...grpc.CallOption) (*wflows.ExpectedMachine, error) {
+	if in.Id == nil || in.Id.Value == "" {
+		return nil, status.Error(codes.Internal, "ID not provided for GetExpectedMachine")
+	}
+	out := new(wflows.ExpectedMachine)
+	return out, nil
+}
+
+/* SKU mock methods */
+func (c *MockForgeClient) FindSkusByIds(ctx context.Context, in *wflows.SkusByIdsRequest, opts ...grpc.CallOption) (*wflows.SkuList, error) {
+	err, ok := ctx.Value("wantError").(error)
+	if ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve skus")
+	}
+
+	out := &wflows.SkuList{}
+	if in != nil {
+		for _, id := range in.Ids {
+			out.Skus = append(out.Skus, &wflows.Sku{
+				Id: id,
+			})
+		}
+	}
+
+	return out, nil
+}
+
+func (c *MockForgeClient) GetAllSkuIds(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*wflows.SkuIdList, error) {
+	if err, ok := ctx.Value("wantError").(error); ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve sku ids")
+	}
+
+	out := &wflows.SkuIdList{}
+
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		for i := 0; i < count; i++ {
+			out.Ids = append(out.Ids, uuid.NewString())
+		}
+	}
+
+	return out, nil
+}
+
+/* DPU Extension Service mock methods */
+func (c *MockForgeClient) CreateDpuExtensionService(ctx context.Context, in *wflows.CreateDpuExtensionServiceRequest, opts ...grpc.CallOption) (*wflows.DpuExtensionService, error) {
+	versionInfo := &wflows.DpuExtensionServiceVersionInfo{
+		Version:       generateSiteVersion(),
+		Data:          "test data",
+		HasCredential: false,
+	}
+
+	serviceID := uuid.NewString()
+	if in.ServiceId != nil {
+		serviceID = *in.ServiceId
+	}
+
+	out := &wflows.DpuExtensionService{
+		ServiceId:            serviceID,
+		ServiceName:          in.ServiceName,
+		ServiceType:          in.ServiceType,
+		TenantOrganizationId: in.TenantOrganizationId,
+		LatestVersionInfo:    versionInfo,
+		ActiveVersions:       []string{versionInfo.Version},
+	}
+
+	if in.Description != nil {
+		out.Description = *in.Description
+	}
+
+	return out, nil
+}
+
+func (c *MockForgeClient) UpdateDpuExtensionService(ctx context.Context, in *wflows.UpdateDpuExtensionServiceRequest, opts ...grpc.CallOption) (*wflows.DpuExtensionService, error) {
+	versionInfo := &wflows.DpuExtensionServiceVersionInfo{
+		Version:       generateSiteVersion(),
+		Data:          "test data",
+		HasCredential: false,
+	}
+
+	out := &wflows.DpuExtensionService{
+		ServiceId:         in.ServiceId,
+		LatestVersionInfo: versionInfo,
+		ActiveVersions:    []string{versionInfo.Version},
+	}
+
+	if in.ServiceName != nil {
+		out.ServiceName = *in.ServiceName
+	}
+
+	if in.Description != nil {
+		out.Description = *in.Description
+	}
+
+	return out, nil
+}
+
+func (c *MockForgeClient) DeleteDpuExtensionService(ctx context.Context, in *wflows.DeleteDpuExtensionServiceRequest, opts ...grpc.CallOption) (*wflows.DeleteDpuExtensionServiceResponse, error) {
+	out := new(wflows.DeleteDpuExtensionServiceResponse)
+	return out, nil
+}
+
+func (c *MockForgeClient) FindDpuExtensionServiceIds(ctx context.Context, in *wflows.DpuExtensionServiceSearchFilter, opts ...grpc.CallOption) (*wflows.DpuExtensionServiceIdList, error) {
+	out := &wflows.DpuExtensionServiceIdList{}
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		for i := 0; i < count; i++ {
+			out.ServiceIds = append(out.ServiceIds, uuid.NewString())
+		}
+	}
+	return out, nil
+}
+
+func (c *MockForgeClient) FindDpuExtensionServicesByIds(ctx context.Context, in *wflows.DpuExtensionServicesByIdsRequest, opts ...grpc.CallOption) (*wflows.DpuExtensionServiceList, error) {
+	out := &wflows.DpuExtensionServiceList{}
+	if in != nil {
+		for _, id := range in.ServiceIds {
+			out.Services = append(out.Services, &wflows.DpuExtensionService{
+				ServiceId: id,
+			})
+		}
+	}
+	return out, nil
+}
+
+func (c *MockForgeClient) GetDpuExtensionServiceVersionsInfo(ctx context.Context, in *wflows.GetDpuExtensionServiceVersionsInfoRequest, opts ...grpc.CallOption) (*wflows.DpuExtensionServiceVersionInfoList, error) {
+	out := &wflows.DpuExtensionServiceVersionInfoList{
+		VersionInfos: []*wflows.DpuExtensionServiceVersionInfo{},
+	}
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		for i := 0; i < count; i++ {
+			out.VersionInfos = append(out.VersionInfos, &wflows.DpuExtensionServiceVersionInfo{
+				Version:       generateSiteVersion(),
+				Data:          "test data",
+				HasCredential: false,
+			})
+		}
+	}
+	return out, nil
+}
+
+// NVLink Logical Partition Mocks
+func (c *MockForgeClient) CreateNVLinkLogicalPartition(ctx context.Context, in *wflows.NVLinkLogicalPartitionCreationRequest, opts ...grpc.CallOption) (*wflows.NVLinkLogicalPartition, error) {
+	out := new(wflows.NVLinkLogicalPartition)
+	return out, nil
+}
+
+func (c *MockForgeClient) UpdateNVLinkLogicalPartition(ctx context.Context, in *wflows.NVLinkLogicalPartitionUpdateRequest, opts ...grpc.CallOption) (*wflows.NVLinkLogicalPartitionUpdateResult, error) {
+	out := new(wflows.NVLinkLogicalPartitionUpdateResult)
+	return out, nil
+}
+
+func (c *MockForgeClient) DeleteNVLinkLogicalPartition(ctx context.Context, in *wflows.NVLinkLogicalPartitionDeletionRequest, opts ...grpc.CallOption) (*wflows.NVLinkLogicalPartitionDeletionResult, error) {
+	out := new(wflows.NVLinkLogicalPartitionDeletionResult)
+	return out, nil
+}
+
+func (c *MockForgeClient) FindNVLinkLogicalPartitionIds(ctx context.Context, in *wflows.NVLinkLogicalPartitionSearchFilter, opts ...grpc.CallOption) (*wflows.NVLinkLogicalPartitionIdList, error) {
+	if err, ok := ctx.Value("wantError").(error); ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve nvlink logical partition ids")
+	}
+
+	out := &wflows.NVLinkLogicalPartitionIdList{}
+
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		for i := 0; i < count; i++ {
+			out.PartitionIds = append(out.PartitionIds, &wflows.NVLinkLogicalPartitionId{Value: uuid.NewString()})
+		}
+	}
+
+	return out, nil
+}
+
+func (c *MockForgeClient) FindNVLinkLogicalPartitionsByIds(ctx context.Context, in *wflows.NVLinkLogicalPartitionsByIdsRequest, opts ...grpc.CallOption) (*wflows.NVLinkLogicalPartitionList, error) {
+	err, ok := ctx.Value("wantError").(error)
+	if ok {
+		return nil, status.Error(status.Code(err), "failed to retrieve nvlink logical partitions")
+	}
+
+	out := &wflows.NVLinkLogicalPartitionList{}
+	if in != nil {
+		for _, id := range in.PartitionIds {
+			out.Partitions = append(out.Partitions, &wflows.NVLinkLogicalPartition{
+				Id: id,
+			})
+		}
+	}
+
+	return out, nil
+}
+
+func (c *MockForgeClient) NVLinkLogicalPartitionsForTenant(ctx context.Context, in *wflows.TenantSearchQuery, opts ...grpc.CallOption) (*wflows.NVLinkLogicalPartitionList, error) {
+	out := &wflows.NVLinkLogicalPartitionList{}
+
+	count, ok := ctx.Value("wantCount").(int)
+	if ok {
+		for i := 0; i < count; i++ {
+			out.Partitions = append(out.Partitions, &wflows.NVLinkLogicalPartition{
+				Id: &wflows.NVLinkLogicalPartitionId{Value: uuid.NewString()},
+			})
+		}
+	}
+
+	return out, nil
+}
+
+// NewMockCarbideClient creates a new mock CarbideClient
+func NewMockCarbideClient() *CarbideClient {
+	return &CarbideClient{
+		carbide: &MockForgeClient{},
+	}
+}

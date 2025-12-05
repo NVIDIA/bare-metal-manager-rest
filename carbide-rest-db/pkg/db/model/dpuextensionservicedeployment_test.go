@@ -1,0 +1,805 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package model
+
+import (
+	"context"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/nvidia/carbide-rest-api/carbide-rest-db/pkg/db"
+	"github.com/nvidia/carbide-rest-api/carbide-rest-db/pkg/db/paginator"
+	stracer "github.com/nvidia/carbide-rest-api/carbide-rest-db/pkg/tracer"
+	otrace "go.opentelemetry.io/otel/trace"
+)
+
+func TestDpuExtensionServiceDeploymentSQLDAO_GetByID(t *testing.T) {
+	type fields struct {
+		dbSession *db.Session
+	}
+	type args struct {
+		ctx context.Context
+		id  uuid.UUID
+	}
+
+	// Create test DB
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+
+	// Create tables
+	TestSetupSchema(t, dbSession)
+
+	// Create necessary objects
+	ipu := testBuildUser(t, dbSession, nil, testGenerateStarfleetID(), db.GetStrPtr("johnd@test.com"), db.GetStrPtr("John"), db.GetStrPtr("Doe"))
+	ip := testBuildInfrastructureProvider(t, dbSession, nil, "test-ip", "Test Provider", ipu.ID)
+	st := testBuildSite(t, dbSession, nil, ip.ID, "test-site", "Test Site", ip.Org, ipu.ID)
+
+	tnu := testBuildUser(t, dbSession, nil, testGenerateStarfleetID(), db.GetStrPtr("jdoe@test.com"), db.GetStrPtr("Jane"), db.GetStrPtr("Doe"))
+	tn := testBuildTenant(t, dbSession, nil, "test-tenant", "test-tenant-org", tnu.ID)
+
+	it := testBuildInstanceType(t, dbSession, nil, "test-instance-type", ip.ID, st.ID, tnu.ID)
+	vpc := TestBuildVPC(t, dbSession, "test-vpc", ip, tn, st, db.GetStrPtr(VpcEthernetVirtualizer), nil, nil, VpcStatusPending, ipu, nil)
+
+	// Create a minimal Instance directly
+	instance := &Instance{
+		ID:                       uuid.New(),
+		Name:                     "test-instance",
+		SiteID:                   st.ID,
+		TenantID:                 tn.ID,
+		InfrastructureProviderID: ip.ID,
+		InstanceTypeID:           &it.ID,
+		VpcID:                    vpc.ID,
+		Status:                   InstanceStatusPending,
+		CreatedBy:                tnu.ID,
+	}
+	_, err := dbSession.DB.NewInsert().Model(instance).Exec(context.Background())
+	require.NoError(t, err)
+
+	// Create DpuExtensionService
+	des := testBuildDpuExtensionService(t, dbSession, nil, "test-dpu-service", DpuExtensionServiceServiceTypeKubernetesPod, st.ID, tn.ID, db.GetStrPtr("V1-T1761856992374052"), DpuExtensionServiceStatusReady, tnu.ID)
+
+	// Create DpuExtensionServiceDeployment
+	desd := testBuildDpuExtensionServiceDeployment(t, dbSession, nil, st.ID, tn.ID, instance.ID, des.ID, *des.Version, DpuExtensionServiceDeploymentStatusRunning, tnu.ID)
+
+	// OTEL Spanner configuration
+	_, _, ctx := testCommonTraceProviderSetup(t, context.Background())
+
+	tests := []struct {
+		name               string
+		fields             fields
+		args               args
+		want               *DpuExtensionServiceDeployment
+		wantErr            error
+		paramRelations     []string
+		verifyChildSpanner bool
+	}{
+		{
+			name: "get DpuExtensionServiceDeployment by ID returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx: ctx,
+				id:  desd.ID,
+			},
+			want:               desd,
+			wantErr:            nil,
+			paramRelations:     []string{SiteRelationName, TenantRelationName, InstanceRelationName, DpuExtensionServiceRelationName},
+			verifyChildSpanner: true,
+		},
+		{
+			name: "get DpuExtensionServiceDeployment by non-existent ID returns error",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx: context.Background(),
+				id:  uuid.New(),
+			},
+			want:    nil,
+			wantErr: db.ErrDoesNotExist,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			desdsd := DpuExtensionServiceDeploymentSQLDAO{
+				dbSession:  tt.fields.dbSession,
+				tracerSpan: stracer.NewTracerSpan(),
+			}
+
+			got, err := desdsd.GetByID(tt.args.ctx, nil, tt.args.id, tt.paramRelations)
+			if tt.wantErr != nil {
+				assert.ErrorAs(t, err, &tt.wantErr)
+				return
+			}
+			if err == nil {
+				if len(tt.paramRelations) > 0 {
+					assert.NotNil(t, got.Site)
+					assert.NotNil(t, got.Tenant)
+					assert.NotNil(t, got.Instance)
+					assert.NotNil(t, got.DpuExtensionService)
+				}
+				assert.EqualValues(t, tt.want.ID, got.ID)
+				assert.EqualValues(t, tt.want.SiteID, got.SiteID)
+				assert.EqualValues(t, tt.want.TenantID, got.TenantID)
+				assert.EqualValues(t, tt.want.InstanceID, got.InstanceID)
+				assert.EqualValues(t, tt.want.DpuExtensionServiceID, got.DpuExtensionServiceID)
+				assert.EqualValues(t, tt.want.Version, got.Version)
+				assert.EqualValues(t, tt.want.Status, got.Status)
+			}
+			if tt.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}
+
+func TestDpuExtensionServiceDeploymentSQLDAO_GetAll(t *testing.T) {
+	type fields struct {
+		dbSession *db.Session
+	}
+
+	type args struct {
+		ctx                            context.Context
+		dpuExtensionServiceDeployments []uuid.UUID
+		siteIDs                        []uuid.UUID
+		tenantIDs                      []uuid.UUID
+		instanceIDs                    []uuid.UUID
+		dpuExtensionServiceIDs         []uuid.UUID
+		versions                       []string
+		statuses                       []string
+		searchQuery                    *string
+		offset                         *int
+		limit                          *int
+		orderBy                        *paginator.OrderBy
+		paramRelations                 []string
+	}
+
+	// Create test DB
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+
+	// Create tables
+	TestSetupSchema(t, dbSession)
+
+	// Create necessary objects
+	ipu := testBuildUser(t, dbSession, nil, testGenerateStarfleetID(), db.GetStrPtr("johnd@test.com"), db.GetStrPtr("John"), db.GetStrPtr("Doe"))
+	ip := testBuildInfrastructureProvider(t, dbSession, nil, "test-ip", "Test Provider", ipu.ID)
+	st := testBuildSite(t, dbSession, nil, ip.ID, "test-site", "Test Site", ip.Org, ipu.ID)
+
+	tnu := testBuildUser(t, dbSession, nil, testGenerateStarfleetID(), db.GetStrPtr("jdoe@test.com"), db.GetStrPtr("Jane"), db.GetStrPtr("Doe"))
+	tn := testBuildTenant(t, dbSession, nil, "test-tenant", "test-tenant-org", tnu.ID)
+
+	it := testBuildInstanceType(t, dbSession, nil, "test-instance-type", ip.ID, st.ID, tnu.ID)
+	vpc := TestBuildVPC(t, dbSession, "test-vpc", ip, tn, st, db.GetStrPtr(VpcEthernetVirtualizer), nil, nil, VpcStatusPending, ipu, nil)
+
+	// Create Instances
+	instance1 := &Instance{
+		ID:                       uuid.New(),
+		Name:                     "test-instance-1",
+		SiteID:                   st.ID,
+		TenantID:                 tn.ID,
+		InfrastructureProviderID: ip.ID,
+		InstanceTypeID:           &it.ID,
+		VpcID:                    vpc.ID,
+		Status:                   InstanceStatusPending,
+		CreatedBy:                tnu.ID,
+	}
+	_, err := dbSession.DB.NewInsert().Model(instance1).Exec(context.Background())
+	require.NoError(t, err)
+
+	instance2 := &Instance{
+		ID:                       uuid.New(),
+		Name:                     "test-instance-2",
+		SiteID:                   st.ID,
+		TenantID:                 tn.ID,
+		InfrastructureProviderID: ip.ID,
+		InstanceTypeID:           &it.ID,
+		VpcID:                    vpc.ID,
+		Status:                   InstanceStatusPending,
+		CreatedBy:                tnu.ID,
+	}
+	_, err = dbSession.DB.NewInsert().Model(instance2).Exec(context.Background())
+	require.NoError(t, err)
+
+	// Create DpuExtensionServices
+	des1 := testBuildDpuExtensionService(t, dbSession, nil, "test-dpu-service-1", DpuExtensionServiceServiceTypeKubernetesPod, st.ID, tn.ID, db.GetStrPtr("V1-T1761856992374052"), DpuExtensionServiceStatusReady, tnu.ID)
+	des2 := testBuildDpuExtensionService(t, dbSession, nil, "test-dpu-service-2", DpuExtensionServiceServiceTypeKubernetesPod, st.ID, tn.ID, db.GetStrPtr("V1-T1761856992374053"), DpuExtensionServiceStatusReady, tnu.ID)
+
+	// Create DpuExtensionServiceDeployments
+	desd1 := testBuildDpuExtensionServiceDeployment(t, dbSession, nil, st.ID, tn.ID, instance1.ID, des1.ID, *des1.Version, DpuExtensionServiceDeploymentStatusPending, tnu.ID)
+	_ = testBuildDpuExtensionServiceDeployment(t, dbSession, nil, st.ID, tn.ID, instance1.ID, des1.ID, *des1.Version, DpuExtensionServiceDeploymentStatusRunning, tnu.ID)
+	desd3 := testBuildDpuExtensionServiceDeployment(t, dbSession, nil, st.ID, tn.ID, instance2.ID, des2.ID, *des2.Version, DpuExtensionServiceDeploymentStatusError, tnu.ID)
+
+	// OTEL Spanner configuration
+	_, _, ctx := testCommonTraceProviderSetup(t, context.Background())
+
+	tests := []struct {
+		name               string
+		fields             fields
+		args               args
+		wantCount          int
+		wantTotal          int
+		wantErr            bool
+		verifyChildSpanner bool
+	}{
+		{
+			name: "get all DpuExtensionServiceDeployments returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx: ctx,
+			},
+			wantCount:          3,
+			wantTotal:          3,
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "get DpuExtensionServiceDeployments by IDs returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx:                            ctx,
+				dpuExtensionServiceDeployments: []uuid.UUID{desd1.ID, desd3.ID},
+			},
+			wantCount: 2,
+			wantTotal: 2,
+			wantErr:   false,
+		},
+		{
+			name: "get DpuExtensionServiceDeployments by SiteID returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx:     ctx,
+				siteIDs: []uuid.UUID{st.ID},
+			},
+			wantCount: 3,
+			wantTotal: 3,
+			wantErr:   false,
+		},
+		{
+			name: "get DpuExtensionServiceDeployments by TenantID returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx:       ctx,
+				tenantIDs: []uuid.UUID{tn.ID},
+			},
+			wantCount: 3,
+			wantTotal: 3,
+			wantErr:   false,
+		},
+		{
+			name: "get DpuExtensionServiceDeployments by InstanceID returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx:         ctx,
+				instanceIDs: []uuid.UUID{instance1.ID},
+			},
+			wantCount: 2,
+			wantTotal: 2,
+			wantErr:   false,
+		},
+		{
+			name: "get DpuExtensionServiceDeployments by DpuExtensionServiceID returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx:                    ctx,
+				dpuExtensionServiceIDs: []uuid.UUID{des1.ID},
+			},
+			wantCount: 2,
+			wantTotal: 2,
+			wantErr:   false,
+		},
+		{
+			name: "get DpuExtensionServiceDeployments by Version returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx:      ctx,
+				versions: []string{"V1-T1761856992374052"},
+			},
+			wantCount: 2,
+			wantTotal: 2,
+			wantErr:   false,
+		},
+		{
+			name: "get DpuExtensionServiceDeployments by Status returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx:      ctx,
+				statuses: []string{DpuExtensionServiceDeploymentStatusPending, DpuExtensionServiceDeploymentStatusRunning},
+			},
+			wantCount: 2,
+			wantTotal: 2,
+			wantErr:   false,
+		},
+		{
+			name: "get DpuExtensionServiceDeployments with search query returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx:         ctx,
+				searchQuery: db.GetStrPtr("Pending"),
+			},
+			wantCount: 1,
+			wantTotal: 1,
+			wantErr:   false,
+		},
+		{
+			name: "get DpuExtensionServiceDeployments with limit returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx:    ctx,
+				limit:  db.GetIntPtr(2),
+				offset: db.GetIntPtr(0),
+			},
+			wantCount: 2,
+			wantTotal: 3,
+			wantErr:   false,
+		},
+		{
+			name: "get DpuExtensionServiceDeployments with offset returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx:    ctx,
+				offset: db.GetIntPtr(1),
+			},
+			wantCount: 2,
+			wantTotal: 3,
+			wantErr:   false,
+		},
+		{
+			name: "get DpuExtensionServiceDeployments with orderBy returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx: ctx,
+				orderBy: &paginator.OrderBy{
+					Field: "created",
+					Order: paginator.OrderDescending,
+				},
+			},
+			wantCount: 3,
+			wantTotal: 3,
+			wantErr:   false,
+		},
+		{
+			name: "get DpuExtensionServiceDeployments with relations returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx:            ctx,
+				paramRelations: []string{SiteRelationName, TenantRelationName, InstanceRelationName, DpuExtensionServiceRelationName},
+			},
+			wantCount: 3,
+			wantTotal: 3,
+			wantErr:   false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			desdsd := DpuExtensionServiceDeploymentSQLDAO{
+				dbSession:  tt.fields.dbSession,
+				tracerSpan: stracer.NewTracerSpan(),
+			}
+
+			filter := DpuExtensionServiceDeploymentFilterInput{
+				DpuExtensionServiceDeploymentIDs: tt.args.dpuExtensionServiceDeployments,
+				SiteIDs:                          tt.args.siteIDs,
+				TenantIDs:                        tt.args.tenantIDs,
+				InstanceIDs:                      tt.args.instanceIDs,
+				DpuExtensionServiceIDs:           tt.args.dpuExtensionServiceIDs,
+				Versions:                         tt.args.versions,
+				Statuses:                         tt.args.statuses,
+				SearchQuery:                      tt.args.searchQuery,
+			}
+
+			page := paginator.PageInput{
+				Offset:  tt.args.offset,
+				Limit:   tt.args.limit,
+				OrderBy: tt.args.orderBy,
+			}
+
+			got, total, err := desdsd.GetAll(tt.args.ctx, nil, filter, page, tt.args.paramRelations)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tt.wantCount, len(got))
+			assert.Equal(t, tt.wantTotal, total)
+
+			if len(tt.args.paramRelations) > 0 {
+				for _, desd := range got {
+					assert.NotNil(t, desd.Site)
+					assert.NotNil(t, desd.Tenant)
+					assert.NotNil(t, desd.Instance)
+					assert.NotNil(t, desd.DpuExtensionService)
+				}
+			}
+
+			if tt.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}
+
+func TestDpuExtensionServiceDeploymentSQLDAO_Create(t *testing.T) {
+	type fields struct {
+		dbSession *db.Session
+	}
+	type args struct {
+		ctx   context.Context
+		input DpuExtensionServiceDeploymentCreateInput
+	}
+
+	// Create test DB
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+
+	// Create tables
+	TestSetupSchema(t, dbSession)
+
+	// Create necessary objects
+	ipu := testBuildUser(t, dbSession, nil, testGenerateStarfleetID(), db.GetStrPtr("johnd@test.com"), db.GetStrPtr("John"), db.GetStrPtr("Doe"))
+	ip := testBuildInfrastructureProvider(t, dbSession, nil, "test-ip", "Test Provider", ipu.ID)
+	st := testBuildSite(t, dbSession, nil, ip.ID, "test-site", "Test Site", ip.Org, ipu.ID)
+
+	tnu := testBuildUser(t, dbSession, nil, testGenerateStarfleetID(), db.GetStrPtr("jdoe@test.com"), db.GetStrPtr("Jane"), db.GetStrPtr("Doe"))
+	tn := testBuildTenant(t, dbSession, nil, "test-tenant", "test-tenant-org", tnu.ID)
+
+	it := testBuildInstanceType(t, dbSession, nil, "test-instance-type", ip.ID, st.ID, tnu.ID)
+	vpc := TestBuildVPC(t, dbSession, "test-vpc", ip, tn, st, db.GetStrPtr(VpcEthernetVirtualizer), nil, nil, VpcStatusPending, ipu, nil)
+
+	// Create Instance
+	instance := &Instance{
+		ID:                       uuid.New(),
+		Name:                     "test-instance",
+		SiteID:                   st.ID,
+		TenantID:                 tn.ID,
+		InfrastructureProviderID: ip.ID,
+		InstanceTypeID:           &it.ID,
+		VpcID:                    vpc.ID,
+		Status:                   InstanceStatusPending,
+		CreatedBy:                tnu.ID,
+	}
+	_, err := dbSession.DB.NewInsert().Model(instance).Exec(context.Background())
+	require.NoError(t, err)
+
+	// Create DpuExtensionService
+	des := testBuildDpuExtensionService(t, dbSession, nil, "test-dpu-service", DpuExtensionServiceServiceTypeKubernetesPod, st.ID, tn.ID, db.GetStrPtr("V1-T1761856992374052"), DpuExtensionServiceStatusReady, tnu.ID)
+
+	// OTEL Spanner configuration
+	_, _, ctx := testCommonTraceProviderSetup(t, context.Background())
+
+	tests := []struct {
+		name               string
+		fields             fields
+		args               args
+		wantErr            bool
+		verifyChildSpanner bool
+	}{
+		{
+			name: "create DpuExtensionServiceDeployment returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx: ctx,
+				input: DpuExtensionServiceDeploymentCreateInput{
+					DpuExtensionServiceDeploymentID: db.GetUUIDPtr(uuid.New()),
+					SiteID:                          st.ID,
+					TenantID:                        tn.ID,
+					InstanceID:                      instance.ID,
+					DpuExtensionServiceID:           des.ID,
+					Version:                         "V1-T1761856992374052",
+					Status:                          DpuExtensionServiceDeploymentStatusPending,
+					CreatedBy:                       tnu.ID,
+				},
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "create DpuExtensionServiceDeployment with auto-generated ID returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx: ctx,
+				input: DpuExtensionServiceDeploymentCreateInput{
+					DpuExtensionServiceDeploymentID: nil,
+					SiteID:                          st.ID,
+					TenantID:                        tn.ID,
+					InstanceID:                      instance.ID,
+					DpuExtensionServiceID:           des.ID,
+					Version:                         "V1-T1761856992374053",
+					Status:                          DpuExtensionServiceDeploymentStatusRunning,
+					CreatedBy:                       tnu.ID,
+				},
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			desdsd := DpuExtensionServiceDeploymentSQLDAO{
+				dbSession:  tt.fields.dbSession,
+				tracerSpan: stracer.NewTracerSpan(),
+			}
+
+			got, err := desdsd.Create(tt.args.ctx, nil, tt.args.input)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.NotNil(t, got)
+			assert.Equal(t, tt.args.input.SiteID, got.SiteID)
+			assert.Equal(t, tt.args.input.TenantID, got.TenantID)
+			assert.Equal(t, tt.args.input.InstanceID, got.InstanceID)
+			assert.Equal(t, tt.args.input.DpuExtensionServiceID, got.DpuExtensionServiceID)
+			assert.Equal(t, tt.args.input.Version, got.Version)
+			assert.Equal(t, tt.args.input.Status, got.Status)
+
+			if tt.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}
+
+func TestDpuExtensionServiceDeploymentSQLDAO_Update(t *testing.T) {
+	type fields struct {
+		dbSession *db.Session
+	}
+	type args struct {
+		ctx   context.Context
+		input DpuExtensionServiceDeploymentUpdateInput
+	}
+
+	// Create test DB
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+
+	// Create tables
+	TestSetupSchema(t, dbSession)
+
+	// Create necessary objects
+	ipu := testBuildUser(t, dbSession, nil, testGenerateStarfleetID(), db.GetStrPtr("johnd@test.com"), db.GetStrPtr("John"), db.GetStrPtr("Doe"))
+	ip := testBuildInfrastructureProvider(t, dbSession, nil, "test-ip", "Test Provider", ipu.ID)
+	st := testBuildSite(t, dbSession, nil, ip.ID, "test-site", "Test Site", ip.Org, ipu.ID)
+
+	tnu := testBuildUser(t, dbSession, nil, testGenerateStarfleetID(), db.GetStrPtr("jdoe@test.com"), db.GetStrPtr("Jane"), db.GetStrPtr("Doe"))
+	tn := testBuildTenant(t, dbSession, nil, "test-tenant", "test-tenant-org", tnu.ID)
+
+	it := testBuildInstanceType(t, dbSession, nil, "test-instance-type", ip.ID, st.ID, tnu.ID)
+	vpc := TestBuildVPC(t, dbSession, "test-vpc", ip, tn, st, db.GetStrPtr(VpcEthernetVirtualizer), nil, nil, VpcStatusPending, ipu, nil)
+
+	// Create Instance
+	instance := &Instance{
+		ID:                       uuid.New(),
+		Name:                     "test-instance",
+		SiteID:                   st.ID,
+		TenantID:                 tn.ID,
+		InfrastructureProviderID: ip.ID,
+		InstanceTypeID:           &it.ID,
+		VpcID:                    vpc.ID,
+		Status:                   InstanceStatusPending,
+		CreatedBy:                tnu.ID,
+	}
+	_, err := dbSession.DB.NewInsert().Model(instance).Exec(context.Background())
+	require.NoError(t, err)
+
+	// Create DpuExtensionService
+	des := testBuildDpuExtensionService(t, dbSession, nil, "test-dpu-service", DpuExtensionServiceServiceTypeKubernetesPod, st.ID, tn.ID, db.GetStrPtr("V1-T1761856992374052"), DpuExtensionServiceStatusReady, tnu.ID)
+
+	// Create DpuExtensionServiceDeployment to update
+	desd := testBuildDpuExtensionServiceDeployment(t, dbSession, nil, st.ID, tn.ID, instance.ID, des.ID, *des.Version, DpuExtensionServiceDeploymentStatusPending, tnu.ID)
+
+	// OTEL Spanner configuration
+	_, _, ctx := testCommonTraceProviderSetup(t, context.Background())
+
+	newStatus := DpuExtensionServiceDeploymentStatusRunning
+
+	tests := []struct {
+		name               string
+		fields             fields
+		args               args
+		wantErr            bool
+		verifyChildSpanner bool
+	}{
+		{
+			name: "update DpuExtensionServiceDeployment status returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx: ctx,
+				input: DpuExtensionServiceDeploymentUpdateInput{
+					DpuExtensionServiceDeploymentID: desd.ID,
+					Status:                          &newStatus,
+				},
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			desdsd := DpuExtensionServiceDeploymentSQLDAO{
+				dbSession:  tt.fields.dbSession,
+				tracerSpan: stracer.NewTracerSpan(),
+			}
+
+			got, err := desdsd.Update(tt.args.ctx, nil, tt.args.input)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.NotNil(t, got)
+
+			if tt.args.input.Status != nil {
+				assert.Equal(t, *tt.args.input.Status, got.Status)
+			}
+
+			if tt.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}
+
+func TestDpuExtensionServiceDeploymentSQLDAO_Delete(t *testing.T) {
+	type fields struct {
+		dbSession *db.Session
+	}
+	type args struct {
+		ctx context.Context
+		id  uuid.UUID
+	}
+
+	// Create test DB
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+
+	// Create tables
+	TestSetupSchema(t, dbSession)
+
+	// Create necessary objects
+	ipu := testBuildUser(t, dbSession, nil, testGenerateStarfleetID(), db.GetStrPtr("johnd@test.com"), db.GetStrPtr("John"), db.GetStrPtr("Doe"))
+	ip := testBuildInfrastructureProvider(t, dbSession, nil, "test-ip", "Test Provider", ipu.ID)
+	st := testBuildSite(t, dbSession, nil, ip.ID, "test-site", "Test Site", ip.Org, ipu.ID)
+
+	tnu := testBuildUser(t, dbSession, nil, testGenerateStarfleetID(), db.GetStrPtr("jdoe@test.com"), db.GetStrPtr("Jane"), db.GetStrPtr("Doe"))
+	tn := testBuildTenant(t, dbSession, nil, "test-tenant", "test-tenant-org", tnu.ID)
+
+	it := testBuildInstanceType(t, dbSession, nil, "test-instance-type", ip.ID, st.ID, tnu.ID)
+	vpc := TestBuildVPC(t, dbSession, "test-vpc", ip, tn, st, db.GetStrPtr(VpcEthernetVirtualizer), nil, nil, VpcStatusPending, ipu, nil)
+
+	// Create Instance
+	instance := &Instance{
+		ID:                       uuid.New(),
+		Name:                     "test-instance",
+		SiteID:                   st.ID,
+		TenantID:                 tn.ID,
+		InfrastructureProviderID: ip.ID,
+		InstanceTypeID:           &it.ID,
+		VpcID:                    vpc.ID,
+		Status:                   InstanceStatusPending,
+		CreatedBy:                tnu.ID,
+	}
+	_, err := dbSession.DB.NewInsert().Model(instance).Exec(context.Background())
+	require.NoError(t, err)
+
+	// Create DpuExtensionService
+	des := testBuildDpuExtensionService(t, dbSession, nil, "test-dpu-service", DpuExtensionServiceServiceTypeKubernetesPod, st.ID, tn.ID, db.GetStrPtr("V1-T1761856992374052"), DpuExtensionServiceStatusReady, tnu.ID)
+
+	// Create DpuExtensionServiceDeployment to delete
+	desd := testBuildDpuExtensionServiceDeployment(t, dbSession, nil, st.ID, tn.ID, instance.ID, des.ID, *des.Version, DpuExtensionServiceDeploymentStatusRunning, tnu.ID)
+
+	// OTEL Spanner configuration
+	_, _, ctx := testCommonTraceProviderSetup(t, context.Background())
+
+	tests := []struct {
+		name               string
+		fields             fields
+		args               args
+		wantErr            bool
+		verifyChildSpanner bool
+	}{
+		{
+			name: "delete DpuExtensionServiceDeployment returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx: ctx,
+				id:  desd.ID,
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "delete non-existent DpuExtensionServiceDeployment returns success",
+			fields: fields{
+				dbSession: dbSession,
+			},
+			args: args{
+				ctx: ctx,
+				id:  uuid.New(),
+			},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			desdsd := DpuExtensionServiceDeploymentSQLDAO{
+				dbSession:  tt.fields.dbSession,
+				tracerSpan: stracer.NewTracerSpan(),
+			}
+
+			err := desdsd.Delete(tt.args.ctx, nil, tt.args.id)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+
+			// Verify deletion
+			_, err = desdsd.GetByID(tt.args.ctx, nil, tt.args.id, nil)
+			assert.ErrorAs(t, err, &db.ErrDoesNotExist)
+
+			if tt.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}

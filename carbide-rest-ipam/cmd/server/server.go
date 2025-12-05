@@ -1,0 +1,118 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package main
+
+import (
+	"fmt"
+	"log/slog"
+	"net/http"
+	"time"
+
+	"connectrpc.com/connect"
+	"connectrpc.com/otelconnect"
+	compress "github.com/klauspost/connect-compress/v2"
+	"github.com/metal-stack/v"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	goipam "github.com/nvidia/carbide-rest-api/carbide-rest-ipam"
+	"github.com/nvidia/carbide-rest-api/carbide-rest-ipam/api/v1/apiv1connect"
+	"github.com/nvidia/carbide-rest-api/carbide-rest-ipam/pkg/service"
+	"go.opentelemetry.io/otel/exporters/prometheus"
+	"go.opentelemetry.io/otel/sdk/metric"
+
+	"connectrpc.com/grpchealth"
+	"connectrpc.com/grpcreflect"
+
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
+)
+
+type config struct {
+	GrpcServerEndpoint string
+	MetricsEndpoint    string
+	Log                *slog.Logger
+	Storage            goipam.Storage
+}
+type server struct {
+	c       config
+	ipamer  goipam.Ipamer
+	storage goipam.Storage
+	log     *slog.Logger
+}
+
+func newServer(c config) *server {
+	return &server{
+		c:       c,
+		ipamer:  goipam.NewWithStorage(c.Storage),
+		storage: c.Storage,
+		log:     c.Log,
+	}
+}
+func (s *server) Run() error {
+	s.log.Info("starting go-ipam", "version", v.V, "backend", s.storage.Name())
+
+	// The exporter embeds a default OpenTelemetry Reader and
+	// implements prometheus.Collector, allowing it to be used as
+	// both a Reader and Collector.
+	exporter, err := prometheus.New()
+	if err != nil {
+		return err
+	}
+	provider := metric.NewMeterProvider(metric.WithReader(exporter))
+
+	// Start the prometheus HTTP server and pass the exporter Collector to it
+	go func() {
+		s.log.Info("serving metrics", "at", fmt.Sprintf("%s/metrics", s.c.MetricsEndpoint))
+		metricsServer := http.NewServeMux()
+		metricsServer.Handle("/metrics", promhttp.Handler())
+		ms := &http.Server{
+			Addr:              s.c.MetricsEndpoint,
+			Handler:           metricsServer,
+			ReadHeaderTimeout: time.Minute,
+		}
+		err := ms.ListenAndServe()
+		if err != nil {
+			s.log.Error("unable to start metric endpoint", "error", err)
+			return
+		}
+	}()
+
+	mux := http.NewServeMux()
+	// The generated constructors return a path and a plain net/http
+	// handler.
+	mux.Handle(
+		apiv1connect.NewIpamServiceHandler(
+			service.New(s.log, s.ipamer),
+			connect.WithInterceptors(
+				otelconnect.NewInterceptor(otelconnect.WithMeterProvider(provider)),
+			),
+		),
+	)
+
+	mux.Handle(grpchealth.NewHandler(
+		grpchealth.NewStaticChecker(apiv1connect.IpamServiceName),
+		compress.WithAll(compress.LevelBalanced),
+	))
+	mux.Handle(grpcreflect.NewHandlerV1(
+		grpcreflect.NewStaticReflector(apiv1connect.IpamServiceName),
+		compress.WithAll(compress.LevelBalanced),
+	))
+
+	server := http.Server{
+		Addr: s.c.GrpcServerEndpoint,
+		// For gRPC clients, it's convenient to support HTTP/2 without TLS. You can
+		// avoid x/net/http2 by using http.ListenAndServeTLS.
+		Handler:           h2c.NewHandler(mux, &http2.Server{}),
+		ReadHeaderTimeout: 1 * time.Minute,
+	}
+
+	err = server.ListenAndServe()
+	return err
+}

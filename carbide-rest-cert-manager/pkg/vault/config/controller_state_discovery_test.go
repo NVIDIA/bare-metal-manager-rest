@@ -1,0 +1,122 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package config
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func Test_compareCerts(t *testing.T) {
+	ceq, err := compareCerts(certPEM, certPEM)
+	assert.NoError(t, err)
+	assert.True(t, ceq)
+
+	ceq, err = compareCerts(certPEM, "\n"+certPEM+"\n")
+	assert.NoError(t, err)
+	assert.True(t, ceq)
+
+	ceq, err = compareCerts(`badCertA`, certPEM)
+	assert.Error(t, err)
+	assert.False(t, ceq)
+
+	ceq, err = compareCerts(certPEM, `badCertB`)
+	assert.Error(t, err)
+	assert.False(t, ceq)
+}
+
+const certPEM = `
+-----BEGIN CERTIFICATE-----
+MIIGEzCCA/ugAwIBAgIJAMO5J2umYV+ZMA0GCSqGSIb3DQEBCwUAMIGfMQswCQYD
+VQQGEwJVUzELMAkGA1UECAwCQ0ExFDASBgNVBAcMC3NhbnRhIGNsYXJhMQ8wDQYD
+VQQKDAZudmlkaWExEjAQBgNVBAsMCWRneC1jbG91ZDEkMCIGA1UEAwwbZGV2LmF1
+dGguY29tcHV0ZS5udmlkaWEuY29tMSIwIAYJKoZIhvcNAQkBFhNta3ViYXNvdkBu
+dmlkaWEuY29tMB4XDTE3MDUwNTE4MTA0MVoXDTE4MDUwNTE4MTA0MVowgZ8xCzAJ
+BgNVBAYTAlVTMQswCQYDVQQIDAJDQTEUMBIGA1UEBwwLc2FudGEgY2xhcmExDzAN
+BgNVBAoMBm52aWRpYTESMBAGA1UECwwJZGd4LWNsb3VkMSQwIgYDVQQDDBtkZXYu
+YXV0aC5jb21wdXRlLm52aWRpYS5jb20xIjAgBgkqhkiG9w0BCQEWE21rdWJhc292
+QG52aWRpYS5jb20wggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQCpyphX
+6JhRXok1wyHnyouUy3x3/oDOQlyqVHvuFTNH5+KyaHCh6tPYr28gE6ejfSaMqyAm
+OhPjOE8DyrbxKqr8AxaHvCqgGv307vlh1RrCN9yeC8coK9+KE3YTVnh/4LyKG2fx
+PquH1VyV0sNoSFSUIiKxEFNjeWfDit5w8oT5wLR6OAV46dXkOzlr/FvWw/0OHC/+
+GohH/UqGH8fozpZ8XdO/d4CAxBbJyMJCQBjjurBeL0MKQA6EknCU/R2Owc9gp/KQ
+wp7kxR+ds8T5sJiDutCVl93N3nzMvYb1VTI4vNm0WEbA8IDqhHKqUpMo7V03T/CM
+xdr/zovQazBb562XQdEvUqU/xy0XWb33FDczmV4Twk56KjR5Q8k0uCywKXEcRbvk
+lJdgHpPxgl6TjUWNC21baxmnDUv6JBgtZUDlsjHtASpy7zkSZBCKTia+r9rNfncy
+6Dr/m0k+K12jH8tB/fxEgA1rnOE9hzCo5uNOvxbSvEyNcU3RtGtnl/9FpeptJ2Hm
+9VaZ3Oxm7TG7Si26PPnRmVHmt/RbmV5OzXFMvCkeHUILaOFOHBw4WRdPjrOpZooT
+uuyKTdunv3IocD3CSrNA4rhMT8Manxo+t9r/wIBHWJWRulbh2IeBX5e4cuEUWNBy
+jcjpLM+3gB6X8miV1ofZsg0q89olcoKL8Gb0vwIDAQABo1AwTjAdBgNVHQ4EFgQU
+n/8O+Qw3jsCgWVqlu5b7jcG9e10wHwYDVR0jBBgwFoAUn/8O+Qw3jsCgWVqlu5b7
+jcG9e10wDAYDVR0TBAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAgEAk9omrl2gY+fp
+bsHmiwn7yMQBw7QREwV1QS8bKlnFL/spedR1hEBmmAhMJsoPKhWtxPLBoAha6EI3
+XmIAc1zVxyM7yADYNl802gXqAgAW9eac04bWUgIWdmZIsinojv1Cd0J/fNokpPYC
+d9FleMCfZpf+5OD4wNu0Ca37Cw3P2onIm1SosdM6CcHhybmcB0lBSbrYtzf4P2e0
+YIb0/WghYioXuNH7Oqxi7tlTqn2nHEO7MjqtjRMRBDK3a6JE4hhO2S/NRT5/j4jh
+DfQBqsds95yadt/5cqkSdMy3QG7tVbh2KAPfXw2JQQ3O1h/KvWVJ+NS3XCJouJ5U
+FT4ik246RAam1Hf7NLaZQCSn9dj2CQs50RAp6WPowGd2ty8pFZojRWwR9YzOZKFa
+FYSAGwo9gdybYN5zAKGdEGzWBlC9K0MreiPaojnR+SOHchhSuYQSGmMWsHjv9O/N
+E2sR7+I7xcKvlY0QyQJWUsmP4pmz39N5L8MEPtucwfFojdLL1gtyxVYz7bpCetc2
+aj/M02XA5gzDclau7IjmvPbjmOYWplxXTHjLV6o8f5KpmXXnCqVMebcWSOmzVNDz
+XMLgYSK6+rUGoxEyOJ2A/A/2jXBzP59J6V833x0t7Pry6FiJNyhfF67Dhezm3RRk
+hc42G1H6KFTU4eEZ8o7qg1IHm/YZvm0=
+-----END CERTIFICATE-----`
+
+const testRootCAPrivateKey = `-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEAoU3ietYpBtfZiIVBETeYn/3unx/cAsUBpSlNs21gI9d99wMj
+TJlHAK1AgfVxXv6631p2rY9oBGKyEK5v41hG99Udk0DNRZpq8y8hgMZfYMnd88uq
+K2LEXIKRxJMPkUNDXSCgKi6Od0CUeixm6OZZCl4wH6kv5F8XUrAneIat7qZVJd5Y
+X/x4hUOiAXc3m5poMM0NOFb+uxP/aJXHpW7YqVSFsUKf+irmzJIrlEMtN+CbvuDJ
+MfV1TnUJo0ovJbZIsloZ9jw9pqNBexY/mZvS9Oc4c2FByHqvZua4G6JGpo+rlrvH
+qdvqtttMXaFmaeh0yj3OHw8DVBKthDAlPgDiYQIDAQABAoIBACQs/YAjC6x3OFg/
+2mnsGBS5tIyHbqZIXKgX7U8yVn9zUtLVJ1OEhMIIGRGMZFKzumFhPoCKSv/AysKm
+/Hz2TWRDrZBa1i6oBRhpF5Bz7OweGeMVaCK20ecVeW+ms7UWasM2D/Wl31mraCFG
+WAYfsxR6LzzKiu0izm5DB3cmbVe6JvRNx8TCwx9m7+TylL+3mus487DcIBHa8U3U
+Wu4sfa6OrqM022hAO+ue4m1CsVYkaLKf4Py2HYzngXm4sifRBosTHQdd1fqm7cMn
+LGtQ4KiMOUd4vLLPHd9xvQrNRrCgIpcR7Y6bPpkGnwS+XM5M1355BzSVu9PLaN2V
+VWwpr4ECgYEAy+G4OSnEN++Ar1xeQdx5x8c6s3WdGMpHP9szMaXr2Fv11pXTpKIV
+Lcs8a3KAFm86o7rC+h9+AmTzSTyzQxoXYoMkjzyFw7pE1ZrTnCkkZhWkBi3epcoS
+qpju+Y9GjIMhNTRQ+RHG4N3FklJpKWjV62kDy0+i2Wo9VXhF6+Szm0kCgYEAyonX
+HZmYA8uvPmCjm3Mug7qiW9G1UZSBT51zJ2xzJ2c+5NvnZQNfiMvrXVaWNifAW958
+Jd6u3cRjt6uy06b2d54PHhFXfla89JnGAecFaW75l/57ZUbC2xAXOfVGWPON5aAZ
+s3LUeAZ88OtkPgml2yYReBILfYZb3SrYO1fatlkCgYEApTJ5wOeUs/X+ARkIzrjE
+fBlz+OE9r06HOLh13K6iUKcCpSK1YFpsarSYej9GhecOTogPX/eQdIQzlI34elBz
+zkCQqPbTM+qDx8gx2gCEG6tBQjh8hT0crtpIGDH9afD+QUvoqEe9K4rGgW8BAqqN
+Wre2eVBHlX69v7k6fo7K8PECgYAc2Wt5vOIJUF8C3JMRVmO+wbvUpldUannM1FmN
+uQXiC/PKd4RLQCLAgoNhBS9aQWlF7Lf0UPbJgerOQ7eyLCsZOLtghgnXZhV+JdUt
+ejGsJfGJc+cxstWYjH8yczx0+SQyHA7tH6MiAZKUYoMhzw//2jlMyA048QVuyGaK
+dWYi6QKBgQDKb3d/LZqZfk/fBPRGRb9fduOVzOz1w5Tj+mjJtdL/hAVoE/jivnPj
+rL86McycS4vJXrsAqpP3RdMAkczXu4vTOODtdYsQJMWXMiEknazmlzg1i2ypOCJK
+BL3sDA/8DgTv6ZTk5E5eTX+yfdKROLy1O/GpzrxXLGI8zNPYO8i4sw==
+-----END RSA PRIVATE KEY-----`
+const testRootCACertificate = `-----BEGIN CERTIFICATE-----
+MIIDqzCCApOgAwIBAgIRAOE0TLD9qMBAeI0gI33pPlkwDQYJKoZIhvcNAQELBQAw
+RDEPMA0GA1UEChMGbnZpZGlhMTEwLwYDVQQDEyhldHMtbnZpZGlhLWFkZGNhY2Vy
+dDMuZGV2LmVneC5udmlkaWEuY29tMB4XDTIwMDgwNzIxMjM0NloXDTMwMDgwNTIx
+MjM0NlowRDEPMA0GA1UEChMGbnZpZGlhMTEwLwYDVQQDEyhldHMtbnZpZGlhLWFk
+ZGNhY2VydDMuZGV2LmVneC5udmlkaWEuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOC
+AQ8AMIIBCgKCAQEAoU3ietYpBtfZiIVBETeYn/3unx/cAsUBpSlNs21gI9d99wMj
+TJlHAK1AgfVxXv6631p2rY9oBGKyEK5v41hG99Udk0DNRZpq8y8hgMZfYMnd88uq
+K2LEXIKRxJMPkUNDXSCgKi6Od0CUeixm6OZZCl4wH6kv5F8XUrAneIat7qZVJd5Y
+X/x4hUOiAXc3m5poMM0NOFb+uxP/aJXHpW7YqVSFsUKf+irmzJIrlEMtN+CbvuDJ
+MfV1TnUJo0ovJbZIsloZ9jw9pqNBexY/mZvS9Oc4c2FByHqvZua4G6JGpo+rlrvH
+qdvqtttMXaFmaeh0yj3OHw8DVBKthDAlPgDiYQIDAQABo4GXMIGUMA4GA1UdDwEB
+/wQEAwIBpjAdBgNVHSUEFjAUBggrBgEFBQcDAQYIKwYBBQUHAwIwDwYDVR0TAQH/
+BAUwAwEB/zAdBgNVHQ4EFgQUwNjWlA7lrELCJZNjLZofUgCiqU8wMwYDVR0RBCww
+KoIoZXRzLW52aWRpYS1hZGRjYWNlcnQzLmRldi5lZ3gubnZpZGlhLmNvbTANBgkq
+hkiG9w0BAQsFAAOCAQEAE0RDZGiqYxQIVCTVXKc8mdu9Ud2t0SmMY/Yja4z6t4mS
+36Mk3lnFHvq/3BAYZAXQbmA3HHpFZ/zAnDx3m8G/chybHh/uli8CtM7zECZQlG7T
+wILUH+7PjLyUXEPt8tzT9fs1M9s7UB3+IcNErOPVXxHoDrqhF+A2HOabsIydkUCU
+eQ33axe643B0q9z3Afg8OH9UVRlxOp+ZWXvQXJxM/lgx6GUUQ8s5t3AL1pp825hF
+S/iwqflQ15LUyWG3wfnFYxgrK5D6mn+Tpr9/1OEqy+S+WX7bi1dG04HoYFOi/d2Z
+1YG4u/uui64glXzfb5VoRjz0EdNnHoiUPa8vtGF7hA==
+-----END CERTIFICATE-----`

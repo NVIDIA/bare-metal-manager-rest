@@ -1,0 +1,693 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ *
+ * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+ * property and proprietary rights in and to this material, related
+ * documentation and any modifications thereto. Any use, reproduction,
+ * disclosure or distribution of this material and related documentation
+ * without an express license agreement from NVIDIA CORPORATION or
+ * its affiliates is strictly prohibited.
+ */
+
+
+package model
+
+import (
+	"context"
+	"fmt"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/nvidia/carbide-rest-api/carbide-rest-db/pkg/db"
+	"github.com/nvidia/carbide-rest-api/carbide-rest-db/pkg/db/paginator"
+	stracer "github.com/nvidia/carbide-rest-api/carbide-rest-db/pkg/tracer"
+	otrace "go.opentelemetry.io/otel/trace"
+)
+
+// reset the tables needed for SSHKeyGroupInstanceAssociation tests
+func testSSHKeyGroupInstanceAssociationSetupSchema(t *testing.T, dbSession *db.Session) {
+	testSSHKeyGroupSetupSchema(t, dbSession)
+	// create Allocation table
+	err := dbSession.DB.ResetModel(context.Background(), (*Allocation)(nil))
+	assert.Nil(t, err)
+	// create Tenant table
+	err = dbSession.DB.ResetModel(context.Background(), (*Tenant)(nil))
+	assert.Nil(t, err)
+	// create Infrastructure Provider table
+	err = dbSession.DB.ResetModel(context.Background(), (*InfrastructureProvider)(nil))
+	assert.Nil(t, err)
+	// create Site table
+	err = dbSession.DB.ResetModel(context.Background(), (*Site)(nil))
+	assert.Nil(t, err)
+	// create InstanceType table
+	err = dbSession.DB.ResetModel(context.Background(), (*InstanceType)(nil))
+	assert.Nil(t, err)
+	// create Vpc table
+	err = dbSession.DB.ResetModel(context.Background(), (*Vpc)(nil))
+	assert.Nil(t, err)
+	// create IPBlock table
+	err = dbSession.DB.ResetModel(context.Background(), (*IPBlock)(nil))
+	assert.Nil(t, err)
+	// create Machine table
+	err = dbSession.DB.ResetModel(context.Background(), (*Machine)(nil))
+	assert.Nil(t, err)
+	// create OperatingSystem table
+	err = dbSession.DB.ResetModel(context.Background(), (*OperatingSystem)(nil))
+	assert.Nil(t, err)
+	// create User table
+	err = dbSession.DB.ResetModel(context.Background(), (*User)(nil))
+	assert.Nil(t, err)
+	// create Instance table
+	err = dbSession.DB.ResetModel(context.Background(), (*Instance)(nil))
+	assert.Nil(t, err)
+	// create the SSHKeyGroupInstanceAssociation table
+	err = dbSession.DB.ResetModel(context.Background(), (*SSHKeyGroupInstanceAssociation)(nil))
+	assert.Nil(t, err)
+}
+
+func TestSSHKeyGroupInstanceAssociationSQLDAO_CreateFromParams(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInstanceInitDB(t)
+	defer dbSession.Close()
+	testSSHKeyGroupInstanceAssociationSetupSchema(t, dbSession)
+	user := testInstanceBuildUser(t, dbSession, "testUser")
+	ip := testBuildInfrastructureProvider(t, dbSession, db.GetUUIDPtr(uuid.New()), "test", "testorg", user.ID)
+	site := TestBuildSite(t, dbSession, ip, "test", user)
+	tenant := testOperatingSystemBuildTenant(t, dbSession, "testTenant")
+	vpc := testInstanceBuildVpc(t, dbSession, ip, site, tenant, "testVpc")
+	instanceType := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType")
+	machine := testMachineBuildMachine(t, dbSession, ip.ID, site.ID, &instanceType.ID, db.GetStrPtr("mcTypeTest"))
+	allocation := testInstanceBuildAllocation(t, dbSession, ip, tenant, site, "testAllocation")
+	allocationConstraint := testBuildAllocationConstraint(t, dbSession, allocation, AllocationResourceTypeInstanceType, instanceType.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+	operatingSystem := testInstanceBuildOperatingSystem(t, dbSession, "testOS")
+	sshKeyGroup1 := testBuildSSHKeyGroup(t, dbSession, "test1", db.GetStrPtr("test1"), "tesorg", tenant.ID, nil, SSHKeyGroupStatusSyncing, user.ID)
+	sshKeyGroup2 := testBuildSSHKeyGroup(t, dbSession, "test2", db.GetStrPtr("test2"), "tesorg", tenant.ID, nil, SSHKeyGroupStatusSyncing, user.ID)
+	isd := NewInstanceDAO(dbSession)
+	i1, err := isd.Create(
+		ctx, nil,
+		InstanceCreateInput{
+			Name:                     "test1",
+			AllocationID:             &allocation.ID,
+			AllocationConstraintID:   &allocationConstraint.ID,
+			TenantID:                 tenant.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			Hostname:                 db.GetStrPtr("test.com"),
+			OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               db.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			UserData:                 db.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			InfinityRCRStatus:        db.GetStrPtr("RESOURCE_GRANTED"),
+			Status:                   InstanceStatusPending,
+			CreatedBy:                user.ID,
+		},
+	)
+	assert.Nil(t, err)
+	assert.NotNil(t, i1)
+
+	skgisd := NewSSHKeyGroupInstanceAssociationDAO(dbSession)
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc               string
+		skgias             []SSHKeyGroupInstanceAssociation
+		expectError        bool
+		verifyChildSpanner bool
+	}{
+		{
+			desc: "create one",
+			skgias: []SSHKeyGroupInstanceAssociation{
+				{
+					SSHKeyGroupID: sshKeyGroup1.ID, SiteID: site.ID, InstanceID: i1.ID, CreatedBy: user.ID,
+				},
+			},
+			expectError:        false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc: "create multiple",
+			skgias: []SSHKeyGroupInstanceAssociation{
+				{
+					SSHKeyGroupID: sshKeyGroup1.ID, SiteID: site.ID, InstanceID: i1.ID, CreatedBy: user.ID,
+				},
+				{
+					SSHKeyGroupID: sshKeyGroup2.ID, SiteID: site.ID, InstanceID: i1.ID, CreatedBy: user.ID,
+				},
+			},
+			expectError: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			for _, skgia := range tc.skgias {
+				dbskgia, err := skgisd.CreateFromParams(ctx, nil, skgia.SSHKeyGroupID, skgia.SiteID, skgia.InstanceID, skgia.CreatedBy)
+				assert.Equal(t, tc.expectError, err != nil)
+				if !tc.expectError {
+					assert.NotNil(t, dbskgia)
+				}
+				if tc.verifyChildSpanner {
+					span := otrace.SpanFromContext(ctx)
+					assert.True(t, span.SpanContext().IsValid())
+					_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+					assert.True(t, ok)
+				}
+			}
+		})
+	}
+}
+
+func TestSSHKeyGroupInstanceAssociationSQLDAO_GetByID(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInstanceInitDB(t)
+	defer dbSession.Close()
+	testSSHKeyGroupInstanceAssociationSetupSchema(t, dbSession)
+	user := testOperatingSystemBuildUser(t, dbSession, "testUser")
+	ip := testBuildInfrastructureProvider(t, dbSession, db.GetUUIDPtr(uuid.New()), "test", "testorg", user.ID)
+	site := TestBuildSite(t, dbSession, ip, "test", user)
+	tenant := testOperatingSystemBuildTenant(t, dbSession, "testTenant")
+	vpc := testInstanceBuildVpc(t, dbSession, ip, site, tenant, "testVpc")
+	instanceType := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType")
+	machine := testMachineBuildMachine(t, dbSession, ip.ID, site.ID, &instanceType.ID, db.GetStrPtr("mcTypeTest"))
+	allocation := testInstanceBuildAllocation(t, dbSession, ip, tenant, site, "testAllocation")
+	allocationConstraint := testBuildAllocationConstraint(t, dbSession, allocation, AllocationResourceTypeInstanceType, instanceType.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+	operatingSystem := testInstanceBuildOperatingSystem(t, dbSession, "testOS")
+	sshKeyGroup1 := testBuildSSHKeyGroup(t, dbSession, "test1", db.GetStrPtr("test1"), "tesorg", tenant.ID, nil, SSHKeyGroupStatusSyncing, user.ID)
+	isd := NewInstanceDAO(dbSession)
+	i1, err := isd.Create(
+		ctx, nil,
+		InstanceCreateInput{
+			Name:                     "test1",
+			AllocationID:             &allocation.ID,
+			AllocationConstraintID:   &allocationConstraint.ID,
+			TenantID:                 tenant.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			Hostname:                 db.GetStrPtr("test.com"),
+			OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               db.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			UserData:                 db.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			InfinityRCRStatus:        db.GetStrPtr("RESOURCE_GRANTED"),
+			Status:                   InstanceStatusPending,
+			CreatedBy:                user.ID,
+		},
+	)
+
+	skaisd := NewSSHKeyGroupInstanceAssociationDAO(dbSession)
+	skgis1, err := skaisd.CreateFromParams(ctx, nil, sshKeyGroup1.ID, site.ID, i1.ID, user.ID)
+	assert.Nil(t, err)
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc                    string
+		skgiaID                 uuid.UUID
+		includeRelations        []string
+		expectNotNilSSHKeyGroup bool
+		expectNotNilSite        bool
+		expectNotNilInstance    bool
+		expectError             bool
+		verifyChildSpanner      bool
+	}{
+		{
+			desc:               "success without relations",
+			skgiaID:            skgis1.ID,
+			includeRelations:   []string{},
+			expectError:        false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc:                    "success with relations",
+			skgiaID:                 skgis1.ID,
+			includeRelations:        []string{SSHKeyGroupRelationName, SiteRelationName, InstanceRelationName},
+			expectError:             false,
+			expectNotNilSSHKeyGroup: true,
+		},
+		{
+			desc:             "error when not found",
+			skgiaID:          uuid.New(),
+			includeRelations: []string{},
+			expectError:      true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, err := skaisd.GetByID(ctx, nil, tc.skgiaID, tc.includeRelations)
+			assert.Equal(t, tc.expectError, err != nil)
+			if !tc.expectError {
+				assert.NotNil(t, got)
+				if tc.expectNotNilSSHKeyGroup {
+					assert.NotNil(t, got.SSHKeyGroup)
+				}
+				if tc.expectNotNilSite {
+					assert.NotNil(t, got.Site)
+				}
+				if tc.expectNotNilInstance {
+					assert.NotNil(t, got.Instance)
+				}
+			}
+			if tc.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}
+
+func TestSSHKeyGroupInstanceAssociationSQLDAO_GetAll(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInstanceInitDB(t)
+	defer dbSession.Close()
+	testSSHKeyGroupInstanceAssociationSetupSchema(t, dbSession)
+	user := testOperatingSystemBuildUser(t, dbSession, "testUser")
+	ip := testBuildInfrastructureProvider(t, dbSession, db.GetUUIDPtr(uuid.New()), "test", "testorg", user.ID)
+	site := TestBuildSite(t, dbSession, ip, "test", user)
+	tenant := testOperatingSystemBuildTenant(t, dbSession, "testTenant")
+	vpc := testInstanceBuildVpc(t, dbSession, ip, site, tenant, "testVpc")
+	instanceType := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType")
+	machine := testMachineBuildMachine(t, dbSession, ip.ID, site.ID, &instanceType.ID, db.GetStrPtr("mcTypeTest"))
+	allocation := testInstanceBuildAllocation(t, dbSession, ip, tenant, site, "testAllocation")
+	allocationConstraint := testBuildAllocationConstraint(t, dbSession, allocation, AllocationResourceTypeInstanceType, instanceType.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+	operatingSystem := testInstanceBuildOperatingSystem(t, dbSession, "testOS")
+
+	skgs := []*SSHKeyGroup{}
+	skgias := []*SSHKeyGroupInstanceAssociation{}
+	skgsd := NewSSHKeyGroupDAO(dbSession)
+	isd := NewInstanceDAO(dbSession)
+	skgiasd := NewSSHKeyGroupInstanceAssociationDAO(dbSession)
+	for i := 1; i <= 25; i++ {
+		skg1, err := skgsd.Create(
+			ctx,
+			nil,
+			SSHKeyGroupCreateInput{
+				Name:        fmt.Sprintf("test-%d", i),
+				Description: db.GetStrPtr(fmt.Sprintf("test-%d", i)),
+				TenantOrg:   "testorg",
+				TenantID:    tenant.ID,
+				Status:      SSHKeyGroupStatusSyncing,
+				CreatedBy:   user.ID,
+			},
+		)
+		skgs = append(skgs, skg1)
+		assert.Nil(t, err)
+		assert.NotNil(t, skg1)
+
+		i1, err := isd.Create(
+			ctx, nil,
+			InstanceCreateInput{
+				Name:                     "test1",
+				AllocationID:             &allocation.ID,
+				AllocationConstraintID:   &allocationConstraint.ID,
+				TenantID:                 tenant.ID,
+				InfrastructureProviderID: ip.ID,
+				SiteID:                   site.ID,
+				InstanceTypeID:           &instanceType.ID,
+				VpcID:                    vpc.ID,
+				MachineID:                &machine.ID,
+				Hostname:                 db.GetStrPtr("test.com"),
+				OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+				IpxeScript:               db.GetStrPtr("ipxe"),
+				AlwaysBootWithCustomIpxe: true,
+				UserData:                 db.GetStrPtr("userdata"),
+				Labels:                   map[string]string{},
+				InfinityRCRStatus:        db.GetStrPtr("RESOURCE_GRANTED"),
+				Status:                   InstanceStatusPending,
+				CreatedBy:                user.ID,
+			},
+		)
+
+		assert.Nil(t, err)
+		assert.NotNil(t, i1)
+
+		skgia1, err := skgiasd.CreateFromParams(ctx, nil, skg1.ID, site.ID, i1.ID, user.ID)
+		assert.Nil(t, err)
+		assert.NotNil(t, skgia1)
+		skgias = append(skgias, skgia1)
+	}
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc             string
+		includeRelations []string
+
+		paramSSHKeyGroupIDs []uuid.UUID
+		paramSiteIDs        []uuid.UUID
+		paramInstanceIDs    []uuid.UUID
+
+		paramOffset  *int
+		paramLimit   *int
+		paramOrderBy *paginator.OrderBy
+
+		expectCnt                                         int
+		expectTotal                                       int
+		expectFirstObjectSSHKeyGroupInstanceAssociationID string
+
+		expectNotNilSSHKeyGroup bool
+		expectNotNilSite        bool
+		expectNotNilInstance    bool
+		expectError             bool
+		verifyChildSpanner      bool
+	}{
+		{
+			desc:                "getall with SSHKeyGroup filters but no relations returns objects",
+			paramSSHKeyGroupIDs: []uuid.UUID{skgs[0].ID, skgs[1].ID},
+			includeRelations:    []string{},
+			expectFirstObjectSSHKeyGroupInstanceAssociationID: skgias[0].ID.String(),
+			expectError:        false,
+			expectTotal:        2,
+			expectCnt:          2,
+			verifyChildSpanner: true,
+		},
+		{
+			desc:             "getall with filters and relations returns objects",
+			includeRelations: []string{SSHKeyGroupRelationName},
+			paramOrderBy: &paginator.OrderBy{
+				Field: "updated",
+				Order: paginator.OrderAscending,
+			},
+			expectFirstObjectSSHKeyGroupInstanceAssociationID: skgias[0].ID.String(),
+			expectError:             false,
+			expectTotal:             25,
+			expectCnt:               20,
+			expectNotNilSSHKeyGroup: true,
+		},
+		{
+			desc:             "getall with site filters and relations returns objects",
+			includeRelations: []string{SiteRelationName},
+			paramSiteIDs:     []uuid.UUID{site.ID},
+			paramOrderBy: &paginator.OrderBy{
+				Field: "updated",
+				Order: paginator.OrderAscending,
+			},
+			expectFirstObjectSSHKeyGroupInstanceAssociationID: skgias[0].ID.String(),
+			expectError:      false,
+			expectTotal:      25,
+			expectCnt:        20,
+			expectNotNilSite: true,
+		},
+		{
+			desc:             "getall with instance filters and relations returns objects",
+			includeRelations: []string{InstanceRelationName},
+			paramInstanceIDs: []uuid.UUID{skgias[0].InstanceID},
+			paramOrderBy: &paginator.OrderBy{
+				Field: "updated",
+				Order: paginator.OrderAscending,
+			},
+			expectFirstObjectSSHKeyGroupInstanceAssociationID: skgias[0].ID.String(),
+			expectError:          false,
+			expectTotal:          1,
+			expectCnt:            1,
+			expectNotNilInstance: true,
+		},
+		{
+			desc:             "getall with offset, limit returns objects",
+			includeRelations: []string{},
+			paramOffset:      db.GetIntPtr(10),
+			paramLimit:       db.GetIntPtr(10),
+			paramOrderBy: &paginator.OrderBy{
+				Field: "updated",
+				Order: paginator.OrderAscending,
+			},
+			expectFirstObjectSSHKeyGroupInstanceAssociationID: skgias[10].ID.String(),
+			expectError: false,
+			expectTotal: 25,
+			expectCnt:   10,
+		},
+		{
+			desc:                "case when no objects are returned",
+			includeRelations:    []string{},
+			expectError:         false,
+			paramSSHKeyGroupIDs: []uuid.UUID{uuid.New()},
+			expectTotal:         0,
+			expectCnt:           0,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			objs, tot, err := skgiasd.GetAll(ctx, nil, tc.paramSSHKeyGroupIDs, tc.paramSiteIDs, tc.paramInstanceIDs, tc.includeRelations, tc.paramOffset, tc.paramLimit, tc.paramOrderBy)
+			assert.Equal(t, tc.expectError, err != nil)
+			assert.Equal(t, tc.expectCnt, len(objs))
+			assert.Equal(t, tc.expectTotal, tot)
+			if len(objs) > 0 {
+				if tc.expectFirstObjectSSHKeyGroupInstanceAssociationID != "" {
+					assert.Equal(t, tc.expectFirstObjectSSHKeyGroupInstanceAssociationID, objs[0].ID.String())
+				}
+
+				if tc.expectNotNilSSHKeyGroup {
+					assert.NotNil(t, objs[0].SSHKeyGroup)
+				}
+
+				if tc.expectNotNilSite {
+					assert.NotNil(t, objs[0].Site)
+				}
+
+				if tc.expectNotNilInstance {
+					assert.NotNil(t, objs[0].Instance)
+				}
+			}
+			if tc.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}
+
+func TestSSHKeyGroupInstanceAssociationSQLDAO_UpdateFromParams(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInstanceInitDB(t)
+	defer dbSession.Close()
+	testSSHKeyGroupInstanceAssociationSetupSchema(t, dbSession)
+	user := testOperatingSystemBuildUser(t, dbSession, "testUser")
+	ip := testBuildInfrastructureProvider(t, dbSession, db.GetUUIDPtr(uuid.New()), "test", "testorg", user.ID)
+	site := TestBuildSite(t, dbSession, ip, "test", user)
+	site2 := TestBuildSite(t, dbSession, ip, "test2", user)
+	tenant := testOperatingSystemBuildTenant(t, dbSession, "testTenant")
+	vpc := testInstanceBuildVpc(t, dbSession, ip, site, tenant, "testVpc")
+	instanceType := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType")
+	machine := testMachineBuildMachine(t, dbSession, ip.ID, site.ID, &instanceType.ID, db.GetStrPtr("mcTypeTest"))
+	allocation := testInstanceBuildAllocation(t, dbSession, ip, tenant, site, "testAllocation")
+	allocationConstraint := testBuildAllocationConstraint(t, dbSession, allocation, AllocationResourceTypeInstanceType, instanceType.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+	operatingSystem := testInstanceBuildOperatingSystem(t, dbSession, "testOS")
+
+	skgiasd := NewSSHKeyGroupInstanceAssociationDAO(dbSession)
+	sshKeyGroup1 := testBuildSSHKeyGroup(t, dbSession, "test1", db.GetStrPtr("test1"), "tesorg", tenant.ID, nil, SSHKeyGroupStatusSyncing, user.ID)
+	sshKeyGroup2 := testBuildSSHKeyGroup(t, dbSession, "test2", db.GetStrPtr("test2"), "tesorg", tenant.ID, nil, SSHKeyGroupStatusSyncing, user.ID)
+
+	isd := NewInstanceDAO(dbSession)
+	i1, err := isd.Create(
+		ctx, nil,
+		InstanceCreateInput{
+			Name:                     "test1",
+			AllocationID:             &allocation.ID,
+			AllocationConstraintID:   &allocationConstraint.ID,
+			TenantID:                 tenant.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			Hostname:                 db.GetStrPtr("test.com"),
+			OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               db.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			UserData:                 db.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			InfinityRCRStatus:        db.GetStrPtr("RESOURCE_GRANTED"),
+			Status:                   InstanceStatusPending,
+			CreatedBy:                user.ID,
+		},
+	)
+
+	i2, err := isd.Create(
+		ctx, nil,
+		InstanceCreateInput{
+			Name:                     "test2",
+			AllocationID:             &allocation.ID,
+			AllocationConstraintID:   &allocationConstraint.ID,
+			TenantID:                 tenant.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			Hostname:                 db.GetStrPtr("test.com"),
+			OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               db.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			UserData:                 db.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			InfinityRCRStatus:        db.GetStrPtr("RESOURCE_GRANTED"),
+			Status:                   InstanceStatusPending,
+			CreatedBy:                user.ID,
+		},
+	)
+
+	skgisa1, err := skgiasd.CreateFromParams(ctx, nil, sshKeyGroup1.ID, site.ID, i1.ID, user.ID)
+	assert.Nil(t, err)
+
+	skgisa2, err := skgiasd.CreateFromParams(ctx, nil, sshKeyGroup2.ID, site.ID, i2.ID, user.ID)
+	assert.NotNil(t, skgisa2)
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc string
+		id   uuid.UUID
+
+		paramSSHKeyGroupID *uuid.UUID
+		paramSiteID        *uuid.UUID
+		paramInstanceID    *uuid.UUID
+
+		expectedSSHKeyGroupID *uuid.UUID
+		expectedSiteID        *uuid.UUID
+		expectedInstanceID    *uuid.UUID
+
+		expectError        bool
+		verifyChildSpanner bool
+	}{
+		{
+			desc:               "can update all fields",
+			id:                 skgisa1.ID,
+			paramSSHKeyGroupID: db.GetUUIDPtr(sshKeyGroup2.ID),
+			paramSiteID:        db.GetUUIDPtr(site2.ID),
+			paramInstanceID:    db.GetUUIDPtr(i2.ID),
+
+			expectedSSHKeyGroupID: db.GetUUIDPtr(sshKeyGroup2.ID),
+			expectedSiteID:        db.GetUUIDPtr(site2.ID),
+			expectedInstanceID:    db.GetUUIDPtr(i2.ID),
+
+			expectError:        false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc:        "error when ID not found",
+			id:          uuid.New(),
+			expectError: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, err := skgiasd.UpdateFromParams(ctx, nil, tc.id, tc.paramSSHKeyGroupID, tc.paramSiteID, tc.paramInstanceID)
+			assert.Equal(t, tc.expectError, err != nil)
+			if err == nil {
+				assert.Equal(t, tc.expectedSSHKeyGroupID.String(), got.SSHKeyGroupID.String())
+				assert.Equal(t, tc.expectedSiteID.String(), got.SiteID.String())
+				assert.Equal(t, tc.expectedInstanceID.String(), got.InstanceID.String())
+			}
+			if tc.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}
+
+func TestSSHKeyGroupInstanceAssociationSQLDAO_DeleteByID(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInstanceInitDB(t)
+	defer dbSession.Close()
+	testSSHKeyGroupInstanceAssociationSetupSchema(t, dbSession)
+	user := testOperatingSystemBuildUser(t, dbSession, "testUser")
+	ip := testBuildInfrastructureProvider(t, dbSession, db.GetUUIDPtr(uuid.New()), "test", "testorg", user.ID)
+	site := TestBuildSite(t, dbSession, ip, "test", user)
+	tenant := testOperatingSystemBuildTenant(t, dbSession, "testTenant")
+	vpc := testInstanceBuildVpc(t, dbSession, ip, site, tenant, "testVpc")
+	instanceType := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType")
+	machine := testMachineBuildMachine(t, dbSession, ip.ID, site.ID, &instanceType.ID, db.GetStrPtr("mcTypeTest"))
+	allocation := testInstanceBuildAllocation(t, dbSession, ip, tenant, site, "testAllocation")
+	allocationConstraint := testBuildAllocationConstraint(t, dbSession, allocation, AllocationResourceTypeInstanceType, instanceType.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+	operatingSystem := testInstanceBuildOperatingSystem(t, dbSession, "testOS")
+
+	skgiasd := NewSSHKeyGroupInstanceAssociationDAO(dbSession)
+	sshKeyGroup1 := testBuildSSHKeyGroup(t, dbSession, "test1", db.GetStrPtr("test1"), "tesorg", tenant.ID, nil, SSHKeyGroupStatusSyncing, user.ID)
+
+	isd := NewInstanceDAO(dbSession)
+	i1, err := isd.Create(
+		ctx, nil,
+		InstanceCreateInput{
+			Name:                     "test1",
+			AllocationID:             &allocation.ID,
+			AllocationConstraintID:   &allocationConstraint.ID,
+			TenantID:                 tenant.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   site.ID,
+			InstanceTypeID:           &instanceType.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			Hostname:                 db.GetStrPtr("test.com"),
+			OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               db.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			UserData:                 db.GetStrPtr("userdata"),
+			Labels:                   map[string]string{},
+			InfinityRCRStatus:        db.GetStrPtr("RESOURCE_GRANTED"),
+			Status:                   InstanceStatusPending,
+			CreatedBy:                user.ID,
+		},
+	)
+
+	skgias1, err := skgiasd.CreateFromParams(ctx, nil, sshKeyGroup1.ID, site.ID, i1.ID, user.ID)
+	assert.Nil(t, err)
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc               string
+		id                 uuid.UUID
+		expectedError      bool
+		verifyChildSpanner bool
+	}{
+		{
+			desc:               "can delete existing object",
+			id:                 skgias1.ID,
+			expectedError:      false,
+			verifyChildSpanner: true,
+		},
+		{
+			desc:          "delete non-existing object",
+			id:            uuid.New(),
+			expectedError: false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			err := skgiasd.DeleteByID(ctx, nil, tc.id)
+			assert.Equal(t, tc.expectedError, err != nil)
+			if !tc.expectedError {
+				tmp, err := skgiasd.GetByID(ctx, nil, tc.id, nil)
+				assert.NotNil(t, err)
+				assert.Nil(t, tmp)
+			}
+			if tc.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}
