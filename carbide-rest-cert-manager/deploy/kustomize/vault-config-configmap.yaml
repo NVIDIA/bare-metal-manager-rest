@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+#
+
+---
+# Source: cert-manager/templates/vault-config-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-server-config
+  namespace: "cert-manager"
+  labels:
+    helm.sh/chart: cert-manager-0.1.0
+    app.kubernetes.io/name: cert-manager
+    app.kubernetes.io/instance: RELEASE-NAME
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: "server"
+data:
+  extraconfig-from-values.hcl: |-
+    disable_mlock = true
+    ui = true
+    default_lease_ttl = "1h"
+
+    telemetry {
+      disable_hostname = true
+      prometheus_retention_time = "24h"
+    }
+
+    listener "tcp" {
+      tls_disable = 1
+      address = "[::]:8200"
+      cluster_address = "[::]:8201"
+      telemetry {
+        unauthenticated_metrics_access = true
+      }
+    }
+    storage "file" {
+      path = "/vault/data"
+    }
+
+    # Example configuration for using auto-unseal, using Google Cloud KMS. The
+    # GKMS keys must already exist, and the cluster must have a service account
+    # that is authorized to access GCP KMS.
+    #seal "gcpckms" {
+    #   project     = "vault-helm-dev"
+    #   region      = "global"
+    #   key_ring    = "vault-helm-unseal-kr"
+    #   crypto_key  = "vault-helm-unseal-key"
+    #}
