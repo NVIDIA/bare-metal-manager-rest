@@ -25,7 +25,7 @@ This monorepo contains the following services:
 
 ## Prerequisites
 
-- Go 1.25.1 or later
+- Go 1.24.10 or later
 - Docker 20.10+ with BuildKit enabled
 - Make
 - PostgreSQL 14+ (for running tests)

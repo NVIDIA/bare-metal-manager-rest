@@ -31,13 +31,12 @@ RUN go mod download
 # Copy source files
 COPY carbide-rest-workflow/ ./carbide-rest-workflow/
 COPY carbide-rest-common/ ./carbide-rest-common/
-COPY carbide-rest-auth/ ./carbide-rest-auth/
 COPY carbide-rest-db/ ./carbide-rest-db/
-COPY carbide-rest-api-schema/ ./carbide-rest-api-schema/
-COPY carbide-site-workflow/ ./carbide-site-workflow/
-COPY carbide-rest-cert-manager/ ./carbide-rest-cert-manager/
 COPY carbide-rest-ipam/ ./carbide-rest-ipam/
+COPY carbide-site-workflow/ ./carbide-site-workflow/
+COPY carbide-rest-api-schema/ ./carbide-rest-api-schema/
 COPY carbide-rest-site-manager/ ./carbide-rest-site-manager/
+COPY carbide-rest-cert-manager/ ./carbide-rest-cert-manager/
 
 # Create Temporal certs directory
 RUN mkdir -p /var/secrets/temporal/certs
@@ -62,4 +61,3 @@ COPY --from=builder /var/secrets/temporal/certs /var/secrets/temporal/certs
 
 # Set the binary as the entrypoint of the container
 ENTRYPOINT ["/app/workflow"]
-

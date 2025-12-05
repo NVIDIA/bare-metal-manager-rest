@@ -30,14 +30,6 @@ RUN go mod download
 
 # Copy source files
 COPY carbide-rest-cert-manager/ ./carbide-rest-cert-manager/
-COPY carbide-rest-common/ ./carbide-rest-common/
-COPY carbide-rest-api-schema/ ./carbide-rest-api-schema/
-COPY carbide-rest-auth/ ./carbide-rest-auth/
-COPY carbide-rest-db/ ./carbide-rest-db/
-COPY carbide-rest-workflow/ ./carbide-rest-workflow/
-COPY carbide-site-workflow/ ./carbide-site-workflow/
-COPY carbide-rest-ipam/ ./carbide-rest-ipam/
-COPY carbide-rest-site-manager/ ./carbide-rest-site-manager/
 
 # Build the credentials manager
 WORKDIR /workspace/carbide-rest-cert-manager
@@ -64,4 +56,3 @@ EXPOSE 8080
 
 # Run the application
 ENTRYPOINT ["/app/credsmgr"]
-

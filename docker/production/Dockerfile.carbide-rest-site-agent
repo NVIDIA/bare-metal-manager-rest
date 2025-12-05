@@ -31,14 +31,10 @@ RUN go mod download
 # Copy source files
 COPY carbide-rest-site-agent/ ./carbide-rest-site-agent/
 COPY carbide-rest-common/ ./carbide-rest-common/
+COPY carbide-rest-site-manager/ ./carbide-rest-site-manager/
 COPY carbide-rest-api-schema/ ./carbide-rest-api-schema/
 COPY carbide-site-workflow/ ./carbide-site-workflow/
-COPY carbide-rest-auth/ ./carbide-rest-auth/
-COPY carbide-rest-db/ ./carbide-rest-db/
-COPY carbide-rest-workflow/ ./carbide-rest-workflow/
 COPY carbide-rest-cert-manager/ ./carbide-rest-cert-manager/
-COPY carbide-rest-ipam/ ./carbide-rest-ipam/
-COPY carbide-rest-site-manager/ ./carbide-rest-site-manager/
 
 # Build elektra (site agent)
 WORKDIR /workspace/carbide-rest-site-agent
@@ -69,4 +65,3 @@ EXPOSE 8080
 
 # Run the application
 ENTRYPOINT ["/app/elektra"]
-
