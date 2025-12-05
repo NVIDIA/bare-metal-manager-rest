@@ -30,14 +30,7 @@ RUN go mod download
 
 # Copy source files
 COPY carbide-rest-site-manager/ ./carbide-rest-site-manager/
-COPY carbide-rest-common/ ./carbide-rest-common/
-COPY carbide-rest-api-schema/ ./carbide-rest-api-schema/
-COPY carbide-site-workflow/ ./carbide-site-workflow/
-COPY carbide-rest-auth/ ./carbide-rest-auth/
-COPY carbide-rest-db/ ./carbide-rest-db/
-COPY carbide-rest-workflow/ ./carbide-rest-workflow/
 COPY carbide-rest-cert-manager/ ./carbide-rest-cert-manager/
-COPY carbide-rest-ipam/ ./carbide-rest-ipam/
 
 # Build the site manager
 WORKDIR /workspace/carbide-rest-site-manager
@@ -64,4 +57,3 @@ EXPOSE 8100
 
 # Run the application
 ENTRYPOINT ["/app/sitemgr"]
-

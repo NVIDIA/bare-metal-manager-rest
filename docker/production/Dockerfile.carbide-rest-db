@@ -30,14 +30,8 @@ RUN go mod download
 
 # Copy source files
 COPY carbide-rest-db/ ./carbide-rest-db/
-COPY carbide-rest-common/ ./carbide-rest-common/
 COPY carbide-rest-api-schema/ ./carbide-rest-api-schema/
-COPY carbide-rest-auth/ ./carbide-rest-auth/
-COPY carbide-rest-workflow/ ./carbide-rest-workflow/
-COPY carbide-site-workflow/ ./carbide-site-workflow/
-COPY carbide-rest-cert-manager/ ./carbide-rest-cert-manager/
 COPY carbide-rest-ipam/ ./carbide-rest-ipam/
-COPY carbide-rest-site-manager/ ./carbide-rest-site-manager/
 
 # Build the migrations binary
 WORKDIR /workspace/carbide-rest-db
@@ -61,4 +55,3 @@ USER nonroot
 
 # Run migrations
 CMD ["/app/migrations", "db", "init_migrate"]
-
