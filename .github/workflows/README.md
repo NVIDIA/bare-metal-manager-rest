@@ -38,7 +38,7 @@ Reusable workflow that builds and pushes all Docker images.
 3. `carbide-rest-ipam`
 4. `carbide-rest-site-manager`
 5. `carbide-rest-workflow`
-6. `carbide-site-agent`
+6. `carbide-rest-site-agent`
 7. `carbide-rest-cert-manager`
 
 **Note:** This workflow uses production-optimized multi-stage Dockerfiles located in `docker/production/`. These Dockerfiles:

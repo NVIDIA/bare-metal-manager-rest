@@ -11,7 +11,7 @@ This monorepo contains the following services:
 | **carbide-rest-api** | Main REST API server | `api` |
 | **carbide-rest-workflow** | Temporal workflow service | `workflow` |
 | **carbide-rest-site-manager** | Site management service | `sitemgr` |
-| **carbide-site-agent** | On-site agent (elektra) | `elektra`, `elektractl` |
+| **carbide-rest-site-agent** | On-site agent (elektra) | `elektra`, `elektractl` |
 | **carbide-rest-db** | Database migrations | `migrations` |
 | **carbide-rest-cert-manager** | Certificate/credentials manager | `credsmgr` |
 
@@ -45,8 +45,8 @@ build/binaries/
   api          # carbide-rest-api
   workflow     # carbide-rest-workflow
   sitemgr      # carbide-rest-site-manager
-  elektra      # carbide-site-agent
-  elektractl   # carbide-site-agent CLI
+  elektra      # carbide-rest-site-agent
+  elektractl   # carbide-rest-site-agent CLI
   migrations   # carbide-rest-db
   credsmgr     # carbide-rest-cert-manager
 ```
@@ -111,7 +111,7 @@ make docker-build IMAGE_REGISTRY=my-registry.example.com/carbide IMAGE_TAG=v1.0.
 docker push my-registry.example.com/carbide/carbide-rest-api:v1.0.0
 docker push my-registry.example.com/carbide/carbide-rest-workflow:v1.0.0
 docker push my-registry.example.com/carbide/carbide-rest-site-manager:v1.0.0
-docker push my-registry.example.com/carbide/carbide-site-agent:v1.0.0
+docker push my-registry.example.com/carbide/carbide-rest-site-agent:v1.0.0
 docker push my-registry.example.com/carbide/carbide-rest-db:v1.0.0
 docker push my-registry.example.com/carbide/carbide-rest-cert-manager:v1.0.0
 ```
@@ -127,7 +127,7 @@ TAG="${2:-latest}"
 make docker-build IMAGE_REGISTRY="$REGISTRY" IMAGE_TAG="$TAG"
 
 # Push all images
-for image in carbide-rest-api carbide-rest-workflow carbide-rest-site-manager carbide-site-agent carbide-rest-db carbide-rest-cert-manager; do
+for image in carbide-rest-api carbide-rest-workflow carbide-rest-site-manager carbide-rest-site-agent carbide-rest-db carbide-rest-cert-manager; do
     docker push "$REGISTRY/$image:$TAG"
 done
 ```
@@ -139,7 +139,7 @@ done
 | `carbide-rest-api` | 8388 | Main REST API |
 | `carbide-rest-workflow` | - | Temporal workflow worker |
 | `carbide-rest-site-manager` | - | Site management worker |
-| `carbide-site-agent` | - | On-site agent |
+| `carbide-rest-site-agent` | - | On-site agent |
 | `carbide-rest-db` | - | Database migrations (run to completion) |
 | `carbide-rest-cert-manager` | - | Certificate manager |
 
@@ -230,7 +230,7 @@ carbide-rest-api/
   carbide-rest-api/         # Main REST API service
   carbide-rest-workflow/    # Temporal workflow service
   carbide-rest-site-manager/# Site manager service
-  carbide-site-agent/       # On-site agent (elektra)
+  carbide-rest-site-agent/       # On-site agent (elektra)
   carbide-rest-db/          # Database migrations
   carbide-rest-cert-manager/# Certificate manager
   carbide-rest-common/      # Shared utilities

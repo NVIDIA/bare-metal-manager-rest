@@ -28,7 +28,7 @@ This directory contains multi-stage Dockerfiles optimized for production deploym
 3. **Dockerfile.carbide-rest-site-manager** - Site manager service
 4. **Dockerfile.carbide-rest-workflow** - Workflow service
 5. **Dockerfile.carbide-rest-cert-manager** - Certificate manager
-6. **Dockerfile.carbide-site-agent** - Site agent (elektra)
+6. **Dockerfile.carbide-rest-site-agent** - Site agent (elektra)
 
 ## Building Images
 
@@ -81,7 +81,7 @@ These production images are significantly smaller than development images:
 | carbide-rest-db | ~25-35 MB |
 | carbide-rest-site-manager | ~20-30 MB |
 | carbide-rest-workflow | ~20-30 MB |
-| carbide-site-agent | ~35-45 MB |
+| carbide-rest-site-agent | ~35-45 MB |
 | carbide-rest-cert-manager | ~20-30 MB |
 
 ## Running Images

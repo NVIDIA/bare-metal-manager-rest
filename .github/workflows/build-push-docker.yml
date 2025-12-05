@@ -643,9 +643,9 @@ jobs:
           ngc-path: 0837451325059433/carbide-dev
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
-  # Build and push carbide-site-agent
-  build-carbide-site-agent:
-    name: Build carbide-site-agent
+  # Build and push carbide-rest-site-agent
+  build-carbide-rest-site-agent:
+    name: Build carbide-rest-site-agent
     runs-on: ${{ inputs.runner }}
 
     permissions:
@@ -671,29 +671,29 @@ jobs:
         id: docker-tags
         run: |
           # Always include branch-sha tag
-          TAGS="${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.branch_sha_tag }}"
+          TAGS="${{ inputs.target_registry }}/carbide-rest-site-agent:${{ inputs.branch_sha_tag }}"
           
           # On main branch, also add semantic version and latest tags
           if [ "${{ inputs.is_main_branch }}" == "true" ]; then
-            TAGS="${TAGS},${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.semantic_version }}"
-            TAGS="${TAGS},${{ inputs.target_registry }}/carbide-site-agent:latest"
+            TAGS="${TAGS},${{ inputs.target_registry }}/carbide-rest-site-agent:${{ inputs.semantic_version }}"
+            TAGS="${TAGS},${{ inputs.target_registry }}/carbide-rest-site-agent:latest"
           fi
           
           echo "tags=$TAGS" >> $GITHUB_OUTPUT
 
-      - name: Build carbide-site-agent
+      - name: Build carbide-rest-site-agent
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./docker/production/Dockerfile.carbide-site-agent
+          file: ./docker/production/Dockerfile.carbide-rest-site-agent
           platforms: linux/amd64
           push: ${{ inputs.push_enabled }}
           load: true
           tags: ${{ steps.docker-tags.outputs.tags }}
-          cache-from: type=gha,scope=carbide-site-agent
-          cache-to: type=gha,mode=max,scope=carbide-site-agent
+          cache-from: type=gha,scope=carbide-rest-site-agent
+          cache-to: type=gha,mode=max,scope=carbide-rest-site-agent
           labels: |
-            org.opencontainers.image.title=carbide-site-agent
+            org.opencontainers.image.title=carbide-rest-site-agent
             org.opencontainers.image.version=${{ inputs.semantic_version }}
             org.opencontainers.image.revision=${{ inputs.short_sha }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
@@ -704,7 +704,7 @@ jobs:
         if: inputs.is_main_branch
         run: |
           mkdir -p artifacts
-          docker create --name temp-container ${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.branch_sha_tag }}
+          docker create --name temp-container ${{ inputs.target_registry }}/carbide-rest-site-agent:${{ inputs.branch_sha_tag }}
           docker cp temp-container:/app/elektra artifacts/elektra
           docker rm temp-container
           chmod +x artifacts/elektra
@@ -712,14 +712,14 @@ jobs:
       - name: Export Docker image
         if: inputs.is_main_branch
         run: |
-          docker save ${{ inputs.target_registry }}/carbide-site-agent:${{ inputs.branch_sha_tag }} | gzip > artifacts/carbide-site-agent-${{ inputs.branch_sha_tag }}.tar.gz
+          docker save ${{ inputs.target_registry }}/carbide-rest-site-agent:${{ inputs.branch_sha_tag }} | gzip > artifacts/carbide-rest-site-agent-${{ inputs.branch_sha_tag }}.tar.gz
 
       - name: Upload binary artifact with semantic version
         if: inputs.is_main_branch
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-site-agent-binary
-          display-name: carbide-site-agent-binary
+          name: carbide-rest-site-agent-binary
+          display-name: carbide-rest-site-agent-binary
           description: Carbide Site Agent binary
           version: ${{ inputs.semantic_version }}
           path: artifacts/elektra
@@ -730,8 +730,8 @@ jobs:
         if: inputs.is_main_branch
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-site-agent-binary
-          display-name: carbide-site-agent-binary
+          name: carbide-rest-site-agent-binary
+          display-name: carbide-rest-site-agent-binary
           description: Carbide Site Agent binary
           version: latest
           path: artifacts/elektra
@@ -742,8 +742,8 @@ jobs:
         if: inputs.is_main_branch
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-site-agent-binary
-          display-name: carbide-site-agent-binary
+          name: carbide-rest-site-agent-binary
+          display-name: carbide-rest-site-agent-binary
           description: Carbide Site Agent binary
           version: ${{ inputs.branch_sha_tag }}
           path: artifacts/elektra
@@ -754,11 +754,11 @@ jobs:
         if: inputs.is_main_branch
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-site-agent-image
-          display-name: carbide-site-agent-image
+          name: carbide-rest-site-agent-image
+          display-name: carbide-rest-site-agent-image
           description: Carbide Site Agent image
           version: ${{ inputs.semantic_version }}
-          path: artifacts/carbide-site-agent-${{ inputs.branch_sha_tag }}.tar.gz
+          path: artifacts/carbide-rest-site-agent-${{ inputs.branch_sha_tag }}.tar.gz
           ngc-path: 0837451325059433/carbide-dev
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
@@ -766,11 +766,11 @@ jobs:
         if: inputs.is_main_branch
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-site-agent-image
-          display-name: carbide-site-agent-image
+          name: carbide-rest-site-agent-image
+          display-name: carbide-rest-site-agent-image
           description: Carbide Site Agent image
           version: latest
-          path: artifacts/carbide-site-agent-${{ inputs.branch_sha_tag }}.tar.gz
+          path: artifacts/carbide-rest-site-agent-${{ inputs.branch_sha_tag }}.tar.gz
           ngc-path: 0837451325059433/carbide-dev
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
@@ -778,11 +778,11 @@ jobs:
         if: inputs.is_main_branch
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
-          name: carbide-site-agent-image
-          display-name: carbide-site-agent-image
+          name: carbide-rest-site-agent-image
+          display-name: carbide-rest-site-agent-image
           description: Carbide Site Agent image
           version: ${{ inputs.branch_sha_tag }}
-          path: artifacts/carbide-site-agent-${{ inputs.branch_sha_tag }}.tar.gz
+          path: artifacts/carbide-rest-site-agent-${{ inputs.branch_sha_tag }}.tar.gz
           ngc-path: 0837451325059433/carbide-dev
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
@@ -938,7 +938,7 @@ jobs:
       - build-carbide-rest-db
       - build-carbide-rest-site-manager
       - build-carbide-rest-workflow
-      - build-carbide-site-agent
+      - build-carbide-rest-site-agent
       - build-carbide-rest-cert-manager
     if: always()
 
@@ -974,7 +974,7 @@ jobs:
           echo "2. \`carbide-rest-db:${{ inputs.branch_sha_tag }}\`" >> $GITHUB_STEP_SUMMARY
           echo "3. \`carbide-rest-site-manager:${{ inputs.branch_sha_tag }}\`" >> $GITHUB_STEP_SUMMARY
           echo "4. \`carbide-rest-workflow:${{ inputs.branch_sha_tag }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "5. \`carbide-site-agent:${{ inputs.branch_sha_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "5. \`carbide-rest-site-agent:${{ inputs.branch_sha_tag }}\`" >> $GITHUB_STEP_SUMMARY
           echo "6. \`carbide-rest-cert-manager:${{ inputs.branch_sha_tag }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ inputs.is_main_branch }}" == "true" ]; then
@@ -987,5 +987,5 @@ jobs:
           echo "- carbide-rest-db: \`${{ needs.build-carbide-rest-db.result }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- carbide-rest-site-manager: \`${{ needs.build-carbide-rest-site-manager.result }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- carbide-rest-workflow: \`${{ needs.build-carbide-rest-workflow.result }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- carbide-site-agent: \`${{ needs.build-carbide-site-agent.result }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- carbide-rest-site-agent: \`${{ needs.build-carbide-rest-site-agent.result }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- carbide-rest-cert-manager: \`${{ needs.build-carbide-rest-cert-manager.result }}\`" >> $GITHUB_STEP_SUMMARY
