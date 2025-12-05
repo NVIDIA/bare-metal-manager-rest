@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+#
+
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
+  name: credsmgr-policy-approver
+spec:
+  allowed:
+    commonName:
+      required: false
+      value: "*"
+    dnsNames:
+      required: false
+      values:
+        - "*"
+    ipAddresses:
+      values:
+        - 127.0.0.1
+    isCA: false
+    usages:
+      - server auth
+      - client auth
+    subject:
+      organizations:
+        required: false
+        values:
+          - "*"
+  selector:
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: vault-issuer
+    namespace:
+      matchNames:
+        - temporal
+        - cloud-db
+        - cloud-workflow
+        - cloud-api
