@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+#
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: csm
+  labels:
+    app.kubernetes.io/name: csm
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: csm
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: csm
+    spec:
+      terminationGracePeriodSeconds: 5
+      imagePullSecrets:
+        - name: imagepullsecret
+      containers:
+        - name: sitemgr
+          command:
+            - /usr/local/bin/sitemgr
+          args:
+            - --listen-port=8100
+            - --creds-manager-url=https://credsmgr.cert-manager:8000
+            - --ingress-host=sitemgr.cloud-site-manager.svc.cluster.local
+          env:
+            - name: SITE_MANAGER_NS
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          image: sitemgr
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              scheme: HTTPS
+              port: 8100
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              scheme: HTTPS
+              port: 8100
+          startupProbe:
+            httpGet:
+              path: /healthz
+              scheme: HTTPS
+              port: 8100
+            periodSeconds: 5
+            failureThreshold: 120
+      serviceAccountName: site-manager
