@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+#
+
+apiVersion: policy.cert-manager.io/v1alpha1
+kind: CertificateRequestPolicy
+metadata:
+  name: site-agent-approver-policy
+spec:
+  allowed:
+    commonName:
+      required: false
+    dnsNames:
+      required: true
+      values:
+        - '*.svc'
+        - '*.cluster.local'
+        - '*.svc.cluster.local'
+    isCA: false
+    uris:
+      values:
+        - spiffe://forge.local/elektra-site-agent/sa/*
+  constraints:
+    maxDuration: 720h
+    minDuration: 320h
+    privateKey:
+      algorithm: ECDSA
+      maxSize: 384
+      minSize: 256
+  selector:
+    issuerRef:
+      group: cert-manager.io
+      kind: ClusterIssuer
+      name: vault-forge-issuer
+    namespace:
+      matchNames:
+        - elektra-site-agent
+---

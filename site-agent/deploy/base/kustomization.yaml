@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+#
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+namespace: elektra-site-agent
+
+labels:
+  - pairs:
+      app.kubernetes.io/managed-by: kustomize
+      app.kubernetes.io/part-of: site-agent
+
+resources:
+  - namespace.yaml
+  - grpc-client
+  - site-agent
+
+configMapGenerator:
+  - name: elektra-config-map
+    env: files/config.properties
+  - name: elektra-database-config
+    behavior: create
+    literals:
+      - DB_HOST=forge-pg-cluster.postgres.svc.cluster.local
+      - DB_PORT=5432
+      - DB_NAME=elektra
+      - SECRET_REF=elektra-site-agent.elektra.forge-pg-cluster.credentials.postgresql.acid.zalan.do

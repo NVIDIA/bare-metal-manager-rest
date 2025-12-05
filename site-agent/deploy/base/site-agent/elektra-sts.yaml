@@ -1,0 +1,223 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+#
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elektra-site-agent
+  labels:
+    app: elektra-site-agent
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: elektra-site-agent
+  serviceName: elektra-headless
+  template:
+    metadata:
+      labels:
+        app: elektra-site-agent
+    spec:
+      imagePullSecrets:
+        - name: imagepullsecret
+      containers:
+        - name: elektra
+          image: nvcr.io/nvidian/nvforge-devel/forge-elektra:v2023.12-rc8
+          imagePullPolicy: Always
+          securityContext:
+            capabilities:
+              add:
+                - SYS_PTRACE
+          env:
+            # - name: DISABLE_BOOTSTRAP
+            #   value: "true"
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OTEL_EXPORTER_OTLP_SPAN_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  key: OTEL_EXPORTER_OTLP_SPAN_ENDPOINT
+                  name: elektra-config-map
+            - name: METRICS_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: elektra-config-map
+                  key: metrics_port
+            - name: TEMPORAL_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: elektra-config-map
+                  key: temporal_host
+            - name: TEMPORAL_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: elektra-config-map
+                  key: temporal_port
+            - name: ENABLE_DEBUG
+              valueFrom:
+                configMapKeyRef:
+                  name: elektra-config-map
+                  key: enable_debug
+            - name: CLIENTSET_LOG
+              valueFrom:
+                configMapKeyRef:
+                  name: elektra-config-map
+                  key: clientset_log
+            - name: TEMPORAL_SUBSCRIBE_QUEUE
+              valueFrom:
+                configMapKeyRef:
+                  name: elektra-config-map
+                  key: temporal_subscribe_queue
+            - name: TEMPORAL_PUBLISH_QUEUE
+              valueFrom:
+                configMapKeyRef:
+                  name: elektra-config-map
+                  key: temporal_publish_queue
+            - name: TEMPORAL_SUBSCRIBE_NAMESPACE
+              valueFrom:
+                configMapKeyRef:
+                  name: elektra-config-map
+                  key: cluster_id
+            - name: TEMPORAL_PUBLISH_NAMESPACE
+              valueFrom:
+                configMapKeyRef:
+                  name: elektra-config-map
+                  key: temporal_publish_namespace
+            - name: TEMPORAL_SERVER
+              valueFrom:
+                configMapKeyRef:
+                  name: elektra-config-map
+                  key: temporal_server
+            - name: TEMPORAL_INVENTORY_SCHEDULE
+              valueFrom:
+                configMapKeyRef:
+                  name: elektra-config-map
+                  key: temporal_inventory_schedule
+            - name: CLUSTER_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: elektra-config-map
+                  key: cluster_id
+            - name: DEV_MODE
+              valueFrom:
+                configMapKeyRef:
+                  name: elektra-config-map
+                  key: dev_mode
+            - name: ENABLE_TLS
+              valueFrom:
+                configMapKeyRef:
+                  name: elektra-config-map
+                  key: enable_tls
+            - name: TEMPORAL_CERT_PATH
+              valueFrom:
+                configMapKeyRef:
+                  name: elektra-config-map
+                  key: temporal_cert_path
+            - name: CARBIDE_SEC_OPT
+              valueFrom:
+                configMapKeyRef:
+                  name: elektra-config-map
+                  key: carbide_grpc
+            - name: CARBIDE_ADDRESS
+              valueFrom:
+                configMapKeyRef:
+                  name: elektra-config-map
+                  key: carbide_address
+            - name: UPGRADE_BATCHES
+              valueFrom:
+                configMapKeyRef:
+                  key: upgrade_batches
+                  name: elektra-config-map
+            - name: DB_ADDR
+              valueFrom:
+                configMapKeyRef:
+                  key: DB_HOST
+                  name: elektra-database-config
+            - name: DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  key: DB_PORT
+                  name: elektra-database-config
+            - name: DB_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  key: DB_NAME
+                  name: elektra-database-config
+            - name: SITE_WORKFLOW_VERSION
+              valueFrom:
+                configMapKeyRef:
+                  key: site_workflow_version
+                  name: elektra-config-map
+            - name: CLOUD_WORKFLOW_VERSION
+              valueFrom:
+                configMapKeyRef:
+                  key: cloud_workflow_version
+                  name: elektra-config-map
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: elektra-site-agent.elektra.forge-pg-cluster.credentials
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: elektra-site-agent.elektra.forge-pg-cluster.credentials
+                  key: password
+            - name: TEMPORAL_CERT
+              value: temporal-cert
+            - name: SKIP_GRPC_SERVER_AUTH
+              valueFrom:
+                configMapKeyRef:
+                  name: elektra-config-map
+                  key: carbide_grpc_skip_auth
+          volumeMounts:
+            - name: config
+              mountPath: "/config"
+              readOnly: true
+            - name: site-registration
+              mountPath: "/etc/sitereg"
+            - name: temporal-auth
+              mountPath: "/var/secrets/temporal/certs"
+            - name: spiffe
+              mountPath: "/etc/carbide"
+              readOnly: true
+      serviceAccountName: site-agent
+      volumes:
+        - name: spiffe
+          secret:
+            defaultMode: 420
+            secretName: elektra-site-agent-grpc-client-cert
+        - name: config
+          configMap:
+            name: elektra-config-map
+        - name: site-registration
+          secret:
+            secretName: bootstrap-info
+        - name: temporal-auth
+          projected:
+            sources:
+              - secret:
+                  name: temporal-cert
+                  items:
+                    - key: otp
+                      path: otp
+                    - key: cacertificate
+                      path: ca/ca.crt
+                    - key: certificate
+                      path: client/tls.crt
+                    - key: key
+                      path: client/tls.key
