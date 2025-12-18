@@ -53,11 +53,16 @@ RUN VERSION=$(cat VERSION 2>/dev/null || echo "dev") && \
 # Final stage
 FROM nvcr.io/nvidia/distroless/go:v3.2.1 AS final
 
+WORKDIR /app
+
 # Copy the binary from the builder stage
-COPY --from=builder /app/workflow /app/workflow
+COPY --from=builder --chown=nvs:nvs /app/workflow /app/workflow
 
 # Copy Temporal certs directory
-COPY --from=builder /var/secrets/temporal/certs /var/secrets/temporal/certs
+COPY --from=builder --chown=nvs:nvs /var/secrets/temporal/certs /var/secrets/temporal/certs
+
+# Switch to nvs user
+USER nvs
 
 # Set the binary as the entrypoint of the container
 ENTRYPOINT ["/app/workflow"]

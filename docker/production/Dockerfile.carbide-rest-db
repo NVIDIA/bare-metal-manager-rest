@@ -48,10 +48,10 @@ FROM nvcr.io/nvidia/distroless/go:v3.2.1 AS final
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder --chown=nonroot:nonroot /app/migrations /app/migrations
+COPY --from=builder --chown=nvs:nvs /app/migrations /app/migrations
 
-# Switch to non-root user
-USER nonroot
+# Switch to nvs user
+USER nvs
 
 # Run migrations
 CMD ["/app/migrations", "db", "init_migrate"]
