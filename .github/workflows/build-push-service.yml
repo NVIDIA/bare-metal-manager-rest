@@ -1,0 +1,259 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+
+name: Build and Push Service
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: 'Runner type for the build job'
+        required: false
+        default: 'ubuntu-latest'
+        type: string
+      service_name:
+        description: 'Service name (e.g., carbide-rest-api)'
+        required: true
+        type: string
+      binary_name:
+        description: 'Binary name in artifacts (e.g., api, migrations, sitemgr)'
+        required: true
+        type: string
+      binary_path:
+        description: 'Path to binary in container (e.g., /app/api)'
+        required: true
+        type: string
+      dockerfile:
+        description: 'Path to Dockerfile'
+        required: true
+        type: string
+      semantic_version:
+        description: 'Semantic version from VERSION file'
+        required: true
+        type: string
+      short_sha:
+        description: 'Short SHA for tagging'
+        required: true
+        type: string
+      branch_sha_tag:
+        description: 'Combined branch name and short SHA tag'
+        required: true
+        type: string
+      target_registry:
+        description: 'Target NVCR registry path'
+        required: true
+        type: string
+      push_enabled:
+        description: 'Whether to push images to registry'
+        required: true
+        type: boolean
+      is_main_branch:
+        description: 'Whether this is the main branch'
+        required: true
+        type: string
+      ngc_path:
+        description: 'NGC path for resource uploads'
+        required: false
+        default: '0837451325059433/carbide-dev'
+        type: string
+    secrets:
+      NVCR_USERNAME:
+        description: 'NVCR username'
+        required: false
+      NVCR_TOKEN:
+        description: 'NVCR token'
+        required: false
+
+jobs:
+  build:
+    name: Build ${{ inputs.service_name }}
+    runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU for multi-architecture builds
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to NVCR
+        if: inputs.push_enabled == true
+        uses: docker/login-action@v3
+        with:
+          registry: nvcr.io
+          username: ${{ secrets.NVCR_USERNAME }}
+          password: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Determine Docker tags
+        id: docker-tags
+        run: |
+          # Always include branch-sha tag
+          TAGS="${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.branch_sha_tag }}"
+
+          # On main branch, also add semantic version and latest tags
+          if [ "${{ inputs.is_main_branch }}" = "true" ] || [ "${{ github.ref_name }}" = "main" ]; then
+            TAGS="${TAGS},${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.semantic_version }}"
+            TAGS="${TAGS},${{ inputs.target_registry }}/${{ inputs.service_name }}:latest"
+          fi
+
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
+      - name: Build and push ${{ inputs.service_name }} (multi-arch)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ${{ inputs.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: ${{ inputs.push_enabled }}
+          tags: ${{ steps.docker-tags.outputs.tags }}
+          cache-from: type=gha,scope=${{ inputs.service_name }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.service_name }}
+          labels: |
+            org.opencontainers.image.title=${{ inputs.service_name }}
+            org.opencontainers.image.version=${{ inputs.semantic_version }}
+            org.opencontainers.image.revision=${{ inputs.short_sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.url=${{ github.repositoryUrl }}
+
+      - name: Extract amd64 binary from image
+        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        run: |
+          mkdir -p artifacts
+          docker pull --platform linux/amd64 ${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.branch_sha_tag }}
+          docker create --name temp-container --platform linux/amd64 ${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.branch_sha_tag }}
+          docker cp temp-container:${{ inputs.binary_path }} artifacts/${{ inputs.binary_name }}-amd64
+          docker rm temp-container
+          chmod +x artifacts/${{ inputs.binary_name }}-amd64
+
+      - name: Extract arm64 binary from image
+        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        run: |
+          docker pull --platform linux/arm64 ${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.branch_sha_tag }}
+          docker create --name temp-container-arm --platform linux/arm64 ${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.branch_sha_tag }}
+          docker cp temp-container-arm:${{ inputs.binary_path }} artifacts/${{ inputs.binary_name }}-arm64
+          docker rm temp-container-arm
+          chmod +x artifacts/${{ inputs.binary_name }}-arm64
+
+      - name: Export Docker image
+        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        run: |
+          docker save ${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.branch_sha_tag }} | gzip > artifacts/${{ inputs.service_name }}-${{ inputs.branch_sha_tag }}.tar.gz
+
+      # Upload amd64 binary artifacts
+      - name: Upload binary artifact with semantic version
+        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: ${{ inputs.service_name }}-binary-amd64
+          display-name: ${{ inputs.service_name }}-binary-amd64
+          description: ${{ inputs.service_name }} binary (amd64)
+          version: ${{ inputs.semantic_version }}
+          path: artifacts/${{ inputs.binary_name }}-amd64
+          ngc-path: ${{ inputs.ngc_path }}
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload binary artifact with latest tag
+        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: ${{ inputs.service_name }}-binary-amd64
+          display-name: ${{ inputs.service_name }}-binary-amd64
+          description: ${{ inputs.service_name }} binary (amd64)
+          version: latest
+          path: artifacts/${{ inputs.binary_name }}-amd64
+          ngc-path: ${{ inputs.ngc_path }}
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload binary artifact with branch-sha tag
+        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: ${{ inputs.service_name }}-binary-amd64
+          display-name: ${{ inputs.service_name }}-binary-amd64
+          description: ${{ inputs.service_name }} binary (amd64)
+          version: ${{ inputs.branch_sha_tag }}
+          path: artifacts/${{ inputs.binary_name }}-amd64
+          ngc-path: ${{ inputs.ngc_path }}
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      # Upload arm64 binary artifacts
+      - name: Upload arm64 binary artifact with semantic version
+        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: ${{ inputs.service_name }}-binary-arm64
+          display-name: ${{ inputs.service_name }}-binary-arm64
+          description: ${{ inputs.service_name }} binary (arm64)
+          version: ${{ inputs.semantic_version }}
+          path: artifacts/${{ inputs.binary_name }}-arm64
+          ngc-path: ${{ inputs.ngc_path }}
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload arm64 binary artifact with latest tag
+        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: ${{ inputs.service_name }}-binary-arm64
+          display-name: ${{ inputs.service_name }}-binary-arm64
+          description: ${{ inputs.service_name }} binary (arm64)
+          version: latest
+          path: artifacts/${{ inputs.binary_name }}-arm64
+          ngc-path: ${{ inputs.ngc_path }}
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload arm64 binary artifact with branch-sha tag
+        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: ${{ inputs.service_name }}-binary-arm64
+          display-name: ${{ inputs.service_name }}-binary-arm64
+          description: ${{ inputs.service_name }} binary (arm64)
+          version: ${{ inputs.branch_sha_tag }}
+          path: artifacts/${{ inputs.binary_name }}-arm64
+          ngc-path: ${{ inputs.ngc_path }}
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      # Upload Docker image artifacts
+      - name: Upload Docker image artifact with semantic version
+        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: ${{ inputs.service_name }}-image
+          display-name: ${{ inputs.service_name }}-image
+          description: ${{ inputs.service_name }} image
+          version: ${{ inputs.semantic_version }}
+          path: artifacts/${{ inputs.service_name }}-${{ inputs.branch_sha_tag }}.tar.gz
+          ngc-path: ${{ inputs.ngc_path }}
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload Docker image artifact with latest tag
+        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: ${{ inputs.service_name }}-image
+          display-name: ${{ inputs.service_name }}-image
+          description: ${{ inputs.service_name }} image
+          version: latest
+          path: artifacts/${{ inputs.service_name }}-${{ inputs.branch_sha_tag }}.tar.gz
+          ngc-path: ${{ inputs.ngc_path }}
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
+
+      - name: Upload Docker image artifact with branch-sha tag
+        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
+        with:
+          name: ${{ inputs.service_name }}-image
+          display-name: ${{ inputs.service_name }}-image
+          description: ${{ inputs.service_name }} image
+          version: ${{ inputs.branch_sha_tag }}
+          path: artifacts/${{ inputs.service_name }}-${{ inputs.branch_sha_tag }}.tar.gz
+          ngc-path: ${{ inputs.ngc_path }}
+          ngc-key: ${{ secrets.NVCR_TOKEN }}
