@@ -55,10 +55,10 @@ FROM nvcr.io/nvidia/distroless/go:v3.2.1 AS final
 WORKDIR /app
 
 # Copy binaries from builder
-COPY --from=builder --chown=nonroot:nonroot /app/elektra /app/elektra
+COPY --from=builder --chown=nvs:nvs /app/elektra /app/elektra
 
-# Switch to non-root user
-USER nonroot
+# Switch to nvs user
+USER nvs
 
 # Expose port
 EXPOSE 8080

@@ -60,13 +60,13 @@ FROM nvcr.io/nvidia/distroless/go:v3.2.1 AS final
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder --chown=nonroot:nonroot /app/api /app/api
+COPY --from=builder --chown=nvs:nvs /app/api /app/api
 
 # Copy Temporal certs directory
-COPY --from=builder /var/secrets/temporal/certs /var/secrets/temporal/certs
+COPY --from=builder --chown=nvs:nvs /var/secrets/temporal/certs /var/secrets/temporal/certs
 
-# Switch to non-root user
-USER nonroot
+# Switch to nvs user
+USER nvs
 
 # Expose application port
 EXPOSE 8388
