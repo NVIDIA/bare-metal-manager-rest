@@ -1,10 +1,14 @@
-.PHONY: test postgres-up postgres-down postgres-restart test-clean build docker-build
+.PHONY: test postgres-up postgres-down postgres-restart test-clean build build-arm64 build-all docker-build docker-build-multiarch
 
 # Build configuration
 BUILD_DIR := build/binaries
 IMAGE_REGISTRY := localhost:5000
 IMAGE_TAG := latest
 DOCKERFILE_DIR := docker/production
+
+# Architecture configuration (default to current platform)
+GOARCH ?= $(shell go env GOARCH)
+GOOS ?= linux
 
 # PostgreSQL container configuration
 POSTGRES_CONTAINER_NAME := project-test
@@ -76,73 +80,101 @@ test-clean: postgres-down postgres-up
 	@echo ""
 	@echo "Tests completed!"
 
-# Build all Go binaries
+# Build all Go binaries for the specified architecture (default: current platform)
+# Usage: make build [GOARCH=amd64|arm64] [GOOS=linux|darwin]
 build:
 	@echo "========================================"
-	@echo "Building All Go Binaries"
+	@echo "Building All Go Binaries ($(GOOS)/$(GOARCH))"
 	@echo "========================================"
 	@echo ""
-	@echo "Output: $(BUILD_DIR)"
+	@echo "Output: $(BUILD_DIR)/$(GOARCH)"
 	@echo ""
-	@mkdir -p $(BUILD_DIR)
+	@mkdir -p $(BUILD_DIR)/$(GOARCH)
 	@echo "Downloading Go dependencies..."
 	@go mod download
 	@echo "[SUCCESS] Dependencies downloaded"
 	@echo ""
 	@echo "Building services..."
 	@echo ""
-	@echo "Building: api"
-	@cd api && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+	@echo "Building: api ($(GOARCH))"
+	@cd api && CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build \
 		-ldflags "-extldflags '-static'" \
-		-o ../$(BUILD_DIR)/api \
+		-o ../$(BUILD_DIR)/$(GOARCH)/api \
 		./cmd/api
 	@echo "[SUCCESS]"
 	@echo ""
-	@echo "Building: workflow"
-	@cd workflow && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+	@echo "Building: workflow ($(GOARCH))"
+	@cd workflow && CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build \
 		-ldflags "-extldflags '-static'" \
-		-o ../$(BUILD_DIR)/workflow \
+		-o ../$(BUILD_DIR)/$(GOARCH)/workflow \
 		./cmd/workflow
 	@echo "[SUCCESS]"
 	@echo ""
-	@echo "Building: site-manager"
-	@cd site-manager && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+	@echo "Building: site-manager ($(GOARCH))"
+	@cd site-manager && CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build \
 		-ldflags "-extldflags '-static'" \
-		-o ../$(BUILD_DIR)/sitemgr \
+		-o ../$(BUILD_DIR)/$(GOARCH)/sitemgr \
 		./cmd/sitemgr
 	@echo "[SUCCESS]"
 	@echo ""
-	@echo "Building: site-agent (elektra)"
-	@cd site-agent && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+	@echo "Building: site-agent (elektra) ($(GOARCH))"
+	@cd site-agent && CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build \
 		-ldflags "-extldflags '-static'" \
-		-o ../$(BUILD_DIR)/elektra \
+		-o ../$(BUILD_DIR)/$(GOARCH)/elektra \
 		./cmd/elektra
 	@echo "[SUCCESS]"
 	@echo ""
-	@echo "Building: db"
-	@cd db && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+	@echo "Building: db ($(GOARCH))"
+	@cd db && CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build \
 		-ldflags "-extldflags '-static'" \
-		-o ../$(BUILD_DIR)/migrations \
+		-o ../$(BUILD_DIR)/$(GOARCH)/migrations \
 		./cmd/migrations
 	@echo "[SUCCESS]"
 	@echo ""
-	@echo "Building: cert-manager"
-	@cd cert-manager && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+	@echo "Building: cert-manager ($(GOARCH))"
+	@cd cert-manager && CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build \
 		-ldflags "-extldflags '-static'" \
-		-o ../$(BUILD_DIR)/credsmgr \
+		-o ../$(BUILD_DIR)/$(GOARCH)/credsmgr \
 		./cmd/credsmgr
 	@echo "[SUCCESS]"
 	@echo ""
 	@echo "========================================"
-	@echo "All Binaries Built Successfully!"
+	@echo "All Binaries Built Successfully! ($(GOARCH))"
 	@echo "========================================"
 	@echo ""
-	@ls -lh $(BUILD_DIR)
+	@ls -lh $(BUILD_DIR)/$(GOARCH)
 
-# Build all Docker images (production distroless images)
+# Build binaries for AMD64
+build-amd64:
+	@$(MAKE) build GOARCH=amd64
+
+# Build binaries for ARM64
+build-arm64:
+	@$(MAKE) build GOARCH=arm64
+
+# Build binaries for both architectures
+build-all:
+	@echo "========================================"
+	@echo "Building for All Architectures"
+	@echo "========================================"
+	@$(MAKE) build-amd64
+	@echo ""
+	@$(MAKE) build-arm64
+	@echo ""
+	@echo "========================================"
+	@echo "Multi-Architecture Build Complete!"
+	@echo "========================================"
+	@echo ""
+	@echo "AMD64 binaries:"
+	@ls -lh $(BUILD_DIR)/amd64 2>/dev/null || echo "  (none)"
+	@echo ""
+	@echo "ARM64 binaries:"
+	@ls -lh $(BUILD_DIR)/arm64 2>/dev/null || echo "  (none)"
+
+# Build all Docker images for current platform (production distroless images)
 docker-build:
 	@echo "========================================"
-	@echo "Building Production Docker Images"
+	@echo "Building Production Docker Images (current platform)"
 	@echo "========================================"
 	@echo ""
 	@echo "Building: carbide-rest-api"
@@ -193,3 +225,75 @@ docker-build:
 	@echo ""
 	@docker images --filter "reference=$(IMAGE_REGISTRY)/*"
 
+# Build multi-architecture Docker images (amd64 + arm64) using Buildx
+# Note: Requires Docker Buildx and optionally QEMU for cross-platform emulation
+docker-build-multiarch:
+	@echo "========================================"
+	@echo "Building Multi-Architecture Docker Images"
+	@echo "========================================"
+	@echo "Platforms: linux/amd64, linux/arm64"
+	@echo ""
+	@echo "Setting up Docker Buildx..."
+	@docker buildx create --name carbide-multiarch --use 2>/dev/null || docker buildx use carbide-multiarch
+	@docker buildx inspect --bootstrap
+	@echo ""
+	@echo "Building: carbide-rest-api (multi-arch)"
+	@docker buildx build \
+		--platform linux/amd64,linux/arm64 \
+		-t $(IMAGE_REGISTRY)/carbide-rest-api:$(IMAGE_TAG) \
+		-f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-api \
+		--push \
+		.
+	@echo "[SUCCESS]"
+	@echo ""
+	@echo "Building: carbide-rest-workflow (multi-arch)"
+	@docker buildx build \
+		--platform linux/amd64,linux/arm64 \
+		-t $(IMAGE_REGISTRY)/carbide-rest-workflow:$(IMAGE_TAG) \
+		-f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-workflow \
+		--push \
+		.
+	@echo "[SUCCESS]"
+	@echo ""
+	@echo "Building: carbide-rest-site-manager (multi-arch)"
+	@docker buildx build \
+		--platform linux/amd64,linux/arm64 \
+		-t $(IMAGE_REGISTRY)/carbide-rest-site-manager:$(IMAGE_TAG) \
+		-f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-manager \
+		--push \
+		.
+	@echo "[SUCCESS]"
+	@echo ""
+	@echo "Building: carbide-rest-site-agent (multi-arch)"
+	@docker buildx build \
+		--platform linux/amd64,linux/arm64 \
+		-t $(IMAGE_REGISTRY)/carbide-rest-site-agent:$(IMAGE_TAG) \
+		-f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-agent \
+		--push \
+		.
+	@echo "[SUCCESS]"
+	@echo ""
+	@echo "Building: carbide-rest-db (multi-arch)"
+	@docker buildx build \
+		--platform linux/amd64,linux/arm64 \
+		-t $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) \
+		-f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-db \
+		--push \
+		.
+	@echo "[SUCCESS]"
+	@echo ""
+	@echo "Building: carbide-rest-cert-manager (multi-arch)"
+	@docker buildx build \
+		--platform linux/amd64,linux/arm64 \
+		-t $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) \
+		-f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-cert-manager \
+		--push \
+		.
+	@echo "[SUCCESS]"
+	@echo ""
+	@echo "========================================"
+	@echo "All Multi-Arch Images Built and Pushed!"
+	@echo "========================================"
+	@echo ""
+	@echo "Images pushed to: $(IMAGE_REGISTRY)"
+	@echo "Platforms: linux/amd64, linux/arm64"

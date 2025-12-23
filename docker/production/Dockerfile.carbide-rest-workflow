@@ -9,12 +9,16 @@
 # its affiliates is strictly prohibited.
 
 # Build stage
-FROM golang:1.25.1 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.25.1 AS builder
 
-# Set environment variables
+# Docker automatically provides these args during multi-platform builds
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+
+# Set environment variables for cross-compilation
 ENV CGO_ENABLED=0
-ENV GOOS=linux
-ENV GOARCH=amd64
+ENV GOOS=$TARGETOS
+ENV GOARCH=$TARGETARCH
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
