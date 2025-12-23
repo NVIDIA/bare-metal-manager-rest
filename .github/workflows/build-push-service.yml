@@ -98,7 +98,7 @@ jobs:
           TAGS="${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.branch_sha_tag }}"
 
           # On main branch, also add semantic version and latest tags
-          if [ "${{ inputs.is_main_branch }}" = "true" ] || [ "${{ github.ref_name }}" = "main" ]; then
+          if [ "${{ inputs.is_main_branch }}" == "true" ]; then
             TAGS="${TAGS},${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.semantic_version }}"
             TAGS="${TAGS},${{ inputs.target_registry }}/${{ inputs.service_name }}:latest"
           fi
@@ -124,7 +124,7 @@ jobs:
             org.opencontainers.image.url=${{ github.repositoryUrl }}
 
       - name: Extract amd64 binary from image
-        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        if: inputs.is_main_branch == 'true' && inputs.push_enabled == true
         run: |
           mkdir -p artifacts
           docker pull --platform linux/amd64 ${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.branch_sha_tag }}
@@ -134,7 +134,7 @@ jobs:
           chmod +x artifacts/${{ inputs.binary_name }}-amd64
 
       - name: Extract arm64 binary from image
-        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        if: inputs.is_main_branch == 'true' && inputs.push_enabled == true
         run: |
           docker pull --platform linux/arm64 ${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.branch_sha_tag }}
           docker create --name temp-container-arm --platform linux/arm64 ${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.branch_sha_tag }}
@@ -143,13 +143,13 @@ jobs:
           chmod +x artifacts/${{ inputs.binary_name }}-arm64
 
       - name: Export Docker image
-        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        if: inputs.is_main_branch == 'true' && inputs.push_enabled == true
         run: |
           docker save ${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.branch_sha_tag }} | gzip > artifacts/${{ inputs.service_name }}-${{ inputs.branch_sha_tag }}.tar.gz
 
       # Upload amd64 binary artifacts
       - name: Upload binary artifact with semantic version
-        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        if: inputs.is_main_branch == 'true' && inputs.push_enabled == true
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: ${{ inputs.service_name }}-binary-amd64
@@ -161,7 +161,7 @@ jobs:
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
       - name: Upload binary artifact with latest tag
-        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        if: inputs.is_main_branch == 'true' && inputs.push_enabled == true
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: ${{ inputs.service_name }}-binary-amd64
@@ -173,7 +173,7 @@ jobs:
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
       - name: Upload binary artifact with branch-sha tag
-        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        if: inputs.is_main_branch == 'true' && inputs.push_enabled == true
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: ${{ inputs.service_name }}-binary-amd64
@@ -186,7 +186,7 @@ jobs:
 
       # Upload arm64 binary artifacts
       - name: Upload arm64 binary artifact with semantic version
-        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        if: inputs.is_main_branch == 'true' && inputs.push_enabled == true
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: ${{ inputs.service_name }}-binary-arm64
@@ -198,7 +198,7 @@ jobs:
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
       - name: Upload arm64 binary artifact with latest tag
-        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        if: inputs.is_main_branch == 'true' && inputs.push_enabled == true
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: ${{ inputs.service_name }}-binary-arm64
@@ -210,7 +210,7 @@ jobs:
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
       - name: Upload arm64 binary artifact with branch-sha tag
-        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        if: inputs.is_main_branch == 'true' && inputs.push_enabled == true
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: ${{ inputs.service_name }}-binary-arm64
@@ -221,9 +221,8 @@ jobs:
           ngc-path: ${{ inputs.ngc_path }}
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
-      # Upload Docker image artifacts
       - name: Upload Docker image artifact with semantic version
-        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        if: inputs.is_main_branch == 'true' && inputs.push_enabled == true
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: ${{ inputs.service_name }}-image
@@ -235,7 +234,7 @@ jobs:
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
       - name: Upload Docker image artifact with latest tag
-        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        if: inputs.is_main_branch == 'true' && inputs.push_enabled == true
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: ${{ inputs.service_name }}-image
@@ -247,7 +246,7 @@ jobs:
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
       - name: Upload Docker image artifact with branch-sha tag
-        if: (inputs.is_main_branch == 'true' || github.ref_name == 'main') && inputs.push_enabled == true
+        if: inputs.is_main_branch == 'true' && inputs.push_enabled == true
         uses: NVIDIA/dsx-github-actions/.github/actions/resource-push-ngc@47c68bf27edde19d1acece9b7721b4a1a0044dfa
         with:
           name: ${{ inputs.service_name }}-image

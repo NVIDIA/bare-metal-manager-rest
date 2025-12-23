@@ -87,9 +87,7 @@ jobs:
       target_registry: ${{ inputs.target_registry }}
       push_enabled: ${{ inputs.push_enabled }}
       is_main_branch: ${{ inputs.is_main_branch }}
-    secrets:
-      NVCR_USERNAME: ${{ secrets.NVCR_USERNAME }}
-      NVCR_TOKEN: ${{ secrets.NVCR_TOKEN }}
+    secrets: inherit
 
   # Build and push carbide-rest-db
   build-carbide-rest-db:
@@ -107,9 +105,7 @@ jobs:
       target_registry: ${{ inputs.target_registry }}
       push_enabled: ${{ inputs.push_enabled }}
       is_main_branch: ${{ inputs.is_main_branch }}
-    secrets:
-      NVCR_USERNAME: ${{ secrets.NVCR_USERNAME }}
-      NVCR_TOKEN: ${{ secrets.NVCR_TOKEN }}
+    secrets: inherit
 
   # Build and push carbide-rest-site-manager
   build-carbide-rest-site-manager:
@@ -127,9 +123,7 @@ jobs:
       target_registry: ${{ inputs.target_registry }}
       push_enabled: ${{ inputs.push_enabled }}
       is_main_branch: ${{ inputs.is_main_branch }}
-    secrets:
-      NVCR_USERNAME: ${{ secrets.NVCR_USERNAME }}
-      NVCR_TOKEN: ${{ secrets.NVCR_TOKEN }}
+    secrets: inherit
 
   # Build and push carbide-rest-workflow
   build-carbide-rest-workflow:
@@ -147,9 +141,7 @@ jobs:
       target_registry: ${{ inputs.target_registry }}
       push_enabled: ${{ inputs.push_enabled }}
       is_main_branch: ${{ inputs.is_main_branch }}
-    secrets:
-      NVCR_USERNAME: ${{ secrets.NVCR_USERNAME }}
-      NVCR_TOKEN: ${{ secrets.NVCR_TOKEN }}
+    secrets: inherit
 
   # Build and push carbide-rest-site-agent
   build-carbide-rest-site-agent:
@@ -167,9 +159,7 @@ jobs:
       target_registry: ${{ inputs.target_registry }}
       push_enabled: ${{ inputs.push_enabled }}
       is_main_branch: ${{ inputs.is_main_branch }}
-    secrets:
-      NVCR_USERNAME: ${{ secrets.NVCR_USERNAME }}
-      NVCR_TOKEN: ${{ secrets.NVCR_TOKEN }}
+    secrets: inherit
 
   # Build and push carbide-rest-cert-manager
   build-carbide-rest-cert-manager:
@@ -187,9 +177,7 @@ jobs:
       target_registry: ${{ inputs.target_registry }}
       push_enabled: ${{ inputs.push_enabled }}
       is_main_branch: ${{ inputs.is_main_branch }}
-    secrets:
-      NVCR_USERNAME: ${{ secrets.NVCR_USERNAME }}
-      NVCR_TOKEN: ${{ secrets.NVCR_TOKEN }}
+    secrets: inherit
 
   # Build summary
   build-summary:
@@ -203,6 +191,8 @@ jobs:
       - build-carbide-rest-site-agent
       - build-carbide-rest-cert-manager
     if: always()
+    outputs:
+      build_artifacts: ${{ steps.aggregate.outputs.artifacts }}
 
     steps:
       - name: Generate build summary
@@ -217,6 +207,7 @@ jobs:
           echo "- **Registry**: \`${{ inputs.target_registry }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Push Enabled**: \`${{ inputs.push_enabled }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Is Main Branch**: \`${{ inputs.is_main_branch }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Ref Name**: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Platforms**: \`linux/amd64, linux/arm64\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ inputs.push_enabled }}" = "false" ]; then
@@ -225,10 +216,6 @@ jobs:
           fi
           echo "## Docker Image Tags" >> $GITHUB_STEP_SUMMARY
           echo "All images tagged with: \`${{ inputs.branch_sha_tag }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Multi-architecture support:**" >> $GITHUB_STEP_SUMMARY
-          echo "- \`linux/amd64\` (x86_64)" >> $GITHUB_STEP_SUMMARY
-          echo "- \`linux/arm64\` (aarch64)" >> $GITHUB_STEP_SUMMARY
           if [ "${{ inputs.is_main_branch }}" = "true" ] || [ "${{ github.ref_name }}" = "main" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Main branch additional tags:**" >> $GITHUB_STEP_SUMMARY
@@ -256,3 +243,53 @@ jobs:
           echo "- carbide-rest-workflow: \`${{ needs.build-carbide-rest-workflow.result }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- carbide-rest-site-agent: \`${{ needs.build-carbide-rest-site-agent.result }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- carbide-rest-cert-manager: \`${{ needs.build-carbide-rest-cert-manager.result }}\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Aggregate outputs
+        id: aggregate
+        run: |
+          # Create JSON array of artifacts
+          # We use a temporary file to handle potential quoting issues and then read it into the variable
+          cat <<EOF > artifacts.json
+          [
+            {
+              "service": "carbide-rest-api",
+              "image_ref": "${{ needs.build-carbide-rest-api.outputs.image_ref }}",
+              "binary_resource": "${{ needs.build-carbide-rest-api.outputs.ngc_binary_resource }}",
+              "image_resource": "${{ needs.build-carbide-rest-api.outputs.ngc_image_resource }}"
+            },
+            {
+              "service": "carbide-rest-db",
+              "image_ref": "${{ needs.build-carbide-rest-db.outputs.image_ref }}",
+              "binary_resource": "${{ needs.build-carbide-rest-db.outputs.ngc_binary_resource }}",
+              "image_resource": "${{ needs.build-carbide-rest-db.outputs.ngc_image_resource }}"
+            },
+            {
+              "service": "carbide-rest-site-manager",
+              "image_ref": "${{ needs.build-carbide-rest-site-manager.outputs.image_ref }}",
+              "binary_resource": "${{ needs.build-carbide-rest-site-manager.outputs.ngc_binary_resource }}",
+              "image_resource": "${{ needs.build-carbide-rest-site-manager.outputs.ngc_image_resource }}"
+            },
+            {
+              "service": "carbide-rest-workflow",
+              "image_ref": "${{ needs.build-carbide-rest-workflow.outputs.image_ref }}",
+              "binary_resource": "${{ needs.build-carbide-rest-workflow.outputs.ngc_binary_resource }}",
+              "image_resource": "${{ needs.build-carbide-rest-workflow.outputs.ngc_image_resource }}"
+            },
+            {
+              "service": "carbide-rest-site-agent",
+              "image_ref": "${{ needs.build-carbide-rest-site-agent.outputs.image_ref }}",
+              "binary_resource": "${{ needs.build-carbide-rest-site-agent.outputs.ngc_binary_resource }}",
+              "image_resource": "${{ needs.build-carbide-rest-site-agent.outputs.ngc_image_resource }}"
+            },
+            {
+              "service": "carbide-rest-cert-manager",
+              "image_ref": "${{ needs.build-carbide-rest-cert-manager.outputs.image_ref }}",
+              "binary_resource": "${{ needs.build-carbide-rest-cert-manager.outputs.ngc_binary_resource }}",
+              "image_resource": "${{ needs.build-carbide-rest-cert-manager.outputs.ngc_image_resource }}"
+            }
+          ]
+          EOF
+
+          # Compact JSON and set as output
+          ARTIFACTS=$(jq -c . artifacts.json)
+          echo "artifacts=$ARTIFACTS" >> $GITHUB_OUTPUT

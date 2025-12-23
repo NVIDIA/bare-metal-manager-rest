@@ -46,8 +46,19 @@ jobs:
       target_registry: ${{ needs.prepare.outputs.target_registry }}
       branch_name: ${{ needs.prepare.outputs.branch_name }}
       # Pass as string to avoid boolean type conversion issues
-      is_main_branch: ${{ needs.prepare.outputs.is_main_branch }}
+      is_main_branch: "true" # FIXME: Test trigger
       # Push images on all branches (including PRs for branch-sha tags)
       # Only main gets latest and version tags
-      push_enabled: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+      push_enabled: true
     secrets: inherit  # Pass all repository secrets to the reusable workflow
+
+  # Step 3: Promote to release candidate
+  promote-carbide-rest-to-release-candidate:
+    name: Promote Carbide REST to Release Candidate
+    needs: [prepare, build-and-push]
+    uses: ./.github/workflows/promotion.yaml
+    with:
+      runner: ubuntu-latest
+      semantic_version: ${{ needs.prepare.outputs.semantic_version }}
+      build_artifacts: ${{ needs.build-and-push.outputs.build_artifacts }}
+    secrets: inherit
