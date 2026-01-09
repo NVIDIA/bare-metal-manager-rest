@@ -16,11 +16,11 @@ on:
     branches:
       - main
       - pull-request/[0-9]+
-      - feat/.+
-      - fix/.+
-      - chore/.+
-      - hotfix/.+
-      - version/.+
+      - feat/**
+      - fix/**
+      - chore/**
+      - hotfix/**
+      - version/**
     tags:
       - 'v*.*.*'
 
