@@ -16,7 +16,7 @@ on:
   workflow_call:
 
 env:
-  GO_VERSION: "1.25.1"
+  GO_VERSION: "1.25.4"
 
 jobs:
   # ============================================================================
@@ -40,7 +40,7 @@ jobs:
         run: go mod download
 
       - name: Install revive
-        run: go install github.com/mgechev/revive@v1.3.9        
+        run: go install github.com/mgechev/revive@v1.3.9
       - name: Run go fmt
         run: |
           pkgs=$(go list ./... | grep -v $(go env GOMODCACHE))
@@ -150,7 +150,7 @@ jobs:
         run: |
           # Create temporal encryption key file
           echo "test-encryption-key-for-ci" > /tmp/temporal-encryption-key
-          
+
           # Create dummy TLS certs for testing
           mkdir -p /tmp/certs
           echo "dummy-cert" > /tmp/certs/tls.crt
@@ -187,12 +187,12 @@ jobs:
             api:
               baseUrl: https://api.stg.ngc.nvidia.com
           '
-          
+
           # Create config.yaml for each module that needs it
           # api module - uses api/config.yaml
           mkdir -p api
           echo "$CONFIG_CONTENT" > api/config.yaml
-          
+
           # workflow module - uses workflow/config.yaml
           mkdir -p workflow
           echo "$CONFIG_CONTENT" > workflow/config.yaml

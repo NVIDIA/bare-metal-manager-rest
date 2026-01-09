@@ -15,9 +15,12 @@ on:
   push:
     branches:
       - main
-      - master
-      - develop
       - pull-request/[0-9]+
+      - feat/.+
+      - fix/.+
+      - chore/.+
+      - hotfix/.+
+      - version/.+
     tags:
       - 'v*.*.*'
 

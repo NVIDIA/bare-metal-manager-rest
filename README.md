@@ -4,7 +4,7 @@ A collection of microservices that comprise the management backend for Carbide, 
 
 ## Prerequisites
 
-- Go 1.25.1 or later
+- Go 1.25.4 or later
 - Docker 20.10+ with BuildKit enabled
 - Make
 - [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation) (for local deployment)
