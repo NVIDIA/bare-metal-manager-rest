@@ -1,6 +1,6 @@
 module github.com/nvidia/carbide-rest
 
-go 1.25.5
+go 1.25.4
 
 require (
 	connectrpc.com/connect v1.19.1
