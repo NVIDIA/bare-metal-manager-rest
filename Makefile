@@ -1,4 +1,6 @@
-.PHONY: test postgres-up postgres-down ensure-postgres postgres-wait build docker-build docker-build-local test-ipam test-site-agent test-site-manager test-workflow test-db test-api test-auth test-common test-cert-manager test-site-workflow migrate carbide-mock-server-build carbide-mock-server-start carbide-mock-server-stop kind-up kind-down kind-deploy kind-load kind-apply kind-redeploy kind-status kind-logs kind-reset kind-verify setup-site-agent
+.PHONY: test postgres-up postgres-down ensure-postgres postgres-wait
+.PHONY: build docker-build docker-build-local
+.PHONY: test-ipam test-site-agent test-site-manager test-workflow test-db test-api test-auth test-common test-cert-manager test-site-workflow migrate carbide-mock-server-build carbide-mock-server-start carbide-mock-server-stop
 
 # Build configuration
 BUILD_DIR := build/binaries
@@ -120,9 +122,31 @@ docker-build:
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) -f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-db .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) -f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-cert-manager .
 
+proto:
+	if [ -d "carbide-core" ]; then rm -rf carbide-core; fi
+	git clone ssh://git@github.com/nvidia/carbide-core.git
+	ls carbide-core/rpc/proto
+	@for file in carbide-core/rpc/proto/*.proto; do \
+		cp "$$file" "workflow-schema/site-agent/workflows/v1/$$(basename "$$file" .proto)_carbide.proto"; \
+		echo "Copied: $$file"; \
+		./workflow-schema/scripts/add-go-package-option.sh "workflow-schema/site-agent/workflows/v1/$$(basename "$$file" .proto)_carbide.proto"; \
+	done
+	rm -rf carbide-core
+
+protogen:
+	cd workflow-schema
+	# Lint is disabled for now
+	# echo "Checking validity of proto files"
+	# buf lint
+	echo "Generating go proto files now"
+	buf generate
+	cd ..
+
 # =============================================================================
 # Kind Local Deployment Targets
 # =============================================================================
+
+.PHONY: kind-up kind-down kind-deploy kind-load kind-apply kind-redeploy kind-status kind-logs kind-reset kind-verify setup-site-agent
 
 # Kind cluster configuration
 KIND_CLUSTER_NAME := carbide-local

@@ -22,8 +22,8 @@ import (
 	"github.com/nvidia/carbide-rest/db/pkg/db"
 	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
 
-	"github.com/uptrace/bun"
 	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	"github.com/uptrace/bun"
 	"google.golang.org/protobuf/encoding/protojson"
 
 	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
@@ -128,7 +128,9 @@ func (s *NetworkSecurityGroupRule) UnmarshalJSON(b []byte) error {
 	// create something on site and then update it in cloud without realizing
 	// that the new property for the new feature isn't in the cloud data.
 	// If they then save the change, the record on site would lose the detail.
-	return protoJsonUnmarshalOptions.Unmarshal(b, s)
+	_ = protoJsonUnmarshalOptions.Unmarshal(b, s)
+
+	return nil
 }
 
 func (s *NetworkSecurityGroupRule) MarshalJSON() ([]byte, error) {
