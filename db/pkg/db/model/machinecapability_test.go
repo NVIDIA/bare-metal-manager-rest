@@ -16,15 +16,16 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"sort"
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/nvidia/carbide-rest/db/pkg/db"
 	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
 	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
 	"github.com/nvidia/carbide-rest/db/pkg/util"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	otrace "go.opentelemetry.io/otel/trace"
 )
 
@@ -700,7 +701,13 @@ func TestMachineCapabilitySQLDAO_GetAllDistinct(t *testing.T) {
 		m := testMachineBuildMachine(t, dbSession, ip.ID, site.ID, &it.ID, it.ControllerMachineType)
 		ms = append(ms, *m)
 
+		capTypes := make([]string, 0, len(MachineCapabilityTypeChoiceMap))
 		for cap := range MachineCapabilityTypeChoiceMap {
+			capTypes = append(capTypes, cap)
+		}
+		sort.Strings(capTypes)
+
+		for _, cap := range capTypes {
 			var deviceType *string
 			if i == 0 && cap == MachineCapabilityTypeNetwork {
 				deviceType = db.GetStrPtr("DPU")
