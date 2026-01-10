@@ -123,11 +123,6 @@ jobs:
       DB_PASSWORD: postgres
       DB_HOST: localhost
       DB_PORT: 5432
-      NO_DB_PASSWORD_OK: "false"
-      TEMPORAL_TLS_ENABLED: "false"
-      TEMPORAL_SERVER_NAME: test-temporal
-      TEMPORAL_NAMESPACE: test-namespace
-      TEMPORAL_QUEUE: test-queue
       CGO_ENABLED: 1
 
     steps:
@@ -146,66 +141,20 @@ jobs:
       - name: Install go-junit-report
         run: go install github.com/jstemmer/go-junit-report/v2@latest
 
-      - name: Setup test config files
-        run: |
-          # Create temporal encryption key file
-          echo "test-encryption-key-for-ci" > /tmp/temporal-encryption-key
-
-          # Create dummy TLS certs for testing
-          mkdir -p /tmp/certs
-          echo "dummy-cert" > /tmp/certs/tls.crt
-          echo "dummy-key" > /tmp/certs/tls.key
-          echo "dummy-ca" > /tmp/certs/ca.crt
-
-          # Common config content for modules that need db + temporal
-          CONFIG_CONTENT='
-          db:
-            name: forgetest
-            user: postgres
-            password: postgres
-            host: localhost
-            port: 30432
-          temporal:
-            host: localhost
-            port: 7233
-            serverName: test-temporal
-            namespace: test-namespace
-            queue: test-queue
-            tls:
-              enabled: false
-              certPath: /tmp/certs/tls.crt
-              keyPath: /tmp/certs/tls.key
-              caPath: /tmp/certs/ca.crt
-            encryptionKeyPath: /tmp/temporal-encryption-key
-          auth:
-            - name: kas
-              origin: 1
-              url: https://authn.nvidia.com/pubJWKS
-              issuer: authn.nvidia.com
-              serviceAccount: false
-          ngc:
-            api:
-              baseUrl: https://api.stg.ngc.nvidia.com
-          '
-
-          # Create config.yaml for each module that needs it
-          # api module - uses api/config.yaml
-          mkdir -p api
-          echo "$CONFIG_CONTENT" > api/config.yaml
-
-          # workflow module - uses workflow/config.yaml
-          mkdir -p workflow
-          echo "$CONFIG_CONTENT" > workflow/config.yaml
-
       - name: Run unit tests for ${{ matrix.module }}
         run: |
           set -o pipefail
           echo "Testing module: ${{ matrix.module }}"
-          go test -v -race -p 1 ./${{ matrix.module }}/... \
-            -coverpkg=./${{ matrix.module }}/... \
-            -coverprofile=coverage-${{ matrix.module }}.txt \
-            -covermode=atomic \
-            2>&1 | tee test-output-${{ matrix.module }}.txt
+
+          if [ "${{ matrix.module }}" = "site-agent" ]; then
+            make carbide-mock-server-start
+          fi
+
+          go test -v -race -p 1 ./${{ matrix.module }}/... -coverprofile=coverage-${{ matrix.module }}.txt -covermode=atomic 2>&1 | tee test-output-${{ matrix.module }}.txt
+
+          if [ "${{ matrix.module }}" = "site-agent" ]; then
+            make carbide-mock-server-stop
+          fi
 
       - name: Generate JUnit report
         if: always()

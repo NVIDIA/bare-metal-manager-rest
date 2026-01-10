@@ -74,14 +74,6 @@ carbide-mock-server-stop:
 	-rm -f build/elektraserver.pid
 
 test-site-agent: carbide-mock-server-start
-	$(MAKE) ensure-postgres
-	DB_NAME=elektratest \
-	DB_USER=$(POSTGRES_USER) \
-	DB_PASSWORD=$(POSTGRES_PASSWORD) \
-	DB_HOST=localhost \
-	DB_PORT=$(POSTGRES_PORT) \
-	CARBIDE_ADDRESS=127.0.0.1:11079 \
-	CARBIDE_SEC_OPT=0 \
 	cd site-agent/pkg/components && CGO_ENABLED=1 go test -race -p 1 ./... -count=1 ; \
 	ret=$$? ; cd ../../.. && $(MAKE) carbide-mock-server-stop ; exit $$ret
 
