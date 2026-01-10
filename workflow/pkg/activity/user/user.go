@@ -89,9 +89,8 @@ type NgcUserResponse struct {
 
 // ManageUser is an activity wrapper for updating user that allows injecting DB access
 type ManageUser struct {
-	dbSession     *cdb.Session
-	ngcApibaseURL string
-	tcfg          *config.TemporalConfig
+	dbSession *cdb.Session
+	cfg       *config.Config
 }
 
 // GetUserDataFromNgc is a Temporal activity that verifies that a connection to a K8s cluster API
@@ -112,7 +111,9 @@ func (mu ManageUser) GetUserDataFromNgc(ctx context.Context, userID uuid.UUID, e
 	// Decrypt token using Starfleet ID
 	ngcToken := string(cloudutils.DecryptData(encryptedNgcToken, *dbUser.StarfleetID))
 
-	return getUserDataFromNGC(mu.ngcApibaseURL, ngcToken, logger)
+	apiBaseURL := mu.cfg.GetNgcAPIBaseURL()
+
+	return getUserDataFromNGC(apiBaseURL, ngcToken, logger)
 }
 
 // getUserDataFromNGC retrieves user data from NGC user API endpoint
@@ -209,9 +210,13 @@ func (mu ManageUser) GetUserDataFromNgcWithAuxiliaryID(ctx context.Context, auxi
 
 	logger.Info().Msg("starting activity")
 
-	ngcToken := string(cloudutils.DecryptData(encryptedNgcToken, mu.tcfg.EncryptionKey))
+	tcfg, _ := mu.cfg.GetTemporalConfig()
 
-	return getUserDataFromNGC(mu.ngcApibaseURL, ngcToken, logger)
+	ngcToken := string(cloudutils.DecryptData(encryptedNgcToken, tcfg.EncryptionKey))
+
+	apiBaseURL := mu.cfg.GetNgcAPIBaseURL()
+
+	return getUserDataFromNGC(apiBaseURL, ngcToken, logger)
 }
 
 // CreateOrUpdateUserInDBWithAuxiliaryID updates user data in DB from NGC user data
@@ -362,11 +367,9 @@ func (mu ManageUser) CreateOrUpdateUserInDBWithAuxiliaryID(ctx context.Context, 
 
 // NewManageUser returns a new user management activity wrapper
 func NewManageUser(dbSession *cdb.Session, cfg *config.Config) ManageUser {
-	tmpCfg, _ := cfg.GetTemporalConfig()
 	return ManageUser{
-		dbSession:     dbSession,
-		ngcApibaseURL: cfg.GetNgcAPIBaseURL(),
-		tcfg:          tmpCfg,
+		dbSession: dbSession,
+		cfg:       cfg,
 	}
 }
 

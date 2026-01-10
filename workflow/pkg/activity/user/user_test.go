@@ -20,14 +20,14 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/uptrace/bun/extra/bundebug"
 	cloudutils "github.com/nvidia/carbide-rest/common/pkg/util"
 	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
 	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
 	"github.com/nvidia/carbide-rest/workflow/internal/config"
+	"github.com/stretchr/testify/assert"
+	"github.com/uptrace/bun/extra/bundebug"
 )
 
 func testManageUserInitDB(t *testing.T) *cdb.Session {
@@ -62,8 +62,8 @@ func testManageUserUser(t *testing.T, dbSession *cdb.Session, auxid, starfleetid
 
 func TestManageUser_GetUserDataFromNgc(t *testing.T) {
 	type fields struct {
-		dbSession     *cdb.Session
-		ngcApibaseURL string
+		dbSession *cdb.Session
+		cfg       *config.Config
 	}
 	type args struct {
 		ctx               context.Context
@@ -113,25 +113,31 @@ func TestManageUser_GetUserDataFromNgc(t *testing.T) {
 		res.Write(ngcRespBytes)
 	}))
 
+	defer testServer.Close()
+
 	errServer := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
 		res.WriteHeader(http.StatusServiceUnavailable)
 	}))
 
-	defer testServer.Close()
+	defer errServer.Close()
+
+	cfg := config.NewConfig()
 
 	tests := []struct {
 		name    string
 		fields  fields
 		args    args
+		server  *httptest.Server
 		want    *NgcUser
 		wantErr bool
 	}{
 		{
 			name: "test get user data from ngc activity success",
 			fields: fields{
-				dbSession:     dbSession,
-				ngcApibaseURL: testServer.URL,
+				dbSession: dbSession,
+				cfg:       cfg,
 			},
+			server: testServer,
 			args: args{
 				ctx:               context.Background(),
 				userID:            user.ID,
@@ -142,9 +148,10 @@ func TestManageUser_GetUserDataFromNgc(t *testing.T) {
 		{
 			name: "test get user data from ngc activity failure, service unavailable",
 			fields: fields{
-				dbSession:     dbSession,
-				ngcApibaseURL: errServer.URL,
+				dbSession: dbSession,
+				cfg:       cfg,
 			},
+			server: errServer,
 			args: args{
 				ctx:               context.Background(),
 				userID:            user.ID,
@@ -155,10 +162,13 @@ func TestManageUser_GetUserDataFromNgc(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			tt.fields.cfg.SetNgcAPIBaseURL(tt.server.URL)
+
 			mu := ManageUser{
-				dbSession:     tt.fields.dbSession,
-				ngcApibaseURL: tt.fields.ngcApibaseURL,
+				dbSession: tt.fields.dbSession,
+				cfg:       tt.fields.cfg,
 			}
+
 			got, err := mu.GetUserDataFromNgc(tt.args.ctx, tt.args.userID, tt.args.encryptedNgcToken)
 			if tt.wantErr {
 				assert.NotNil(t, err)
@@ -172,8 +182,8 @@ func TestManageUser_GetUserDataFromNgc(t *testing.T) {
 
 func TestManageUser_UpdateUserInDB(t *testing.T) {
 	type fields struct {
-		dbSession     *cdb.Session
-		ngcApibaseURL string
+		dbSession *cdb.Session
+		cfg       *config.Config
 	}
 	type args struct {
 		ctx     context.Context
@@ -205,6 +215,8 @@ func TestManageUser_UpdateUserInDB(t *testing.T) {
 		},
 	}
 
+	cfg := config.NewConfig()
+
 	tests := []struct {
 		name    string
 		fields  fields
@@ -214,8 +226,8 @@ func TestManageUser_UpdateUserInDB(t *testing.T) {
 		{
 			name: "test update user in DB activity",
 			fields: fields{
-				dbSession:     dbSession,
-				ngcApibaseURL: "http://test.com",
+				dbSession: dbSession,
+				cfg:       cfg,
 			},
 			args: args{
 				ctx:     context.Background(),
@@ -228,8 +240,8 @@ func TestManageUser_UpdateUserInDB(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mu := ManageUser{
-				dbSession:     tt.fields.dbSession,
-				ngcApibaseURL: tt.fields.ngcApibaseURL,
+				dbSession: tt.fields.dbSession,
+				cfg:       cfg,
 			}
 			if err := mu.UpdateUserInDB(tt.args.ctx, tt.args.userID, tt.args.ngcUser); (err != nil) != tt.wantErr {
 				t.Errorf("ManageUser.UpdateUserInDB() error = %v, wantErr %v", err, tt.wantErr)
@@ -276,8 +288,8 @@ func TestNewManageUser(t *testing.T) {
 				cfg:       cfg,
 			},
 			want: ManageUser{
-				dbSession:     dbSession,
-				ngcApibaseURL: cfg.GetNgcAPIBaseURL(),
+				dbSession: dbSession,
+				cfg:       cfg,
 			},
 		},
 	}
@@ -293,8 +305,8 @@ func TestNewManageUser(t *testing.T) {
 
 func TestManageUser_CreateOrUpdateUserInDBWithAuxiliaryID(t *testing.T) {
 	type fields struct {
-		dbSession     *cdb.Session
-		ngcApibaseURL string
+		dbSession *cdb.Session
+		cfg       *config.Config
 	}
 	type args struct {
 		ctx     context.Context
@@ -307,6 +319,8 @@ func TestManageUser_CreateOrUpdateUserInDBWithAuxiliaryID(t *testing.T) {
 	// Reset User table for clean state
 	err := dbSession.DB.ResetModel(context.Background(), (*cdbm.User)(nil))
 	assert.Nil(t, err)
+
+	cfg := config.NewConfig()
 
 	tests := []struct {
 		name    string
@@ -323,8 +337,8 @@ func TestManageUser_CreateOrUpdateUserInDBWithAuxiliaryID(t *testing.T) {
 				// Clean slate - no setup needed
 			},
 			fields: fields{
-				dbSession:     dbSession,
-				ngcApibaseURL: "http://test.com",
+				dbSession: dbSession,
+				cfg:       cfg,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -365,8 +379,8 @@ func TestManageUser_CreateOrUpdateUserInDBWithAuxiliaryID(t *testing.T) {
 				assert.Nil(t, err)
 			},
 			fields: fields{
-				dbSession:     dbSession,
-				ngcApibaseURL: "http://test.com",
+				dbSession: dbSession,
+				cfg:       cfg,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -406,8 +420,8 @@ func TestManageUser_CreateOrUpdateUserInDBWithAuxiliaryID(t *testing.T) {
 				assert.Nil(t, err)
 			},
 			fields: fields{
-				dbSession:     dbSession,
-				ngcApibaseURL: "http://test.com",
+				dbSession: dbSession,
+				cfg:       cfg,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -448,8 +462,8 @@ func TestManageUser_CreateOrUpdateUserInDBWithAuxiliaryID(t *testing.T) {
 				assert.Nil(t, err)
 			},
 			fields: fields{
-				dbSession:     dbSession,
-				ngcApibaseURL: "http://test.com",
+				dbSession: dbSession,
+				cfg:       cfg,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -501,8 +515,8 @@ func TestManageUser_CreateOrUpdateUserInDBWithAuxiliaryID(t *testing.T) {
 				assert.Nil(t, err)
 			},
 			fields: fields{
-				dbSession:     dbSession,
-				ngcApibaseURL: "http://test.com",
+				dbSession: dbSession,
+				cfg:       cfg,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -532,8 +546,8 @@ func TestManageUser_CreateOrUpdateUserInDBWithAuxiliaryID(t *testing.T) {
 				assert.Nil(t, err)
 			},
 			fields: fields{
-				dbSession:     dbSession,
-				ngcApibaseURL: "http://test.com",
+				dbSession: dbSession,
+				cfg:       cfg,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -555,8 +569,8 @@ func TestManageUser_CreateOrUpdateUserInDBWithAuxiliaryID(t *testing.T) {
 				assert.Nil(t, err)
 			},
 			fields: fields{
-				dbSession:     dbSession,
-				ngcApibaseURL: "http://test.com",
+				dbSession: dbSession,
+				cfg:       cfg,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -578,8 +592,8 @@ func TestManageUser_CreateOrUpdateUserInDBWithAuxiliaryID(t *testing.T) {
 				assert.Nil(t, err)
 			},
 			fields: fields{
-				dbSession:     dbSession,
-				ngcApibaseURL: "http://test.com",
+				dbSession: dbSession,
+				cfg:       cfg,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -611,8 +625,8 @@ func TestManageUser_CreateOrUpdateUserInDBWithAuxiliaryID(t *testing.T) {
 				assert.Nil(t, err)
 			},
 			fields: fields{
-				dbSession:     dbSession,
-				ngcApibaseURL: "http://test.com",
+				dbSession: dbSession,
+				cfg:       cfg,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -653,8 +667,8 @@ func TestManageUser_CreateOrUpdateUserInDBWithAuxiliaryID(t *testing.T) {
 				assert.Nil(t, err)
 			},
 			fields: fields{
-				dbSession:     dbSession,
-				ngcApibaseURL: "http://test.com",
+				dbSession: dbSession,
+				cfg:       cfg,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -694,8 +708,8 @@ func TestManageUser_CreateOrUpdateUserInDBWithAuxiliaryID(t *testing.T) {
 				assert.Nil(t, err)
 			},
 			fields: fields{
-				dbSession:     dbSession,
-				ngcApibaseURL: "http://test.com",
+				dbSession: dbSession,
+				cfg:       cfg,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -736,8 +750,8 @@ func TestManageUser_CreateOrUpdateUserInDBWithAuxiliaryID(t *testing.T) {
 				assert.Nil(t, err)
 			},
 			fields: fields{
-				dbSession:     dbSession,
-				ngcApibaseURL: "http://test.com",
+				dbSession: dbSession,
+				cfg:       cfg,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -769,8 +783,8 @@ func TestManageUser_CreateOrUpdateUserInDBWithAuxiliaryID(t *testing.T) {
 			tt.setup(t)
 
 			mu := ManageUser{
-				dbSession:     tt.fields.dbSession,
-				ngcApibaseURL: tt.fields.ngcApibaseURL,
+				dbSession: tt.fields.dbSession,
+				cfg:       tt.fields.cfg,
 			}
 
 			err := mu.CreateOrUpdateUserInDBWithAuxiliaryID(tt.args.ctx, tt.args.ngcUser)

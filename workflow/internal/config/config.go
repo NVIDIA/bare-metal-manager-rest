@@ -495,6 +495,11 @@ func (c *Config) GetNgcAPIBaseURL() string {
 	return c.v.GetString(ConfigNgcAPIBaseURL)
 }
 
+// SetNgcAPIBaseURL sets the base url for the ngc api
+func (c *Config) SetNgcAPIBaseURL(value string) {
+	c.v.Set(ConfigNgcAPIBaseURL, value)
+}
+
 // GetNotificationsSlackEnabled returns if Slack notifications are enabled
 func (c *Config) GetNotificationsSlackEnabled() bool {
 	return c.GetNotificationsSlackWebhookURL() != "" || c.GetNotificationsSlackWebhookURLPath() != ""
