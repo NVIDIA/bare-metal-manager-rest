@@ -25,6 +25,11 @@ import (
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 )
 
+const (
+	// ExpectedMachineMaxBatchItems is the maximum number of ExpectedMachines allowed in a single batch operation
+	ExpectedMachineMaxBatchItems = 100
+)
+
 // APIExpectedMachineCreateRequest is the data structure to capture instance request to create a new ExpectedMachine
 type APIExpectedMachineCreateRequest struct {
 	// SiteID is the ID of the Site
@@ -99,8 +104,9 @@ func (emcr *APIExpectedMachineCreateRequest) Validate() error {
 }
 
 // APIExpectedMachineUpdateRequest is the data structure to capture user request to update an ExpectedMachine
-// For now same as CreateRequest
 type APIExpectedMachineUpdateRequest struct {
+	// ID is required for batch updates (must be empty or match path value for single update)
+	ID *string `json:"id"`
 	// BmcMacAddress is the MAC address of the expected machine's BMC
 	BmcMacAddress *string `json:"bmcMacAddress"`
 	// BmcUsername is the username of the expected machine's BMC
@@ -119,6 +125,19 @@ type APIExpectedMachineUpdateRequest struct {
 
 // Validate ensure the values passed in request are acceptable
 func (emur *APIExpectedMachineUpdateRequest) Validate() error {
+	if emur.ID != nil {
+		if *emur.ID == "" {
+			return validation.Errors{
+				"id": errors.New("ID cannot be empty"),
+			}
+		}
+		if _, err := uuid.Parse(*emur.ID); err != nil {
+			return validation.Errors{
+				"id": errors.New("ID must be a valid UUID"),
+			}
+		}
+	}
+
 	// Validate DefaultBmcUsername: if provided, cannot be empty
 	if emur.DefaultBmcUsername != nil && *emur.DefaultBmcUsername == "" {
 		return validation.Errors{
@@ -196,7 +215,7 @@ type APIExpectedMachine struct {
 	// SiteID is the ID of the site this machine belongs to
 	SiteID uuid.UUID `json:"siteId"`
 	// Site is the site information
-	Site *APISite `json:"site"`
+	Site *APISite `json:"site,omitempty"`
 	// ChassisSerialNumber is the serial number of the expected machine's chassis
 	ChassisSerialNumber string `json:"chassisSerialNumber"`
 	// FallbackDPUSerialNumbers is the serial numbers of the expected machine's fallback DPUs
@@ -204,11 +223,11 @@ type APIExpectedMachine struct {
 	// SkuID is the ID of the SKU
 	SkuID *string `json:"skuId"`
 	// Sku is the SKU information
-	Sku *APISku `json:"sku"`
+	Sku *APISku `json:"sku,omitempty"`
 	// MachineID is the ID of the Machine associated with this Expected Machine
 	MachineID *string `json:"machineId"`
 	// Machine is the optional Machine information associated with this Expected Machine
-	Machine *APIMachineSummary `json:"machine"`
+	Machine *APIMachineSummary `json:"machine,omitempty"`
 	// Labels is the labels of the expected machine
 	Labels map[string]string `json:"labels"`
 	// Created indicates the ISO datetime string for when the ExpectedMachine was created
