@@ -66,8 +66,18 @@ carbide-mock-server-build:
 
 carbide-mock-server-start: carbide-mock-server-build
 	-lsof -ti:11079 | xargs kill -9 2>/dev/null
-	./build/elektraserver -tout 0 & echo $$! > build/elektraserver.pid
-	@until nc -z 127.0.0.1 11079; do :; done
+	./build/elektraserver -tout 0 > build/elektraserver.log 2>&1 & echo $$! > build/elektraserver.pid
+	@echo "Waiting for gRPC server to start..."
+	@for i in 1 2 3 4 5 6 7 8 9 10; do \
+		if grep -q "Started API server" build/elektraserver.log 2>/dev/null; then \
+			sleep 0.1; \
+			echo "gRPC server is ready"; \
+			exit 0; \
+		fi; \
+		sleep 0.2; \
+	done; \
+	echo "Timeout waiting for gRPC server to start"; \
+	exit 1
 
 carbide-mock-server-stop:
 	-kill $$(cat build/elektraserver.pid) 2>/dev/null
