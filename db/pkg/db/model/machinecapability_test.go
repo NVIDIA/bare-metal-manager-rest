@@ -396,7 +396,13 @@ func TestMachineCapabilitySQLDAO_GetAll(t *testing.T) {
 		m := testMachineBuildMachine(t, dbSession, ip.ID, site.ID, &it.ID, it.ControllerMachineType)
 		ms = append(ms, *m)
 
+		capTypes := make([]string, 0, len(MachineCapabilityTypeChoiceMap))
 		for cap := range MachineCapabilityTypeChoiceMap {
+			capTypes = append(capTypes, cap)
+		}
+		sort.Strings(capTypes)
+
+		for _, cap := range capTypes {
 			var vendor *string
 			var deviceType *string
 			if cap == MachineCapabilityTypeInfiniBand {
