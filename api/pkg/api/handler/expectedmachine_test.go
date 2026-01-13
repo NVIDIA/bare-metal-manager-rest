@@ -2104,6 +2104,30 @@ func TestUpdateExpectedMachinesHandler_Handle(t *testing.T) {
 				assert.Contains(t, bodyStr, "same site")
 			},
 		},
+		{
+			name: "duplicate MAC addresses in update should fail",
+			requestBody: []model.APIExpectedMachineUpdateRequest{
+				{
+					ID:            cdb.GetStrPtr(testEM1.ID.String()),
+					BmcMacAddress: cdb.GetStrPtr("00:11:22:33:44:99"), // Change to new MAC
+				},
+				{
+					ID:            cdb.GetStrPtr(testEM2.ID.String()),
+					BmcMacAddress: cdb.GetStrPtr("00:11:22:33:44:99"), // Same MAC - should fail
+				},
+			},
+			setupContext: func(c echo.Context) {
+				c.Set("user", createMockUser(org))
+				c.SetParamNames("orgName")
+				c.SetParamValues(org)
+			},
+			expectedStatus: http.StatusBadRequest,
+			validateResp: func(t *testing.T, body []byte) {
+				// Verify error message mentions MAC address uniqueness
+				bodyStr := string(body)
+				assert.Contains(t, bodyStr, "Duplicate BMC MAC address")
+			},
+		},
 	}
 
 	_ = infraProv // Ensure infraProv is used to avoid compiler warning

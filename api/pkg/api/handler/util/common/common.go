@@ -23,8 +23,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rs/zerolog/log"
 	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
+	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -1405,4 +1405,73 @@ func GetNVLinkLogicalPartitionCountStats(ctx context.Context, tx *cdb.Tx, dbSess
 	}
 
 	return stats, nil
+}
+
+// ~~~~~ UniqueChecker - Generic Uniqueness Validation ~~~~~ //
+
+// UniqueChecker is a generic struct for tracking uniqueness of values and detecting duplicates.
+// It's designed to validate uniqueness constraints in batch operations (create/update handlers).
+// T is the type of the reference unique ID being checked (UUID, ...) and is only used if Update() is needed.
+type UniqueChecker[T comparable] struct {
+	// IdToUniqueValue maps each main identifier to the secondary unique value
+	IdToUniqueValue map[T]string
+	// uniqueValueCount tracks how many unique values are associated with each ID (ideally one)
+	// This is useful for reporting duplicate counts per ID
+	uniqueValueCount map[string]int
+}
+
+// NewUniqueChecker creates and initializes a new UniqueChecker
+func NewUniqueChecker[T comparable]() *UniqueChecker[T] {
+	return &UniqueChecker[T]{
+		IdToUniqueValue:  make(map[T]string),
+		uniqueValueCount: make(map[string]int),
+	}
+}
+
+// Add add an entry (unique value) for a main ID (which MUST be unique if you intend to use Update() later).
+func (uc *UniqueChecker[T]) Add(id T, uniqueValue string) {
+	// add/replace mapping
+	uc.IdToUniqueValue[id] = uniqueValue
+	// track count of unique values
+	if _, exists := uc.uniqueValueCount[uniqueValue]; !exists {
+		uc.uniqueValueCount[uniqueValue] = 1
+	} else {
+		uc.uniqueValueCount[uniqueValue] += 1
+	}
+}
+
+// Update updates or adds a unique value associated with a principal ID, allowing overwrites.
+func (uc *UniqueChecker[T]) Update(id T, uniqueValue string) {
+	previousValue, exists := uc.IdToUniqueValue[id]
+	// No previous value associated, just add
+	if !exists {
+		uc.Add(id, uniqueValue)
+		return
+	}
+	// No change in value, no-op
+	if uniqueValue == previousValue {
+		return
+	}
+	// Change of value, decrement previous value count then add as new value
+	uc.uniqueValueCount[previousValue] -= 1
+	if uc.uniqueValueCount[previousValue] <= 0 {
+		delete(uc.uniqueValueCount, previousValue)
+	}
+	uc.Add(id, uniqueValue)
+}
+
+// GetDuplicates returns an array of duplicates values.
+func (uc *UniqueChecker[T]) GetDuplicates() []string {
+	duplicates := []string{}
+	for uniqueValue, count := range uc.uniqueValueCount {
+		if count > 1 {
+			duplicates = append(duplicates, uniqueValue)
+		}
+	}
+	return duplicates
+}
+
+// HasDuplicates returns true if any duplicates have been detected
+func (uc *UniqueChecker[T]) HasDuplicates() bool {
+	return len(uc.GetDuplicates()) > 0
 }

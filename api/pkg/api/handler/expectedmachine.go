@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/google/uuid"
@@ -1061,8 +1062,8 @@ func (cemh CreateExpectedMachinesHandler) Handle(c echo.Context) error {
 
 	// Validate each item and ensure all site IDs match
 	siteID := apiRequests[0].SiteID // we use the first item's Site ID as reference
-	bmcMacMap := make(map[string]int)
-	serialMap := make(map[string]int)
+	expectedMachineMacAddressChecker := common.NewUniqueChecker[int]()
+	expectedMachineSerialNumberChecker := common.NewUniqueChecker[int]()
 	for i := range apiRequests {
 		if verr := apiRequests[i].Validate(); verr != nil {
 			logger.Warn().Err(verr).Int("Index", i).Msg("error validating Expected Machine creation request data")
@@ -1076,17 +1077,23 @@ func (cemh CreateExpectedMachinesHandler) Handle(c echo.Context) error {
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "All Expected Machines in request must belong to the same site", nil)
 		}
 
-		if prev, ok := bmcMacMap[apiRequests[i].BmcMacAddress]; ok {
-			logger.Warn().Msgf("duplicate BMC MAC address '%s' found at indices %d and %d", apiRequests[i].BmcMacAddress, prev, i)
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Duplicate BMC MAC address '%s' found at indices %d and %d", apiRequests[i].BmcMacAddress, prev, i), nil)
-		}
-		bmcMacMap[apiRequests[i].BmcMacAddress] = i
+		// Add to uniqueness checkers
+		expectedMachineMacAddressChecker.Add(i, strings.ToLower(apiRequests[i].BmcMacAddress))
+		expectedMachineSerialNumberChecker.Add(i, strings.ToLower(apiRequests[i].ChassisSerialNumber))
+	}
 
-		if prev, ok := serialMap[apiRequests[i].ChassisSerialNumber]; ok {
-			logger.Warn().Msgf("duplicate chassis serial number '%s' found at indices %d and %d", apiRequests[i].ChassisSerialNumber, prev, i)
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Duplicate chassis serial number '%s' found at indices %d and %d", apiRequests[i].ChassisSerialNumber, prev, i), nil)
-		}
-		serialMap[apiRequests[i].ChassisSerialNumber] = i
+	// Validate uniqueness within the request
+	duplicates := expectedMachineMacAddressChecker.GetDuplicates()
+	if len(duplicates) > 0 {
+		duplicatesString, _ := json.Marshal(duplicates)
+		logger.Warn().Str("BmcMacAddresses", string(duplicatesString)).Msg("duplicate BMC MAC Address found in request")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Duplicate BMC MAC addresses found in request at indices: %s", string(duplicatesString)), nil)
+	}
+	duplicates = expectedMachineSerialNumberChecker.GetDuplicates()
+	if len(duplicates) > 0 {
+		duplicatesString, _ := json.Marshal(duplicates)
+		logger.Warn().Str("ChassisSerialNumbers", string(duplicatesString)).Msg("duplicate Chassis Serial Number found in request")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Duplicate chassis serial numbers found in request at indices: %s", string(duplicatesString)), nil)
 	}
 
 	logger.Info().
@@ -1475,47 +1482,55 @@ func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Expected Machines due to DB error", nil)
 	}
 
-	// Verify unicity of Serial Numbers with existing records on Site
+	// Verify unicity of BMC MAC Addresses and Serial Numbers with existing records on Site
+	expectedMachineMacAddressChecker := common.NewUniqueChecker[uuid.UUID]()
+	expectedMachineSerialNumberChecker := common.NewUniqueChecker[uuid.UUID]()
 
-	// Create maps for easier lookup
-	// Note: we do a sanity check to ensure retrieved records are unique since we don't want to report an error later to the caller not related to their input.
-	expectedMachineSerialNumberMap := make(map[uuid.UUID]string)
-	uniqueSerialNumbers := make(map[string]bool)
+	// Sanity check to ensure retrieved records are unique since we don't want to report an error later to the caller not related to their input.
 	for i := range expectedMachines { // iterate on ALL Expected Machine on Site
 		em := &expectedMachines[i]
-		if em.ChassisSerialNumber == "" {
-			continue
+		expectedMachineMacAddressChecker.Add(em.ID, strings.ToLower(em.BmcMacAddress))
+		if em.ChassisSerialNumber != "" {
+			expectedMachineSerialNumberChecker.Add(em.ID, strings.ToLower(em.ChassisSerialNumber))
 		}
-		// loaded serial numbers should be unique
-		if uniqueSerialNumbers[em.ChassisSerialNumber] {
-			logger.Error().Str("ChassisSerialNumber", em.ChassisSerialNumber).Msg("duplicate chassis serial number found in DB for Expected Machines being updated")
-			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to validate chassis serial number uniqueness for Expected Machines due to DB data error", nil)
-		}
-		uniqueSerialNumbers[em.ChassisSerialNumber] = true
-		expectedMachineSerialNumberMap[em.ID] = em.ChassisSerialNumber
 	}
-	// Apply changes to Serial unicity maps and check for conflicts.
+	duplicates := expectedMachineSerialNumberChecker.GetDuplicates()
+	if len(duplicates) > 0 {
+		duplicatesString, _ := json.Marshal(duplicates)
+		logger.Error().Str("ChassisSerialNumbers", string(duplicatesString)).Msg("duplicate Chassis Serial Number found in DB for Expected Machines being updated")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed to validate Chassis Serial Number uniqueness for Expected Machines due to DB data error, duplicates are: %s", string(duplicatesString)), nil)
+	}
+	duplicates = expectedMachineMacAddressChecker.GetDuplicates()
+	if len(duplicates) > 0 {
+		duplicatesString, _ := json.Marshal(duplicates)
+		logger.Error().Str("BmcMacAddresses", string(duplicatesString)).Msg("duplicate BMC MAC Address found in DB for Expected Machines being updated")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed to validate BMC MAC Address uniqueness for Expected Machines due to DB data error, duplicates are: %s", string(duplicatesString)), nil)
+	}
+
+	// Apply changes to MAC and Serial unicity checker.
 	// We can only check once all changes are applied (there could be some swap).
 	for _, req := range apiRequests {
 		mid, _ := uuid.Parse(*req.ID)
+		if req.BmcMacAddress != nil {
+			expectedMachineMacAddressChecker.Update(mid, strings.ToLower(*req.BmcMacAddress))
+		}
 		if req.ChassisSerialNumber != nil {
-			expectedMachineSerialNumberMap[mid] = *req.ChassisSerialNumber
+			expectedMachineSerialNumberChecker.Update(mid, strings.ToLower(*req.ChassisSerialNumber))
 		}
 	}
 
 	// Re-validate unicity now including fully applied changes:
-	uniqueSerialNumbers = make(map[string]bool)
-	for i := range expectedMachines { // iterate on ALL Expected Machine on Site
-		em := &expectedMachines[i]
-		if em.ChassisSerialNumber == "" {
-			continue
-		}
-		// loaded and updated serial numbers should be unique
-		if uniqueSerialNumbers[em.ChassisSerialNumber] {
-			logger.Error().Str("ChassisSerialNumber", em.ChassisSerialNumber).Msg("duplicate chassis serial number found in DB for Expected Machines if update was applied")
-			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to validate chassis serial number uniqueness for Expected Machines update", nil)
-		}
-		uniqueSerialNumbers[em.ChassisSerialNumber] = true
+	duplicates = expectedMachineSerialNumberChecker.GetDuplicates()
+	if len(duplicates) > 0 {
+		duplicatesString, _ := json.Marshal(duplicates)
+		logger.Error().Str("ChassisSerialNumbers", string(duplicatesString)).Msg("duplicate Chassis Serial Number found in DB for Expected Machines if update was applied")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Failed to validate Chassis Serial Number uniqueness for Expected Machines, duplicates are: %s", string(duplicatesString)), nil)
+	}
+	duplicates = expectedMachineMacAddressChecker.GetDuplicates()
+	if len(duplicates) > 0 {
+		duplicatesString, _ := json.Marshal(duplicates)
+		logger.Error().Str("BmcMacAddresses", string(duplicatesString)).Msg("duplicate BMC MAC Address found in DB for Expected Machines being updated")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Failed to validate BMC MAC Address uniqueness for Expected Machines due to DB data error, duplicates are: %s", string(duplicatesString)), nil)
 	}
 
 	// Validate that all specified SKU IDs exist
