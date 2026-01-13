@@ -16,7 +16,6 @@ on:
     branches:
       - main
       - pull-request/[0-9]+
-      - version/**
     tags:
       - 'v*.*.*'
 
@@ -36,7 +35,22 @@ jobs:
     needs: prepare
     uses: ./.github/workflows/lint-and-test.yml
 
-  # Step 3: Build and push all Docker images
+  # Step 3: Build Go binaries
+  build-binaries:
+    name: Build Go Binaries
+    needs:
+      - prepare
+      - lint-and-test
+    if: |
+      github.ref == 'refs/heads/main' ||
+      startsWith(github.ref, 'refs/heads/release/') ||
+      startsWith(github.ref, 'refs/tags/v') ||
+      github.event_name == 'workflow_dispatch'
+    with:
+      upload_artifact: true
+    uses: ./.github/workflows/build-binaries.yml
+
+  # Step 4: Build and push all Docker images
   build-and-push:
     name: Build and Push Docker Images
     needs:
@@ -64,12 +78,17 @@ jobs:
       NVCR_USERNAME: ${{ secrets.NVCR_STG_USERNAME }}
       NVCR_TOKEN: ${{ secrets.NVCR_STG_TOKEN }}
 
-  # Step 4: Promote to release candidate
+  # Step 5: Promote to release candidate
   promote-carbide-rest-to-release-candidate:
     name: Promote Carbide REST to Release Candidate
     needs:
       - prepare
+      - lint-and-test
       - build-and-push
+    if: |
+      github.ref == 'refs/heads/main' ||
+      startsWith(github.ref, 'refs/heads/release/') ||
+      startsWith(github.ref, 'refs/tags/v')
     uses: ./.github/workflows/promotion.yaml
     with:
       runner: ubuntu-latest
