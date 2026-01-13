@@ -26,10 +26,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bun/extra/bundebug"
 	"github.com/nvidia/carbide-rest/api/internal/config"
 	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
 	"github.com/nvidia/carbide-rest/api/pkg/api/model"
@@ -43,8 +39,12 @@ import (
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 	cdbp "github.com/nvidia/carbide-rest/db/pkg/db/paginator"
 	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
 	swe "github.com/nvidia/carbide-rest/site-workflow/pkg/error"
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun/extra/bundebug"
 	oteltrace "go.opentelemetry.io/otel/trace"
 	"go.temporal.io/api/enums/v1"
 	temporalClient "go.temporal.io/sdk/client"
@@ -3380,6 +3380,30 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 	// Add Network DPU capability to Instance Type
 	common.TestBuildMachineCapability(t, dbSession, nil, &ist4.ID, cdbm.MachineCapabilityTypeNetwork, "MT42822 BlueField-2 integrated ConnectX-6 Dx network controller", nil, nil, cdb.GetStrPtr("Mellanox Technologies"), cdb.GetIntPtr(2), cdb.GetStrPtr("DPU"), nil)
 
+	inst13 := testInstanceBuildInstance(t, dbSession, "test-instance-nvlink-update", al3.ID, alc3.ID, tn1.ID, ip.ID, st3.ID, &ist4.ID, vpc4.ID, cdb.GetStrPtr(mc5.ID), &os2.ID, nil, cdbm.InstanceStatusReady)
+
+	// Add NVLink GPU capability to Instance Type
+	mcNvlType := common.TestBuildMachineCapability(t, dbSession, nil, &ist4.ID, cdbm.MachineCapabilityTypeGPU, "NVIDIA GB200", nil, nil, cdb.GetStrPtr("NVIDIA"), cdb.GetIntPtr(4), cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeNVLink), nil)
+	assert.NotNil(t, mcNvlType)
+
+	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", tnOrg1, st3, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	assert.NotNil(t, nvllp1)
+
+	nvllp2 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-2", tnOrg1, st3, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	assert.NotNil(t, nvllp2)
+
+	instnvlifc1 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp1.ID, cdb.GetStrPtr("NVIDIA GB200"), 0, cdbm.NVLinkInterfaceStatusReady)
+	assert.NotNil(t, instnvlifc1)
+
+	instnvlifc2 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp2.ID, cdb.GetStrPtr("NVIDIA GB200"), 1, cdbm.NVLinkInterfaceStatusReady)
+	assert.NotNil(t, instnvlifc2)
+
+	instnvlifc3 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp2.ID, cdb.GetStrPtr("NVIDIA GB200"), 2, cdbm.NVLinkInterfaceStatusReady)
+	assert.NotNil(t, instnvlifc3)
+
+	instnvlifc4 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp2.ID, cdb.GetStrPtr("NVIDIA GB200"), 3, cdbm.NVLinkInterfaceStatusReady)
+	assert.NotNil(t, instnvlifc4)
+
 	// Fixtures for NSG-specific testing
 
 	// Associate tenant 1 with site 2
@@ -3509,18 +3533,20 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 	}
 
 	type args struct {
-		reqData               *model.APIInstanceUpdateRequest
-		reqOrg                string
-		reqUser               *cdbm.User
-		reqInstance           string
-		cleanInstanceToStatus string
-		respNoOfInterfaces    *int
-		ethInterfacesToDelete []cdbm.Interface
-		ibInterfaceToDelete   []cdbm.InfiniBandInterface
-		respCode              int
-		respUserDataContains  *string
-		respUserData          *string
-		respMessage           *string
+		reqData                  *model.APIInstanceUpdateRequest
+		reqOrg                   string
+		reqUser                  *cdbm.User
+		reqInstance              string
+		cleanInstanceToStatus    string
+		respNoOfInterfaces       *int
+		respNoOfNVLinkInterfaces *int
+		ethInterfacesToDelete    []cdbm.Interface
+		ibInterfaceToDelete      []cdbm.InfiniBandInterface
+		nvlinkInterfacesToDelete []cdbm.NVLinkInterface
+		respCode                 int
+		respUserDataContains     *string
+		respUserData             *string
+		respMessage              *string
 	}
 
 	tests := []struct {
@@ -4592,6 +4618,81 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 			verifySiteControllerRequest: true,
 			verifyChildSpanner:          true,
 		},
+		{
+			name: "test Instance update API endpoint success with NVLink interface update ",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				scp:       scp,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIInstanceUpdateRequest{
+					IpxeScript: os2.IpxeScript,
+					NVLinkInterfaces: []model.APINVLinkInterfaceCreateOrUpdateRequest{
+						{
+							NVLinkLogicalPartitionID: nvllp2.ID.String(),
+							DeviceInstance:           0,
+						},
+						{
+							NVLinkLogicalPartitionID: nvllp2.ID.String(),
+							DeviceInstance:           1,
+						},
+						{
+							NVLinkLogicalPartitionID: nvllp2.ID.String(),
+							DeviceInstance:           2,
+						},
+						{
+							NVLinkLogicalPartitionID: nvllp2.ID.String(),
+							DeviceInstance:           3,
+						},
+					},
+				},
+				reqInstance:              inst13.ID.String(),
+				reqOrg:                   tnOrg1,
+				reqUser:                  tnu1,
+				respCode:                 http.StatusOK,
+				respNoOfNVLinkInterfaces: cdb.GetIntPtr(4),
+				nvlinkInterfacesToDelete: []cdbm.NVLinkInterface{
+					*instnvlifc1,
+					*instnvlifc2,
+					*instnvlifc3,
+					*instnvlifc4,
+				},
+			},
+			wantErr:                     false,
+			verifySiteControllerRequest: true,
+			verifyChildSpanner:          true,
+		},
+		{
+			name: "test Instance update API endpoint success with NVLink interface update - delete existing NVLink interfaces",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				scp:       scp,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIInstanceUpdateRequest{
+					IpxeScript:       os2.IpxeScript,
+					NVLinkInterfaces: []model.APINVLinkInterfaceCreateOrUpdateRequest{},
+				},
+				reqInstance:              inst13.ID.String(),
+				reqOrg:                   tnOrg1,
+				reqUser:                  tnu1,
+				respCode:                 http.StatusOK,
+				respNoOfNVLinkInterfaces: cdb.GetIntPtr(4),
+				nvlinkInterfacesToDelete: []cdbm.NVLinkInterface{
+					*instnvlifc1,
+					*instnvlifc2,
+					*instnvlifc3,
+					*instnvlifc4,
+				},
+			},
+			wantErr:                     false,
+			verifySiteControllerRequest: true,
+			verifyChildSpanner:          true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -4789,6 +4890,30 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 				}
 			}
 
+			if len(tt.args.nvlinkInterfacesToDelete) > 0 && tt.args.reqData.NVLinkInterfaces != nil {
+				// Make sure the NVLink Interfaces are deleting
+				nvlIfcDAO := cdbm.NewNVLinkInterfaceDAO(tt.fields.dbSession)
+				for _, nvlifc := range tt.args.nvlinkInterfacesToDelete {
+					nvlifc, _ := nvlIfcDAO.GetByID(ec.Request().Context(), nil, nvlifc.ID, nil)
+					assert.Equal(t, nvlifc.Status, cdbm.NVLinkInterfaceStatusDeleting)
+				}
+
+				if len(tt.args.reqData.NVLinkInterfaces) > 0 {
+					// Make sure the NVLink Interfaces are pending
+					// It should be in order of the request received
+					nvlifcs, _, _ := nvlIfcDAO.GetAll(ec.Request().Context(), nil,
+						cdbm.NVLinkInterfaceFilterInput{InstanceIDs: []uuid.UUID{reqIns.ID},
+							Statuses: []string{cdbm.NVLinkInterfaceStatusPending}},
+						cdbp.PageInput{OrderBy: &cdbp.OrderBy{Field: cdbm.NVLinkInterfaceOrderByCreated, Order: cdbp.OrderAscending}},
+						[]string{cdbm.NVLinkLogicalPartitionRelationName})
+					assert.Equal(t, len(nvlifcs), len(tt.args.reqData.NVLinkInterfaces))
+					for i, _ := range nvlifcs {
+						assert.Equal(t, tt.args.reqData.NVLinkInterfaces[i].NVLinkLogicalPartitionID, nvlifcs[i].NVLinkLogicalPartitionID.String())
+						assert.Equal(t, cdbm.NVLinkInterfaceStatusPending, nvlifcs[i].Status)
+					}
+				}
+			}
+
 			if tt.verifySiteControllerRequest {
 				// tst3.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
 				// "UpdateInstance", mock.Anything).Return(wruntimeout, nil)
@@ -4860,6 +4985,16 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 							}
 						}
 
+						// Verify the NVLink Interfaces are in the Site Controller request
+						if tt.args.reqData.NVLinkInterfaces != nil && len(tt.args.reqData.NVLinkInterfaces) > 0 {
+							assert.Equal(t, len(siteReq.Config.Nvlink.GpuConfigs), len(tt.args.reqData.NVLinkInterfaces))
+
+							// Make sure order to should be same as the request received
+							for i, _ := range siteReq.Config.Nvlink.GpuConfigs {
+								assert.Equal(t, siteReq.Config.Nvlink.GpuConfigs[i].LogicalPartitionId.Value, tt.args.reqData.NVLinkInterfaces[i].NVLinkLogicalPartitionID)
+							}
+						}
+
 						if tt.args.reqData.SSHKeyGroupIDs != nil {
 							// Verify the length of the set of SKGs for the instance match
 							// the length of the set sent to Carbide
@@ -4883,6 +5018,11 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 
 			assert.NotNil(t, rst.SerialConsoleURL)
 			assert.NotEqual(t, rst.Updated.String(), inst1.Updated.String())
+
+			// Verify Instance status is configuring if any of the interfaces are being updated
+			if tt.args.reqData.NVLinkInterfaces != nil || tt.args.reqData.Interfaces != nil || tt.args.reqData.InfiniBandInterfaces != nil {
+				assert.Equal(t, rst.Status, cdbm.InstanceStatusConfiguring)
+			}
 
 			if tt.verifyChildSpanner {
 				span := oteltrace.SpanFromContext(ec.Request().Context())
@@ -6328,15 +6468,15 @@ func TestGetAllInstanceHandler_Handle(t *testing.T) {
 				reqUser:                     tnu1,
 				respCode:                    http.StatusOK,
 			},
-		filter: cdbm.InstanceFilterInput{
-			Names: []string{"test-instance-vpc"},
+			filter: cdbm.InstanceFilterInput{
+				Names: []string{"test-instance-vpc"},
+			},
+			wantErr:                   false,
+			expectedCount:             1,
+			expectedTotal:             1,
+			expectedFirstEntryName:    "test-instance-vpc",
+			expectedMachineIDOverride: cdb.GetStrPtr(mc2.ID),
 		},
-		wantErr:                   false,
-		expectedCount:             1,
-		expectedTotal:             1,
-		expectedFirstEntryName:    "test-instance-vpc",
-		expectedMachineIDOverride: cdb.GetStrPtr(mc2.ID),
-	},
 		{
 			name: "test Instance getall API endpoint success with single IP address filter",
 			fields: fields{
