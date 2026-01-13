@@ -279,21 +279,29 @@ func (bs *BoostrapAPI) DownloadAndStoreCreds(otpOverride []byte) error {
 	otpBytes, err := os.ReadFile(otpFilePath)
 	if err != nil {
 		log.Warn().Err(err).Msg("Bootstrap: Failed to read stored OTP file")
-		return err
+		// If file doesn't exist yet, that's ok on first run
+		if !os.IsNotExist(err) {
+			return err
+		}
+		otpBytes = []byte{}
 	}
 
 	// If an OTP override is provided and not nil, use it and update the config
 	if otpOverride != nil {
 		otpBytes = otpOverride
 		bCfg.OTP = string(otpBytes) // Update the config with the override value
+		log.Info().Msgf("Bootstrap: Using OTP override")
 	}
 
 	// If no OTP override, check if credentials have already been downloaded for the OTP in the config
-	if otpOverride == nil && string(otpBytes) == bCfg.OTP {
-		log.Info().Msg("Bootstrap: Credentials already downloaded for OTP")
+	fileOTP := string(otpBytes)
+	configOTP := bCfg.OTP
+	if otpOverride == nil && len(fileOTP) > 0 && fileOTP == configOTP {
+		log.Info().Msgf("Bootstrap: Credentials already downloaded for OTP (file matches config)")
 		return nil
 	}
-	log.Info().Msg("Bootstrap: Credentials need to be downloaded for OTP")
+	log.Info().Msgf("Bootstrap: Credentials need to be downloaded for OTP (file OTP len=%d, config OTP len=%d, match=%v)",
+		len(fileOTP), len(configOTP), fileOTP == configOTP)
 
 	bw := ManagerAccess.Data.EB.Managers.Bootstrap.State
 	// Keep track of events
@@ -331,10 +339,21 @@ func saveToFile(credsResponse *bootstraptypes.SiteCredsResponse) error {
 	pathKey := ManagerAccess.Conf.EB.Temporal.GetTemporalClientKeyFullPath()
 
 	bCfg := ManagerAccess.Data.EB.Managers.Bootstrap.Config
-	err := os.WriteFile(pathOTP, []byte(bCfg.OTP), 0644)
+
+	// Write OTP file and ensure it's synced to disk to avoid race conditions
+	otpData := []byte(bCfg.OTP)
+	err := os.WriteFile(pathOTP, otpData, 0644)
 	if err != nil {
 		return err
 	}
+	// Open and sync the OTP file to ensure it's flushed to disk
+	// Note: without this there is a 10-15% flakiness on tests...
+	otpFile, err := os.OpenFile(pathOTP, os.O_RDWR, 0644)
+	if err == nil {
+		otpFile.Sync()
+		otpFile.Close()
+	}
+
 	err = os.WriteFile(pathCaCert, []byte(credsResponse.CACertificate), 0644)
 	if err != nil {
 		return err
