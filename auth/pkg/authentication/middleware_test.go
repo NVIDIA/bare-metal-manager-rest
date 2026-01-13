@@ -472,7 +472,19 @@ func Test_getUpdatedUserFromHeaders(t *testing.T) {
 				assert.Equal(t, *tt.want.Email, *got.Email)
 			}
 			if tt.want.OrgData != nil {
-				assert.Equal(t, tt.want.OrgData, got.OrgData)
+				// Compare OrgData fields individually, ignoring the Updated timestamp
+				assert.Equal(t, len(tt.want.OrgData), len(got.OrgData), "OrgData should have same number of orgs")
+				for orgName, expectedOrg := range tt.want.OrgData {
+					actualOrg, exists := got.OrgData[orgName]
+					assert.True(t, exists, "Org %s should exist in result", orgName)
+					if exists {
+						assert.Equal(t, expectedOrg.Name, actualOrg.Name, "Org name should match")
+						assert.Equal(t, expectedOrg.DisplayName, actualOrg.DisplayName, "DisplayName should match")
+						assert.Equal(t, expectedOrg.Roles, actualOrg.Roles, "Roles should match")
+						assert.Equal(t, expectedOrg.Teams, actualOrg.Teams, "Teams should match")
+						// Note: Updated timestamp is intentionally not compared as it's set dynamically
+					}
+				}
 			}
 		})
 	}

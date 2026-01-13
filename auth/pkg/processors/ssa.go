@@ -90,10 +90,13 @@ func (h *SSAProcessor) ProcessToken(c echo.Context, tokenStr string, jwksCfg *co
 	}
 
 	// Get org name from context
-	ngcOrgName := c.Get("ngcOrgName").(string)
+	orgName := c.Get("orgName").(string)
+
+	// SSA tokens are not service account tokens
+	config.SetIsServiceAccountInContext(c, false)
 
 	// Update user record if necessary
-	updatedUser, apiErr := GetUpdatedUserFromHeaders(c, *dbUser, ngcOrgName, logger)
+	updatedUser, apiErr := GetUpdatedUserFromHeaders(c, *dbUser, orgName, logger)
 	if apiErr != nil {
 		return nil, apiErr
 	}

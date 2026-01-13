@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	cauth "github.com/nvidia/carbide-rest/auth/pkg/config"
 
@@ -139,15 +140,58 @@ const (
 	ConfigRateLimiterExpiresIn = "rateLimiter.expiresIn"
 )
 
-// AuthConfig represents a single auth configuration entry
-type AuthConfig struct {
-	Name           string   `mapstructure:"name"`
-	Origin         int      `mapstructure:"origin"`
-	URL            string   `mapstructure:"url"`
-	Issuer         string   `mapstructure:"issuer"`
-	ServiceAccount bool     `mapstructure:"serviceAccount"`
-	Audiences      []string `mapstructure:"audiences"`
-	Scopes         []string `mapstructure:"scopes"`
+// IssuerConfig represents a single issuer configuration entry
+// This is the preferred configuration format that supports claim mappings
+type IssuerConfig struct {
+	Name           string                `mapstructure:"name"`
+	Origin         interface{}           `mapstructure:"origin"` // Can be int or string
+	JWKS           string                `mapstructure:"jwks"`
+	Issuer         string                `mapstructure:"issuer"`
+	ServiceAccount bool                  `mapstructure:"serviceAccount"`
+	Audiences      []string              `mapstructure:"audiences"`
+	Scopes         []string              `mapstructure:"scopes"`
+	JWKSTimeout    string                `mapstructure:"jwksTimeout"` // e.g. "5s", "1m"
+	ClaimMappings  []cauth.ClaimMapping  `mapstructure:"claimMappings"`
+}
+
+// GetOriginInt returns the origin as an integer
+func (ic *IssuerConfig) GetOriginInt() (int, error) {
+	switch v := ic.Origin.(type) {
+	case int:
+		return v, nil
+	case int64:
+		return int(v), nil
+	case float64:
+		return int(v), nil
+	case string:
+		return ParseOriginString(v)
+	default:
+		return 0, fmt.Errorf("invalid origin type: %T", ic.Origin)
+	}
+}
+
+// GetJWKSTimeout parses and returns the JWKS timeout duration
+func (ic *IssuerConfig) GetJWKSTimeout() (time.Duration, error) {
+	if ic.JWKSTimeout == "" {
+		return 0, nil // Use default
+	}
+	return time.ParseDuration(ic.JWKSTimeout)
+}
+
+// ParseOriginString converts a string origin to its integer constant
+func ParseOriginString(origin string) (int, error) {
+	switch strings.ToLower(origin) {
+	case "kas":
+		return cauth.TokenOriginKas, nil
+	case "ssa":
+		return cauth.TokenOriginSsa, nil
+	case "keycloak":
+		return cauth.TokenOriginKeycloak, nil
+	case "custom":
+		return cauth.TokenOriginCustom, nil
+	default:
+		return 0, fmt.Errorf("unknown origin: %s", origin)
+	}
 }
 
 // RateLimiterConfig holds configuration for rate limiting
@@ -318,37 +362,10 @@ func (c *Config) Validate() {
 	}
 
 	// Validate that at least one auth method is configured
-	authConfigs := c.GetAuthConfigs()
-
-	authConfigNameServiceAccountMap := make(map[string]bool)
-
-	for _, authConfig := range authConfigs {
-		if authConfig.Name == "" {
-			log.Panic().Msg("Auth configuration name must be specified")
-		}
-
-		if authConfig.Origin >= cauth.TokenOriginMax {
-			log.Panic().Msgf("Auth configuration origin must be less than %v", cauth.TokenOriginMax)
-		}
-
-		if authConfig.URL == "" {
-			log.Panic().Msg("Auth configuration URL must be specified")
-		}
-
-		if authConfig.Issuer == "" {
-			log.Panic().Msg("Auth configuration issuer must be specified")
-		}
-
-		if authConfig.ServiceAccount {
-			if !c.GetEnvDisconnected() {
-				log.Panic().Msg("Service account is only supported in disconnected mode")
-			}
-
-			_, exists := authConfigNameServiceAccountMap[authConfig.Name]
-			if exists {
-				log.Panic().Msgf("Auth configuration name '%s' is already defined with service account enabled", authConfig.Name)
-			}
-			authConfigNameServiceAccountMap[authConfig.Name] = true
+	issuersConfig := c.GetIssuersConfig()
+	if len(issuersConfig) > 0 {
+		if err := c.ValidateIssuersConfig(issuersConfig); err != nil {
+			log.Panic().Err(err).Msg("Invalid issuers configuration")
 		}
 	}
 
@@ -358,12 +375,12 @@ func (c *Config) Validate() {
 		log.Panic().Err(err).Msg("Keycloak config must be specified")
 	}
 
-	if len(authConfigs) == 0 && !keycloakEnabled {
-		log.Panic().Msg("No auth configurations specified and Keycloak is disabled - authentication will not work")
-	} else if len(authConfigs) > 0 && keycloakEnabled {
-		log.Info().Msg("Both auth configurations and Keycloak are enabled - multiple auth methods will be available")
-	} else if len(authConfigs) > 0 {
-		log.Info().Msgf("Auth configurations loaded: %d", len(authConfigs))
+	if len(issuersConfig) == 0 && !keycloakEnabled {
+		log.Panic().Msg("No issuers configured and Keycloak is disabled - authentication will not work")
+	} else if len(issuersConfig) > 0 && keycloakEnabled {
+		log.Info().Msg("Both issuers and Keycloak are enabled - multiple auth methods will be available")
+	} else if len(issuersConfig) > 0 {
+		log.Info().Msgf("Issuer configurations loaded: %d", len(issuersConfig))
 	} else if keycloakEnabled {
 		log.Info().Msg("Keycloak authentication is enabled")
 	}
@@ -417,10 +434,50 @@ func (c *Config) GetOrInitJWTOriginConfig() *cauth.JWTOriginConfig {
 	if c.JwtOriginConfig == nil {
 		c.JwtOriginConfig = cauth.NewJWTOriginConfig()
 
-		// Add auth configurations from the config file
-		authConfigs := c.GetAuthConfigs()
-		for _, authConfig := range authConfigs {
-			c.JwtOriginConfig.AddConfig(authConfig.Name, authConfig.Issuer, authConfig.URL, authConfig.Origin, authConfig.ServiceAccount, authConfig.Audiences, authConfig.Scopes)
+		// Collect all reserved org names from dynamic mappings
+		reservedOrgNames := make(map[string]bool)
+
+		// Load issuers config
+		issuersConfig := c.GetIssuersConfig()
+		if err := c.ValidateIssuersConfig(issuersConfig); err != nil {
+			log.Panic().Err(err).Msg("Invalid issuers configuration")
+		}
+
+		for _, issuerCfg := range issuersConfig {
+			originInt, _ := issuerCfg.GetOriginInt() // Already validated
+			jwksTimeout, _ := issuerCfg.GetJWKSTimeout()
+
+			// Normalize org names in claim mappings and collect reserved names
+			normalizedMappings := make([]cauth.ClaimMapping, len(issuerCfg.ClaimMappings))
+			for i, mapping := range issuerCfg.ClaimMappings {
+				normalizedMappings[i] = mapping
+				if mapping.OrgName != "" {
+					normalizedMappings[i].OrgName = strings.ToLower(mapping.OrgName)
+				}
+				// If this is a dynamic org mapping, collect static org names as reserved
+				if mapping.OrgAttribute != "" {
+					for _, m := range issuerCfg.ClaimMappings {
+						if m.OrgName != "" {
+							reservedOrgNames[strings.ToLower(m.OrgName)] = true
+						}
+					}
+				}
+			}
+
+			jwksCfg := cauth.NewJwksConfig(
+				issuerCfg.Name,
+				issuerCfg.JWKS,
+				issuerCfg.Issuer,
+				originInt,
+				issuerCfg.ServiceAccount,
+				issuerCfg.Audiences,
+				issuerCfg.Scopes,
+			)
+			jwksCfg.JWKSTimeout = jwksTimeout
+			jwksCfg.ClaimMappings = normalizedMappings
+			jwksCfg.ReservedOrgNames = reservedOrgNames
+
+			c.JwtOriginConfig.AddJwksConfig(jwksCfg)
 		}
 
 		// Add Keycloak configuration if enabled
@@ -433,14 +490,14 @@ func (c *Config) GetOrInitJWTOriginConfig() *cauth.JWTOriginConfig {
 				if err != nil {
 					log.Warn().Err(err).Msg("Failed to get Keycloak JWKS config, skipping Keycloak JWT origin")
 				} else {
-					c.JwtOriginConfig.AddConfig("keycloak", jwksConfig.Issuer, jwksConfig.URL, cauth.TokenOriginKeycloak, c.GetKeycloakServiceAccountEnabled(), nil, nil)
+					c.JwtOriginConfig.AddJwksConfig(jwksConfig)
 				}
 			}
 		}
 
 		// Initialize JWKS data
 		if err := c.JwtOriginConfig.UpdateJWKs(); err != nil {
-			log.Warn().Err(err).Msg("Failed to update JWKS data, skipping Keycloak JWT origin")
+			log.Warn().Err(err).Msg("Failed to update JWKS data")
 			return nil
 		} else {
 			log.Info().Msg("Successfully updated JWKS data")
@@ -479,14 +536,114 @@ func NewRateLimiterConfig(enabled bool, rate float64, burst int, expiresIn int) 
 	}
 }
 
-// GetAuthConfigs returns the auth configurations from the config file
-func (c *Config) GetAuthConfigs() []AuthConfig {
-	var authConfigs []AuthConfig
-	if err := c.v.UnmarshalKey("auth", &authConfigs); err != nil {
-		log.Warn().Err(err).Msg("Failed to unmarshal auth configurations, using empty list")
-		return []AuthConfig{}
+// GetIssuersConfig returns the issuer configurations from the config file
+func (c *Config) GetIssuersConfig() []IssuerConfig {
+	var issuersConfig []IssuerConfig
+	if err := c.v.UnmarshalKey("issuers", &issuersConfig); err != nil {
+		log.Warn().Err(err).Msg("Failed to unmarshal issuer configurations, using empty list")
+		return []IssuerConfig{}
 	}
-	return authConfigs
+	return issuersConfig
+}
+
+// ValidateIssuersConfig validates the issuer configurations
+func (c *Config) ValidateIssuersConfig(issuers []IssuerConfig) error {
+	seenNames := make(map[string]bool)
+	seenURLs := make(map[string]bool)
+	seenStaticOrgs := make(map[string]bool)
+	hasDynamicOrg := false
+
+	for i, issuer := range issuers {
+		// Validate required fields
+		if issuer.Name == "" {
+			return fmt.Errorf("issuer %d: name is required", i)
+		}
+
+		if issuer.JWKS == "" {
+			return fmt.Errorf("issuer %s: jwks URL is required", issuer.Name)
+		}
+
+		if issuer.Issuer == "" {
+			return fmt.Errorf("issuer %s: issuer is required", issuer.Name)
+		}
+
+		// Check for duplicate names
+		if seenNames[issuer.Name] {
+			return fmt.Errorf("duplicate issuer name: %s", issuer.Name)
+		}
+		seenNames[issuer.Name] = true
+
+		// Check for duplicate JWKS URLs
+		if seenURLs[issuer.JWKS] {
+			return fmt.Errorf("duplicate JWKS URL: %s (issuer: %s)", issuer.JWKS, issuer.Name)
+		}
+		seenURLs[issuer.JWKS] = true
+
+		// Validate origin
+		originInt, err := issuer.GetOriginInt()
+		if err != nil {
+			return fmt.Errorf("issuer %s: %w", issuer.Name, err)
+		}
+		if originInt >= cauth.TokenOriginMax {
+			return fmt.Errorf("issuer %s: origin must be less than %d", issuer.Name, cauth.TokenOriginMax)
+		}
+
+		// Validate JWKS timeout if specified
+		if issuer.JWKSTimeout != "" {
+			if _, err := issuer.GetJWKSTimeout(); err != nil {
+				return fmt.Errorf("issuer %s: invalid jwksTimeout: %w", issuer.Name, err)
+			}
+		}
+
+		// Validate claim mappings
+		for j, mapping := range issuer.ClaimMappings {
+			if mapping.OrgAttribute == "" && mapping.OrgName == "" {
+				return fmt.Errorf("issuer %s: claimMapping %d: either orgAttribute or orgName must be specified", issuer.Name, j)
+			}
+
+			if mapping.OrgAttribute != "" && mapping.OrgName != "" {
+				return fmt.Errorf("issuer %s: claimMapping %d: cannot specify both orgAttribute and orgName", issuer.Name, j)
+			}
+
+			// Dynamic org mapping
+			if mapping.OrgAttribute != "" {
+				if hasDynamicOrg {
+					return fmt.Errorf("issuer %s: only one dynamic org mapping is allowed", issuer.Name)
+				}
+				hasDynamicOrg = true
+			}
+
+			// Static org mapping - check for duplicates
+			if mapping.OrgName != "" {
+				normalizedOrg := strings.ToLower(mapping.OrgName)
+				if seenStaticOrgs[normalizedOrg] {
+					return fmt.Errorf("issuer %s: duplicate static org: %s", issuer.Name, mapping.OrgName)
+				}
+				seenStaticOrgs[normalizedOrg] = true
+			}
+
+			// Validate roles - skip if service account (uses predefined roles)
+			if !mapping.IsServiceAccount && len(mapping.Roles) == 0 && mapping.RolesAttribute == "" {
+				return fmt.Errorf("issuer %s: claimMapping %d: either roles or rolesAttribute must be specified (unless isServiceAccount is true)", issuer.Name, j)
+			}
+
+			// Validate role values if specified
+			for _, role := range mapping.Roles {
+				if !cauth.IsValidRole(role) {
+					return fmt.Errorf("issuer %s: claimMapping %d: invalid role: %s", issuer.Name, j, role)
+				}
+			}
+		}
+
+		// Service account validation
+		if issuer.ServiceAccount {
+			if !c.GetEnvDisconnected() {
+				return fmt.Errorf("issuer %s: service account is only supported in disconnected mode", issuer.Name)
+			}
+		}
+	}
+
+	return nil
 }
 
 /* Config getters */

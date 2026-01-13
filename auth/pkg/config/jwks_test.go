@@ -675,3 +675,259 @@ func createTokenWithBadKid(t *testing.T, privateKey *rsa.PrivateKey, badKid stri
 	require.NoError(t, err, "Failed to create token with bad kid")
 	return tokenString
 }
+
+// TestExtractTokenScopes_Formats tests scope extraction from JWT claims
+// Supports both OAuth 2.0 space-separated strings and OIDC array formats
+func TestExtractTokenScopes_Formats(t *testing.T) {
+	tests := []struct {
+		name           string
+		claims         jwt.MapClaims
+		expectedScopes map[string]bool
+	}{
+		// Space-separated string format (OAuth 2.0 RFC 6749)
+		{
+			name: "scope as space-separated string",
+			claims: jwt.MapClaims{
+				"scope": "openid profile email",
+			},
+			expectedScopes: map[string]bool{"openid": true, "profile": true, "email": true},
+		},
+		{
+			name: "scope as single string",
+			claims: jwt.MapClaims{
+				"scope": "carbide",
+			},
+			expectedScopes: map[string]bool{"carbide": true},
+		},
+
+		// Array format (modern OIDC implementations)
+		{
+			name: "scope as array of strings",
+			claims: jwt.MapClaims{
+				"scope": []string{"openid", "profile", "email"},
+			},
+			expectedScopes: map[string]bool{"openid": true, "profile": true, "email": true},
+		},
+		{
+			name: "scope as array of interfaces",
+			claims: jwt.MapClaims{
+				"scope": []interface{}{"read:data", "write:data"},
+			},
+			expectedScopes: map[string]bool{"read:data": true, "write:data": true},
+		},
+
+		// Alternative scope claim names
+		{
+			name: "scopes (plural) as array",
+			claims: jwt.MapClaims{
+				"scopes": []string{"api.read", "api.write"},
+			},
+			expectedScopes: map[string]bool{"api.read": true, "api.write": true},
+		},
+		{
+			name: "scp claim (Azure AD style)",
+			claims: jwt.MapClaims{
+				"scp": "User.Read User.Write",
+			},
+			expectedScopes: map[string]bool{"User.Read": true, "User.Write": true},
+		},
+
+		// Priority: scope > scopes > scp
+		{
+			name: "scope takes priority over scopes and scp",
+			claims: jwt.MapClaims{
+				"scope":  "primary",
+				"scopes": []string{"ignored"},
+				"scp":    "also_ignored",
+			},
+			expectedScopes: map[string]bool{"primary": true},
+		},
+
+		// Empty/missing cases
+		{
+			name:           "no scope claim",
+			claims:         jwt.MapClaims{"sub": "user"},
+			expectedScopes: map[string]bool{},
+		},
+		{
+			name: "empty scope string",
+			claims: jwt.MapClaims{
+				"scope": "",
+			},
+			expectedScopes: map[string]bool{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractTokenScopes(tt.claims)
+			assert.Equal(t, tt.expectedScopes, result)
+		})
+	}
+}
+
+// TestValidateScopes tests scope validation
+func TestValidateScopes(t *testing.T) {
+	// Config with issuer-level scopes
+	config := &JwksConfig{
+		Name:   "scope-test",
+		Scopes: []string{"carbide", "openid"}, // Requires BOTH scopes at issuer level
+	}
+
+	t.Run("scope as space-separated string matches", func(t *testing.T) {
+		claims := jwt.MapClaims{
+			"sub":   "user",
+			"scope": "carbide openid profile", // space-separated
+		}
+		err := config.ValidateScopes(claims)
+		require.NoError(t, err)
+	})
+
+	t.Run("scope as array matches", func(t *testing.T) {
+		claims := jwt.MapClaims{
+			"sub":   "user",
+			"scope": []string{"carbide", "openid", "profile"}, // array
+		}
+		err := config.ValidateScopes(claims)
+		require.NoError(t, err)
+	})
+
+	t.Run("scope as interface array matches", func(t *testing.T) {
+		claims := jwt.MapClaims{
+			"sub":   "user",
+			"scope": []interface{}{"carbide", "openid"}, // interface array
+		}
+		err := config.ValidateScopes(claims)
+		require.NoError(t, err)
+	})
+
+	t.Run("missing required scope returns ErrInvalidScope", func(t *testing.T) {
+		claims := jwt.MapClaims{
+			"sub":   "user",
+			"scope": "carbide only", // missing "openid"
+		}
+		err := config.ValidateScopes(claims)
+		assert.ErrorIs(t, err, ErrInvalidScope)
+	})
+
+	t.Run("no scopes configured accepts any token", func(t *testing.T) {
+		noScopeConfig := &JwksConfig{
+			Name: "no-scope-test",
+			// No Scopes configured
+		}
+		claims := jwt.MapClaims{
+			"sub": "user",
+			// No scope claim at all
+		}
+		err := noScopeConfig.ValidateScopes(claims)
+		require.NoError(t, err)
+	})
+}
+
+// TestAudienceFormats tests that audience claims work with both string and array formats
+// Note: golang-jwt v5's claims.GetAudience() handles both formats automatically
+func TestAudienceFormats(t *testing.T) {
+	t.Run("audience as single string", func(t *testing.T) {
+		claims := jwt.MapClaims{
+			"sub": "user",
+			"aud": "api.example.com", // single string
+		}
+		aud, err := claims.GetAudience()
+		require.NoError(t, err)
+		assert.Equal(t, []string{"api.example.com"}, []string(aud))
+	})
+
+	t.Run("audience as array of strings", func(t *testing.T) {
+		claims := jwt.MapClaims{
+			"sub": "user",
+			"aud": []string{"api1.example.com", "api2.example.com"}, // array
+		}
+		aud, err := claims.GetAudience()
+		require.NoError(t, err)
+		assert.Equal(t, []string{"api1.example.com", "api2.example.com"}, []string(aud))
+	})
+
+	t.Run("audience as array of interfaces", func(t *testing.T) {
+		claims := jwt.MapClaims{
+			"sub": "user",
+			"aud": []interface{}{"api1.example.com", "api2.example.com"}, // interface array
+		}
+		aud, err := claims.GetAudience()
+		require.NoError(t, err)
+		assert.Equal(t, []string{"api1.example.com", "api2.example.com"}, []string(aud))
+	})
+
+	t.Run("missing audience returns empty", func(t *testing.T) {
+		claims := jwt.MapClaims{
+			"sub": "user",
+			// No aud claim
+		}
+		aud, err := claims.GetAudience()
+		require.NoError(t, err)
+		assert.Empty(t, aud)
+	})
+}
+
+// TestValidateAudiences tests audience validation
+func TestValidateAudiences(t *testing.T) {
+	t.Run("no_audiences_configured_passes", func(t *testing.T) {
+		config := &JwksConfig{
+			Name:      "test",
+			Audiences: nil,
+		}
+		claims := jwt.MapClaims{"sub": "user"}
+		err := config.ValidateAudiences(claims)
+		assert.NoError(t, err)
+	})
+
+	t.Run("token_matches_one_of_configured_audiences", func(t *testing.T) {
+		config := &JwksConfig{
+			Name:      "test",
+			Audiences: []string{"carbide-rest-api", "other-api"},
+		}
+		claims := jwt.MapClaims{"sub": "user", "aud": "carbide-rest-api"}
+		err := config.ValidateAudiences(claims)
+		assert.NoError(t, err)
+	})
+
+	t.Run("token_audience_array_matches_configured", func(t *testing.T) {
+		config := &JwksConfig{
+			Name:      "test",
+			Audiences: []string{"carbide-rest-api"},
+		}
+		claims := jwt.MapClaims{"sub": "user", "aud": []string{"other", "carbide-rest-api"}}
+		err := config.ValidateAudiences(claims)
+		assert.NoError(t, err)
+	})
+
+	t.Run("token_audience_exact_match_required", func(t *testing.T) {
+		config := &JwksConfig{
+			Name:      "test",
+			Audiences: []string{"Carbide-REST-API"},
+		}
+		// Different case should NOT match (exact string comparison)
+		claims := jwt.MapClaims{"sub": "user", "aud": "carbide-rest-api"}
+		err := config.ValidateAudiences(claims)
+		assert.ErrorIs(t, err, ErrInvalidAudience)
+	})
+
+	t.Run("token_audience_does_not_match", func(t *testing.T) {
+		config := &JwksConfig{
+			Name:      "test",
+			Audiences: []string{"carbide-rest-api"},
+		}
+		claims := jwt.MapClaims{"sub": "user", "aud": "wrong-audience"}
+		err := config.ValidateAudiences(claims)
+		assert.ErrorIs(t, err, ErrInvalidAudience)
+	})
+
+	t.Run("missing_audience_when_required_fails", func(t *testing.T) {
+		config := &JwksConfig{
+			Name:      "test",
+			Audiences: []string{"carbide-rest-api"},
+		}
+		claims := jwt.MapClaims{"sub": "user"}
+		err := config.ValidateAudiences(claims)
+		assert.ErrorIs(t, err, ErrInvalidAudience)
+	})
+}

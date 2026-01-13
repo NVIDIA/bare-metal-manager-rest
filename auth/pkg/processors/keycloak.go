@@ -77,11 +77,18 @@ func (h *KeycloakProcessor) ProcessToken(c echo.Context, tokenStr string, jwksCo
 		firstName = claims.GetClientId()
 	}
 
-	orgData := claims.ToOrgData()
+	tokenOrgData := claims.ToOrgData()
 
-	if len(orgData) == 0 {
+	if len(tokenOrgData) == 0 {
 		return nil, util.NewAPIError(http.StatusForbidden, "User does not have any roles assigned", nil)
 	}
+
+	// Get org name from context
+	reqOrgName := c.Get("orgName").(string)
+
+	// Set isServiceAccount in context based on clientId
+	isServiceAccount := claims.GetClientId() != "" && jwksConfig.ServiceAccount
+	config.SetIsServiceAccountInContext(c, isServiceAccount)
 
 	userDAO := cdbm.NewUserDAO(h.dbSession)
 	dbUser, created, err := userDAO.GetOrCreate(context.Background(), nil, cdbm.UserGetOrCreateInput{
@@ -92,16 +99,28 @@ func (h *KeycloakProcessor) ProcessToken(c echo.Context, tokenStr string, jwksCo
 		return nil, util.NewAPIError(http.StatusUnauthorized, "Failed to retrieve or create user record, DB error", nil)
 	}
 
+	// Use GetUpdatedUserOrgData to check if update is needed for the requested org
+	updatedUser, apiErr := GetUpdatedUserOrgData(*dbUser, tokenOrgData, reqOrgName, logger)
+	if apiErr != nil {
+		return nil, apiErr
+	}
+
 	// If user was created or needs updates, update with latest information
-	needsUpdate := created || !dbUser.OrgData.Equal(orgData)
+	needsUpdate := created || updatedUser != nil
 	if needsUpdate {
+		var OrgDataParam cdbm.OrgData
+		if updatedUser != nil && updatedUser.OrgData != nil {
+			OrgDataParam = updatedUser.OrgData
+		} else if dbUser.OrgData != nil {
+			OrgDataParam = dbUser.OrgData
+		}
 		// Regular update is sufficient since we're updating by UserID (primary key)
 		dbUser, err = userDAO.Update(context.Background(), nil, cdbm.UserUpdateInput{
 			UserID:    dbUser.ID,
 			Email:     &email,
 			FirstName: &firstName,
 			LastName:  &lastName,
-			OrgData:   orgData,
+			OrgData:   OrgDataParam,
 		})
 		if err != nil {
 			logger.Error().Err(err).Msg("failed to update user in DB")

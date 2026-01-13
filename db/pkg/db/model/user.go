@@ -47,12 +47,13 @@ var (
 
 // Org captures details for organizations
 type Org struct {
-	ID          int      `json:"id"`
-	Name        string   `json:"name"`
-	DisplayName string   `json:"displayName"`
-	OrgType     string   `json:"orgType"`
-	Roles       []string `json:"roles"`
-	Teams       []Team   `json:"teams"`
+	ID          int        `json:"id"`
+	Name        string     `json:"name"`
+	DisplayName string     `json:"displayName"`
+	OrgType     string     `json:"orgType"`
+	Roles       []string   `json:"roles"`
+	Teams       []Team     `json:"teams"`
+	Updated     *time.Time `json:"updated,omitempty"`
 }
 
 // Equal compares two Org structs, ignoring order in slices

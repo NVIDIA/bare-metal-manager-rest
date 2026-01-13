@@ -12,6 +12,7 @@ package processors
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -24,15 +25,31 @@ import (
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 )
 
-// KeycloakProcessor processes Keycloak JWT tokens
+// Claim name arrays for extracting user info from different token formats
+var (
+	firstNameClaims = []string{"given_name", "name", "preferred_username", "firstName", "first_name"}
+	lastNameClaims  = []string{"family_name", "lastName", "last_name"}
+	emailClaims     = []string{"email"}
+)
+
+// CustomProcessor processes custom external issuer JWT tokens
+// Supports both service accounts and user tokens with claim mappings
 type CustomProcessor struct {
 	dbSession *cdb.Session
 }
 
-// Ensure KeycloakProcessor implements config.TokenProcessor interface
+// Ensure CustomProcessor implements config.TokenProcessor interface
 var _ config.TokenProcessor = (*CustomProcessor)(nil)
 
-// HandleToken processes Keycloak JWT tokens
+// ProcessToken processes custom external issuer JWT tokens
+// Supports:
+// - Service accounts with static roles
+// - User tokens with dynamic roles from claims (via rolesAttribute)
+// - User tokens with static roles (via roles list)
+// - Dynamic org extraction from claims (via orgAttribute)
+// - Static org assignment from config (via orgName)
+// - Issuer-level audience and scope validation (validated FIRST)
+// - Org access validation BEFORE any DB operations
 func (h *CustomProcessor) ProcessToken(c echo.Context, tokenStr string, jwksConfig *config.JwksConfig, logger zerolog.Logger) (*cdbm.User, *util.APIError) {
 	// Use map claims to be able to extract custom claims like scopes
 	claims := jwt.MapClaims{}
@@ -61,69 +78,78 @@ func (h *CustomProcessor) ProcessToken(c echo.Context, tokenStr string, jwksConf
 		return nil, util.NewAPIError(http.StatusUnauthorized, "Invalid authorization token, could not find subject ID in claim", nil)
 	}
 
-	// Validate audiences if configured
-	if len(jwksConfig.Audiences) > 0 {
-		if err := validateAudiences(claims, jwksConfig.Audiences, logger); err != nil {
-			return nil, err
+	// Get org name from route (validated by middleware)
+	reqOrgFromRoute := strings.ToLower(c.Param("orgName"))
+
+	// Step 1: Validate issuer-level audiences and scopes FIRST
+	if err := jwksConfig.ValidateAudiences(claims); err != nil {
+		logger.Warn().Err(err).Msg("Token audience does not match issuer configuration")
+		return nil, util.NewAPIError(http.StatusUnauthorized, "Token audience does not match issuer configuration", nil)
+	}
+	if err := jwksConfig.ValidateScopes(claims); err != nil {
+		logger.Warn().Err(err).Msg("Token scopes do not match issuer requirements")
+		return nil, util.NewAPIError(http.StatusForbidden, "Token scopes do not match required scopes for issuer", nil)
+	}
+
+	// Step 2: Extract org data (access already validated, this builds the full orgData)
+	orgData, isServiceAccount, err := jwksConfig.GetOrgDataFromClaim(claims, reqOrgFromRoute)
+	if err != nil {
+		// Handle specific error types with appropriate HTTP status codes
+		switch {
+		case errors.Is(err, config.ErrReservedOrgName):
+			logger.Warn().Err(err).Str("requested_org", reqOrgFromRoute).Msg("Token claims reserved organization name")
+			return nil, util.NewAPIError(http.StatusForbidden, "Token claims a reserved organization name", nil)
+		case errors.Is(err, config.ErrInvalidConfiguration):
+			logger.Warn().Err(err).Str("requested_org", reqOrgFromRoute).Msg("No claim mapping for requested org")
+			return nil, util.NewAPIError(http.StatusUnauthorized, "No claim mapping configured for requested organization", nil)
+		case errors.Is(err, config.ErrInvalidClaim):
+			logger.Warn().Err(err).Str("requested_org", reqOrgFromRoute).Msg("No roles found in token claims")
+			return nil, util.NewAPIError(http.StatusUnauthorized, "No roles found in token claims for organization", nil)
+		default:
+			logger.Warn().Err(err).Str("requested_org", reqOrgFromRoute).Msg("Token validation failed")
+			return nil, util.NewAPIError(http.StatusUnauthorized, "Token validation failed", nil)
 		}
 	}
 
-	// Validate scopes if configured
-	if len(jwksConfig.Scopes) > 0 {
-		if err := validateScopes(claims, jwksConfig.Scopes, logger); err != nil {
-			return nil, err
-		}
-	}
+	// Note: GetOrgDataFromClaim already validates:
+	// - Requested org exists in orgData (returns ErrInvalidConfiguration if not)
+	// - Requested org has roles (returns ErrInvalidClaim if not)
+	// So no additional checks needed here.
 
-	// check if service accounts are enabled, if not return an error
-	if !jwksConfig.ServiceAccount {
-		logger.Error().Msg("Service account detected but service accounts are not enabled")
-		return nil, util.NewAPIError(http.StatusUnauthorized, "Service accounts are not enabled", nil)
+	// Step 3: Build auxiliary ID for DB lookup
+	auxID := sub
+	if prefix := jwksConfig.GetSubjectPrefix(); prefix != "" {
+		auxID = prefix + ":" + sub
 	}
+	// Store whether this is a service account request
+	config.SetIsServiceAccountInContext(c, isServiceAccount)
 
-	auxId := sub
-	// Extract issuer from claims
-	issuer, _ := claims.GetIssuer()
-	firstName := issuer
-	lastName := ""
-	email := ""
-	orgData := cdbm.OrgData{
-		jwksConfig.Name: cdbm.Org{
-			Name:        jwksConfig.Name, // Issuer name in config represents the org name
-			DisplayName: jwksConfig.Name,
-			OrgType:     "Enterprise",
-			Roles:       []string{"FORGE_PROVIDER_ADMIN", "FORGE_TENANT_ADMIN"},
-			Teams:       []cdbm.Team{},
-		}}
-
-	if len(orgData) == 0 {
-		return nil, util.NewAPIError(http.StatusForbidden, "User does not have any roles assigned", nil)
-	}
+	// Extract user info from claims
+	firstName, lastName := extractNames(claims)
+	email := extractStringClaim(claims, emailClaims...)
 
 	userDAO := cdbm.NewUserDAO(h.dbSession)
-	dbUser, created, err := userDAO.GetOrCreate(context.Background(), nil, cdbm.UserGetOrCreateInput{
-		AuxiliaryID: &auxId,
+	dbUser, _, err := userDAO.GetOrCreate(context.Background(), nil, cdbm.UserGetOrCreateInput{
+		AuxiliaryID: &auxID,
 	})
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to get or create user by oidc_id in DB")
 		return nil, util.NewAPIError(http.StatusUnauthorized, "Failed to retrieve or create user record, DB error", nil)
 	}
 
-	// If user was created or needs updates, update with latest information
-	needsUpdate := created || !dbUser.OrgData.Equal(orgData)
-	if needsUpdate {
-		if created {
-			logger.Info().Str("userid", dbUser.ID.String()).Msg("updating newly created user with profile information")
-		} else {
-			logger.Info().Str("userid", dbUser.ID.String()).Msg("updating user with new information")
-		}
+	// Get updated org data - only update the requested org, preserve others
+	updatedUser, apiErr := GetUpdatedUserOrgData(*dbUser, orgData, reqOrgFromRoute, logger)
+	if apiErr != nil {
+		return nil, apiErr
+	}
 
+	if updatedUser != nil {
 		dbUser, err = userDAO.Update(context.Background(), nil, cdbm.UserUpdateInput{
 			UserID:    dbUser.ID,
 			Email:     &email,
 			FirstName: &firstName,
 			LastName:  &lastName,
-			OrgData:   orgData,
+			OrgData:   updatedUser.OrgData,
 		})
 		if err != nil {
 			logger.Error().Err(err).Msg("failed to update user in DB")
@@ -136,127 +162,31 @@ func (h *CustomProcessor) ProcessToken(c echo.Context, tokenStr string, jwksConf
 	return dbUser, nil
 }
 
-// validateAudiences checks if the token's audience claim contains at least one of the configured audiences
-func validateAudiences(claims jwt.MapClaims, configuredAudiences []string, logger zerolog.Logger) *util.APIError {
-	// If no audiences are configured, skip validation
-	if len(configuredAudiences) == 0 {
-		return nil
-	}
-
-	// Extract audience claim from token
-	audClaim, exists := claims["aud"]
-	if !exists {
-		logger.Error().Msg("Token does not contain audience claim")
-		return util.NewAPIError(http.StatusUnauthorized,
-			"Token missing required audience claim. Token must contain 'aud' claim", nil)
-	}
-
-	var tokenAudiences []string
-
-	// Handle both string and array audience claims
-	switch aud := audClaim.(type) {
-	case string:
-		tokenAudiences = []string{aud}
-	case []interface{}:
-		for _, a := range aud {
-			if audStr, ok := a.(string); ok {
-				tokenAudiences = append(tokenAudiences, audStr)
-			}
-		}
-	case []string:
-		tokenAudiences = aud
-	default:
-		logger.Error().Msgf("Unexpected audience claim type: %T", audClaim)
-		return util.NewAPIError(http.StatusUnauthorized,
-			"Invalid audience claim format. Expected string or array of strings", nil)
-	}
-
-	// Check if at least one configured audience matches the token audiences
-	for _, configAud := range configuredAudiences {
-		for _, tokenAud := range tokenAudiences {
-			if configAud == tokenAud {
-				return nil
+// extractStringClaim extracts a string value from claims, trying multiple keys
+func extractStringClaim(claims jwt.MapClaims, keys ...string) string {
+	for _, key := range keys {
+		if val, ok := claims[key]; ok {
+			if str, ok := val.(string); ok && str != "" {
+				return str
 			}
 		}
 	}
-
-	logger.Error().
-		Strs("token_audiences", tokenAudiences).
-		Strs("configured_audiences", configuredAudiences).
-		Msg("Token audience does not match any configured audiences")
-	return util.NewAPIError(http.StatusUnauthorized,
-		"Token audience does not match required audiences. Token audiences: ["+strings.Join(tokenAudiences, ", ")+
-			"], Required audiences: ["+strings.Join(configuredAudiences, ", ")+"]", nil)
+	return ""
 }
 
-// validateScopes checks if the token contains all required scopes
-func validateScopes(claims jwt.MapClaims, requiredScopes []string, logger zerolog.Logger) *util.APIError {
-	// If no scopes are required, skip validation
-	if len(requiredScopes) == 0 {
-		return nil
-	}
+// extractNames extracts firstName and lastName from claims, splitting firstName if lastName is empty
+func extractNames(claims jwt.MapClaims) (firstName, lastName string) {
+	firstName = extractStringClaim(claims, firstNameClaims...)
+	lastName = extractStringClaim(claims, lastNameClaims...)
 
-	var tokenScopes []string
-
-	scopeClaim, scopeExists := claims["scope"]
-	if !scopeExists {
-		scopeClaim, scopeExists = claims["scopes"]
-	}
-	if !scopeExists {
-		scopeClaim, scopeExists = claims["scp"]
-	}
-
-	if !scopeExists {
-		logger.Error().Msg("Token does not contain scope claim (scope, scopes, or scp)")
-		return util.NewAPIError(http.StatusUnauthorized,
-			"Token missing required scope claim. Token must contain 'scope', 'scopes', or 'scp' claim", nil)
-	}
-
-	// Handle different scope claim formats
-	switch scope := scopeClaim.(type) {
-	case string:
-		// Space-separated string of scopes
-		if scope != "" {
-			tokenScopes = strings.Fields(scope)
-		}
-	case []interface{}:
-		// Array of scopes
-		for _, s := range scope {
-			if scopeStr, ok := s.(string); ok {
-				tokenScopes = append(tokenScopes, scopeStr)
-			}
-		}
-	case []string:
-		tokenScopes = scope
-	default:
-		logger.Error().Msgf("Unexpected scope claim type: %T", scopeClaim)
-		return util.NewAPIError(http.StatusUnauthorized,
-			"Invalid scope claim format. Expected string (space-separated) or array of strings", nil)
-	}
-
-	// Check if token contains all required scopes
-	tokenScopeSet := make(map[string]bool)
-	for _, scope := range tokenScopes {
-		tokenScopeSet[scope] = true
-	}
-
-	missingScopes := []string{}
-	for _, requiredScope := range requiredScopes {
-		if !tokenScopeSet[requiredScope] {
-			missingScopes = append(missingScopes, requiredScope)
+	// If lastName is empty but firstName has multiple words, split it
+	if lastName == "" && firstName != "" {
+		words := strings.Fields(firstName)
+		if len(words) > 1 {
+			firstName = words[0]
+			lastName = strings.Join(words[1:], " ")
 		}
 	}
 
-	if len(missingScopes) > 0 {
-		logger.Error().
-			Strs("token_scopes", tokenScopes).
-			Strs("required_scopes", requiredScopes).
-			Strs("missing_scopes", missingScopes).
-			Msg("Token is missing required scopes")
-		return util.NewAPIError(http.StatusUnauthorized,
-			"Token missing required scopes. Missing: ["+strings.Join(missingScopes, ", ")+
-				"], Required: ["+strings.Join(requiredScopes, ", ")+"]", nil)
-	}
-
-	return nil
+	return firstName, lastName
 }

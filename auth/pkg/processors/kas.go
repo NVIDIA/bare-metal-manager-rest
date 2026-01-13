@@ -120,6 +120,9 @@ func (h *KASProcessor) ProcessToken(c echo.Context, tokenStr string, jwksCfg *co
 
 	}
 
+	// KAS tokens are user tokens, not service account tokens
+	config.SetIsServiceAccountInContext(c, false)
+
 	// Set user in context
 	c.Set("user", dbUser)
 	return dbUser, nil

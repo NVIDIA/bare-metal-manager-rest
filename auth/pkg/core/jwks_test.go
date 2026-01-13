@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
@@ -75,7 +76,7 @@ func TestJWKS_GetKIDPublicKeyMap(t *testing.T) {
 			defer testServer.Close()
 
 			// Fetch JWKS using our function
-			jwks, err := NewJWKSFromURL(testServer.URL)
+			jwks, err := NewJWKSFromURL(testServer.URL, 5*time.Second)
 			assert.NoError(t, err)
 			assert.NotNil(t, jwks)
 			assert.NotNil(t, jwks.Set)
@@ -200,7 +201,7 @@ func TestNewJWKSFromURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := NewJWKSFromURL(tt.args.url)
+			got, err := NewJWKSFromURL(tt.args.url, 5*time.Second)
 
 			if tt.wantError {
 				assert.Error(t, err)
@@ -255,7 +256,7 @@ func TestJWKS_GetKIDPublicKeyMap_EmptyKeys(t *testing.T) {
 	}))
 	defer testServer.Close()
 
-	jwks, err := NewJWKSFromURL(testServer.URL)
+	jwks, err := NewJWKSFromURL(testServer.URL, 5*time.Second)
 	assert.NoError(t, err)
 
 	// Verify JWKS has no keys

@@ -60,8 +60,11 @@ func (kc *KeycloakConfig) initializeJWKS() bool {
 	jwksURL := fmt.Sprintf("%s/realms/%s/protocol/openid-connect/certs", kc.BaseURL, kc.Realm)
 
 	tempJwksConfig := &JwksConfig{
-		URL:    jwksURL,
-		Issuer: kc.Issuer,
+		Name:           fmt.Sprintf("keycloak-%s", kc.Realm),
+		URL:            jwksURL,
+		Issuer:         kc.Issuer,
+		Origin:         TokenOriginKeycloak,
+		ServiceAccount: kc.ServiceAccountEnabled,
 	}
 
 	// Attempt to fetch JWKS during initialization

@@ -38,12 +38,11 @@ temporal:
     caPath: certs/client-cloud/ca.crt
   encryptionKey: "local-dev" # Must match encryption key in workflow module
 
-auth:
+issuers:
   - name: kas
-    origin: 1 # TokenOriginKas
-    url: https://authn.nvidia.com/pubJWKS
+    origin: kas
+    jwks: https://authn.nvidia.com/pubJWKS
     issuer: "authn.nvidia.com"
-    serviceAccount: false
 
 siteManager:
   enabled: false

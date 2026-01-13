@@ -1015,6 +1015,7 @@ func TestAuthProcessor_KeycloakFlowWithMockJWKS(t *testing.T) {
 			c := e.NewContext(req, rec)
 			c.SetParamNames("orgName")
 			c.SetParamValues(tt.orgName)
+			c.Set("orgName", tt.orgName) // Set in context for KeycloakProcessor
 			c.SetPath(tt.path)
 
 			// Execute auth processor
@@ -1158,6 +1159,7 @@ func TestAuthProcessor_KeycloakServiceAccountsDisabled(t *testing.T) {
 			c := e.NewContext(req, rec)
 			c.SetParamNames("orgName")
 			c.SetParamValues(tt.orgName)
+			c.Set("orgName", tt.orgName) // Set in context for KeycloakProcessor
 			c.SetPath(tt.path)
 
 			// Execute auth processor with service accounts DISABLED

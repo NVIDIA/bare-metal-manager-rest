@@ -48,10 +48,10 @@ data:
         enabled: false
       encryptionKeyPath: /var/secrets/temporal/encryption-key
 
-    auth:
+    issuers:
       - name: keycloak
-        origin: 2
-        url: http://keycloak:8080/realms/carbide-dev/protocol/openid-connect/certs
+        origin: keycloak
+        jwks: http://keycloak:8080/realms/carbide-dev/protocol/openid-connect/certs
         issuer: "http://localhost:8080/realms/carbide-dev"
         serviceAccount: true
 

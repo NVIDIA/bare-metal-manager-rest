@@ -31,15 +31,23 @@ var (
 	ErrKeyNotFound = errors.New("key not found")
 )
 
+// DefaultJWKSTimeout is the default timeout for JWKS fetch operations
+const DefaultJWKSTimeout = 5 * time.Second
+
 // JWKS represents a set of JSON Web keys using go-jose
 type JWKS struct {
 	Set *jose.JSONWebKeySet
 }
 
 // NewJWKSFromURL creates a new set of JSON Web Keys given a URL using go-jose
-func NewJWKSFromURL(url string) (*JWKS, error) {
+// If timeout is zero or negative, uses the default timeout of 5 seconds
+func NewJWKSFromURL(url string, timeout time.Duration) (*JWKS, error) {
+	if timeout <= 0 {
+		timeout = DefaultJWKSTimeout
+	}
+
 	client := &http.Client{}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)

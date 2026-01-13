@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog"
@@ -34,7 +35,54 @@ const (
 	ngcUserNameHeader = "NV-Ngc-User-Name"
 	// Kas v2 NGC user email header
 	ngcUserEmailHeader = "X-Ngc-Email-Id"
+
+	// OrgUpdateStalePeriod is the duration after which an org's Updated field is considered stale
+	OrgUpdateStalePeriod = time.Minute
 )
+
+// GetUpdatedUserOrgData merges the requested org from tokenOrgData into the existing user's OrgData.
+// It only updates the specific org from the request, preserving other orgs.
+// Returns a partial User with updated OrgData if update is needed, or nil if no update needed.
+// Returns an error if the requested org is not found in token claims.
+//
+// Update is needed if:
+// - Requested org doesn't exist in user's OrgData
+// - Requested org data has changed
+// - Requested org's Updated field is nil or stale (> OrgUpdateStalePeriod)
+func GetUpdatedUserOrgData(existingUser cdbm.User, tokenOrgData cdbm.OrgData, reqOrgName string, logger zerolog.Logger) (*cdbm.User, *util.APIError) {
+	// Start with existing org data
+	mergedOrgData := existingUser.OrgData
+	if mergedOrgData == nil {
+		mergedOrgData = cdbm.OrgData{}
+	}
+
+	// Get the org from token claims for the requested org
+	reqOrg, hasReqOrg := tokenOrgData[reqOrgName]
+	if !hasReqOrg {
+		logger.Warn().Str("requested_org", reqOrgName).Msg("Requested org not found in token claims")
+		return nil, util.NewAPIError(http.StatusForbidden, "Requested organization not found in token claims", nil)
+	}
+
+	// Check if update is needed
+	existingOrg, existsInDB := mergedOrgData[reqOrgName]
+	isStale := !existsInDB || existingOrg.Updated == nil || time.Since(*existingOrg.Updated) > OrgUpdateStalePeriod
+	needsUpdate := isStale || !existsInDB || !existingOrg.Equal(reqOrg)
+
+	if !needsUpdate {
+		return nil, nil
+	}
+
+	// Set the Updated timestamp on the requested org
+	now := time.Now().UTC()
+	reqOrg.Updated = &now
+	mergedOrgData[reqOrgName] = reqOrg
+
+	logger.Info().Str("org", reqOrgName).Msg("updating user org data")
+
+	return &cdbm.User{
+		OrgData: mergedOrgData,
+	}, nil
+}
 
 // GetUpdatedUserFromHeaders extracts user information from headers sent by KAS
 // Steps include
@@ -134,11 +182,13 @@ func GetUpdatedUserFromHeaders(c echo.Context, existingUser cdbm.User, ngcOrgNam
 	ngcOrg, err := existingUser.OrgData.GetOrgByName(ngcOrgName)
 	if err != nil {
 		// Org not found, create new
+		now := time.Now().UTC()
 		ngcOrg = &cdbm.Org{
 			Name:        ngcOrgName,
 			DisplayName: ngcOrgDisplayName,
 			Roles:       newNgcRoles,
 			Teams:       []cdbm.Team{},
+			Updated:     &now,
 		}
 		OrgData[ngcOrgName] = *ngcOrg
 		updatedUser.OrgData = OrgData
@@ -160,14 +210,18 @@ func GetUpdatedUserFromHeaders(c echo.Context, existingUser cdbm.User, ngcOrgNam
 			}
 		}
 		if updateRoles {
+			now := time.Now().UTC()
 			ngcOrg.Roles = newNgcRoles
+			ngcOrg.Updated = &now
 			OrgData[ngcOrgName] = *ngcOrg
 			updatedUser.OrgData = OrgData
 			isUserUpdated = true
 		}
 
 		if ngcOrg.DisplayName != ngcOrgDisplayName {
+			now := time.Now().UTC()
 			ngcOrg.DisplayName = ngcOrgDisplayName
+			ngcOrg.Updated = &now
 			OrgData[ngcOrgName] = *ngcOrg
 			updatedUser.OrgData = OrgData
 			isUserUpdated = true
