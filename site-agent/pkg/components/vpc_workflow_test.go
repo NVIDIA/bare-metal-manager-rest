@@ -309,6 +309,5 @@ func TestVpcWorkflows(t *testing.T) {
 	span.End()
 
 	computils.GetSAStatus(computils.VPCStatus)
-	computils.GetSAStatus(computils.DatastoreStatus)
 	time.Sleep(16 * time.Second)
 }

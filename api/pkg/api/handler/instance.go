@@ -45,9 +45,9 @@ import (
 	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 	cdbp "github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+	swe "github.com/nvidia/carbide-rest/site-workflow/pkg/error"
 	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/nvidia/carbide-rest/workflow/pkg/queue"
-	swe "github.com/nvidia/carbide-rest/site-workflow/pkg/error"
 )
 
 // ~~~~~ Create Handler ~~~~~ //
@@ -2723,13 +2723,17 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 				SiteID:                   site.ID,
 				NVLinkLogicalPartitionID: nvllPartition.ID,
 				DeviceInstance:           apiNvlIfc.DeviceInstance,
+				Status:                   cdbm.NVLinkInterfaceStatusPending,
+				CreatedBy:                dbUser.ID,
 			})
+
 			if err != nil {
 				logger.Error().Err(err).Msg("failed to create NVLink Interface record in DB")
 				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create NVLink Interface for Instance, DB error", nil)
 			}
 			newNvlIfcs = append(newNvlIfcs, *newNvlIfc)
 		}
+
 		// Update status of existing NVLink interfaces to Deleting
 		for i := range existingNvlIfcs {
 			existingNvlIfcs[i].Status = cdbm.NVLinkInterfaceStatusDeleting
