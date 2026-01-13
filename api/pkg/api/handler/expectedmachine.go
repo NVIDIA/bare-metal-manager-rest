@@ -40,10 +40,46 @@ import (
 	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
 	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/nvidia/carbide-rest/workflow/pkg/queue"
+	"github.com/rs/zerolog"
 	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/attribute"
 	tclient "go.temporal.io/sdk/client"
 )
+
+func validateProviderTenantSiteAccess(ctx context.Context, logger zerolog.Logger, dbSession *cdb.Session, infrastructureProvider *cdbm.InfrastructureProvider, tenant *cdbm.Tenant, site *cdbm.Site) (code int, message string) {
+	// Validate permissions based on user role
+	if infrastructureProvider != nil {
+		// Validate that site belongs to the organization's infrastructure provider
+		if site.InfrastructureProviderID != infrastructureProvider.ID {
+			logger.Warn().Msg("Site is not owned by org's Infrastructure Provider")
+			return http.StatusForbidden, "Site is not owned by org's Infrastructure Provider"
+		}
+	} else if tenant != nil {
+		// Check if tenant has an account with the Site's Infrastructure Provider
+		taDAO := cdbm.NewTenantAccountDAO(dbSession)
+		_, taCount, err := taDAO.GetAll(ctx, nil, cdbm.TenantAccountFilterInput{
+			InfrastructureProviderID: &site.InfrastructureProviderID,
+			TenantIDs:                []uuid.UUID{tenant.ID},
+		}, paginator.PageInput{}, []string{})
+		if err != nil {
+			logger.Error().Err(err).Msg("error retrieving Tenant Account for Site")
+			return http.StatusInternalServerError, "Failed to retrieve Tenant Account with Site's Provider due to DB error"
+		}
+
+		if taCount == 0 {
+			logger.Error().Msg("Tenant doesn't have an account with Site's Provider")
+			return http.StatusForbidden, "Tenant doesn't have an account with Site's Provider"
+		}
+	}
+
+	// Validate that site is in Registered state
+	if site.Status != cdbm.SiteStatusRegistered {
+		logger.Warn().Msg("Site is not in Registered state")
+		return http.StatusBadRequest, "Site is not in Registered state, cannot perform operation"
+	}
+
+	return http.StatusOK, ""
+}
 
 // ~~~~~ Create Handler ~~~~~ //
 
@@ -135,35 +171,10 @@ func (cemh CreateExpectedMachineHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site specified in request data due to DB error", nil)
 	}
 
-	// Validate permissions based on user role
-	if infrastructureProvider != nil {
-		// Validate that site belongs to the organization's infrastructure provider
-		if site.InfrastructureProviderID != infrastructureProvider.ID {
-			logger.Warn().Msg("Site specified in request data does not belong to current org's Infrastructure Provider")
-			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request data does not belong to current org", nil)
-		}
-	} else if tenant != nil {
-		// Check if tenant has an account with the Site's Infrastructure Provider
-		taDAO := cdbm.NewTenantAccountDAO(cemh.dbSession)
-		_, taCount, err := taDAO.GetAll(ctx, nil, cdbm.TenantAccountFilterInput{
-			InfrastructureProviderID: &site.InfrastructureProviderID,
-			TenantIDs:                []uuid.UUID{tenant.ID},
-		}, paginator.PageInput{}, []string{})
-		if err != nil {
-			logger.Error().Err(err).Msg("error retrieving Tenant Account for Site")
-			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Tenant Account with Site's Provider due to DB error", nil)
-		}
-
-		if taCount == 0 {
-			logger.Error().Msg("Tenant doesn't have an account with Infrastructure Provider")
-			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Tenant doesn't have an account with Provider of Site specified in request", nil)
-		}
-	}
-
-	// Validate that site is in Registered state
-	if site.Status != cdbm.SiteStatusRegistered {
-		logger.Warn().Msg("Site specified in request data is not in Registered state")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request data is not in Registered state, cannot create Expected Machine", nil)
+	// Validate ProviderTenantSite relationship and site state
+	code, message := validateProviderTenantSiteAccess(ctx, logger, cemh.dbSession, infrastructureProvider, tenant, site)
+	if code != http.StatusOK {
+		return cerr.NewAPIErrorResponse(c, code, message, nil)
 	}
 
 	// Check for duplicate MAC address
@@ -693,35 +704,10 @@ func (uemh UpdateExpectedMachineHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site details for Expected Machine", nil)
 	}
 
-	// Validate permissions based on user role
-	if infrastructureProvider != nil {
-		// Validate that site belongs to the organization's infrastructure provider
-		if site.InfrastructureProviderID != infrastructureProvider.ID {
-			logger.Warn().Msg("Expected Machine does not belong to a Site owned by org's Infrastructure Provider")
-			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Expected Machine does not belong to a Site owned by current org", nil)
-		}
-	} else if tenant != nil {
-		// Check if tenant has an account with the Site's Infrastructure Provider
-		taDAO := cdbm.NewTenantAccountDAO(uemh.dbSession)
-		_, taCount, err := taDAO.GetAll(ctx, nil, cdbm.TenantAccountFilterInput{
-			InfrastructureProviderID: &site.InfrastructureProviderID,
-			TenantIDs:                []uuid.UUID{tenant.ID},
-		}, paginator.PageInput{}, []string{})
-		if err != nil {
-			logger.Error().Err(err).Msg("error retrieving Tenant Account for Site")
-			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Tenant Account with Site's Provider due to DB error", nil)
-		}
-
-		if taCount == 0 {
-			logger.Error().Msg("Tenant doesn't have an account with Site's Provider")
-			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Tenant doesn't have an account with Provider of Expected Machine's Site", nil)
-		}
-	}
-
-	// Validate that site is in Registered state
-	if site.Status != cdbm.SiteStatusRegistered {
-		logger.Warn().Msg("Expected Machine's Site is not in Registered state")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Expected Machine's Site is not in Registered state, cannot execute update", nil)
+	// Validate ProviderTenantSite relationship and site state
+	code, message := validateProviderTenantSiteAccess(ctx, logger, uemh.dbSession, infrastructureProvider, tenant, site)
+	if code != http.StatusOK {
+		return cerr.NewAPIErrorResponse(c, code, message, nil)
 	}
 
 	// Start a db tx
@@ -941,35 +927,10 @@ func (demh DeleteExpectedMachineHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site details for Expected Machine", nil)
 	}
 
-	// Validate permissions based on user role
-	if infrastructureProvider != nil {
-		// Validate that site belongs to the organization's infrastructure provider
-		if site.InfrastructureProviderID != infrastructureProvider.ID {
-			logger.Warn().Msg("Expected Machine does not belong to a Site owned by org's Infrastructure Provider")
-			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Expected Machine does not belong to a Site owned by current org", nil)
-		}
-	} else if tenant != nil {
-		// Check if tenant has an account with the Site's Infrastructure Provider
-		taDAO := cdbm.NewTenantAccountDAO(demh.dbSession)
-		_, taCount, err := taDAO.GetAll(ctx, nil, cdbm.TenantAccountFilterInput{
-			InfrastructureProviderID: &site.InfrastructureProviderID,
-			TenantIDs:                []uuid.UUID{tenant.ID},
-		}, paginator.PageInput{}, []string{})
-		if err != nil {
-			logger.Error().Err(err).Msg("error retrieving Tenant Account for Site")
-			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Tenant Account with Site's Provider due to DB error", nil)
-		}
-
-		if taCount == 0 {
-			logger.Error().Msg("Tenant doesn't have an account with Site's Provider")
-			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Tenant doesn't have an account with Provider of Expected Machine's Site", nil)
-		}
-	}
-
-	// Validate that site is in Registered state
-	if site.Status != cdbm.SiteStatusRegistered {
-		logger.Warn().Msg("Expected Machine's Site is not in Registered state")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Expected Machine's Site is not in Registered state, cannot execute delete", nil)
+	// Validate ProviderTenantSite relationship and site state
+	code, message := validateProviderTenantSiteAccess(ctx, logger, demh.dbSession, infrastructureProvider, tenant, site)
+	if code != http.StatusOK {
+		return cerr.NewAPIErrorResponse(c, code, message, nil)
 	}
 
 	// Start a db tx
@@ -1142,35 +1103,10 @@ func (cemh CreateExpectedMachinesHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site specified in request data due to DB error", nil)
 	}
 
-	// Validate permissions based on user role
-	if infrastructureProvider != nil {
-		// Validate that site belongs to the organization's infrastructure provider
-		if site.InfrastructureProviderID != infrastructureProvider.ID {
-			logger.Warn().Msg("Site specified in request data does not belong to current org's Infrastructure Provider")
-			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request data does not belong to current org", nil)
-		}
-	} else if tenant != nil {
-		// Check if tenant has an account with the Site's Infrastructure Provider
-		taDAO := cdbm.NewTenantAccountDAO(cemh.dbSession)
-		_, taCount, err := taDAO.GetAll(ctx, nil, cdbm.TenantAccountFilterInput{
-			InfrastructureProviderID: &site.InfrastructureProviderID,
-			TenantIDs:                []uuid.UUID{tenant.ID},
-		}, paginator.PageInput{}, []string{})
-		if err != nil {
-			logger.Error().Err(err).Msg("error retrieving Tenant Account for Site")
-			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Tenant Account with Site's Provider due to DB error", nil)
-		}
-
-		if taCount == 0 {
-			logger.Error().Msg("Tenant doesn't have an account with Infrastructure Provider")
-			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Tenant doesn't have an account with Provider of Site specified in request", nil)
-		}
-	}
-
-	// Validate that site is in Registered state
-	if site.Status != cdbm.SiteStatusRegistered {
-		logger.Warn().Msg("Site specified in request data is not in Registered state")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request data is not in Registered state, cannot create Expected Machines", nil)
+	// Validate ProviderTenantSite relationship and site state
+	code, message := validateProviderTenantSiteAccess(ctx, logger, cemh.dbSession, infrastructureProvider, tenant, site)
+	if code != http.StatusOK {
+		return cerr.NewAPIErrorResponse(c, code, message, nil)
 	}
 
 	// Validate that all specified SKU IDs exist
@@ -1197,32 +1133,33 @@ func (cemh CreateExpectedMachinesHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusUnprocessableEntity, fmt.Sprintf("SKU ID specified at indices %s do not exist", indices), nil)
 	}
 
-	// Check for duplicate MAC addresses on the Site
+	// Check for duplicate Chassis Serial Number on the Site
+	// Note: at this stage Chassis Serial Number is guaranteed to be non-empty due to prior validation.
 	emDAO := cdbm.NewExpectedMachineDAO(cemh.dbSession)
-	macAddresses := make([]string, 0, len(apiRequests))
+	chassisSerialNumbers := make([]string, 0, len(apiRequests))
 	for _, machine := range apiRequests {
-		macAddresses = append(macAddresses, machine.BmcMacAddress)
+		chassisSerialNumbers = append(chassisSerialNumbers, machine.ChassisSerialNumber)
 	}
 
 	existingMachines, count, err := emDAO.GetAll(ctx, nil, cdbm.ExpectedMachineFilterInput{
-		BmcMacAddresses: macAddresses,
-		SiteIDs:         []uuid.UUID{site.ID},
+		ChassisSerialNumbers: chassisSerialNumbers,
+		SiteIDs:              []uuid.UUID{site.ID},
 	}, paginator.PageInput{
-		Limit: cdb.GetIntPtr(len(macAddresses)),
+		Limit: cdb.GetIntPtr(len(chassisSerialNumbers)),
 	}, nil)
 	if err != nil {
-		logger.Error().Err(err).Msg("error checking for duplicate MAC addresses on Site")
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to validate MAC address uniqueness on Site due to DB error", nil)
+		logger.Error().Err(err).Msg("error checking for duplicate Chassis Serial Number on Site")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to validate Chassis Serial Number uniqueness on Site due to DB error", nil)
 	}
 
 	if count > 0 {
-		// Build list of conflicting MAC addresses
-		conflictingMACs := make([]string, 0, len(existingMachines))
+		// Build list of conflicting Chassis Serial Number
+		conflictingSerials := make([]string, 0, len(existingMachines))
 		for _, em := range existingMachines {
-			conflictingMACs = append(conflictingMACs, em.BmcMacAddress)
+			conflictingSerials = append(conflictingSerials, em.ChassisSerialNumber)
 		}
-		logger.Warn().Strs("MacAddresses", conflictingMACs).Msg("Expected Machines with specified MAC addresses already exist on Site")
-		return cerr.NewAPIErrorResponse(c, http.StatusConflict, fmt.Sprintf("Expected Machines with MAC addresses %v already exist on Site", conflictingMACs), nil)
+		logger.Warn().Strs("ChassisSerialNumber", conflictingSerials).Msg("Expected Machines with specified Chassis Serial Number already exist on Site")
+		return cerr.NewAPIErrorResponse(c, http.StatusConflict, fmt.Sprintf("Expected Machines with Chassis Serial Number %v already exist on Site", conflictingSerials), nil)
 	}
 
 	// Start a db transaction
@@ -1418,7 +1355,6 @@ func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 
 	// Validate each item:
 	// - ID is required and must be unique
-	// - Site ID is required and must be the same for all
 	// - BMC address is optional but must be unique
 	// - Serial Number s optional but must be unique
 	// Note: this is early partial validation before we try to call the DB. Full unicity validation including DB data will
@@ -1470,23 +1406,22 @@ func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 		Msg("processing UpdateExpectedMachines request")
 
 	// Since we only have a list of Expected Machine ID as input we can only learn the SiteIDs involved by querying the DB
-	// but we also want to retrieve full Expected Machine record under advisory lock to ensure MAC and Serial uniqueness
-	// which requires a transaction but also should be limited by SiteID.
-	// We will split into two queries:
-	// 1. Only retrieve SiteIDs involved and check for unicity
+	// but we also want to retrieve full Expected Machine to check for Serial uniqueness.
+	// We will split into three queries:
+	// 1. Only retrieve SiteIDs involved and check for SiteID unicity
 	// 2. Load site record
-	// 3. initiate transaction and locking using SiteID and then retrieve Expected Machines for Site.
+	// 3. Retrieve Expected Machines for Site to check for serial uniqueness.
 	// Pros:
 	// - no need to load associated sites for every ExpectedMachine on Site
-	// - shorter transaction/lock duration
 	// - we can do Provider/Tenant/Site validation before starting transaction and doing any heavy querying/locking which
 	//   match our regular pattern
 	// Cons:
 	// - more queries (3 separate queries instead of 1)
-	// TODO: the advisory lock on all Expected Machine updates for a Site is problematic (removed in this version).
-	//       We should reconsider adding unique indices on (mac,siteID) and (serial,siteID). The downside is that would
-	//       it would make swap operations no possible through single operations without using a third value but since we
-	//       now have batch operations allowing atomic swap it is probably a better/simpler implementation.
+	// Note: we do the Serial uniqueness as best-effort and not under lock or transaction. If we want stricter constraints
+	//       we should look at below suggestion.
+	// TODO: now that we have a unique index on (mac,siteID) we should reconsider adding unique indices on (serial,siteID)
+	//       since it would remove a lot of code for unicity checks. At this time it is expected that existing serial data
+	//       may not be unique so we cannot add such an index without cleaning existing data first.
 
 	// Query database directly for unique Site IDs matching our Expected Machine IDs
 	var uniqueSiteIDs []uuid.UUID
@@ -1508,7 +1443,7 @@ func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 		logger.Warn().Int("SiteIDCount", len(uniqueSiteIDs)).Msg("all Expected Machines must belong to the same site")
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "All Expected Machines in batch must belong to the same site", nil)
 	}
-	// Get our unique Site ID involved
+	// Get our unique Site ID
 	siteID := uniqueSiteIDs[0]
 
 	// Retrieve the Site from the DB
@@ -1521,35 +1456,10 @@ func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site specified in request data due to DB error", nil)
 	}
 
-	// Validate permissions based on user role
-	if infrastructureProvider != nil {
-		// Validate that site belongs to the organization's infrastructure provider
-		if site.InfrastructureProviderID != infrastructureProvider.ID {
-			logger.Warn().Msg("Expected Machines do not belong to a Site owned by org's Infrastructure Provider")
-			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Expected Machines do not belong to a Site owned by current org", nil)
-		}
-	} else if tenant != nil {
-		// Check if tenant has an account with the Site's Infrastructure Provider
-		taDAO := cdbm.NewTenantAccountDAO(uemh.dbSession)
-		_, taCount, err := taDAO.GetAll(ctx, nil, cdbm.TenantAccountFilterInput{
-			InfrastructureProviderID: &site.InfrastructureProviderID,
-			TenantIDs:                []uuid.UUID{tenant.ID},
-		}, paginator.PageInput{}, []string{})
-		if err != nil {
-			logger.Error().Err(err).Msg("error retrieving Tenant Account for Site")
-			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Tenant Account with Site's Provider due to DB error", nil)
-		}
-
-		if taCount == 0 {
-			logger.Error().Msg("Tenant doesn't have an account with Site's Provider")
-			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Tenant doesn't have an account with Provider of Expected Machines' Site", nil)
-		}
-	}
-
-	// Validate that site is in Registered state
-	if site.Status != cdbm.SiteStatusRegistered {
-		logger.Warn().Msg("Expected Machines' Site is not in Registered state")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Expected Machines' Site is not in Registered state, cannot execute UpdateExpectedMachines", nil)
+	// Validate ProviderTenantSite relationship and state
+	code, message := validateProviderTenantSiteAccess(ctx, logger, uemh.dbSession, infrastructureProvider, tenant, site)
+	if code != http.StatusOK {
+		return cerr.NewAPIErrorResponse(c, code, message, nil)
 	}
 
 	// Retrieve ExpectedMachines to update from DB to allow unicity checks
@@ -1565,24 +1475,14 @@ func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Expected Machines due to DB error", nil)
 	}
 
-	// Verify unicity of BMC MAC addresses and Serial Numbers with existing records on Site
+	// Verify unicity of Serial Numbers with existing records on Site
 
 	// Create maps for easier lookup
 	// Note: we do a sanity check to ensure retrieved records are unique since we don't want to report an error later to the caller not related to their input.
-	expectedMachineBMCMacAddressMap := make(map[uuid.UUID]string)
-	uniqueBMCMacAddresses := make(map[string]bool)
 	expectedMachineSerialNumberMap := make(map[uuid.UUID]string)
 	uniqueSerialNumbers := make(map[string]bool)
 	for i := range expectedMachines { // iterate on ALL Expected Machine on Site
 		em := &expectedMachines[i]
-		// loaded MAC addresses should be unique
-		if uniqueBMCMacAddresses[em.BmcMacAddress] {
-			logger.Error().Str("BmcMacAddress", em.BmcMacAddress).Msg("duplicate BMC MAC address found in DB for Expected Machines being updated")
-			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to validate BMC MAC address uniqueness for Expected Machines due to DB data error", nil)
-		} else {
-			expectedMachineBMCMacAddressMap[em.ID] = em.BmcMacAddress
-			uniqueBMCMacAddresses[em.BmcMacAddress] = true
-		}
 		if em.ChassisSerialNumber == "" {
 			continue
 		}
@@ -1594,30 +1494,19 @@ func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 		uniqueSerialNumbers[em.ChassisSerialNumber] = true
 		expectedMachineSerialNumberMap[em.ID] = em.ChassisSerialNumber
 	}
-	// Apply changes to MAC and Serial unicity maps and check for conflicts.
+	// Apply changes to Serial unicity maps and check for conflicts.
 	// We can only check once all changes are applied (there could be some swap).
 	for _, req := range apiRequests {
 		mid, _ := uuid.Parse(*req.ID)
-		if req.BmcMacAddress != nil {
-			expectedMachineBMCMacAddressMap[mid] = *req.BmcMacAddress
-		}
 		if req.ChassisSerialNumber != nil {
 			expectedMachineSerialNumberMap[mid] = *req.ChassisSerialNumber
 		}
 	}
 
 	// Re-validate unicity now including fully applied changes:
-	uniqueBMCMacAddresses = make(map[string]bool)
 	uniqueSerialNumbers = make(map[string]bool)
 	for i := range expectedMachines { // iterate on ALL Expected Machine on Site
 		em := &expectedMachines[i]
-		// loaded and updated MAC addresses should be unique
-		if uniqueBMCMacAddresses[em.BmcMacAddress] {
-			logger.Error().Str("BmcMacAddress", em.BmcMacAddress).Msg("duplicate BMC MAC address found in DB for Expected Machines if update was applied")
-			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to validate BMC MAC address uniqueness for Expected Machines update", nil)
-		} else {
-			uniqueBMCMacAddresses[em.BmcMacAddress] = true
-		}
 		if em.ChassisSerialNumber == "" {
 			continue
 		}
