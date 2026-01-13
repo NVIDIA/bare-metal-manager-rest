@@ -1,3 +1,4 @@
 build/
 carbide-rest
 .test-config/
+.idea/
