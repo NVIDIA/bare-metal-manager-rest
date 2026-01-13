@@ -21,6 +21,7 @@ import (
 	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
 
 	"github.com/nvidia/carbide-rest/site-workflow/pkg/activity"
+	"github.com/nvidia/carbide-rest/site-workflow/pkg/config"
 )
 
 // SetMachineMaintenance is a workflow to set Machine maintenance mode using SetMaintenanceOnSite activity
@@ -109,7 +110,9 @@ func CollectAndPublishMachineInventory(ctx workflow.Context) error {
 	}
 	options := workflow.ActivityOptions{
 		// Timeout options specify when to automatically timeout Activity functions.
-		StartToCloseTimeout: 2 * time.Minute,
+		// Uses configurable timeout (default 5 minutes) to handle large machine inventories.
+		// Can be overridden via INVENTORY_ACTIVITY_TIMEOUT_MINUTES environment variable.
+		StartToCloseTimeout: config.GetInventoryActivityTimeout(),
 		// Optionally provide a customized RetryPolicy.
 		RetryPolicy: retrypolicy,
 	}

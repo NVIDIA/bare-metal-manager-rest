@@ -763,6 +763,82 @@ func (f *ForgeServerImpl) SetMaintenance(context.Context, *cwssaws.MaintenanceRe
 	return &emptypb.Empty{}, nil
 }
 
+// FindMachineIds returns a configurable number of machine IDs for testing large inventories
+func (f *ForgeServerImpl) FindMachineIds(ctx context.Context, req *cwssaws.MachineSearchConfig) (*cwssaws.MachineIdList, error) {
+	response := &cwssaws.MachineIdList{}
+	// Generate 500 machine IDs to simulate large inventory for timeout testing
+	for i := 0; i < 500; i++ {
+		response.MachineIds = append(response.MachineIds, &cwssaws.MachineId{Id: uuid.NewString()})
+	}
+	logger.Info().Int("count", len(response.MachineIds)).Msg("FindMachineIds: returning machine IDs")
+	return response, nil
+}
+
+// FindMachinesByIds returns machine details for the requested IDs
+func (f *ForgeServerImpl) FindMachinesByIds(ctx context.Context, req *cwssaws.MachinesByIdsRequest) (*cwssaws.MachineList, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+	response := &cwssaws.MachineList{}
+	for _, id := range req.MachineIds {
+		response.Machines = append(response.Machines, generateMockMachine(id.Id))
+	}
+	logger.Info().Int("count", len(response.Machines)).Msg("FindMachinesByIds: returning machines")
+	return response, nil
+}
+
+// generateMockMachine creates a mock machine with the given ID
+func generateMockMachine(machineID string) *cwssaws.Machine {
+	var memSize uint32 = 16384
+	return &cwssaws.Machine{
+		Id:    &cwssaws.MachineId{Id: machineID},
+		State: "Ready",
+		Interfaces: []*cwssaws.MachineInterface{
+			{
+				Id:               &cwssaws.MachineInterfaceId{Value: uuid.NewString()},
+				MachineId:        &cwssaws.MachineId{Id: machineID},
+				SegmentId:        &cwssaws.NetworkSegmentId{Value: uuid.NewString()},
+				Hostname:         "mock-machine.nvidia.com",
+				PrimaryInterface: true,
+				MacAddress:       generateMacAddress(),
+				Address:          []string{generateIPAddress()},
+			},
+		},
+		DiscoveryInfo: &cwssaws.DiscoveryInfo{
+			Cpus: []*cwssaws.Cpu{
+				{
+					Vendor:    "GenuineIntel",
+					Model:     "Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz",
+					Frequency: "3000.000",
+					Number:    0,
+					Core:      0,
+					Socket:    0,
+				},
+			},
+			Gpus: []*cwssaws.Gpu{
+				{
+					Name:          "NVIDIA H100 PCIe",
+					Serial:        uuid.NewString(),
+					DriverVersion: "530.30.02",
+					TotalMemory:   "81559 MiB",
+					PciBusId:      "00000000:17:00.0",
+				},
+			},
+			MemoryDevices: []*cwssaws.MemoryDevice{
+				{
+					SizeMb:  &memSize,
+					MemType: getStrPtr("DDR4"),
+				},
+			},
+			DmiData: &cwssaws.DmiData{
+				ProductName:   "Mock Machine",
+				SysVendor:     "NVIDIA",
+				ProductSerial: uuid.NewString(),
+			},
+		},
+	}
+}
+
 // CreateTenantKeyset implements interface ForgeServer
 func (f *ForgeServerImpl) CreateTenantKeyset(c context.Context, req *cwssaws.CreateTenantKeysetRequest) (*cwssaws.CreateTenantKeysetResponse, error) {
 	if req == nil || req.KeysetIdentifier == nil || req.KeysetIdentifier.KeysetId == "" {
