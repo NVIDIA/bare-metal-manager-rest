@@ -1473,26 +1473,27 @@ func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 		Msg("processing UpdateExpectedMachines request")
 
 	// Since we only have a list of Expected Machine ID as input we can only learn the SiteIDs involved by querying the DB
-	// but we also want to retrieve full Expected Machine to check for Serial uniqueness.
+	// but we also want to retrieve full Expected Machines from Site to check for Serial uniqueness.
 	// We will split into three queries:
-	// 1. Retrieve SiteID
-	// 2. Load site record
-	// 3. Retrieve Expected Machines for Site to check for serial uniqueness.
-	// Pros:
-	// - no need to load associated sites for every ExpectedMachine on Site
-	// - we can do Provider/Tenant/Site validation before starting transaction and doing any heavy querying/locking which
-	//   match our regular pattern
-	// Cons:
-	// - more queries (3 separate queries instead of 1)
-	// Note: we do the Serial uniqueness as best-effort and not under lock or transaction. If we want stricter constraints
-	//       we should look at below suggestion.
-	// TODO: now that we have a unique index on (mac,siteID) we should reconsider adding unique indices on (serial,siteID)
-	//       since it would remove a lot of code for unicity checks. At this time it is expected that existing serial data
-	//       may not be unique so we cannot add such an index without cleaning existing data first.
+	// 1. Retrieve SiteID and Site by loading one ExpectedMachine record
+	// 2. Retrieve Expected Machines for Site to check for serial uniqueness.
+	// TODO: now that we have a unique index on (mac,siteID) we should reconsider adding unique indices on (serial,siteID).
+	//       At this time it is expected that existing serial data may not be unique so we
+	//       cannot add such an index without cleaning existing data first.
+
+	// Start a db transaction
+	tx, err := cdb.BeginTx(ctx, uemh.dbSession, &sql.TxOptions{})
+	if err != nil {
+		logger.Error().Err(err).Msg("unable to start transaction")
+		return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to update Expected Machines due to DB transaction error", nil)
+	}
+	// this variable is used in cleanup actions to indicate if this transaction committed
+	txCommitted := false
+	defer common.RollbackTx(ctx, tx, &txCommitted)
 
 	// We need to acquire the siteID: we retrieve the first ExpectedMachine record to update and use it as reference.
 	emDAO := cdbm.NewExpectedMachineDAO(uemh.dbSession)
-	singleExpectedMachine, _, err := emDAO.GetAll(ctx, nil, cdbm.ExpectedMachineFilterInput{
+	singleExpectedMachine, _, err := emDAO.GetAll(ctx, tx, cdbm.ExpectedMachineFilterInput{
 		ExpectedMachineIDs: slices.Collect(maps.Keys(idMap)),
 	}, paginator.PageInput{
 		Limit: cdb.GetIntPtr(1), // all ExpectedMachines to update MUST have the same SiteID so any one record is enough
@@ -1506,7 +1507,7 @@ func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 		return cutil.NewAPIErrorResponse(c, http.StatusNotFound, "No Expected Machines found for provided IDs", nil)
 	}
 
-	// Get our unique Site ID
+	// Get our unique Site ID and Site record
 	siteID := singleExpectedMachine[0].SiteID
 	site := singleExpectedMachine[0].Site // we get the site record from the relation loaded with our Expected Machine
 	if site == nil {
@@ -1525,7 +1526,7 @@ func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 
 	// Retrieve all ExpectedMachines on Site from DB to allow unicity checks at Site level
 	emDAO = cdbm.NewExpectedMachineDAO(uemh.dbSession)
-	expectedMachinesOnSite, _, err := emDAO.GetAll(ctx, nil, cdbm.ExpectedMachineFilterInput{
+	expectedMachinesOnSite, _, err := emDAO.GetAll(ctx, tx, cdbm.ExpectedMachineFilterInput{
 		SiteIDs: []uuid.UUID{siteID},
 	}, paginator.PageInput{
 		Limit: cdb.GetIntPtr(paginator.TotalLimit), // we want ALL records on site
@@ -1542,7 +1543,7 @@ func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 
 	// Retrieve all SKUs on Site to validate existence of SKU IDs in request
 	skuDAO := cdbm.NewSkuDAO(uemh.dbSession)
-	skus, _, err := skuDAO.GetAll(ctx, nil, cdbm.SkuFilterInput{
+	skus, _, err := skuDAO.GetAll(ctx, tx, cdbm.SkuFilterInput{
 		SiteIDs: []uuid.UUID{siteID},
 	}, paginator.PageInput{
 		Limit: cdb.GetIntPtr(len(requestedSkuIDs)),
@@ -1637,16 +1638,6 @@ func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 			Labels:                   machineReq.Labels,
 		})
 	}
-
-	// Start a db transaction
-	tx, err := cdb.BeginTx(ctx, uemh.dbSession, &sql.TxOptions{})
-	if err != nil {
-		logger.Error().Err(err).Msg("unable to start transaction")
-		return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to update Expected Machines due to DB transaction error", nil)
-	}
-	// this variable is used in cleanup actions to indicate if this transaction committed
-	txCommitted := false
-	defer common.RollbackTx(ctx, tx, &txCommitted)
 
 	// Update provided ExpectedMachines in DB
 	updatedExpectedMachines, err := emDAO.UpdateMultiple(ctx, tx, updateInputs)
