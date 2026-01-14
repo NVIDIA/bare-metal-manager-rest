@@ -138,33 +138,15 @@ func (emur *APIExpectedMachineUpdateRequest) Validate() error {
 		}
 	}
 
-	// Validate DefaultBmcUsername: if provided, cannot be empty
-	if emur.DefaultBmcUsername != nil && *emur.DefaultBmcUsername == "" {
-		return validation.Errors{
-			"defaultBmcUsername": errors.New("BMC Username cannot be empty"),
-		}
-	}
-
-	// Validate DefaultBmcPassword: if provided, cannot be empty
-	if emur.DefaultBmcPassword != nil && *emur.DefaultBmcPassword == "" {
-		return validation.Errors{
-			"defaultBmcPassword": errors.New("BMC Password cannot be empty"),
-		}
-	}
-
-	// Validate ChassisSerialNumber: if provided, must be 1-32 characters
-	if emur.ChassisSerialNumber != nil && *emur.ChassisSerialNumber == "" {
-		return validation.Errors{
-			"chassisSerialNumber": errors.New("Chassis Serial Number number must be 1-32 characters"),
-		}
-	}
-
 	err := validation.ValidateStruct(emur,
 		validation.Field(&emur.DefaultBmcUsername,
+			validation.NilOrNotEmpty.Error("BMC Username cannot be empty"),
 			validation.Length(1, 16).Error("BMC Username must be 1-16 characters")),
 		validation.Field(&emur.DefaultBmcPassword,
+			validation.NilOrNotEmpty.Error("BMC Password cannot be empty"),
 			validation.Length(1, 20).Error("BMC Password must be 1-20 characters")),
 		validation.Field(&emur.ChassisSerialNumber,
+			validation.NilOrNotEmpty.Error("Chassis Serial Number cannot be empty"),
 			validation.Length(1, 32).Error("Chassis Serial Number must be 1-32 characters")),
 	)
 
@@ -245,18 +227,25 @@ func NewAPIExpectedMachine(dibp *cdbm.ExpectedMachine) *APIExpectedMachine {
 		ChassisSerialNumber:      dibp.ChassisSerialNumber,
 		FallbackDPUSerialNumbers: dibp.FallbackDpuSerialNumbers,
 		SkuID:                    dibp.SkuID,
-		Sku:                      NewAPISku(dibp.Sku),
 		MachineID:                dibp.MachineID,
 		Labels:                   dibp.Labels,
 		Created:                  dibp.Created,
 		Updated:                  dibp.Updated,
 	}
-	// Map Site if available
+
+	// Expand Site details if available
 	if dibp.Site != nil {
 		site := NewAPISite(*dibp.Site, []cdbm.StatusDetail{}, nil)
 		apiem.Site = &site
 	}
-	// Map Machine if available
+
+	// Expand SKU details if available
+	if dibp.Sku != nil {
+		sku := NewAPISku(dibp.Sku)
+		apiem.Sku = sku
+	}
+
+	// Expand Machine details if available
 	if dibp.Machine != nil {
 		machine := NewAPIMachineSummary(dibp.Machine)
 		apiem.Machine = machine
