@@ -1468,9 +1468,7 @@ func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 		return cutil.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate Expected Machine update data", validationErrors)
 	}
 
-	logger.Info().
-		Int("MachineCount", len(apiRequests)).
-		Msg("processing UpdateExpectedMachines request")
+	logger.Info().Int("MachineCount", len(apiRequests)).Msg("processing UpdateExpectedMachines request")
 
 	// Since we only have a list of Expected Machine ID as input we can only learn the SiteIDs involved by querying the DB
 	// but we also want to retrieve full Expected Machines from Site to check for Serial uniqueness.
