@@ -1430,6 +1430,7 @@ func NewUniqueChecker[T comparable]() *UniqueChecker[T] {
 
 // Add add an entry (unique value) for a main ID (which MUST be unique if you intend to use Update() later).
 func (uc *UniqueChecker[T]) Add(id T, uniqueValue string) {
+	uniqueValue = strings.ToLower(uniqueValue)
 	// add/replace mapping
 	uc.IdToUniqueValue[id] = uniqueValue
 	// track count of unique values
@@ -1442,6 +1443,7 @@ func (uc *UniqueChecker[T]) Add(id T, uniqueValue string) {
 
 // Update updates or adds a unique value associated with a principal ID, allowing overwrites.
 func (uc *UniqueChecker[T]) Update(id T, uniqueValue string) {
+	uniqueValue = strings.ToLower(uniqueValue)
 	previousValue, exists := uc.IdToUniqueValue[id]
 	// No previous value associated, just add
 	if !exists {
@@ -1460,7 +1462,20 @@ func (uc *UniqueChecker[T]) Update(id T, uniqueValue string) {
 	uc.Add(id, uniqueValue)
 }
 
+func (uc *UniqueChecker[T]) DoesIDHasConflict(id T) bool {
+	uniqueValue, exists := uc.IdToUniqueValue[id]
+	if !exists {
+		return false
+	}
+	count, exists := uc.uniqueValueCount[uniqueValue]
+	if !exists {
+		return false
+	}
+	return count > 1
+}
+
 // GetDuplicates returns an array of duplicates values.
+// Note: values are in lowercase.
 func (uc *UniqueChecker[T]) GetDuplicates() []string {
 	duplicates := []string{}
 	for uniqueValue, count := range uc.uniqueValueCount {

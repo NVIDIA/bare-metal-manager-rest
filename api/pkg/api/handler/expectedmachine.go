@@ -41,7 +41,6 @@ import (
 	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/nvidia/carbide-rest/workflow/pkg/queue"
 	"github.com/rs/zerolog"
-	"github.com/uptrace/bun"
 	"go.opentelemetry.io/otel/attribute"
 	tclient "go.temporal.io/sdk/client"
 )
@@ -1408,52 +1407,65 @@ func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 		return cutil.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("At most %d Expected Machine entries can be created in a batch request", model.ExpectedMachineMaxBatchItems), nil)
 	}
 
-	// Validate each item:
+	// Validate each item, also collect requested sku IDs
 	// - ID is required and must be unique
 	// - BMC address is optional but must be unique
-	// - Serial Number s optional but must be unique
-	// Note: this is early partial validation before we try to call the DB. Full unicity validation including DB data will
-	// be done later within a transaction.
-	idMap := make(map[uuid.UUID]int)
+	// - Serial Number is optional but must be unique
+	// Note: this is early partial validation before we try to call the DB.
+	validationErrors := validation.Errors{} //
+	idMap := make(map[uuid.UUID]int)        // Map Expected Machine ID to its index in the request array
 	bmcMacMap := make(map[string]int)
 	serialMap := make(map[string]int)
+	requestedSkuIDs := make(map[string]bool)
 	for i, req := range apiRequests {
+		strIndex := strconv.Itoa(i) // index/key as string for validation errors map
+		errs := []error{}
+
 		if verr := req.Validate(); verr != nil {
-			logger.Warn().Err(verr).Int("Index", i).Msg("error validating Expected Machine update request data")
-			return cutil.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate Expected Machine update data", validation.Errors{
-				strconv.Itoa(i): verr,
-			})
+			errs = append(errs, verr)
 		}
+
 		// validation must accept nil ID for single update use case so we need to check for nil ID here
 		if req.ID == nil {
-			logger.Warn().Int("Index", i).Msg("missing required Expected Machine ID in update request")
-			return cutil.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Missing required Expected Machine ID at index %d", i), nil)
-		}
+			errs = append(errs, validation.Errors{"id": fmt.Errorf("Missing required Expected Machine ID")})
+		} else {
+			// extract already validated UUID
+			mid, _ := uuid.Parse(*req.ID)
 
-		// extract already validated UUID
-		mid, _ := uuid.Parse(*req.ID)
-
-		if prev, ok := idMap[mid]; ok {
-			logger.Warn().Msgf("duplicate Expected Machine ID '%s' found at indices %d and %d", *req.ID, prev, i)
-			return cutil.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Duplicate Expected Machine ID '%s' found at indices %d and %d", *req.ID, prev, i), nil)
+			if prev, ok := idMap[mid]; ok {
+				errs = append(errs, validation.Errors{"id": fmt.Errorf(
+					"duplicate Expected Machine ID '%s' found at indices %d and %d", *req.ID, prev, i)})
+			}
+			idMap[mid] = i
 		}
-		idMap[mid] = i
 
 		if req.BmcMacAddress != nil {
-			if prev, ok := bmcMacMap[*req.BmcMacAddress]; ok {
-				logger.Warn().Msgf("duplicate BMC MAC address '%s' found at indices %d and %d", *req.BmcMacAddress, prev, i)
-				return cutil.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Duplicate BMC MAC address '%s' found at indices %d and %d", *req.BmcMacAddress, prev, i), nil)
+			lowerMac := strings.ToLower(*req.BmcMacAddress)
+			if prev, ok := bmcMacMap[lowerMac]; ok {
+				errs = append(errs, validation.Errors{"bmcMacAddress": fmt.Errorf(
+					"duplicate BMC MAC address '%s' found at indices %d and %d", *req.BmcMacAddress, prev, i)})
 			}
-			bmcMacMap[*req.BmcMacAddress] = i
+			bmcMacMap[lowerMac] = i
 		}
 
 		if req.ChassisSerialNumber != nil {
-			if prev, ok := serialMap[*req.ChassisSerialNumber]; ok {
-				logger.Warn().Msgf("duplicate chassis serial number '%s' found at indices %d and %d", *req.ChassisSerialNumber, prev, i)
-				return cutil.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Duplicate chassis serial number '%s' found at indices %d and %d", *req.ChassisSerialNumber, prev, i), nil)
+			lowerSerial := strings.ToLower(*req.ChassisSerialNumber)
+			if prev, ok := serialMap[lowerSerial]; ok {
+				errs = append(errs, validation.Errors{"chassisSerialNumber": fmt.Errorf(
+					"duplicate chassis serial number '%s' found at indices %d and %d", *req.ChassisSerialNumber, prev, i)})
 			}
-			serialMap[*req.ChassisSerialNumber] = i
+			serialMap[lowerSerial] = i
 		}
+		if req.SkuID != nil {
+			requestedSkuIDs[*req.SkuID] = true
+		}
+		if len(errs) > 0 {
+			validationErrors[strIndex] = errors.Join(errs...)
+		}
+	}
+
+	if len(validationErrors) > 0 {
+		return cutil.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate Expected Machine update data", validationErrors)
 	}
 
 	logger.Info().
@@ -1463,7 +1475,7 @@ func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 	// Since we only have a list of Expected Machine ID as input we can only learn the SiteIDs involved by querying the DB
 	// but we also want to retrieve full Expected Machine to check for Serial uniqueness.
 	// We will split into three queries:
-	// 1. Only retrieve SiteIDs involved and check for SiteID unicity
+	// 1. Retrieve SiteID
 	// 2. Load site record
 	// 3. Retrieve Expected Machines for Site to check for serial uniqueness.
 	// Pros:
@@ -1478,37 +1490,28 @@ func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 	//       since it would remove a lot of code for unicity checks. At this time it is expected that existing serial data
 	//       may not be unique so we cannot add such an index without cleaning existing data first.
 
-	// Query database directly for unique Site IDs matching our Expected Machine IDs
-	var uniqueSiteIDs []uuid.UUID
-	err = uemh.dbSession.DB.NewSelect().
-		Model((*cdbm.ExpectedMachine)(nil)).
-		Column("site_id").
-		Where("id IN (?)", bun.In(slices.Collect(maps.Keys(idMap)))).
-		Distinct().
-		Scan(ctx, &uniqueSiteIDs)
+	// We need to acquire the siteID: we retrieve the first ExpectedMachine record to update and use it as reference.
+	emDAO := cdbm.NewExpectedMachineDAO(uemh.dbSession)
+	singleExpectedMachine, _, err := emDAO.GetAll(ctx, nil, cdbm.ExpectedMachineFilterInput{
+		ExpectedMachineIDs: slices.Collect(maps.Keys(idMap)),
+	}, paginator.PageInput{
+		Limit: cdb.GetIntPtr(1), // all ExpectedMachines to update MUST have the same SiteID so any one record is enough
+	}, []string{cdbm.SiteRelationName})
 	if err != nil {
-		logger.Error().Err(err).Msg("error retrieving unique Site IDs for Expected Machines")
-		return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site ID for Expected Machines due to DB error", nil)
+		logger.Error().Err(err).Msg("error retrieving Expected Machines from DB")
+		return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Expected Machines due to DB error", nil)
 	}
-	if len(uniqueSiteIDs) == 0 {
+	if len(singleExpectedMachine) == 0 {
 		logger.Warn().Msg("No Expected Machines found for provided IDs")
 		return cutil.NewAPIErrorResponse(c, http.StatusNotFound, "No Expected Machines found for provided IDs", nil)
 	}
-	if len(uniqueSiteIDs) > 1 {
-		logger.Warn().Int("SiteIDCount", len(uniqueSiteIDs)).Msg("all Expected Machines must belong to the same site")
-		return cutil.NewAPIErrorResponse(c, http.StatusBadRequest, "All Expected Machines in batch must belong to the same site", nil)
-	}
-	// Get our unique Site ID
-	siteID := uniqueSiteIDs[0]
 
-	// Retrieve the Site from the DB
-	site, err := cdbm.NewSiteDAO(uemh.dbSession).GetByID(ctx, nil, siteID, nil, false)
-	if err != nil {
-		if errors.Is(err, cdb.ErrDoesNotExist) {
-			return cutil.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request data does not exist", nil)
-		}
-		logger.Error().Err(err).Msg("error retrieving Site from DB")
-		return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site specified in request data due to DB error", nil)
+	// Get our unique Site ID
+	siteID := singleExpectedMachine[0].SiteID
+	site := singleExpectedMachine[0].Site // we get the site record from the relation loaded with our Expected Machine
+	if site == nil {
+		logger.Warn().Msg("No Site relation found for Expected Machines")
+		return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "No Site found for Expected Machines", nil)
 	}
 
 	// Validate ProviderTenantSite relationship and state
@@ -1516,15 +1519,13 @@ func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 	if apiError != nil {
 		return cutil.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
 	}
-
 	if !hasAccess {
 		return cutil.NewAPIErrorResponse(c, http.StatusForbidden, "Current org is not associated with the Site", nil)
 	}
 
-	// Retrieve ExpectedMachines to update from DB to allow unicity checks
-	// Note: we MUST retrieve all records from the site to check for unicity for the full site.
-	emDAO := cdbm.NewExpectedMachineDAO(uemh.dbSession)
-	expectedMachines, _, err := emDAO.GetAll(ctx, nil, cdbm.ExpectedMachineFilterInput{
+	// Retrieve all ExpectedMachines on Site from DB to allow unicity checks at Site level
+	emDAO = cdbm.NewExpectedMachineDAO(uemh.dbSession)
+	expectedMachinesOnSite, _, err := emDAO.GetAll(ctx, nil, cdbm.ExpectedMachineFilterInput{
 		SiteIDs: []uuid.UUID{siteID},
 	}, paginator.PageInput{
 		Limit: cdb.GetIntPtr(paginator.TotalLimit), // we want ALL records on site
@@ -1533,80 +1534,88 @@ func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 		logger.Error().Err(err).Msg("error retrieving Expected Machines from DB")
 		return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Expected Machines due to DB error", nil)
 	}
+	emMap := make(map[uuid.UUID]cdbm.ExpectedMachine)
+	for i := range expectedMachinesOnSite {
+		em := &expectedMachinesOnSite[i]
+		emMap[em.ID] = *em
+	}
+
+	// Retrieve all SKUs on Site to validate existence of SKU IDs in request
+	skuDAO := cdbm.NewSkuDAO(uemh.dbSession)
+	skus, _, err := skuDAO.GetAll(ctx, nil, cdbm.SkuFilterInput{
+		SiteIDs: []uuid.UUID{siteID},
+	}, paginator.PageInput{
+		Limit: cdb.GetIntPtr(len(requestedSkuIDs)),
+	})
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving SKUs from DB")
+		return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve SKUs due to DB error", nil)
+	}
+	uniqueSkuIDsOnSite := make(map[string]bool)
+	for _, sku := range skus {
+		uniqueSkuIDsOnSite[sku.ID] = true
+	}
 
 	// Verify unicity of BMC MAC Addresses and Serial Numbers with existing records on Site
 	expectedMachineMacAddressChecker := common.NewUniqueChecker[uuid.UUID]()
 	expectedMachineSerialNumberChecker := common.NewUniqueChecker[uuid.UUID]()
 
-	// Sanity check to ensure retrieved records are unique since we don't want to report an error later to the caller not related to their input.
-	for i := range expectedMachines { // iterate on ALL Expected Machine on Site
-		em := &expectedMachines[i]
-		expectedMachineMacAddressChecker.Add(em.ID, strings.ToLower(em.BmcMacAddress))
+	// Load DB data into checkers
+	for i := range expectedMachinesOnSite { // iterate on ALL Expected Machine on Site
+		em := &expectedMachinesOnSite[i]
+		expectedMachineMacAddressChecker.Add(em.ID, em.BmcMacAddress)
 		if em.ChassisSerialNumber != "" {
-			expectedMachineSerialNumberChecker.Add(em.ID, strings.ToLower(em.ChassisSerialNumber))
+			expectedMachineSerialNumberChecker.Add(em.ID, em.ChassisSerialNumber)
 		}
 	}
-	duplicates := expectedMachineSerialNumberChecker.GetDuplicates()
-	if len(duplicates) > 0 {
-		duplicatesString, _ := json.Marshal(duplicates)
-		logger.Error().Str("ChassisSerialNumbers", string(duplicatesString)).Msg("duplicate Chassis Serial Number found in DB for Expected Machines being updated")
-		return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed to validate Chassis Serial Number uniqueness for Expected Machines due to DB data error, duplicates are: %s", string(duplicatesString)), nil)
-	}
-	duplicates = expectedMachineMacAddressChecker.GetDuplicates()
-	if len(duplicates) > 0 {
-		duplicatesString, _ := json.Marshal(duplicates)
-		logger.Error().Str("BmcMacAddresses", string(duplicatesString)).Msg("duplicate BMC MAC Address found in DB for Expected Machines being updated")
-		return cutil.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed to validate BMC MAC Address uniqueness for Expected Machines due to DB data error, duplicates are: %s", string(duplicatesString)), nil)
-	}
 
-	// Apply changes to MAC and Serial unicity checker.
-	// We can only check once all changes are applied (there could be some swap).
+	// Apply changes to MAC and Serial to checkers
 	for _, req := range apiRequests {
 		mid, _ := uuid.Parse(*req.ID)
 		if req.BmcMacAddress != nil {
-			expectedMachineMacAddressChecker.Update(mid, strings.ToLower(*req.BmcMacAddress))
+			expectedMachineMacAddressChecker.Update(mid, *req.BmcMacAddress)
 		}
 		if req.ChassisSerialNumber != nil {
-			expectedMachineSerialNumberChecker.Update(mid, strings.ToLower(*req.ChassisSerialNumber))
+			expectedMachineSerialNumberChecker.Update(mid, *req.ChassisSerialNumber)
 		}
 	}
 
-	// Re-validate unicity now including fully applied changes:
-	duplicates = expectedMachineSerialNumberChecker.GetDuplicates()
-	if len(duplicates) > 0 {
-		duplicatesString, _ := json.Marshal(duplicates)
-		logger.Error().Str("ChassisSerialNumbers", string(duplicatesString)).Msg("duplicate Chassis Serial Number found in DB for Expected Machines if update was applied")
-		return cutil.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Failed to validate Chassis Serial Number uniqueness for Expected Machines, duplicates are: %s", string(duplicatesString)), nil)
-	}
-	duplicates = expectedMachineMacAddressChecker.GetDuplicates()
-	if len(duplicates) > 0 {
-		duplicatesString, _ := json.Marshal(duplicates)
-		logger.Error().Str("BmcMacAddresses", string(duplicatesString)).Msg("duplicate BMC MAC Address found in DB for Expected Machines being updated")
-		return cutil.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Failed to validate BMC MAC Address uniqueness for Expected Machines due to DB data error, duplicates are: %s", string(duplicatesString)), nil)
-	}
+	// Final checks: site, unicity of MAC, Serial, and existence of SKUs
+	validationErrors = validation.Errors{}
+	for i, req := range apiRequests {
+		errs := []error{}
+		strIndex := strconv.Itoa(i) // index/key as string for validation errors map
+		mid, _ := uuid.Parse(*req.ID)
 
-	// Validate that all specified SKU IDs exist
-	skuDAO := cdbm.NewSkuDAO(uemh.dbSession)
+		// Check Site unicity
+		emSite := emMap[mid]
+		if emSite.SiteID != siteID {
+			errs = append(errs, validation.Errors{"siteId": fmt.Errorf(
+				"Expected Machine does not belong to Site %s", siteID)})
+		}
+		// Check MAC unicity
+		if req.BmcMacAddress != nil && expectedMachineMacAddressChecker.DoesIDHasConflict(mid) {
+			errs = append(errs, validation.Errors{"BmcMacAddress": fmt.Errorf(
+				"conflicting BMC MAC Address found (%s)", *req.BmcMacAddress)})
+		}
+		// Check Serial unicity
+		if req.ChassisSerialNumber != nil && expectedMachineSerialNumberChecker.DoesIDHasConflict(mid) {
+			errs = append(errs, validation.Errors{"ChassisSerialNumber": fmt.Errorf(
+				"conflicting Chassis Serial Number found (%s)", *req.ChassisSerialNumber)})
+		}
+		// Check SKU existence
+		if req.SkuID != nil && !uniqueSkuIDsOnSite[*req.SkuID] {
+			errs = append(errs, validation.Errors{"SkuID": fmt.Errorf(
+				"the SkuID specified does not exist in DB: %s", *req.SkuID)})
+		}
 
-	skuIDs := make([]string, 0, len(apiRequests))
-	for _, machine := range apiRequests {
-		if machine.SkuID != nil {
-			skuIDs = append(skuIDs, *machine.SkuID)
-		} else {
-			skuIDs = append(skuIDs, "")
+		// Collect errors
+		if len(errs) > 0 {
+			validationErrors[strIndex] = errors.Join(errs...)
 		}
 	}
-
-	missingIndices, verr := validateSkuIDs(ctx, nil, skuDAO, site.ID, skuIDs)
-	if verr != nil {
-		logger.Warn().Err(verr).Msg("error validating SKU IDs in request data")
-		return cutil.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate SKU ID in request data due to DB error", nil)
-	}
-
-	if len(missingIndices) > 0 {
-		indices, _ := json.Marshal(missingIndices)
-		logger.Warn().Msg(fmt.Sprintf("SKU ID specified at indices %s do not exist", indices))
-		return cutil.NewAPIErrorResponse(c, http.StatusUnprocessableEntity, fmt.Sprintf("SKU ID specified at indices %s do not exist", indices), nil)
+	if len(validationErrors) > 0 {
+		return cutil.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate Expected Machine update data", validationErrors)
 	}
 
 	// Prepare ExpectedMachines input for DB

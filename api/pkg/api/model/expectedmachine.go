@@ -63,6 +63,8 @@ func (emcr *APIExpectedMachineCreateRequest) Validate() error {
 		validation.Field(&emcr.ChassisSerialNumber,
 			validation.Required.Error(validationErrorValueRequired),
 			validation.Length(1, 32).Error("Chassis serial number must be 32 characters or less")),
+		validation.Field(&emcr.SkuID,
+			validation.NilOrNotEmpty.Error("SkuID cannot be empty")),
 	)
 
 	if err != nil {
@@ -148,6 +150,8 @@ func (emur *APIExpectedMachineUpdateRequest) Validate() error {
 		validation.Field(&emur.ChassisSerialNumber,
 			validation.NilOrNotEmpty.Error("Chassis Serial Number cannot be empty"),
 			validation.Length(1, 32).Error("Chassis Serial Number must be 1-32 characters")),
+		validation.Field(&emur.SkuID,
+			validation.NilOrNotEmpty.Error("SkuID cannot be empty")),
 	)
 
 	if err != nil {

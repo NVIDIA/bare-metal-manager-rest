@@ -1774,7 +1774,7 @@ func TestCreateExpectedMachinesHandler_Handle(t *testing.T) {
 				c.SetParamNames("orgName")
 				c.SetParamValues(org)
 			},
-			expectedStatus: http.StatusUnprocessableEntity,
+			expectedStatus: http.StatusBadRequest,
 		},
 	}
 
@@ -2040,7 +2040,7 @@ func TestUpdateExpectedMachinesHandler_Handle(t *testing.T) {
 				c.SetParamNames("orgName")
 				c.SetParamValues(org)
 			},
-			expectedStatus: http.StatusUnprocessableEntity,
+			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name: "duplicate IDs in request should fail",
@@ -2101,19 +2101,26 @@ func TestUpdateExpectedMachinesHandler_Handle(t *testing.T) {
 			validateResp: func(t *testing.T, body []byte) {
 				// Verify error message mentions site mismatch
 				bodyStr := string(body)
-				assert.Contains(t, bodyStr, "same site")
+				assert.Contains(t, bodyStr, "does not belong to Site")
 			},
 		},
 		{
-			name: "duplicate MAC addresses in update should fail",
+			name: "bad siteID with duplicate MAC and duplicate serial should fail with validation errors",
 			requestBody: []model.APIExpectedMachineUpdateRequest{
 				{
-					ID:            cdb.GetStrPtr(testEM1.ID.String()),
-					BmcMacAddress: cdb.GetStrPtr("00:11:22:33:44:99"), // Change to new MAC
+					ID:                  cdb.GetStrPtr(testEM1.ID.String()),
+					BmcMacAddress:       cdb.GetStrPtr("ff:ff:ff:ff:ff:ff"), // lowercase
+					ChassisSerialNumber: cdb.GetStrPtr("Duplicate-Everything"), // mixed case
 				},
 				{
-					ID:            cdb.GetStrPtr(testEM2.ID.String()),
-					BmcMacAddress: cdb.GetStrPtr("00:11:22:33:44:99"), // Same MAC - should fail
+					ID:                  cdb.GetStrPtr(testEM2.ID.String()),
+					BmcMacAddress:       cdb.GetStrPtr("FF:FF:FF:FF:FF:FF"),    // uppercase (duplicate MAC, different case)
+					ChassisSerialNumber: cdb.GetStrPtr("DUPLICATE-EVERYTHING"), // uppercase (duplicate serial, different case)
+				},
+				{
+					ID:                  cdb.GetStrPtr("00000000-0000-0000-0000-000000000099"), // non-existent ID (bad siteID)
+					BmcMacAddress:       cdb.GetStrPtr("AA:AA:AA:AA:AA:AA"),
+					ChassisSerialNumber: cdb.GetStrPtr("NONEXISTENT-SERIAL"),
 				},
 			},
 			setupContext: func(c echo.Context) {
@@ -2123,9 +2130,25 @@ func TestUpdateExpectedMachinesHandler_Handle(t *testing.T) {
 			},
 			expectedStatus: http.StatusBadRequest,
 			validateResp: func(t *testing.T, body []byte) {
-				// Verify error message mentions MAC address uniqueness
+				// Verify error response contains validation errors for duplicate MAC and serial
 				bodyStr := string(body)
-				assert.Contains(t, bodyStr, "Duplicate BMC MAC address")
+				t.Logf("Response body: %s", bodyStr)
+
+				// Parse the JSON response to verify structure
+				var errResp map[string]interface{}
+				err := json.Unmarshal(body, &errResp)
+				assert.Nil(t, err)
+
+				// Should have validation errors in data field
+				assert.Contains(t, bodyStr, "bmcMacAddress")
+				assert.Contains(t, bodyStr, "duplicate BMC MAC address")
+				assert.Contains(t, bodyStr, "chassisSerialNumber")
+				assert.Contains(t, bodyStr, "duplicate chassis serial number")
+
+				// The error should be about validation, not about machines being found
+				// since the duplicate check happens before the DB query for non-existent machines
+				// This test verifies case-insensitive comparison (ff:ff vs FF:FF and Duplicate vs DUPLICATE)
+				assert.Contains(t, bodyStr, "Failed to validate Expected Machine update data")
 			},
 		},
 	}
