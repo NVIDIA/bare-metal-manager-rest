@@ -232,6 +232,12 @@ kind-reset:
 	-kind delete cluster --name $(KIND_CLUSTER_NAME)
 	kind create cluster --name $(KIND_CLUSTER_NAME) --config deploy/kind/cluster-config.yaml
 	kubectl apply -f deploy/kustomize/base/crds/
+	@echo "Installing cert-manager.io..."
+	kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
+	@echo "Waiting for cert-manager deployments..."
+	kubectl -n cert-manager rollout status deployment/cert-manager --timeout=120s
+	kubectl -n cert-manager rollout status deployment/cert-manager-webhook --timeout=120s
+	kubectl -n cert-manager rollout status deployment/cert-manager-cainjector --timeout=120s
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-api:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-api .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-workflow:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-workflow .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-site-manager:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-manager .
@@ -249,6 +255,8 @@ kind-reset:
 	kubectl apply -k $(KUSTOMIZE_OVERLAY)
 	kubectl -n carbide wait --for=condition=ready pod -l app=postgres --timeout=120s
 	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=180s
+	@echo "Configuring cert-manager.io ClusterIssuer for Vault..."
+	kubectl apply -k deploy/kustomize/base/cert-manager-io/
 	kubectl -n carbide wait --for=condition=ready pod -l app=temporal --timeout=120s
 	kubectl -n carbide wait --for=condition=ready pod -l app=keycloak --timeout=180s
 	kubectl -n carbide wait --for=condition=complete job/db-migrations --timeout=120s
