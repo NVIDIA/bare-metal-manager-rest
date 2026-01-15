@@ -26,6 +26,60 @@ spec:
         app: carbide-rest-site-manager
     spec:
       serviceAccountName: carbide-rest-site-manager
+      initContainers:
+        # Fetch TLS certificate from Vault (embedded in cert-manager pod)
+        - name: fetch-tls-cert
+          image: curlimages/curl:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Waiting for Vault to be ready..."
+              VAULT_ADDR="http://carbide-rest-cert-manager:8200"
+              VAULT_TOKEN="root"
+              
+              # Wait for Vault to be accessible
+              until curl -sf "$VAULT_ADDR/v1/sys/health" > /dev/null 2>&1; do
+                echo "Vault not ready, waiting..."
+                sleep 2
+              done
+              echo "Vault is ready"
+              
+              # Request certificate from Vault PKI
+              echo "Requesting TLS certificate from Vault..."
+              RESPONSE=$(curl -sf -X POST \
+                -H "X-Vault-Token: $VAULT_TOKEN" \
+                "$VAULT_ADDR/v1/pki/issue/cloud-cert" \
+                -d '{
+                  "common_name": "carbide-rest-site-manager",
+                  "alt_names": "carbide-rest-site-manager,carbide-rest-site-manager.carbide,carbide-rest-site-manager.carbide.svc.cluster.local,localhost",
+                  "ttl": "720h"
+                }')
+              
+              if [ -z "$RESPONSE" ]; then
+                echo "ERROR: Failed to get certificate from Vault"
+                exit 1
+              fi
+              
+              # Extract certificate and private key using sed
+              echo "$RESPONSE" | sed -n 's/.*"certificate":"\([^"]*\)".*/\1/p' | sed 's/\\n/\n/g' > /etc/tls/tls.crt
+              echo "$RESPONSE" | sed -n 's/.*"private_key":"\([^"]*\)".*/\1/p' | sed 's/\\n/\n/g' > /etc/tls/tls.key
+              
+              # Verify files were created
+              if [ ! -s /etc/tls/tls.crt ] || [ ! -s /etc/tls/tls.key ]; then
+                echo "ERROR: Certificate or key file is empty"
+                echo "Response: $RESPONSE"
+                exit 1
+              fi
+              
+              # Make files world-readable for local dev (different container users)
+              chmod 644 /etc/tls/tls.crt
+              chmod 644 /etc/tls/tls.key
+              echo "TLS certificate obtained successfully"
+              ls -la /etc/tls/
+          volumeMounts:
+            - name: tls-certs
+              mountPath: /etc/tls
       containers:
         - name: site-manager
           image: localhost:5000/carbide-rest-site-manager:latest
@@ -66,6 +120,4 @@ spec:
             periodSeconds: 15
       volumes:
         - name: tls-certs
-          secret:
-            secretName: site-manager-tls
-            optional: true
+          emptyDir: {}

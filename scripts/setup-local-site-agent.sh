@@ -45,11 +45,14 @@ for i in {1..30}; do
     fi
 done
 
-# Wait for site-manager to be ready
+# Wait for site-manager to be ready (required for site creation)
 echo "Waiting for site-manager..."
-kubectl -n $NAMESPACE wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=120s || {
-    echo "WARN: Site-manager not ready after 120s"
-}
+if ! kubectl -n $NAMESPACE wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=180s; then
+    echo "ERROR: Site-manager not ready after 180s. Checking pod status..."
+    kubectl -n $NAMESPACE get pods -l app=carbide-rest-site-manager
+    kubectl -n $NAMESPACE logs -l app=carbide-rest-site-manager --tail=20 2>/dev/null || true
+    exit 1
+fi
 
 # Get access token
 echo "Acquiring token..."

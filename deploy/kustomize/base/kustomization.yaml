@@ -31,9 +31,7 @@ resources:
   - keycloak/deployment.yaml
   - keycloak/service.yaml
   - keycloak/realm-configmap.yaml
-  - vault/deployment.yaml
-  - vault/service.yaml
-  - vault/init-job.yaml
+  # Vault is embedded in cert-manager pod (see cert-manager/deployment.yaml)
   
   # Secrets
   - secrets/secrets.yaml

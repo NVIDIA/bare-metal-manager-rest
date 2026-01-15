@@ -8,7 +8,7 @@
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
 
-# carbide-rest-cert-manager Service
+# carbide-rest-cert-manager Service (includes embedded Vault)
 apiVersion: v1
 kind: Service
 metadata:
@@ -24,6 +24,9 @@ spec:
     - port: 8001
       targetPort: 8001
       name: http
+    - port: 8200
+      targetPort: 8200
+      protocol: TCP
+      name: vault
   selector:
     app: carbide-rest-cert-manager
-
