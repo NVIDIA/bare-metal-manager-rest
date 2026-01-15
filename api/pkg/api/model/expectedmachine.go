@@ -19,7 +19,7 @@ import (
 	"github.com/google/uuid"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
-	validationIs "github.com/go-ozzo/ozzo-validation/v4/is"
+	validationis "github.com/go-ozzo/ozzo-validation/v4/is"
 
 	"github.com/nvidia/carbide-rest/api/pkg/api/model/util"
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
@@ -55,7 +55,7 @@ func (emcr *APIExpectedMachineCreateRequest) Validate() error {
 	err := validation.ValidateStruct(emcr,
 		validation.Field(&emcr.BmcMacAddress,
 			validation.Required.Error(validationErrorValueRequired),
-			validationIs.MAC),
+			validationis.MAC),
 		validation.Field(&emcr.DefaultBmcUsername,
 			validation.Length(0, 16).Error("BMC username must be 16 characters or less")),
 		validation.Field(&emcr.DefaultBmcPassword,
