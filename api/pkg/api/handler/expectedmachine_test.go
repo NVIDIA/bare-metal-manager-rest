@@ -2101,7 +2101,7 @@ func TestUpdateExpectedMachinesHandler_Handle(t *testing.T) {
 			validateResp: func(t *testing.T, body []byte) {
 				// Verify error message mentions site mismatch
 				bodyStr := string(body)
-				assert.Contains(t, bodyStr, "does not belong to Site")
+				assert.Contains(t, bodyStr, "does not belong to the same Site")
 			},
 		},
 		{

@@ -2192,13 +2192,13 @@ func TestUniqueChecker_Add_Basic(t *testing.T) {
 	id3 := uuid.New()
 
 	// Add first entry with unique value
-	checker.Add(id1, "00:11:22:33:44:55")
+	checker.Update(id1, "00:11:22:33:44:55")
 
 	// Add second entry with different unique value
-	checker.Add(id2, "AA:BB:CC:DD:EE:FF")
+	checker.Update(id2, "AA:BB:CC:DD:EE:FF")
 
 	// Add third entry with duplicate unique value
-	checker.Add(id3, "00:11:22:33:44:55")
+	checker.Update(id3, "00:11:22:33:44:55")
 
 	// Should have 1 duplicate (values are stored in lowercase)
 	duplicates := checker.GetDuplicates()
@@ -2218,9 +2218,9 @@ func TestUniqueChecker_Add_NoDuplicates(t *testing.T) {
 	id3 := uuid.New()
 
 	// Add entries with all unique values
-	checker.Add(id1, "00:11:22:33:44:55")
-	checker.Add(id2, "AA:BB:CC:DD:EE:FF")
-	checker.Add(id3, "FF:FF:FF:FF:FF:FF")
+	checker.Update(id1, "00:11:22:33:44:55")
+	checker.Update(id2, "AA:BB:CC:DD:EE:FF")
+	checker.Update(id3, "FF:FF:FF:FF:FF:FF")
 
 	// Should have no duplicates
 	duplicates := checker.GetDuplicates()
@@ -2239,8 +2239,8 @@ func TestUniqueChecker_Update(t *testing.T) {
 	oldMac := "00:11:22:33:44:55"
 	newMac := "AA:BB:CC:DD:EE:FF"
 
-	checker.Add(id1, oldMac)
-	checker.Add(id2, "11:22:33:44:55:66")
+	checker.Update(id1, oldMac)
+	checker.Update(id2, "11:22:33:44:55:66")
 
 	// Initially no duplicates
 	assert.False(t, checker.HasDuplicates())
@@ -2268,7 +2268,7 @@ func TestUniqueChecker_Update_NoChange(t *testing.T) {
 	id1 := uuid.New()
 	mac := "00:11:22:33:44:55"
 
-	checker.Add(id1, mac)
+	checker.Update(id1, mac)
 
 	// Update with same value should be no-op
 	checker.Update(id1, mac)
@@ -2285,16 +2285,16 @@ func TestUniqueChecker_Update_NewID(t *testing.T) {
 	id1 := uuid.New()
 	id2 := uuid.New()
 
-	checker.Add(id1, "00:11:22:33:44:55")
+	checker.Update(id1, "00:11:22:33:44:55")
 
 	// Update a new ID that hasn't been added yet
 	checker.Update(id2, "AA:BB:CC:DD:EE:FF")
 
 	// Should have no duplicates
 	assert.False(t, checker.HasDuplicates())
-	
+
 	// Verify id2 was added (values are stored in lowercase)
-	assert.Equal(t, "aa:bb:cc:dd:ee:ff", checker.IdToUniqueValue[id2])
+	assert.Equal(t, "aa:bb:cc:dd:ee:ff", checker.idToUniqueValue[id2])
 }
 
 // TestUniqueChecker_GetDuplicates tests the GetDuplicates method with multiple duplicates
@@ -2308,11 +2308,11 @@ func TestUniqueChecker_GetDuplicates(t *testing.T) {
 	id5 := uuid.New()
 
 	// Add values where two unique values are duplicated
-	checker.Add(id1, "MAC-A")
-	checker.Add(id2, "MAC-B")
-	checker.Add(id3, "MAC-A") // duplicate of id1
-	checker.Add(id4, "MAC-C")
-	checker.Add(id5, "MAC-A") // another duplicate of id1
+	checker.Update(id1, "MAC-A")
+	checker.Update(id2, "MAC-B")
+	checker.Update(id3, "MAC-A") // duplicate of id1
+	checker.Update(id4, "MAC-C")
+	checker.Update(id5, "MAC-A") // another duplicate of id1
 
 	// Should have 1 duplicate value (MAC-A appears 3 times, stored as lowercase)
 	duplicates := checker.GetDuplicates()
@@ -2332,12 +2332,12 @@ func TestUniqueChecker_GetDuplicates_MultipleDuplicates(t *testing.T) {
 	}
 
 	// Add values where two different unique values are duplicated
-	checker.Add(ids[0], "MAC-A")
-	checker.Add(ids[1], "MAC-B")
-	checker.Add(ids[2], "MAC-A") // duplicate MAC-A
-	checker.Add(ids[3], "MAC-C")
-	checker.Add(ids[4], "MAC-B") // duplicate MAC-B
-	checker.Add(ids[5], "MAC-D")
+	checker.Update(ids[0], "MAC-A")
+	checker.Update(ids[1], "MAC-B")
+	checker.Update(ids[2], "MAC-A") // duplicate MAC-A
+	checker.Update(ids[3], "MAC-C")
+	checker.Update(ids[4], "MAC-B") // duplicate MAC-B
+	checker.Update(ids[5], "MAC-D")
 
 	// Should have 2 duplicate values (stored as lowercase)
 	duplicates := checker.GetDuplicates()
@@ -2367,8 +2367,8 @@ func TestUniqueChecker_BatchOperationExample(t *testing.T) {
 
 	// Add all requests to checkers
 	for i, req := range requests {
-		macChecker.Add(i, req.BmcMacAddress)
-		serialChecker.Add(i, req.ChassisSerialNumber)
+		macChecker.Update(i, req.BmcMacAddress)
+		serialChecker.Update(i, req.ChassisSerialNumber)
 	}
 
 	// Check for duplicates
@@ -2428,7 +2428,7 @@ func TestUniqueChecker_UpdateScenario(t *testing.T) {
 
 	// First, populate checker with existing machines
 	for machineID, mac := range existingMachines {
-		macChecker.Add(machineID, mac)
+		macChecker.Update(machineID, mac)
 	}
 
 	// Initially no duplicates
@@ -2457,10 +2457,10 @@ func TestUniqueChecker_ComplexScenario(t *testing.T) {
 	id4 := uuid.New()
 
 	// Initial state: 4 machines with unique MACs
-	checker.Add(id1, "MAC-A")
-	checker.Add(id2, "MAC-B")
-	checker.Add(id3, "MAC-C")
-	checker.Add(id4, "MAC-D")
+	checker.Update(id1, "MAC-A")
+	checker.Update(id2, "MAC-B")
+	checker.Update(id3, "MAC-C")
+	checker.Update(id4, "MAC-D")
 
 	// No duplicates
 	assert.False(t, checker.HasDuplicates())

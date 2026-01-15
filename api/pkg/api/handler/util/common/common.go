@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	validation "github.com/go-ozzo/ozzo-validation/v4"
 	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/attribute"
@@ -1411,10 +1412,10 @@ func GetNVLinkLogicalPartitionCountStats(ctx context.Context, tx *cdb.Tx, dbSess
 
 // UniqueChecker is a generic struct for tracking uniqueness of values and detecting duplicates.
 // It's designed to validate uniqueness constraints in batch operations (create/update handlers).
-// T is the type of the reference unique ID being checked (UUID, ...) and is only used if Update() is needed.
+// T is the type of the reference unique ID being checked (usually UUID).
 type UniqueChecker[T comparable] struct {
-	// IdToUniqueValue maps each main identifier to the secondary unique value
-	IdToUniqueValue map[T]string
+	// idToUniqueValue maps each main identifier to the secondary unique value
+	idToUniqueValue map[T]string
 	// uniqueValueCount tracks how many unique values are associated with each ID (ideally one)
 	// This is useful for reporting duplicate counts per ID
 	uniqueValueCount map[string]int
@@ -1423,16 +1424,28 @@ type UniqueChecker[T comparable] struct {
 // NewUniqueChecker creates and initializes a new UniqueChecker
 func NewUniqueChecker[T comparable]() *UniqueChecker[T] {
 	return &UniqueChecker[T]{
-		IdToUniqueValue:  make(map[T]string),
+		idToUniqueValue:  make(map[T]string),
 		uniqueValueCount: make(map[string]int),
 	}
 }
 
-// Add add an entry (unique value) for a main ID (which MUST be unique if you intend to use Update() later).
-func (uc *UniqueChecker[T]) Add(id T, uniqueValue string) {
+// Update updates or adds a unique value associated with a principal ID, allowing overwrites.
+func (uc *UniqueChecker[T]) Update(id T, uniqueValue string) {
 	uniqueValue = strings.ToLower(uniqueValue)
+	previousValue, exists := uc.idToUniqueValue[id]
+	if exists {
+		if uniqueValue == previousValue {
+			// No change in value, no-op
+			return
+		}
+		// Change of value, decrement previous value count then add as new value
+		uc.uniqueValueCount[previousValue] -= 1
+		if uc.uniqueValueCount[previousValue] <= 0 {
+			delete(uc.uniqueValueCount, previousValue)
+		}
+	}
 	// add/replace mapping
-	uc.IdToUniqueValue[id] = uniqueValue
+	uc.idToUniqueValue[id] = uniqueValue
 	// track count of unique values
 	if _, exists := uc.uniqueValueCount[uniqueValue]; !exists {
 		uc.uniqueValueCount[uniqueValue] = 1
@@ -1441,29 +1454,8 @@ func (uc *UniqueChecker[T]) Add(id T, uniqueValue string) {
 	}
 }
 
-// Update updates or adds a unique value associated with a principal ID, allowing overwrites.
-func (uc *UniqueChecker[T]) Update(id T, uniqueValue string) {
-	uniqueValue = strings.ToLower(uniqueValue)
-	previousValue, exists := uc.IdToUniqueValue[id]
-	// No previous value associated, just add
-	if !exists {
-		uc.Add(id, uniqueValue)
-		return
-	}
-	// No change in value, no-op
-	if uniqueValue == previousValue {
-		return
-	}
-	// Change of value, decrement previous value count then add as new value
-	uc.uniqueValueCount[previousValue] -= 1
-	if uc.uniqueValueCount[previousValue] <= 0 {
-		delete(uc.uniqueValueCount, previousValue)
-	}
-	uc.Add(id, uniqueValue)
-}
-
-func (uc *UniqueChecker[T]) DoesIDHasConflict(id T) bool {
-	uniqueValue, exists := uc.IdToUniqueValue[id]
+func (uc *UniqueChecker[T]) DoesIDHaveConflict(id T) bool {
+	uniqueValue, exists := uc.idToUniqueValue[id]
 	if !exists {
 		return false
 	}
@@ -1489,4 +1481,15 @@ func (uc *UniqueChecker[T]) GetDuplicates() []string {
 // HasDuplicates returns true if any duplicates have been detected
 func (uc *UniqueChecker[T]) HasDuplicates() bool {
 	return len(uc.GetDuplicates()) > 0
+}
+
+// AddToValidationError adds a new error entry or augments an existing one into a validation.Errors{} map
+func AddToValidationErrors(errs validation.Errors, key string, err error) {
+	if existingErr, exists := errs[key]; exists {
+		// Augment existing error by combining messages
+		errs[key] = errors.New(strings.Join([]string{existingErr.Error(), err.Error()}, ", "))
+	} else {
+		// Add new error
+		errs[key] = err
+	}
 }
