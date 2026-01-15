@@ -180,6 +180,7 @@ func (req APINetworkSecurityGroupCreateRequest) Validate(siteConfig *cdbm.SiteCo
 
 			// Key validation
 			err = validation.Validate(key,
+				validation.Match(util.NotAllWhitespaceRegexp).Error("label key consists only of whitespace"),
 				validation.Length(1, 255).Error(validationErrorMapKeyLabelStringLength),
 			)
 
@@ -268,6 +269,7 @@ func (req APINetworkSecurityGroupUpdateRequest) Validate(siteConfig *cdbm.SiteCo
 
 			// Key validation
 			err = validation.Validate(key,
+				validation.Match(util.NotAllWhitespaceRegexp).Error("label key consists only of whitespace"),
 				validation.Length(1, 255).Error(validationErrorMapKeyLabelStringLength),
 			)
 

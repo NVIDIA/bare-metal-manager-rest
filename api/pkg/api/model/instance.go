@@ -1497,6 +1497,7 @@ func (iur APIInstanceUpdateRequest) Validate() error {
 
 			// Key validation
 			err = validation.Validate(&key,
+				validation.Match(util.NotAllWhitespaceRegexp).Error("label key consists only of whitespace"),
 				validation.Length(1, 255).Error(validationErrorMapKeyLabelStringLength),
 			)
 
