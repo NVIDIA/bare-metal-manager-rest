@@ -45,17 +45,11 @@ for i in {1..30}; do
     fi
 done
 
-# Wait for site-manager
+# Wait for site-manager to be ready
 echo "Waiting for site-manager..."
-for i in {1..30}; do
-    if kubectl -n $NAMESPACE get pods -l app=carbide-rest-site-manager -o jsonpath='{.items[0].status.containerStatuses[0].ready}' 2>/dev/null | grep -q "true"; then
-        break
-    fi
-    if [ $i -eq 30 ]; then
-        echo "WARN: Site-manager not ready"
-        break
-    fi
-done
+kubectl -n $NAMESPACE wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=120s || {
+    echo "WARN: Site-manager not ready after 120s"
+}
 
 # Get access token
 echo "Acquiring token..."
@@ -95,29 +89,42 @@ fi
 # Check for existing site
 echo "Checking for existing site..."
 EXISTING_SITE=$(curl -sf "$API_URL/v2/org/$ORG/carbide/site?infrastructureProviderId=$PROVIDER_ID" \
-    -H "Authorization: Bearer $TOKEN" | jq -r '.items[] | select(.name == "local-dev-site") | .id' 2>/dev/null || echo "")
+    -H "Authorization: Bearer $TOKEN" | jq -r '.[] | select(.name == "local-dev-site") | .id' 2>/dev/null || echo "")
 
 if [ -n "$EXISTING_SITE" ] && [ "$EXISTING_SITE" != "null" ]; then
     SITE_ID="$EXISTING_SITE"
     echo "Using existing site: $SITE_ID"
 else
     echo "Creating site..."
-    SITE_RESP=$(curl -s -X POST "$API_URL/v2/org/$ORG/carbide/site?infrastructureProviderId=$PROVIDER_ID" \
-        -H "Authorization: Bearer $TOKEN" \
-        -H "Content-Type: application/json" \
-        -d '{
-            "name": "local-dev-site",
-            "description": "Local development site",
-            "location": {"address": "Local Development", "city": "Santa Clara", "state": "CA", "country": "USA", "postalCode": "95054"},
-            "contact": {"name": "Dev Team", "email": "dev@example.com", "phone": "555-0100"}
-        }')
+    # Retry site creation a few times in case site-manager is still starting up
+    for attempt in 1 2 3; do
+        SITE_RESP=$(curl -s -X POST "$API_URL/v2/org/$ORG/carbide/site?infrastructureProviderId=$PROVIDER_ID" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{
+                "name": "local-dev-site",
+                "description": "Local development site",
+                "location": {"address": "Local Development", "city": "Santa Clara", "state": "CA", "country": "USA", "postalCode": "95054"},
+                "contact": {"name": "Dev Team", "email": "dev@example.com", "phone": "555-0100"}
+            }')
+        
+        SITE_ID=$(echo "$SITE_RESP" | jq -r '.id // empty')
+        if [ -n "$SITE_ID" ] && [ "$SITE_ID" != "null" ]; then
+            echo "Created site: $SITE_ID"
+            break
+        fi
+        
+        if [ $attempt -lt 3 ]; then
+            echo "Site creation attempt $attempt failed, retrying in 5 seconds..."
+            echo "Response: $SITE_RESP"
+            read -t 5 < /dev/null || true  # Wait 5 seconds without sleep
+        fi
+    done
     
-    SITE_ID=$(echo "$SITE_RESP" | jq -r '.id // empty')
     if [ -z "$SITE_ID" ] || [ "$SITE_ID" == "null" ]; then
-        echo "WARN: Failed to create site, using fallback UUID"
-        SITE_ID="00000000-0000-4000-8000-000000000001"
-    else
-        echo "Created site: $SITE_ID"
+        echo "ERROR: Failed to create site after 3 attempts"
+        echo "Last response: $SITE_RESP"
+        exit 1
     fi
 fi
 
