@@ -1034,18 +1034,17 @@ func (cemh CreateExpectedMachinesHandler) Handle(c echo.Context) error {
 			}
 		}
 
-		// Check SiteID
-		siteID, verr := uuid.Parse(req.SiteID)
-		if verr != nil {
-			common.AddToValidationErrors(itemErrors, "siteID", fmt.Errorf("Invalid Site ID format (%s)", req.SiteID))
+		// SiteID is mandatory for batch create and must be the same for all items
+		if req.SiteID == "" {
+			common.AddToValidationErrors(itemErrors, "siteID", fmt.Errorf("Site ID is required"))
+		}
+		siteID, _ := uuid.Parse(req.SiteID) // already validated
+		if foundSiteID == nil {
+			foundSiteID = &siteID
 		} else {
-			if foundSiteID == nil {
-				foundSiteID = &siteID
-			} else {
-				if siteID != *foundSiteID {
-					common.AddToValidationErrors(itemErrors, "siteID", fmt.Errorf(
-						"Expected Machine does not belong to the same Site (%s) as other Expected Machines in request", req.SiteID))
-				}
+			if siteID != *foundSiteID {
+				common.AddToValidationErrors(itemErrors, "siteID", fmt.Errorf(
+					"Expected Machine does not belong to the same Site (%s) as other Expected Machines in request", req.SiteID))
 			}
 		}
 

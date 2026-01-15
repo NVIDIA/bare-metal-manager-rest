@@ -3302,6 +3302,147 @@ paths:
                 $ref: '#/components/schemas/CarbideAPIError'
       tags:
         - Expected Machine
+  '/v2/org/{org}/forge/expected-machine/batch':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+    post:
+      summary: Batch Create Expected Machines
+      operationId: batch-create-expected-machines
+      description: |-
+        Create multiple Expected Machines in a single request. All machines must belong to the same site.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` role.
+
+        Alternatively, Tenant Admins with `TargetedInstanceCreation` capability can also create Expected Machines if they have an account with the Site's Infrastructure Provider.
+
+        Maximum batch size: 100 Expected Machines per request.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              minItems: 1
+              maxItems: 100
+              items:
+                $ref: '#/components/schemas/ExpectedMachineCreateRequest'
+            examples:
+              example-1:
+                value:
+                  - siteId: f97df110-f4de-492e-8849-4a6af68026b0
+                    bmcMacAddress: '00:1A:2B:3C:4D:5E'
+                    bmcUsername: admin
+                    bmcPassword: password123
+                    chassisSerialNumber: CHASSIS-12345
+                    fallbackDPUSerialNumbers:
+                      - DPU-001
+                      - DPU-002
+                    labels:
+                      environment: production
+                      rack: A1
+                  - siteId: f97df110-f4de-492e-8849-4a6af68026b0
+                    bmcMacAddress: '00:1A:2B:3C:4D:5F'
+                    bmcUsername: admin
+                    bmcPassword: password456
+                    chassisSerialNumber: CHASSIS-12346
+                    fallbackDPUSerialNumbers:
+                      - DPU-003
+                      - DPU-004
+                    labels:
+                      environment: production
+                      rack: A2
+        description: Array of Expected Machine creation requests
+        required: true
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ExpectedMachine'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Expected Machine
+    patch:
+      summary: Batch Update Expected Machines
+      operationId: batch-update-expected-machines
+      description: |-
+        Update multiple Expected Machines in a single request. All machines must belong to the same site.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` role.
+
+        Infrastructure Provider must own the Expected Machines.
+
+        Alternatively, Tenant Admins with `TargetedInstanceCreation` capability can also update Expected Machines if they have an account with the Site's Infrastructure Provider.
+
+        Maximum batch size: 100 Expected Machines per request.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              minItems: 1
+              maxItems: 100
+              items:
+                allOf:
+                  - $ref: '#/components/schemas/ExpectedMachineUpdateRequest'
+                  - type: object
+                    required:
+                      - id
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                        description: ID of the Expected Machine to update (required for batch operations)
+            examples:
+              example-1:
+                value:
+                  - id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
+                    bmcUsername: newadmin
+                    bmcPassword: newpassword123
+                    chassisSerialNumber: CHASSIS-54321
+                    labels:
+                      environment: staging
+                      rack: B2
+                  - id: 597f6eca-6276-4993-bfeb-53cbbbba6f09
+                    bmcUsername: newadmin2
+                    bmcPassword: newpassword456
+                    chassisSerialNumber: CHASSIS-54322
+                    labels:
+                      environment: staging
+                      rack: B3
+        description: Array of Expected Machine update requests
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ExpectedMachine'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          description: One or more Expected Machines not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CarbideAPIError'
+      tags:
+        - Expected Machine
   '/v2/org/{org}/carbide/sku':
     parameters:
       - schema:
@@ -12912,6 +13053,10 @@ components:
         Request data to update an existing Expected Machine.
 
         Note: BMC credentials (username/password) are only accepted during creation and updates but are not returned in responses.
+        
+        For single updates (PATCH /expected-machine/{id}), the id field is optional in body and will be ignored if provided (the ID from the URL path is used).
+        
+        For batch updates (PATCH /expected-machine/batch), the id field is required to identify which Expected Machine to update.
       examples:
         - bmcUsername: newadmin
           bmcPassword: newpassword123
@@ -12921,6 +13066,17 @@ components:
             environment: staging
             rack: B2
       properties:
+        id:
+          type:
+            - string
+            - 'null'
+          format: uuid
+          description: |-
+            ID of the Expected Machine to update.
+            
+            Optional for single updates (ignored if provided, URL path ID is used).
+            
+            Required for batch update operations.
         bmcMacAddress:
           type:
             - string

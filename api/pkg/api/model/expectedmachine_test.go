@@ -172,6 +172,50 @@ func TestAPIExpectedMachineCreateRequest_Validate(t *testing.T) {
 			},
 			expectErr: false,
 		},
+		{
+			desc: "ok when SiteID is empty string",
+			obj: APIExpectedMachineCreateRequest{
+				SiteID:              "",
+				BmcMacAddress:       "00:11:22:33:44:55",
+				DefaultBmcUsername:  &validUsername,
+				DefaultBmcPassword:  &validPassword,
+				ChassisSerialNumber: validChassisSerial,
+			},
+			expectErr: false,
+		},
+		{
+			desc: "ok when SiteID is valid UUID",
+			obj: APIExpectedMachineCreateRequest{
+				SiteID:              "550e8400-e29b-41d4-a716-446655440000",
+				BmcMacAddress:       "00:11:22:33:44:55",
+				DefaultBmcUsername:  &validUsername,
+				DefaultBmcPassword:  &validPassword,
+				ChassisSerialNumber: validChassisSerial,
+			},
+			expectErr: false,
+		},
+		{
+			desc: "error when SiteID is invalid UUID",
+			obj: APIExpectedMachineCreateRequest{
+				SiteID:              "not-a-valid-uuid",
+				BmcMacAddress:       "00:11:22:33:44:55",
+				DefaultBmcUsername:  &validUsername,
+				DefaultBmcPassword:  &validPassword,
+				ChassisSerialNumber: validChassisSerial,
+			},
+			expectErr: true,
+		},
+		{
+			desc: "error when SiteID is partially valid UUID",
+			obj: APIExpectedMachineCreateRequest{
+				SiteID:              "550e8400-e29b-41d4",
+				BmcMacAddress:       "00:11:22:33:44:55",
+				DefaultBmcUsername:  &validUsername,
+				DefaultBmcPassword:  &validPassword,
+				ChassisSerialNumber: validChassisSerial,
+			},
+			expectErr: true,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.desc, func(t *testing.T) {
