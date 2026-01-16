@@ -477,8 +477,6 @@ paths:
         Org must have an Infrastructure Provider entity and its ID must Infrastructure Provider ID in request data. User must have `FORGE_PROVIDER_ADMIN` authorization role
 
         Infrastructure Provider can create a Tenant Account by specifying the Tenant's UUID or Tenant's org name. This will set the status of the Tenant Account to "Invited". Then the Tenant can view this account information and are able to confirm/accept the account by updating the Tenant Account.
-
-        Once Forge integrates with NGC Subscription System to receive Tenant Account mappings, this endpoint will be deprecated.
       requestBody:
         content:
           application/json:
@@ -627,8 +625,6 @@ paths:
         Can be used to accept an invitation sent by InfraStructure provider.
 
         Org must have a tenant entity whose ID matches the `tenantId` of the Tenant Account object. User must have `FORGE_TENANT_ADMIN` role. Can only update a TenantAccount that has `Invited` status.
-
-        Once Forge integrates with NGC Subscription System to receive Tenant Account mappings, this endpoint will be deprecated.
       requestBody:
         content:
           application/json:
@@ -10214,7 +10210,7 @@ components:
           description: Name of the VPC
         description:
           type: string
-          description: Description of the VPC, can be empty
+          description: 'Description of the VPC, can be empty'
         org:
           type: string
           readOnly: true
@@ -10233,7 +10229,7 @@ components:
             - string
             - 'null'
           format: uuid
-          description: Legacy attribute, contains the same value as ID
+          description: 'Legacy attribute, contains the same value as ID'
         networkVirtualizationType:
           type: string
           enum:
@@ -10307,8 +10303,8 @@ components:
           networkVirtualizationType: FNN
           nvLinkLogicalPartitionId: dd887330-dbd3-45ce-b400-c42fc8e47315
           labels:
-              region: us-west-1
-              env: dev
+            region: us-west-1
+            env: dev
       properties:
         name:
           type: string
@@ -10329,7 +10325,7 @@ components:
           enum:
             - ETHERNET_VIRTUALIZER
             - FNN
-          description: Network virtualization type of the VPC. If no value is specified, then defaults to `FNN` if Site has native networking enabled, or ETHERNET_VIRTUALIZER if native networking is disabled
+          description: 'Network virtualization type of the VPC. If no value is specified, then defaults to `FNN` if Site has native networking enabled, or ETHERNET_VIRTUALIZER if native networking is disabled'
         networkSecurityGroupId:
           type:
             - string
@@ -13137,7 +13133,7 @@ components:
           readOnly: true
         isUsableByTenant:
           type: boolean
-          description: 'Indicates whether the machine is usable by or currently in use by a tenant.'
+          description: Indicates whether the machine is usable by or currently in use by a tenant.
           readOnly: true
         statusHistory:
           type: array
@@ -14388,6 +14384,8 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/StatusDetail'
+        statefulEgress:
+          type: boolean
         rules:
           type: array
           items:
@@ -14440,6 +14438,9 @@ components:
         siteId:
           type: string
           format: uuid
+        statefulEgress:
+          type: boolean
+          description: Egress rules with protocol and destination ports defined but without source ports defined should automatically be made stateful.
         rules:
           type: array
           items:
@@ -14478,6 +14479,9 @@ components:
           type:
             - string
             - 'null'
+        statefulEgress:
+          type: boolean
+          description: Egress rules with protocol and destination ports defined but without source ports defined should automatically be made stateful.
         rules:
           type: array
           description: 'Update rules of the NetworkSecurityGroup. The rules will be entirely replaced by those sent in the request. Any rules not included in the request will be removed. To retain existing rules, first fetch them and include them. '
