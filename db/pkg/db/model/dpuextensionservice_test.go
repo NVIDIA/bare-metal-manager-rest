@@ -16,10 +16,10 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/nvidia/carbide-rest/db/pkg/db"
 	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
 	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
+	"github.com/stretchr/testify/assert"
 	otrace "go.opentelemetry.io/otel/trace"
 )
 
@@ -363,13 +363,14 @@ func TestDpuExtensionServiceSQLDAO_GetAll(t *testing.T) {
 	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
 
 	tests := []struct {
-		desc               string
-		filter             DpuExtensionServiceFilterInput
-		pageInput          paginator.PageInput
-		expectedCount      int
-		expectedTotal      *int
-		expectedError      bool
-		verifyChildSpanner bool
+		desc                     string
+		filter                   DpuExtensionServiceFilterInput
+		pageInput                paginator.PageInput
+		expectedCount            int
+		expectedFirstOrderByName string
+		expectedTotal            *int
+		expectedError            bool
+		verifyChildSpanner       bool
 	}{
 		{
 			desc:               "GetAll with no filters returns all objects",
@@ -473,6 +474,19 @@ func TestDpuExtensionServiceSQLDAO_GetAll(t *testing.T) {
 			expectedTotal: db.GetIntPtr(3),
 			expectedError: false,
 		},
+		{
+			desc: "GetAll with order by name returns objects",
+			pageInput: paginator.PageInput{
+				OrderBy: &paginator.OrderBy{
+					Field: "name",
+					Order: paginator.OrderDescending,
+				},
+			},
+			expectedCount:            3,
+			expectedTotal:            db.GetIntPtr(3),
+			expectedError:            false,
+			expectedFirstOrderByName: "dpu-service-3",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -490,6 +504,10 @@ func TestDpuExtensionServiceSQLDAO_GetAll(t *testing.T) {
 
 			if tc.expectedTotal != nil {
 				assert.Equal(t, *tc.expectedTotal, total)
+			}
+
+			if tc.expectedFirstOrderByName != "" {
+				assert.Equal(t, tc.expectedFirstOrderByName, got[0].Name)
 			}
 
 			if tc.verifyChildSpanner {
