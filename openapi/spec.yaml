@@ -11,7 +11,7 @@
 openapi: 3.1.0
 info:
   title: Carbide REST API
-  version: 0.2.85
+  version: 0.2.86
   summary: Carbide REST API is the centralize RESTful gateway to access Carbide service
   description: 'Carbide REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all Carbide Sites.'
   license:
