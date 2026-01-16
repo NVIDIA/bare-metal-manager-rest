@@ -143,15 +143,16 @@ const (
 // IssuerConfig represents a single issuer configuration entry
 // This is the preferred configuration format that supports claim mappings
 type IssuerConfig struct {
-	Name           string                `mapstructure:"name"`
-	Origin         interface{}           `mapstructure:"origin"` // Can be int or string
-	JWKS           string                `mapstructure:"jwks"`
-	Issuer         string                `mapstructure:"issuer"`
-	ServiceAccount bool                  `mapstructure:"serviceAccount"`
-	Audiences      []string              `mapstructure:"audiences"`
-	Scopes         []string              `mapstructure:"scopes"`
-	JWKSTimeout    string                `mapstructure:"jwksTimeout"` // e.g. "5s", "1m"
-	ClaimMappings  []cauth.ClaimMapping  `mapstructure:"claimMappings"`
+	Name                         string               `mapstructure:"name"`
+	Origin                       interface{}          `mapstructure:"origin"` // Can be int or string
+	JWKS                         string               `mapstructure:"jwks"`
+	Issuer                       string               `mapstructure:"issuer"`
+	ServiceAccount               bool                 `mapstructure:"serviceAccount"`
+	Audiences                    []string             `mapstructure:"audiences"`
+	Scopes                       []string             `mapstructure:"scopes"`
+	JWKSTimeout                  string               `mapstructure:"jwksTimeout"` // e.g. "5s", "1m"
+	ClaimMappings                []cauth.ClaimMapping `mapstructure:"claimMappings"`
+	AllowDuplicateStaticOrgNames bool                 `mapstructure:"allowDuplicateStaticOrgNames"` // When true, allows duplicate static org names across issuers
 }
 
 // GetOriginInt returns the origin as an integer
@@ -176,6 +177,12 @@ func (ic *IssuerConfig) GetJWKSTimeout() (time.Duration, error) {
 		return 0, nil // Use default
 	}
 	return time.ParseDuration(ic.JWKSTimeout)
+}
+
+// GetAllowDuplicateStaticOrgNames returns whether duplicate static org names are allowed
+// Defaults to false (duplicates not allowed) if not specified
+func (ic *IssuerConfig) GetAllowDuplicateStaticOrgNames() bool {
+	return ic.AllowDuplicateStaticOrgNames
 }
 
 // ParseOriginString converts a string origin to its integer constant
@@ -613,10 +620,10 @@ func (c *Config) ValidateIssuersConfig(issuers []IssuerConfig) error {
 				hasDynamicOrg = true
 			}
 
-			// Static org mapping - check for duplicates
+			// Static org mapping - check for duplicates unless allowDuplicateStaticOrgNames is true
 			if mapping.OrgName != "" {
 				normalizedOrg := strings.ToLower(mapping.OrgName)
-				if seenStaticOrgs[normalizedOrg] {
+				if seenStaticOrgs[normalizedOrg] && !issuer.GetAllowDuplicateStaticOrgNames() {
 					return fmt.Errorf("issuer %s: duplicate static org: %s", issuer.Name, mapping.OrgName)
 				}
 				seenStaticOrgs[normalizedOrg] = true
