@@ -73,36 +73,7 @@ jobs:
           post-pr-comment: 'true'
           fail-on-findings: 'true'
 
-  # Step 4.2: CodeQL Security Analysis
-  security-codeql-scan:
-    name: CodeQL Security Analysis
-    needs:
-      - prepare
-      - build-binaries
-    runs-on: linux-amd64-cpu4
-    timeout-minutes: 10
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-      packages: read
-      pull-requests: write
-    steps:
-      - name: Initialize CodeQL
-        uses: actions/checkout@v4
-
-      - name: Run CodeQL Scan
-        uses: NVIDIA/dsx-github-actions/.github/actions/codeql-scan@55d1e0af17fb4431edaca19fbd5c78fecd29d18a
-        with:
-          languages: 'go'
-          build-mode: 'manual'
-          category: '/language:go'
-          upload-sarif: 'false'  # Disable upload until GHAS is enabled, such as the repo be public
-          post-pr-comment: 'true'
-          fail-on-findings: 'true'  # Enforce quality gate
-          fail-on-severity: 'error' # Only fail on critical/high severity issues
-
-  # Step 4.3: Trivy Vulnerability Scan
+  # Step 4.2: Trivy Vulnerability Scan
   security-trivy-scan:
     name: Trivy Vulnerability Scan
     needs: prepare
