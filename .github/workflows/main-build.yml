@@ -92,9 +92,9 @@ jobs:
       - name: Run CodeQL Scan
         uses: NVIDIA/dsx-github-actions/.github/actions/codeql-scan@55d1e0af17fb4431edaca19fbd5c78fecd29d18a
         with:
-          languages: 'rust'
+          languages: 'go'
           build-mode: 'none'
-          category: '/language:rust'
+          category: '/language:go'
           upload-sarif: 'false'  # Disable upload until GHAS is enabled, such as the repo be public
           post-pr-comment: 'true'
           fail-on-findings: 'true'  # Enforce quality gate
