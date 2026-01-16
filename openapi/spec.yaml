@@ -477,6 +477,8 @@ paths:
         Org must have an Infrastructure Provider entity and its ID must Infrastructure Provider ID in request data. User must have `FORGE_PROVIDER_ADMIN` authorization role
 
         Infrastructure Provider can create a Tenant Account by specifying the Tenant's UUID or Tenant's org name. This will set the status of the Tenant Account to "Invited". Then the Tenant can view this account information and are able to confirm/accept the account by updating the Tenant Account.
+
+        Once Forge integrates with NGC Subscription System to receive Tenant Account mappings, this endpoint will be deprecated.
       requestBody:
         content:
           application/json:
@@ -625,6 +627,8 @@ paths:
         Can be used to accept an invitation sent by InfraStructure provider.
 
         Org must have a tenant entity whose ID matches the `tenantId` of the Tenant Account object. User must have `FORGE_TENANT_ADMIN` role. Can only update a TenantAccount that has `Invited` status.
+
+        Once Forge integrates with NGC Subscription System to receive Tenant Account mappings, this endpoint will be deprecated.
       requestBody:
         content:
           application/json:
@@ -10322,7 +10326,6 @@ components:
           type:
             - string
             - 'null'
-          description: If no value is specified then defaults to FNN if Site has native networking enabled and to ETHERNET_VIRTUALIZER if native networking is disabled
           enum:
             - ETHERNET_VIRTUALIZER
             - FNN
