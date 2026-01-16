@@ -24,6 +24,7 @@ on:
           required: false
           default: false
           type: boolean
+
 env:
   GO_VERSION: "1.25.4"
 
