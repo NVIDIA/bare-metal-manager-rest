@@ -76,9 +76,11 @@ jobs:
   # Step 4.2: CodeQL Security Analysis
   security-codeql-scan:
     name: CodeQL Security Analysis
-    needs: prepare
+    needs:
+      - prepare
+      - build-binaries
     runs-on: linux-amd64-cpu4
-    timeout-minutes: 360
+    timeout-minutes: 10
     permissions:
       actions: read
       contents: read
@@ -86,14 +88,14 @@ jobs:
       packages: read
       pull-requests: write
     steps:
-      - name: Checkout repository
+      - name: Initialize CodeQL
         uses: actions/checkout@v4
 
       - name: Run CodeQL Scan
         uses: NVIDIA/dsx-github-actions/.github/actions/codeql-scan@55d1e0af17fb4431edaca19fbd5c78fecd29d18a
         with:
           languages: 'go'
-          build-mode: 'none'
+          build-mode: 'manual'
           category: '/language:go'
           upload-sarif: 'false'  # Disable upload until GHAS is enabled, such as the repo be public
           post-pr-comment: 'true'
