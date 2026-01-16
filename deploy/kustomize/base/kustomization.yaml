@@ -58,6 +58,7 @@ resources:
   - site-manager/deployment.yaml
   - site-manager/service.yaml
   - site-manager/rbac.yaml
+  - site-manager/certificate.yaml
 
 commonLabels:
   app.kubernetes.io/part-of: carbide-rest
