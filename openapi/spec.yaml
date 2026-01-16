@@ -11,7 +11,7 @@
 openapi: 3.1.0
 info:
   title: Carbide REST API
-  version: 0.2.76
+  version: 0.2.85
   summary: Carbide REST API is the centralize RESTful gateway to access Carbide service
   description: 'Carbide REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all Carbide Sites.'
   license:
@@ -79,6 +79,8 @@ tags:
       SKUs are automatically derived from machine hardware characteristics and used to group similar machines. SKUs are read-only and managed by the system.
   - name: InfiniBand Partition
     description: Partitions provide networking support for high-performance computing that features very high throughput and very low latency.
+  - name: NVLink Logical Partition
+    description: NVLink Logical Partitions provide networking support for high-performance computing that features very high throughput and very low latency for GPU to GPU communication.
   - name: Operating System
     description: Operating System operations
   - name: Instance Type
@@ -236,7 +238,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/InfrastructureProviderStats'
-              examples: {}
         '403':
           $ref: '#/components/responses/ForbiddenError'
       operationId: get-current-infrastructure-provider-stats
@@ -303,7 +304,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TenantStats'
-              examples: {}
         '403':
           $ref: '#/components/responses/ForbiddenError'
       operationId: get-current-tenant-stats
@@ -683,24 +683,8 @@ paths:
       description: |-
         Retrieve all Sites for org.
 
-        Either `infrastructureProviderId` or `tenantId` query param must be specified.
-
-        If `infrastructureProviderId` query param is provided, then org must have an Infrastructure Provider entity and its ID should match the query param value. User must have `FORGE_PROVIDER_ADMIN` role.
-
-        If `tenantId` query param is provided, then org must have a Tenant entity and its ID should match the query param value. User must have `FORGE_TENANT_ADMIN` role.
+        User must have `FORGE_PROVIDER_ADMIN` or `FORGE_TENANT_ADMIN` role. `infrastructureProviderId` or `tenantId` query param may be required for older API versions.
       parameters:
-        - schema:
-            type: string
-            format: uuid
-          in: query
-          name: infrastructureProviderId
-          description: Filter Sites by Infrastructure Provider ID
-        - schema:
-            type: string
-            format: uuid
-          in: query
-          name: tenantId
-          description: Filter Sites by Tenant ID
         - schema:
             type: string
           in: query
@@ -837,26 +821,10 @@ paths:
           $ref: '#/components/responses/ForbiddenError'
       operationId: get-site
       description: |-
-        Retrieve a specific Site by ID
+        Retrieve a specific Site by ID.
 
-        Either `infrastructureProviderId` or `tenantId` query param must be specified.
-
-        If `infrastructureProviderId` query param is provided, then org must have an Infrastructure Provider entity and its ID should match the query param value. User must have `FORGE_PROVIDER_ADMIN` role. The Infrastructure Provider must own the Site.
-
-        If `tenantId` query param is provided, then org must have a Tenant entity and its ID should match the query param value. User must have `FORGE_TENANT_ADMIN` role. The Tenant must have an allocation with the Site.
-      parameters:
-        - schema:
-            type: string
-            format: uuid
-          in: query
-          name: infrastructureProviderId
-          description: Filter Sites by Infrastructure Provider ID
-        - schema:
-            type: string
-            format: uuid
-          in: query
-          name: tenantId
-          description: Filter Sites by Tenant ID
+        User must have `FORGE_PROVIDER_ADMIN` or `FORGE_TENANT_ADMIN` role.
+      parameters: []
     patch:
       summary: Update Site
       operationId: update-site
@@ -1707,11 +1675,7 @@ paths:
       description: |-
         Retrieve all IP blocks for the org.
 
-        Either `infrastructureProviderId` or `tenantId` query param must be specified.
-
-        If `infrastructureProviderId` query param is provided, then org must have an Infrastructure Provider entity and its ID should match the query param value. User must have `FORGE_PROVIDER_ADMIN` role.
-
-        If `tenantId` query param is provided, then org must have a Tenant entity and its ID should match the query param value. User must have `FORGE_TENANT_ADMIN` role.
+        User must have `FORGE_PROVIDER_ADMIN` or `FORGE_TENANT_ADMIN` role. `infrastructureProviderId` or `tenantId` query param may be required for older API versions.
       parameters:
         - schema:
             type: string
@@ -1903,13 +1867,9 @@ paths:
           $ref: '#/components/responses/ForbiddenError'
       operationId: get-ipblock
       description: |-
-        Retrieve an IP block
+        Retrieve an IP Block by ID.
 
-        Either `infrastructureProviderId` or `tenantId` query param must be specified.
-
-        If `infrastructureProviderId` query param is provided, then org must have an Infrastructure Provider entity and its ID should match the query param value. User must have `FORGE_PROVIDER_ADMIN` role.
-
-        If `tenantId` query param is provided, then org must have a Tenant entity and its ID should match the query param value. User must have `FORGE_TENANT_ADMIN` role.
+        User must have `FORGE_PROVIDER_ADMIN` or `FORGE_TENANT_ADMIN` role.
       parameters:
         - schema:
             type: string
@@ -2161,6 +2121,7 @@ paths:
                           - 497f6eca-6276-4993-bfeb-53cbbbba6f08
                         relatedInstanceIds:
                           - 497f6eca-6276-4993-bfeb-53cbbbba6f08
+                      nvLinkLogicalPartitionId: dd887330-dbd3-45ce-b400-c42fc8e47315
                       labels:
                         region: us-west-1
                         env: dev
@@ -2272,6 +2233,7 @@ paths:
                     siteId: 72771e6a-6f5e-4de4-a5b9-1266c4197811
                     controllerVpcId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
                     networkVirtualizationType: ETHERNET_VIRTUALIZER
+                    nvLinkLogicalPartitionId: dd887330-dbd3-45ce-b400-c42fc8e47315
                     labels:
                       region: us-west-1
                       env: dev
@@ -2303,6 +2265,7 @@ paths:
                   description: Virtual network for machines executing Spark jobs
                   siteId: 72771e6a-6f5e-4de4-a5b9-1266c4197811
                   networkVirtualizationType: ETHERNET_VIRTUALIZER
+                  nvLinkLogicalPartitionId: dd887330-dbd3-45ce-b400-c42fc8e47315
                   labels:
                     region: us-west-1
                     env: dev
@@ -2346,6 +2309,7 @@ paths:
                     siteId: 72771e6a-6f5e-4de4-a5b9-1266c4197811
                     controllerVpcId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
                     networkVirtualizationType: ETHERNET_VIRTUALIZER
+                    nvLinkLogicalPartitionId: dd887330-dbd3-45ce-b400-c42fc8e47315
                     labels:
                       region: us-west-1
                       env: dev
@@ -2424,6 +2388,7 @@ paths:
                     siteId: 72771e6a-6f5e-4de4-a5b9-1266c4197811
                     controllerVpcId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
                     networkVirtualizationType: ETHERNET_VIRTUALIZER
+                    nvLinkLogicalPartitionId: dd887330-dbd3-45ce-b400-c42fc8e47315
                     labels:
                       region: us-west-1
                       env: dev
@@ -2494,6 +2459,7 @@ paths:
                     siteId: 72771e6a-6f5e-4de4-a5b9-1266c4197811
                     controllerVpcId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
                     networkVirtualizationType: FNN
+                    nvLinkLogicalPartitionId: dd887330-dbd3-45ce-b400-c42fc8e47315
                     labels:
                       region: us-west-1
                       env: dev
@@ -3110,7 +3076,7 @@ paths:
         - Expected Machine
     get:
       summary: Retrieve all Expected Machines
-      operationId: get-expected-machines
+      operationId: get-all-expected-machine
       description: |-
         Retrieve all Expected Machines.
 
@@ -3171,6 +3137,12 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/ExpectedMachine'
+          headers:
+            X-Pagination:
+              schema:
+                type: string
+                example: '{"pageNumber":1,"pageSize":20,"total":30,"orderBy": "CREATED_DESC"}'
+              description: Pagination result in JSON format
         '400':
           $ref: '#/components/responses/ValidationError'
         '403':
@@ -3221,11 +3193,7 @@ paths:
         '403':
           $ref: '#/components/responses/ForbiddenError'
         '404':
-          description: ExpectedMachine not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CarbideAPIError'
+          $ref: '#/components/responses/NotFoundError'
       tags:
         - Expected Machine
     patch:
@@ -3268,11 +3236,7 @@ paths:
         '403':
           $ref: '#/components/responses/ForbiddenError'
         '404':
-          description: ExpectedMachine not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CarbideAPIError'
+          $ref: '#/components/responses/NotFoundError'
       tags:
         - Expected Machine
     delete:
@@ -3295,11 +3259,7 @@ paths:
         '403':
           $ref: '#/components/responses/ForbiddenError'
         '404':
-          description: ExpectedMachine not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CarbideAPIError'
+          $ref: '#/components/responses/NotFoundError'
       tags:
         - Expected Machine
   '/v2/org/{org}/forge/expected-machine/batch':
@@ -3453,7 +3413,7 @@ paths:
         description: Name of the Org
     get:
       summary: Retrieve all SKUs
-      operationId: get-skus
+      operationId: get-all-sku
       description: |-
         Retrieve all SKUs (Stock Keeping Units) for the Infrastructure Provider or privileged Tenant.
 
@@ -3542,6 +3502,12 @@ paths:
                           model: SYS-420GP-TNR
                       created: '2019-08-24T14:15:22Z'
                       updated: '2019-08-24T14:15:22Z'
+          headers:
+            X-Pagination:
+              schema:
+                type: string
+                example: '{"pageNumber":1,"pageSize":20,"total":30,"orderBy": "CREATED_DESC"}'
+              description: Pagination result in JSON format
         '400':
           $ref: '#/components/responses/ValidationError'
         '403':
@@ -3618,11 +3584,7 @@ paths:
         '403':
           $ref: '#/components/responses/ForbiddenError'
         '404':
-          description: SKU not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CarbideAPIError'
+          $ref: '#/components/responses/NotFoundError'
       tags:
         - SKU
   '/v2/org/{org}/carbide/infiniband-partition':
@@ -3929,6 +3891,267 @@ paths:
                   description: Second version of the model training network
       tags:
         - InfiniBand Partition
+  '/v2/org/{org}/carbide/nvlink-logical-partition':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the NGC Org
+    get:
+      summary: Retrieve all NVLink Logical Partitions
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NVLinkLogicalPartition'
+              examples:
+                Example 1:
+                  value:
+                    - id: ded96bdf-905e-40dd-8a58-3472aab60042
+                      name: partition-east-gpu
+                      description: NVLink Logical Partition for model training Instances
+                      siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
+                      tenantId: f97df110-f4de-492e-8849-4a6af68026b0
+                      status: Pending
+                      statusHistory:
+                        - status: Pending
+                          message: 'Request received, pending processing'
+                          created: '2019-08-24T14:15:22Z'
+                          updated: '2019-08-24T14:15:22Z'
+                      created: '2019-08-24T14:15:22Z'
+                      updated: '2019-08-24T14:15:22Z'
+          headers:
+            X-Pagination:
+              schema:
+                type: string
+                example: '{"pageNumber":1,"pageSize":20,"total":30,"orderBy": "CREATED_DESC"}'
+              description: Pagination result in JSON format
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      operationId: get-all-nvlink-logical-partition
+      description: |-
+        Retrieve all NVLink Logical Partitions for the org
+
+        Org must have a Tenant entity. User must have `FORGE_TENANT_ADMIN` role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          in: query
+          name: siteId
+          description: Filter NVLink Logical Partitions by Site
+        - schema:
+            type: string
+          in: query
+          name: status
+          description: Filter NVLink Logical Partitions by Status
+        - schema:
+            type: string
+          in: query
+          name: query
+          description: 'Search for matches across all Sites. Input will be matched against name, description and status fields'
+        - schema:
+            type: boolean
+          in: query
+          name: includeInterfaces
+          description: Include NVLink Interfaces in response.
+        - schema:
+            type: boolean
+          in: query
+          name: includeStats
+          description: Include NVLink Logical Partition Stats in response.
+        - schema:
+            type: boolean
+          in: query
+          name: includeVpcs
+          description: Include VPCs in response.
+        - schema:
+            type: string
+            enum:
+              - Site
+              - Tenant
+          in: query
+          name: includeRelation
+          description: Related entity to expand
+        - schema:
+            type: integer
+            example: 1
+            default: 1
+            minimum: 1
+          in: query
+          name: pageNumber
+          description: Page number for pagination query
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            example: 20
+          in: query
+          name: pageSize
+          description: Page size for pagination query
+        - schema:
+            type: string
+            enum:
+              - NAME_ASC
+              - NAME_DESC
+              - STATUS_ASC
+              - STATUS_DESC
+              - CREATED_ASC
+              - CREATED_DESC
+              - UPDATED_ASC
+              - UPDATED_DESC
+          in: query
+          name: orderBy
+          description: Ordering for pagination query
+      tags:
+        - NVLink Logical Partition
+    post:
+      summary: Create NVLink Logical Partition
+      operationId: create-nvlink-logical-partition
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NVLinkLogicalPartition'
+              examples:
+                Example 1:
+                  value:
+                    id: ded96bdf-905e-40dd-8a58-3472aab60042
+                    name: partition-east-gpu
+                    description: NVLink Logical Partition for model training Instances
+                    siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
+                    tenantId: f97df110-f4de-492e-8849-4a6af68026b0
+                    status: Pending
+                    statusHistory:
+                      - status: Pending
+                        message: 'Request received, pending processing'
+                        created: '2019-08-24T14:15:22Z'
+                        updated: '2019-08-24T14:15:22Z'
+                    created: '2019-08-24T14:15:22Z'
+                    updated: '2019-08-24T14:15:22Z'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      description: |-
+        Create an NVLink Logical Partition for the org.
+
+        Org must have a Tenant entity. User must have `FORGE_TENANT_ADMIN` NGC role.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NVLinkLogicalPartitionCreateRequest'
+            examples:
+              Example 1:
+                value:
+                  name: partition-east-gpu
+                  siteId: 69dae3c8-3554-4a1f-b391-858c6dc47fff
+      tags:
+        - NVLink Logical Partition
+  '/v2/org/{org}/carbide/nvlink-logical-partition/{nvLinkLogicalPartitionId}':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the NGC Org
+      - schema:
+          type: string
+        name: nvLinkLogicalPartitionId
+        in: path
+        required: true
+        description: ID of the NVLink Logical Partition
+    get:
+      summary: Retrieve NVLink Logical Partition
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NVLinkLogicalPartition'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      operationId: get-nvlink-logical-partition
+      description: |-
+        Retrieve a specific NVLink Logical Partition by ID
+
+        Org must have a Tenant entity. User must have `FORGE_TENANT_ADMIN` NGC role.
+      tags:
+        - NVLink Logical Partition
+      parameters:
+        - schema:
+            type: string
+          in: query
+          name: includeInterfaces
+          description: Include all attached NVLink Interfaces in response
+        - schema:
+            type: boolean
+          in: query
+          name: includeStats
+          description: Include NVLink Logical Partition Stats in response
+        - schema:
+            type: boolean
+          in: query
+          name: includeVpcs
+          description: Include all attached VPCs in response
+        - schema:
+            type: string
+            enum:
+              - Site
+              - Tenant
+          in: query
+          name: includeRelation
+          description: Related entity to expand
+    patch:
+      summary: Update NVLink Logical Partition
+      operationId: update-nvlink-logical-partition
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NVLinkLogicalPartition'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      description: |-
+        Update a specific NVLink Logical Partition
+
+        Org must have a Tenant entity. User must have `FORGE_TENANT_ADMIN` NGC role.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NVLinkLogicalPartitionUpdateRequest'
+      tags:
+        - NVLink Logical Partition
+    delete:
+      summary: Delete NVLink Logical Partition
+      operationId: delete-nvlink-logical-partition
+      responses:
+        '202':
+          description: Accepted
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      description: |-
+        Delete an NVLink Logical Partition by ID
+
+        Org must have a Tenant entity. User must have `FORGE_TENANT_ADMIN` NGC role.
+      tags:
+        - NVLink Logical Partition
   '/v2/org/{org}/carbide/instance/type':
     parameters:
       - schema:
@@ -4658,6 +4881,43 @@ paths:
                           status: Ready
                           created: '2019-08-24T14:15:22Z'
                           updated: '2019-08-24T14:15:22Z'
+                      nvLinkInterfaces:
+                        - id: fc19ab3f-1e52-4846-91bd-98743ff2752c
+                          instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
+                          siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
+                          nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+                          nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
+                          deviceInstance: 0
+                          status: Ready
+                          created: '2019-08-24T14:15:22Z'
+                          updated: '2019-08-24T14:15:22Z'
+                        - id: c0ae6ec4-9a77-4358-baad-ee8cc3332c91
+                          instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
+                          siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
+                          nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+                          nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
+                          deviceInstance: 1
+                          status: Ready
+                          created: '2019-08-24T14:15:22Z'
+                          updated: '2019-08-24T14:15:22Z'
+                        - id: aa44ff62-d86b-4db6-9fa4-90a19b05be01
+                          instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
+                          siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
+                          nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+                          nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
+                          deviceInstance: 2
+                          status: Ready
+                          created: '2019-08-24T14:15:22Z'
+                          updated: '2019-08-24T14:15:22Z'
+                        - id: a403d1ca-2c07-410a-9678-3eb44d570ad9
+                          instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
+                          siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
+                          nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+                          nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
+                          deviceInstance: 3
+                          status: Ready
+                          created: '2019-08-24T14:15:22Z'
+                          updated: '2019-08-24T14:15:22Z'
                       dpuExtensionServiceDeployments: []
                       sshKeyGroupIds:
                         - 497f6eca-6276-4993-bfeb-53cbbbba6f08
@@ -4749,18 +5009,14 @@ paths:
                           created: '2019-08-24T14:15:22Z'
                           updated: '2019-08-24T14:15:22Z'
                       dpuExtensionServiceDeployments:
-                        - dpuExtensionService:
+                        - id: 3951ec37-d78f-4ad7-92e1-3fdc76ccf246
+                          dpuExtensionService:
                             id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
                             name: busybox
                             serviceType: KubernetesPod
-                            version: V1-T1761856992374052
+                            latestVersion: V1-T1761856992374052
                             status: Ready
                           version: V1-T1761856992374052
-                          versionInfo:
-                            version: V1-T1761856992374052
-                            data: 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: busybox-deployment\n  labels:\n    app: busybox\nspec:\n  replicas: 1 # You can adjust the number of desired replicas here\n  selector:\n    matchLabels:\n      app: busybox\n  template:\n    metadata:\n      labels:\n        app: busybox\n    spec:\n      containers:\n      - name: busybox-container\n        image: busybox:latest # You can specify a different BusyBox image tag\n        command: ["sh", "-c", "echo \''BusyBox container running\'' && sleep 3600"]'
-                            hasCredentials: true
-                            created: '2019-08-24T14:15:22Z'
                           status: Running
                           created: '2019-08-24T14:15:22Z'
                           updated: '2019-08-24T14:15:22Z'
@@ -4941,6 +5197,11 @@ paths:
         - schema:
             type: string
           in: query
+          name: ipAddress
+          description: Filter by IP address. Can be specified multiple times to filter on more than one IP address.
+        - schema:
+            type: string
+          in: query
           name: query
           description: 'Search for matches across all Sites. Input will be matched against name, description, status, and labels fields'
         - schema:
@@ -5072,6 +5333,16 @@ paths:
                         status: Pending
                         created: '2019-08-24T14:15:22Z'
                         updated: '2019-08-24T14:15:22Z'
+                    nvLinkInterfaces:
+                      - id: fc19ab3f-1e52-4846-91bd-98743ff2752c
+                        instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
+                        siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
+                        nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+                        nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
+                        deviceInstance: 0
+                        status: Ready
+                        created: '2019-08-24T14:15:22Z'
+                        updated: '2019-08-24T14:15:22Z'
                     dpuExtensionServiceDeployments: []
                     sshKeyGroupIds:
                       - 497f6eca-6276-4993-bfeb-53cbbbba6f08
@@ -5134,18 +5405,14 @@ paths:
                         created: '2019-08-24T14:15:22Z'
                         updated: '2019-08-24T14:15:22Z'
                     dpuExtensionServiceDeployments:
-                      - dpuExtensionService:
+                      - id: 3951ec37-d78f-4ad7-92e1-3fdc76ccf246
+                        dpuExtensionService:
                           id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
                           name: busybox
                           serviceType: KubernetesPod
-                          version: V1-T1761856992374052
+                          latestVersion: V1-T1761856992374052
                           status: Ready
                         version: V1-T1761856992374052
-                        versionInfo:
-                          version: V1-T1761856992374052
-                          data: 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: busybox-deployment\n  labels:\n    app: busybox\nspec:\n  replicas: 1 # You can adjust the number of desired replicas here\n  selector:\n    matchLabels:\n      app: busybox\n  template:\n    metadata:\n      labels:\n        app: busybox\n    spec:\n      containers:\n      - name: busybox-container\n        image: busybox:latest # You can specify a different BusyBox image tag\n        command: ["sh", "-c", "echo \''BusyBox container running\'' && sleep 3600"]'
-                          hasCredentials: true
-                          created: '2019-08-24T14:15:22Z'
                         status: Running
                         created: '2019-08-24T14:15:22Z'
                         updated: '2019-08-24T14:15:22Z'
@@ -5219,6 +5486,15 @@ paths:
                       deviceInstance: 0
                       isPhysical: true
                       virtualFunctionId: null
+                  nvLinkInterfaces:
+                    - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+                      deviceInstance: 0
+                    - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+                      deviceInstance: 1
+                    - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+                      deviceInstance: 2
+                    - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+                      deviceInstance: 3
                   sshKeyGroupsIds:
                     - 497f6eca-6276-4993-bfeb-53cbbbba6f08
               With Machine ID & VPC Prefix Interface:
@@ -5372,19 +5648,52 @@ paths:
                         status: Ready
                         created: '2019-08-24T14:15:22Z'
                         updated: '2019-08-24T14:15:22Z'
+                    nvLinkInterfaces:
+                      - id: fc19ab3f-1e52-4846-91bd-98743ff2752c
+                        instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
+                        siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
+                        nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+                        nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
+                        deviceInstance: 0
+                        status: Ready
+                        created: '2019-08-24T14:15:22Z'
+                        updated: '2019-08-24T14:15:22Z'
+                      - id: c0ae6ec4-9a77-4358-baad-ee8cc3332c91
+                        instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
+                        siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
+                        nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+                        nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
+                        deviceInstance: 1
+                        status: Ready
+                        created: '2019-08-24T14:15:22Z'
+                        updated: '2019-08-24T14:15:22Z'
+                      - id: aa44ff62-d86b-4db6-9fa4-90a19b05be01
+                        instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
+                        siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
+                        nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+                        nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
+                        deviceInstance: 2
+                        status: Ready
+                        created: '2019-08-24T14:15:22Z'
+                        updated: '2019-08-24T14:15:22Z'
+                      - id: a403d1ca-2c07-410a-9678-3eb44d570ad9
+                        instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
+                        siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
+                        nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+                        nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
+                        deviceInstance: 3
+                        status: Ready
+                        created: '2019-08-24T14:15:22Z'
+                        updated: '2019-08-24T14:15:22Z'
                     dpuExtensionServiceDeployments:
-                      - dpuExtensionService:
+                      - id: 3951ec37-d78f-4ad7-92e1-3fdc76ccf246
+                        dpuExtensionService:
                           id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
                           name: busybox
                           serviceType: KubernetesPod
-                          version: V1-T1761856992374052
+                          latestVersion: V1-T1761856992374052
                           status: Ready
                         version: V1-T1761856992374052
-                        versionInfo:
-                          version: V1-T1761856992374052
-                          data: 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: busybox-deployment\n  labels:\n    app: busybox\nspec:\n  replicas: 1 # You can adjust the number of desired replicas here\n  selector:\n    matchLabels:\n      app: busybox\n  template:\n    metadata:\n      labels:\n        app: busybox\n    spec:\n      containers:\n      - name: busybox-container\n        image: busybox:latest # You can specify a different BusyBox image tag\n        command: ["sh", "-c", "echo \''BusyBox container running\'' && sleep 3600"]'
-                          hasCredentials: true
-                          created: '2019-08-24T14:15:22Z'
                         status: Running
                         created: '2019-08-24T14:15:22Z'
                         updated: '2019-08-24T14:15:22Z'
@@ -5549,33 +5858,25 @@ paths:
                         created: '2019-08-24T14:15:22Z'
                         updated: '2019-08-24T14:15:22Z'
                     dpuExtensionServiceDeployments:
-                      - dpuExtensionService:
+                      - id: 3951ec37-d78f-4ad7-92e1-3fdc76ccf246
+                        dpuExtensionService:
                           id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
                           name: busybox
                           serviceType: KubernetesPod
-                          version: V1-T1761856992374052
+                          latestVersion: V1-T1761856992374052
                           status: Ready
                         version: V1-T1761856992374052
-                        versionInfo:
-                          version: V1-T1761856992374052
-                          data: 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: busybox-deployment\n  labels:\n    app: busybox\nspec:\n  replicas: 1 # You can adjust the number of desired replicas here\n  selector:\n    matchLabels:\n      app: busybox\n  template:\n    metadata:\n      labels:\n        app: busybox\n    spec:\n      containers:\n      - name: busybox-container\n        image: busybox:latest # You can specify a different BusyBox image tag\n        command: ["sh", "-c", "echo \''BusyBox container running\'' && sleep 3600"]'
-                          hasCredentials: true
-                          created: '2019-08-24T14:15:22Z'
                         status: Running
                         created: '2019-08-24T14:15:22Z'
                         updated: '2019-08-24T14:15:22Z'
-                      - dpuExtensionService:
+                      - id: 60d3ad40-62c6-44ca-b6b1-74bc6dd04f1c
+                        dpuExtensionService:
                           id: cd4a8168-c206-430a-9a4b-bf7dbbac3b40
                           name: openssh-server
                           serviceType: KubernetesPod
-                          version: V1-T1762294647497908
+                          latestVersion: V1-T1762294647497908
                           status: Ready
                         version: V1-T1762294647497908
-                        versionInfo:
-                          version: V1-T1762294647497908
-                          data: 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: ssh-server-deployment\n  labels:\n    app: ssh-server\nspec:\n  replicas: 1\n  selector:\n    matchLabels:\n      app: ssh-server\n  template:\n    metadata:\n      labels:\n        app: ssh-server\n    spec:\n      containers:\n      - name: ssh-server\n        image: linuxserver/openssh-server:latest\n        ports:\n        - containerPort: 22\n        volumeMounts:\n        - name: ssh-keys\n          mountPath: /config/ssh_host_keys\n      volumes:\n      - name: ssh-keys\n        persistentVolumeClaim:\n          claimName: ssh-keys-pvc'
-                          hasCredentials: true
-                          created: '2019-08-24T14:15:22Z'
                         status: Running
                         created: '2019-08-24T14:15:22Z'
                         updated: '2019-08-24T14:15:22Z'
@@ -5674,6 +5975,15 @@ paths:
                       device: 'MT2910 Family [ConnectX-7]'
                       deviceInstance: 2
                       isPhysical: false
+                  nvLinkInterfaces:
+                    - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+                      deviceInstance: 0
+                    - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+                      deviceInstance: 1
+                    - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+                      deviceInstance: 2
+                    - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+                      deviceInstance: 3
                   dpuExtensionServiceDeployments:
                     - dpuExtensionServiceId: 3bddb7b4-0963-4278-b311-c212dc758357
                       version: V1-T1761856992374052
@@ -5908,6 +6218,102 @@ paths:
         Get all InfiniBand Interfaces for an Instance
 
         Org must have a Tenant entity. User must have `FORGE_TENANT_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+          in: query
+          name: status
+          description: Filter Interfaces by Status
+        - schema:
+            type: string
+            enum:
+              - Instance
+              - Partition
+          in: query
+          name: includeRelation
+          description: Related entity to expand
+        - schema:
+            type: integer
+            example: 1
+            default: 1
+            minimum: 1
+          in: query
+          name: pageNumber
+          description: Page number for pagination query
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            example: 20
+          in: query
+          name: pageSize
+          description: Page size for pagination query
+        - schema:
+            type: string
+            enum:
+              - NAME_ASC
+              - NAME_DESC
+              - STATUS_ASC
+              - STATUS_DESC
+              - CREATED_ASC
+              - CREATED_DESC
+              - UPDATED_ASC
+              - UPDATED_DESC
+          in: query
+          name: orderBy
+          description: Ordering for pagination query
+  '/v2/org/{org}/carbide/instance/{instanceId}/nvlink-interface':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the NGC Org
+      - schema:
+          type: string
+        name: instanceId
+        in: path
+        required: true
+        description: ID of the Instance
+    get:
+      summary: Retrieve all NVLink Interfaces
+      tags:
+        - Instance
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NVLinkInterface'
+              examples:
+                Example 1:
+                  value:
+                    - id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
+                      instanceId: 64d2028c-ae87-4069-a624-66089d957ef9
+                      siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
+                      nvLinkLogicalPartitionId: 05ef7e84-1d4e-4e4d-980d-38589479a0fe
+                      deviceInstance: 0
+                      guid: 946dae0300339498
+                      status: Ready
+                      created: '2019-08-24T14:15:22Z'
+                      updated: '2019-08-24T14:15:22Z'
+          headers:
+            X-Pagination:
+              schema:
+                type: string
+                example: '{"pageNumber":1,"pageSize":20,"total":30,"orderBy": "CREATED_DESC"}'
+              description: Pagination result in JSON format
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      operationId: get-all-nvlink-interface
+      description: |-
+        Get all InfiniBand Interfaces for an Instance
+
+        Org must have a Tenant entity. User must have `FORGE_TENANT_ADMIN` NGC role.
       parameters:
         - schema:
             type: string
@@ -6617,6 +7023,7 @@ paths:
                         RackIdentifier: GVX11F01C02
                         ServerName: SITE1-C03-Server-02
                       status: Ready
+                      isUsableByTenant: true
                       statusHistory:
                         - status: Ready
                           message: Machine is online and ready
@@ -6837,6 +7244,7 @@ paths:
                       RackIdentifier: GVX11F01C02
                       ServerName: SITE1-C03-Server-02
                     status: Ready
+                    isUsableByTenant: true
                     statusHistory:
                       - status: Ready
                         message: Machine is online and ready
@@ -6968,6 +7376,7 @@ paths:
                           description: 'MT28908 Family [ConnectX-6]'
                           slot: '0000:ca:00.0'
                     status: Ready
+                    isUsableByTenant: true
                     statusHistory:
                       - status: Ready
                         message: Machine is online and ready
@@ -7081,6 +7490,7 @@ paths:
                             - PreventAllocations
                             - PreventHostStateChanges
                     status: Error
+                    isUsableByTenant: false
                     statusHistory:
                       - status: Error
                         message: Machine has one or more health alerts that prevent allocation
@@ -7194,6 +7604,7 @@ paths:
                       RackIdentifier: GVX11F01C02
                       ServerName: SITE1-C03-Server-02
                     status: Ready
+                    isUsableByTenant: true
                     statusHistory:
                       - status: Ready
                         message: Machine is online and ready
@@ -7626,7 +8037,7 @@ paths:
           $ref: '#/components/responses/ForbiddenError'
         '404':
           description: Describes an error response for 404 Not Found
-          $ref: '#/components/responses/GenericHttpError'
+          $ref: '#/components/responses/NotFoundError'
         '500':
           description: Describes an error response for 500 Internal Server Error
           $ref: '#/components/responses/GenericHttpError'
@@ -7735,7 +8146,12 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/DpuExtensionService'
-              examples: {}
+          headers:
+            X-Pagination:
+              schema:
+                type: string
+                example: '{"pageNumber":1,"pageSize":20,"total":30,"orderBy": "CREATED_DESC"}'
+              description: Pagination result in JSON format
         '403':
           $ref: '#/components/responses/ForbiddenError'
       operationId: get-all-dpu-extension-service
@@ -7814,7 +8230,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DpuExtensionService'
-              examples: {}
         '400':
           $ref: '#/components/responses/ValidationError'
         '403':
@@ -7828,7 +8243,6 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/DpuExtensionServiceCreateRequest'
-            examples: {}
       tags:
         - DPU Extension Service
   '/v2/org/{org}/carbide/dpu-extension-service/{dpuExtensionServiceId}':
@@ -7846,7 +8260,8 @@ paths:
         required: true
         description: ID of the DPU Extension Service
     get:
-      summary: Retrieve a DPU Extension Service
+      summary: Retrieve DPU Extension Service
+      operationId: get-dpu-extension-service
       responses:
         '200':
           description: ''
@@ -7854,10 +8269,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DpuExtensionService'
-              examples: {}
         '403':
           $ref: '#/components/responses/ForbiddenError'
-      operationId: get-dpu-extension-service
       description: |-
         Retrieve a DPU Extension Service for the current Tenant by ID
 
@@ -7867,7 +8280,7 @@ paths:
       tags:
         - DPU Extension Service
     delete:
-      summary: Delete a DPU Extension Service
+      summary: Delete DPU Extension Service
       operationId: delete-dpu-extension-service
       responses:
         '202':
@@ -7883,7 +8296,7 @@ paths:
       tags:
         - DPU Extension Service
     patch:
-      summary: Update a DPU Extension Service
+      summary: Update DPU Extension Service
       operationId: update-dpu-extension-service
       responses:
         '200':
@@ -7892,11 +8305,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DpuExtensionService'
-              examples: {}
         '400':
           $ref: '#/components/responses/ValidationError'
         '403':
           $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
       description: |-
         Update a specific DPU Extension Service.
 
@@ -7908,10 +8322,9 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/DpuExtensionServiceUpdateRequest'
-            examples: {}
       tags:
         - DPU Extension Service
-  '/v2/org/{org}/carbide/dpu-extension-service/{dpuExtensionServiceId}/version/{versionId}':
+  '/v2/org/{org}/carbide/dpu-extension-service/{dpuExtensionServiceId}/version/{version}':
     parameters:
       - schema:
           type: string
@@ -7927,12 +8340,13 @@ paths:
         description: ID of the DPU Extension Service
       - schema:
           type: string
-        name: versionId
+        name: version
         in: path
         required: true
         description: Version of the DPU Extension Service
     get:
-      summary: Retrieve a DPU Extension Service Version
+      summary: Retrieve DPU Extension Service Version
+      operationId: get-dpu-extension-service-version
       responses:
         '200':
           description: ''
@@ -7940,12 +8354,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DpuExtensionServiceVersionInfo'
-              examples: {}
         '403':
           $ref: '#/components/responses/ForbiddenError'
-      operationId: get-dpu-extension-service-version
+        '404':
+          $ref: '#/components/responses/NotFoundError'
       description: |-
-        Retrieve a DPU Extension Service Version for the current Tenant.
+        Retrieve details for a specific version of a DPU Extension Service.
 
         DPU Extension Service must be owned by current Tenant.
 
@@ -7953,7 +8367,7 @@ paths:
       tags:
         - DPU Extension Service
     delete:
-      summary: Delete a DPU Extension Service Version
+      summary: Delete DPU Extension Service Version
       operationId: delete-dpu-extension-service-version
       responses:
         '202':
@@ -7961,9 +8375,9 @@ paths:
         '403':
           $ref: '#/components/responses/ForbiddenError'
       description: |-
-        Delete a specific DPU Extension Service version.
+        Delete a specific version of a DPU Extension Service.
 
-        DPU Extension Service version must be owned by current Tenant. The version being deleted cannot have active deployments.
+        DPU Extension Service must be owned by current Tenant. The version being deleted cannot have active deployments.
 
         Org must have a Tenant entity. User must have `FORGE_TENANT_ADMIN` authorization role.
       tags:
@@ -9764,7 +10178,6 @@ components:
             - env: dev
           controllerVpcId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
           networkVirtualizationType: ETHERNET_VIRTUALIZER
-          status: Pending
           networkSecurityGroupId: c602eb90-3039-11f0-997a-b38d4fc8389e
           networkSecurityGroupPropagationDetails:
             id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
@@ -9775,6 +10188,8 @@ components:
               - b1a5a05e-303c-11f0-b618-7f2e7f9b64ed
             relatedInstanceIds:
               - b1a5a05e-303c-11f0-b618-7f2e7f9b64ed
+          nvLinkLogicalPartitionId: dd887330-dbd3-45ce-b400-c42fc8e47315
+          status: Pending
           statusHistory:
             - status: Pending
               message: 'Request received, pending processing'
@@ -9787,59 +10202,80 @@ components:
           type: string
           format: uuid
           readOnly: true
+          description: ID of the VPC
         name:
           type: string
           minLength: 2
           maxLength: 256
+          description: Name of the VPC
         description:
           type: string
+          description: Description of the VPC, can be empty
         org:
           type: string
           readOnly: true
+          description: Organization the VPC belongs to
         tenantId:
           type: string
           format: uuid
           readOnly: true
+          description: ID of the Tenant the VPC belongs to
         siteId:
           type: string
           format: uuid
+          description: ID of the Site the VPC belongs to
         controllerVpcId:
           type:
             - string
             - 'null'
           format: uuid
+          description: Legacy attribute, contains the same value as ID
         networkVirtualizationType:
           type: string
           enum:
             - ETHERNET_VIRTUALIZER
             - FNN
+          description: Network virtualization type of the VPC
         networkSecurityGroupId:
           type:
             - string
             - 'null'
+          description: ID of the Network Security Group attached to the VPC
         networkSecurityGroupPropagationDetails:
           type:
             - 'null'
             - object
           $ref: '#/components/schemas/NetworkSecurityGroupPropagationDetails'
+          description: Propagation details for the attached Network Security Group
+        nvLinkLogicalPartitionId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+          description: ID of the default NVLink Logical Partition that GPUs for all Instances in the VPC will attach to
         labels:
           $ref: '#/components/schemas/Labels'
+          description: String key value pairs describing VPC labels
         status:
           $ref: '#/components/schemas/VpcStatus'
           readOnly: true
+          description: Status of the VPC
         statusHistory:
           type: array
           items:
             $ref: '#/components/schemas/StatusDetail'
           readOnly: true
+          description: History of status changes for the VPC
         created:
           type: string
           format: date-time
           readOnly: true
+          description: Date/time when VPC was created
         updated:
           type: string
           format: date-time
           readOnly: true
+          description: Date/time when VPC was last updated
     VpcStatus:
       title: VpcStatus
       type: string
@@ -9860,20 +10296,28 @@ components:
           description: Virtual network for machines executing Spark jobs
           siteId: 72771e6a-6f5e-4de4-a5b9-1266c4197811
           networkVirtualizationType: ETHERNET_VIRTUALIZER
+          networkSecurityGroupId: c602eb90-3039-11f0-997a-b38d4fc8389e
         - name: spark-fnn-vpc
           description: Virtual network for machines executing Spark jobs
           siteId: 72771e6a-6f5e-4de4-a5b9-1266c4197811
           networkVirtualizationType: FNN
+          nvLinkLogicalPartitionId: dd887330-dbd3-45ce-b400-c42fc8e47315
+          labels:
+              region: us-west-1
+              env: dev
       properties:
         name:
           type: string
           minLength: 2
           maxLength: 256
+          description: Name of the VPC
         description:
           type: string
+          description: Optional description for the VPC
         siteId:
           type: string
           format: uuid
+          description: ID of the Site where the VPC should be created
         networkVirtualizationType:
           type:
             - string
@@ -9882,12 +10326,21 @@ components:
           enum:
             - ETHERNET_VIRTUALIZER
             - FNN
+          description: Network virtualization type of the VPC. If no value is specified, then defaults to `FNN` if Site has native networking enabled, or ETHERNET_VIRTUALIZER if native networking is disabled
         networkSecurityGroupId:
           type:
             - string
             - 'null'
+          description: ID of the Network Security Group to attach to the VPC
+        nvLinkLogicalPartitionId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+          description: ID of the default NVLink Logical Partition that GPUs for all Instances in the VPC will attach to
         labels:
           $ref: '#/components/schemas/Labels'
+          description: String key value pairs describing VPC labels. Up to 10 key value pairs can be specified
       required:
         - name
         - siteId
@@ -9903,15 +10356,24 @@ components:
           type: string
           minLength: 2
           maxLength: 256
+          description: Updated name of the VPC
         description:
           type: string
+          description: Updated description of the VPC
         networkSecurityGroupId:
           type:
             - string
             - 'null'
+          description: ID of the Network Security Group to attach to the VPC
+        nvLinkLogicalPartitionId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+          description: ID of the default NVLink Logical Partition that GPUs for all Instances in the VPC will attach to. Can only be updated if VPC currently has no active Instances
         labels:
           $ref: '#/components/schemas/Labels'
-          description: 'Update labels of the VPC. The labels will be entirely replaced by those sent in the request. Any labels not included in the request will be removed. To retain existing labels, first fetch them and include them along with this request.'
+          description: 'Update labels of the VPC. Up to 10 key value pairs can be specified. The labels will be entirely replaced by those sent in the request. Any labels not included in the request will be removed. To retain existing labels, first fetch them and include them along with this request.'
     VpcVirtualizationUpdateRequest:
       title: VpcVirtualizationUpdateRequest
       type: object
@@ -9923,6 +10385,7 @@ components:
           type: string
           enum:
             - FNN
+          description: Network virtualization type of the VPC. Can only be updated to `FNN`
     VpcPrefix:
       title: VpcPrefix
       type: object
@@ -10389,6 +10852,116 @@ components:
           type: string
       required:
         - name
+    NVLinkLogicalPartition:
+      title: NVLinkLogicalPartition
+      type: object
+      description: NVLink Logical Partitions are logical GPU fabric segments for high bandwidth communication among selective GPUs
+      examples:
+        - id: ded96bdf-905e-40dd-8a58-3472aab60042
+          name: partition-east-gpu
+          description: Partition for model training Instances
+          siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
+          tenantId: f97df110-f4de-492e-8849-4a6af68026b0
+          status: Pending
+          statusHistory:
+            - status: Pending
+              message: 'Request received, pending processing'
+              created: '2019-08-24T14:15:22Z'
+              updated: '2019-08-24T14:15:22Z'
+          created: '2019-08-24T14:15:22Z'
+          updated: '2019-08-24T14:15:22Z'
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          description: Unique ID of the NVLink Logical Partition
+        name:
+          type: string
+          minLength: 2
+          maxLength: 256
+          description: Name of the NVLink Logical Partition
+        description:
+          type: string
+          description: Optional description of the NVLink Logical Partition
+        siteId:
+          type: string
+          format: uuid
+          description: ID of the Site the NVLink Logical Partition belongs to
+        tenantId:
+          type: string
+          format: uuid
+          description: ID of the Tenant the NVLink Logical Partition belongs to
+        status:
+          $ref: '#/components/schemas/NVLinkLogicalPartitionStatus'
+          readOnly: true
+          description: Status of the NVLink Logical Partition
+        statusHistory:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatusDetail'
+          description: Details of status changes for the NVLink Logical Partition over time
+          readOnly: true
+        created:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Date and time the NVLink Logical Partition was created
+        updated:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Date and time the NVLink Logical Partition was last updated
+    NVLinkLogicalPartitionStatus:
+      title: NVLinkLogicalPartitionStatus
+      type: string
+      description: Status values for NVLink Logical Partition objects
+      enum:
+        - Pending
+        - Provisioning
+        - Configuring
+        - Ready
+        - Deleting
+        - Error
+    NVLinkLogicalPartitionCreateRequest:
+      title: NVLinkLogicalPartitionCreateRequest
+      type: object
+      examples:
+        - name: partition-east-gpu
+          siteId: 69dae3c8-3554-4a1f-b391-858c6dc47fff
+      description: Request data to create an NVLink Logical Partition
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 256
+          description: Name of the NVLink Logical Partition to create
+        description:
+          type: string
+          description: Optional description of the NVLink Logical Partition
+        siteId:
+          type: string
+          format: uuid
+          description: ID of the Site the NVLink Logical Partition should belong to
+      required:
+        - name
+        - siteId
+    NVLinkLogicalPartitionUpdateRequest:
+      title: NVLinkLogicalPartitionUpdateRequest
+      type: object
+      examples:
+        - name: partition-east-gpu
+          description: NVLink Logical Partition for model training Instances
+      description: Request data to update an NVLink Logical Partition
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 256
+          description: Updated name for the NVLink Logical Partition
+        description:
+          type: string
+          description: Updated description for the NVLink Logical Partition
     OperatingSystem:
       title: OperatingSystem
       type: object
@@ -11254,6 +11827,43 @@ components:
               status: Ready
               created: '2019-08-24T14:15:22Z'
               updated: '2019-08-24T14:15:22Z'
+          nvLinkInterfaces:
+            - id: fc19ab3f-1e52-4846-91bd-98743ff2752c
+              instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
+              siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
+              nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+              nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
+              deviceInstance: 0
+              status: Ready
+              created: '2019-08-24T14:15:22Z'
+              updated: '2019-08-24T14:15:22Z'
+            - id: fc19ab3f-1e52-4846-91bd-98743ff2752c
+              instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
+              siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
+              nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+              nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
+              deviceInstance: 1
+              status: Ready
+              created: '2019-08-24T14:15:22Z'
+              updated: '2019-08-24T14:15:22Z'
+            - id: fc19ab3f-1e52-4846-91bd-98743ff2752c
+              instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
+              siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
+              nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+              nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
+              deviceInstance: 2
+              status: Ready
+              created: '2019-08-24T14:15:22Z'
+              updated: '2019-08-24T14:15:22Z'
+            - id: fc19ab3f-1e52-4846-91bd-98743ff2752c
+              instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
+              siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
+              nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+              nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
+              deviceInstance: 3
+              status: Ready
+              created: '2019-08-24T14:15:22Z'
+              updated: '2019-08-24T14:15:22Z'
           dpuExtensionServiceDeployments: []
           sshKeyGroupIds:
             - 497f6eca-6276-4993-bfeb-53cbbbba6f08
@@ -11330,18 +11940,14 @@ components:
               created: '2019-08-24T14:15:22Z'
               updated: '2019-08-24T14:15:22Z'
           dpuExtensionServiceDeployments:
-            - dpuExtensionService:
+            - id: 3951ec37-d78f-4ad7-92e1-3fdc76ccf246
+              dpuExtensionService:
                 id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
                 name: busybox
                 serviceType: KubernetesPod
                 version: V1-T1761856992374052
                 status: Ready
               version: V1-T1761856992374052
-              versionInfo:
-                version: V1-T1761856992374052
-                data: 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: busybox-deployment\n  labels:\n    app: busybox\nspec:\n  replicas: 1 # You can adjust the number of desired replicas here\n  selector:\n    matchLabels:\n      app: busybox\n  template:\n    metadata:\n      labels:\n        app: busybox\n    spec:\n      containers:\n      - name: busybox-container\n        image: busybox:latest # You can specify a different BusyBox image tag\n        command: ["sh", "-c", "echo \''BusyBox container running\'' && sleep 3600"]'
-                hasCredentials: true
-                created: '2019-08-24T14:15:22Z'
               status: Running
               created: '2019-08-24T14:15:22Z'
               updated: '2019-08-24T14:15:22Z'
@@ -11465,6 +12071,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/InfiniBandInterface'
+        nvLinkInterfaces:
+          type: array
+          items:
+            $ref: '#/components/schemas/NVLinkInterface'
         dpuExtensionServiceDeployments:
           type: array
           description: DPU Extension Services deployed on DPUs of this Instance
@@ -11564,6 +12174,15 @@ components:
               deviceInstance: 0
               isPhysical: true
               virtualFunctionId: null
+          nvLinkInterfaces:
+            - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+              deviceInstance: 0
+            - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+              deviceInstance: 1
+            - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+              deviceInstance: 2
+            - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+              deviceInstance: 3
           sshKeyGroupIds:
             - a7bf2f9c-12f0-4673-be47-12be6d9e16c8
         - name: spark-monitor-2
@@ -11707,6 +12326,11 @@ components:
           description: DPU Extension Services to deploy to the DPUs of this Instance
           items:
             $ref: '#/components/schemas/DpuExtensionServiceDeploymentRequest'
+        nvLinkInterfaces:
+          type: array
+          description: Associate one or more NVLink Logical Partitions with this Instance
+          items:
+            $ref: '#/components/schemas/NVLinkInterfaceCreateRequest'
         sshKeyGroupIds:
           type: array
           description: Specify list of SSH Key Group IDs that will provide Serial over LAN access
@@ -11775,6 +12399,15 @@ components:
           dpuExtensionServiceDeployments:
             - dpuExtensionServiceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
               version: V1-T1761856992374052
+          nvLinkInterfaces:
+            - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+              deviceInstance: 0
+            - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+              deviceInstance: 1
+            - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+              deviceInstance: 2
+            - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+              deviceInstance: 3
         - triggerReboot: true
           rebootWithCustomIpxe: true
           applyUpdatesOnReboot: true
@@ -11856,6 +12489,11 @@ components:
           description: Update InfiniBand Interfaces of the Instance
           items:
             $ref: '#/components/schemas/InfiniBandInterfaceCreateRequest'
+        nvLinkInterfaces:
+          type: array
+          description: Update NVLink Interfaces of the Instance
+          items:
+            $ref: '#/components/schemas/NVLinkInterfaceCreateRequest'
         dpuExtensionServiceDeployments:
           type: array
           description: Updated set of DPU Extension Services to deploy to the DPUs of this Instance
@@ -12166,6 +12804,79 @@ components:
             - integer
             - 'null'
           description: Must be specified if isPhysical is false
+    NVLinkInterface:
+      title: NVLinkInterface
+      type: object
+      examples:
+        - id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
+          instanceId: 64d2028c-ae87-4069-a624-66089d957ef9
+          nvLinklogicalPartitionId: 05ef7e84-1d4e-4e4d-980d-38589479a0fe
+          nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
+          deviceInstance: 0
+          gpuGuid: 4fe82bc6-1e30-4dfd-8839-996596209883
+          status: Ready
+          created: '2019-08-24T14:15:22Z'
+          updated: '2019-08-24T14:15:22Z'
+      description: Defines an interface created by associating a GPU of an Instance with an NVLink Logical Partition
+      properties:
+        id:
+          type: string
+          minLength: 1
+          format: uuid
+        instanceId:
+          type: string
+          format: uuid
+        nvLinklogicalPartitionId:
+          type: string
+          format: uuid
+          description: ID of the NVLink Logical Partition associated with this interface
+        nvLinkDomainId:
+          type: string
+          format: uuid
+          description: ID of the NVLink Domain associated with this Interface
+        deviceInstance:
+          type: integer
+          description: 'Index of the device, used to identify the GPU associated with this Interface'
+        gpuGuid:
+          type: string
+          description: Unique ID of the GPU
+        status:
+          $ref: '#/components/schemas/NVLinkInterfaceStatus'
+        created:
+          type: string
+          format: date-time
+          readOnly: true
+        updated:
+          type: string
+          format: date-time
+          readOnly: true
+    NVLinkInterfaceStatus:
+      title: NVLinkInterfaceStatus
+      type: string
+      description: Status values for NVLink Interface objects
+      enum:
+        - Pending
+        - Provisioning
+        - Ready
+        - Deleting
+        - Error
+    NVLinkInterfaceCreateRequest:
+      title: NVLinkInterfaceCreateRequest
+      type: object
+      examples:
+        - nvLinklogicalPartitionId: 505e07bc-86bf-489a-807d-92dc8b80e6ff
+          deviceInstance: 0
+        - nvLinklogicalPartitionId: 4f4decba-7d7f-46b9-9e5f-e5d71c2e0666
+          deviceInstance: 1
+      description: Request data to create an NVLink Interface for an Instance by associating it with an NVLink Logical Partition
+      properties:
+        nvLinklogicalPartitionId:
+          type: string
+          format: uuid
+          description: ID of the NVLink Logical Partition the Interface should attach to
+        deviceInstance:
+          type: integer
+          description: 'Index of the device, used to identify which GPU to attache the Partition to'
     MachineCapability:
       title: MachineCapability
       type: object
@@ -12338,6 +13049,7 @@ components:
             RackIdentifier: GVX11F01C02
             ServerName: SITE1-C03-Server-02
           status: Ready
+          isUsableByTenant: true
           statusHistory:
             - status: Ready
               message: Machine is online and ready
@@ -12420,6 +13132,10 @@ components:
         status:
           $ref: '#/components/schemas/MachineStatus'
           readOnly: true
+        isUsableByTenant:
+          type: boolean
+          description: 'Indicates whether the machine is usable by or currently in use by a tenant.'
+          readOnly: true
         statusHistory:
           type: array
           items:
@@ -12445,6 +13161,55 @@ components:
         - Error
         - Decommissioned
         - Unknown
+    MachineSummary:
+      title: MachineSummary
+      type: object
+      description: Describes a subset of core attributes for a Machine
+      examples:
+        - id: fm100ht4v4mce2qstjnl8970nnj3ie6ecek4mtjn27pea4kre5gsa49jg0g
+          controllerMachineId: fm100ht4v4mce2qstjnl8970nnj3ie6ecek4mtjn27pea4kre5gsa49jg0g
+          controllerMachineType: x86_64
+          hwSkuDeviceType: cpu
+          vendor: Lenovo
+          productName: ThinkSystem SR670 V2
+          maintenanceMessage: null
+          status: Ready
+      properties:
+        id:
+          type: string
+          description: Unique ID of Machine across Carbide Cloud & Site
+          readOnly: true
+        controllerMachineId:
+          type: string
+          description: 'ID of the Machine at Site, now same as the primary ID'
+        controllerMachineType:
+          type:
+            - string
+            - 'null'
+          description: Denotes architecture (x86 vs ARM) of the Machine
+        hwSkuDeviceType:
+          type:
+            - string
+            - 'null'
+          description: 'SKU derived device type of the machine, e.g. cpu, gpu, cache, storage, etc.'
+        vendor:
+          type:
+            - string
+            - 'null'
+          description: Name of the vendor of the Machine
+        productName:
+          type:
+            - string
+            - 'null'
+          description: Product name of the Machine
+        maintenanceMessage:
+          type:
+            - string
+            - 'null'
+          description: 'If the Machine is in maintenance mode, this message will typically describe the reason and how long it is expected to be in maintenance'
+        status:
+          $ref: '#/components/schemas/MachineStatus'
+          readOnly: true
     MachineUpdateRequest:
       title: MachineUpdateRequest
       type: object
@@ -12913,25 +13678,7 @@ components:
             - DPU-001
             - DPU-002
           skuId: lenovo.sr650v2.cpu.1
-          sku:
-            id: lenovo.sr650v2.cpu.1
-            siteId: f97df110-f4de-492e-8849-4a6af68026b0
-            deviceType: gpu
-            associatedMachineIds:
-              - fm100ht4v4mce2qstjnl8970nnj3ie6ecek4mtjn27pea4kre5gsa49jg0g
-            components:
-              cpus:
-                - vendor: Intel
-                  model: Xeon Platinum 8480+
-                  threadCount: 112
-                  count: 2
-              gpus:
-                - vendor: NVIDIA
-                  model: H100 SXM5
-                  totalMemory: 80GB HBM3
-                  count: 8
-            created: '2019-08-24T14:15:22Z'
-            updated: '2019-08-24T14:15:22Z'
+          machineId: fm100ht4v4mce2qstjnl8970nnj3ie6ecek4mtjn27pea4kre5gsa49jg0g
           labels:
             environment: production
             rack: A1
@@ -12968,6 +13715,14 @@ components:
         sku:
           $ref: '#/components/schemas/Sku'
           description: SKU information for this Expected Machine (populated when includeRelation=Sku is specified)
+        machineId:
+          type:
+            - string
+            - 'null'
+          description: Optional ID of the Machine associated with this Expected Machine
+        machine:
+          $ref: '#/components/schemas/MachineSummary'
+          description: Machine information for this Expected Machine (populated when includeRelation=Machine is specified)
         labels:
           $ref: '#/components/schemas/Labels'
           description: User-defined key-value pairs for organizing and categorizing Expected Machines
@@ -14205,12 +14960,7 @@ components:
           items:
             type: string
         status:
-          type: string
-          enum:
-            - Pending
-            - Ready
-            - Error
-            - Deleting
+          $ref: '#/components/schemas/DpuExtensionServiceStatus'
           description: Status of the DPU Extension Service
         statusHistory:
           type: array
@@ -14227,6 +14977,15 @@ components:
           format: date-time
           description: Date/time when the DPU Extension Service was last updated
           readOnly: true
+    DpuExtensionServiceStatus:
+      title: DpuExtensionServiceStatus
+      type: string
+      description: Status values for DPU Extension Service objects
+      enum:
+        - Pending
+        - Ready
+        - Error
+        - Deleting
     DpuExtensionServiceSummary:
       title: DpuExtensionServiceSummary
       type: object
@@ -14235,7 +14994,7 @@ components:
         - id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
           name: busybox
           serviceType: KubernetesPod
-          version: V1-T1761856992374052
+          latestVersion: V1-T1761856992374052
           status: Ready
       properties:
         id:
@@ -14251,18 +15010,13 @@ components:
           description: Type of the DPU Extension Service
           enum:
             - KubernetesPod
-        version:
+        latestVersion:
           type:
             - string
             - 'null'
           description: Latest version of the DPU Extension Service
         status:
-          type: string
-          enum:
-            - Pending
-            - Ready
-            - Error
-            - Deleting
+          $ref: '#/components/schemas/DpuExtensionServiceStatus'
           description: Status of the DPU Extension Service
     DpuExtensionServiceVersionInfo:
       title: DpuExtensionServiceVersionInfo
@@ -14382,42 +15136,34 @@ components:
     DpuExtensionServiceDeployment:
       title: DpuExtensionServiceDeployment
       type: object
-      description: Describes a deployment of a DPU Extension Service on DPUs of a specific Instance
+      description: Describes a deployment of a DPU Extension Service on DPUs of an Instance
       examples:
-        - dpuExtensionService:
+        - id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
+          dpuExtensionService:
             id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
             name: busybox
             serviceType: KubernetesPod
-            version: V1-T1761856992374052
+            latestVersion: V1-T1761856992374052
             status: Ready
           version: V1-T1761856992374052
-          versionInfo:
-            version: V1-T1761856992374052
-            data: 'apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: busybox-deployment\n  labels:\n    app: busybox\nspec:\n  replicas: 1 # You can adjust the number of desired replicas here\n  selector:\n    matchLabels:\n      app: busybox\n  template:\n    metadata:\n      labels:\n        app: busybox\n    spec:\n      containers:\n      - name: busybox-container\n        image: busybox:latest # You can specify a different BusyBox image tag\n        command: ["sh", "-c", "echo \''BusyBox container running\'' && sleep 3600"]'
-            hasCredentials: true
-            created: '2019-08-24T14:15:22Z'
           status: Running
           created: '2019-08-24T14:15:22Z'
           updated: '2019-08-24T14:15:22Z'
       properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier for the DPU Extension Service Deployment
+          readOnly: true
         dpuExtensionService:
           $ref: '#/components/schemas/DpuExtensionServiceSummary'
           description: Summary of the DPU Extension Service. Deployed version may be different
         version:
           type: string
           description: Deployed version of the DPU Extension Service
-        versionInfo:
-          $ref: '#/components/schemas/DpuExtensionServiceVersionInfo'
-          description: Details for the deployed version of the DPU Extension Service
         status:
-          type: string
-          description: Deployment status of the DPU Extension Service
-          enum:
-            - Pending
-            - Running
-            - Error
-            - Failed
-            - Terminating
+          $ref: '#/components/schemas/DpuExtensionServiceDeploymentStatus'
+          description: Status of the DPU Extension Service Deployment
         created:
           type: string
           format: date-time
@@ -14426,10 +15172,20 @@ components:
           type: string
           format: date-time
           description: Date/time when this version of the DPU Extension Service Deployment was updated
+    DpuExtensionServiceDeploymentStatus:
+      title: DpuExtensionServiceDeploymentStatus
+      type: string
+      description: Status values for DPU Extension Service Deployment objects
+      enum:
+        - Pending
+        - Running
+        - Error
+        - Failed
+        - Terminating
     DpuExtensionServiceDeploymentRequest:
       title: DpuExtensionServiceDeploymentRequest
       type: object
-      description: Request data to deploy of a specific version of a DPU Extension Service on DPUs of a specific Instance
+      description: Request data to deploy of a specific version of a DPU Extension Service on DPUs of an Instance
       examples:
         - dpuExtensionServiceId: 3bddb7b4-0963-4278-b311-c212dc758357
           version: V1-T1761856992374052
@@ -14619,9 +15375,9 @@ components:
       properties:
         source:
           type: string
-          description: Source of the error. Only 'forge' is supported
+          description: Source of the error. Only 'carbide' is supported
           enum:
-            - forge
+            - carbide
         message:
           type: string
           description: Message describing the error
@@ -14682,6 +15438,18 @@ components:
               value:
                 source: carbide
                 message: Error handling API request
+                data: null
+    NotFoundError:
+      description: Error response when requested object is not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CarbideAPIError'
+          examples:
+            example-1:
+              value:
+                source: carbide
+                message: Could not find resource with specified ID
                 data: null
     ForbiddenError:
       description: Error response when user is not authorized to call an endpoint or retrive/modify objects
