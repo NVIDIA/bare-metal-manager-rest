@@ -1,0 +1,36 @@
+name: Notify Slack on Pull Request
+
+on:
+  pull_request:
+    types: [opened]
+
+jobs:
+  notify-slack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack Notification
+        uses: slackapi/slack-github-action@v1.24.0 # Use a pre-existing action
+        env:
+          # Use the secret you stored in GitHub
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        with:
+          # Customize your message using GitHub context variables
+          payload: |
+            {
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": ":github: *carbide-rest* - ${{ github.event.pull_request.title }} by ${{ github.event.pull_request.user.login }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "${{ github.event.pull_request.html_url }}"
+                  }
+                }
+              ]
+            }
