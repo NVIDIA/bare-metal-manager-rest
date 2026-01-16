@@ -687,6 +687,18 @@ paths:
       parameters:
         - schema:
             type: string
+            format: uuid
+          in: query
+          name: infrastructureProviderId
+          description: Filter Sites by Infrastructure Provider ID
+        - schema:
+            type: string
+            format: uuid
+          in: query
+          name: tenantId
+          description: Filter Sites by Tenant ID
+        - schema:
+            type: string
           in: query
           name: status
           description: Filter Sites by Status. Can be specified multiple times to filter on more than one status
