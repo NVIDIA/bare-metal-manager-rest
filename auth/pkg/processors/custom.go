@@ -102,7 +102,7 @@ func (h *CustomProcessor) ProcessToken(c echo.Context, tokenStr string, jwksConf
 		case errors.Is(err, config.ErrInvalidConfiguration):
 			logger.Warn().Err(err).Str("requested_org", reqOrgFromRoute).Msg("No authorization configuration exists for organization specified in URL")
 			return nil, util.NewAPIError(http.StatusUnauthorized, "No authorization configuration exists for organization specified in URL", nil)
-		case errors.Is(err, config.ErrInvalidClaim):
+		case errors.Is(err, config.ErrNoClaimRoles):
 			logger.Warn().Err(err).Str("requested_org", reqOrgFromRoute).Msg("Failed to extract organization roles from claims, invalid or non-existent role data")
 			return nil, util.NewAPIError(http.StatusUnauthorized, "Failed to extract organization roles from claims, invalid or non-existent role data", nil)
 		default:
@@ -113,7 +113,7 @@ func (h *CustomProcessor) ProcessToken(c echo.Context, tokenStr string, jwksConf
 
 	// Note: GetOrgDataFromClaim already validates:
 	// - Requested org exists in orgData (returns ErrInvalidConfiguration if not)
-	// - Requested org has roles (returns ErrInvalidClaim if not)
+	// - Requested org has roles (returns ErrNoClaimRoles if not)
 	// So no additional checks needed here.
 
 	// Step 3: Build auxiliary ID for DB lookup

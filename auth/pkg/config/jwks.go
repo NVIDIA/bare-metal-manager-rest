@@ -52,10 +52,10 @@ var (
 	ErrInvalidConfiguration = errors.New("no claim mapping configured for requested organization")
 	// ErrInvalidScope is returned when token scopes do not match (403)
 	ErrInvalidScope = errors.New("token scopes do not match required scopes for issuer")
-	// ErrInvalidClaim is returned when no roles found in token claims (401)
-	ErrInvalidClaim = errors.New("no roles found in token claims for organization")
+	// ErrNoClaimRoles is returned when no roles found in token claims (401)
+	ErrNoClaimRoles = errors.New("no roles found in token claims for organization")
 	// ErrReservedOrgName is returned when token claims a reserved organization name (403)
-	ErrReservedOrgName = errors.New("token claims a reserved organization name (impersonation)")
+	ErrReservedOrgName = errors.New("token claims a reserved organization name")
 	// ErrInvalidRole is returned when role is not in allowed roles set
 	ErrInvalidRole = errors.New("role is not in allowed roles set")
 
@@ -695,7 +695,7 @@ func (jcfg *JwksConfig) ValidateScopes(claims jwt.MapClaims) error {
 // This method validates org access and returns errors if:
 //   - ErrReservedOrgName: dynamic org claims a statically-configured org name
 //   - ErrInvalidConfiguration: no claim mapping configured for the requested org
-//   - ErrInvalidClaim: no roles found for the requested org
+//   - ErrNoClaimRoles: no roles found for the requested org
 //
 // Returns orgData, isServiceAccount, and any error.
 func (jcfg *JwksConfig) GetOrgDataFromClaim(claims jwt.MapClaims, reqOrgFromRoute string) (cdbm.OrgData, bool, error) {
@@ -733,7 +733,7 @@ func (jcfg *JwksConfig) GetOrgDataFromClaim(claims jwt.MapClaims, reqOrgFromRout
 		roles, err = cm.ExtractRolesFromClaims(claims)
 		if err != nil || len(roles) == 0 {
 			if isReqOrg {
-				return nil, false, ErrInvalidClaim
+				return nil, false, ErrNoClaimRoles
 			}
 			continue
 		}
