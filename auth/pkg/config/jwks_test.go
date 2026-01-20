@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
@@ -682,7 +683,7 @@ func TestExtractTokenScopes_Formats(t *testing.T) {
 	tests := []struct {
 		name           string
 		claims         jwt.MapClaims
-		expectedScopes map[string]bool
+		expectedScopes mapset.Set[string]
 	}{
 		// Space-separated string format (OAuth 2.0 RFC 6749)
 		{
@@ -690,14 +691,14 @@ func TestExtractTokenScopes_Formats(t *testing.T) {
 			claims: jwt.MapClaims{
 				"scope": "openid profile email",
 			},
-			expectedScopes: map[string]bool{"openid": true, "profile": true, "email": true},
+			expectedScopes: mapset.NewSet("openid", "profile", "email"),
 		},
 		{
 			name: "scope as single string",
 			claims: jwt.MapClaims{
 				"scope": "carbide",
 			},
-			expectedScopes: map[string]bool{"carbide": true},
+			expectedScopes: mapset.NewSet("carbide"),
 		},
 
 		// Array format (modern OIDC implementations)
@@ -706,14 +707,14 @@ func TestExtractTokenScopes_Formats(t *testing.T) {
 			claims: jwt.MapClaims{
 				"scope": []string{"openid", "profile", "email"},
 			},
-			expectedScopes: map[string]bool{"openid": true, "profile": true, "email": true},
+			expectedScopes: mapset.NewSet("openid", "profile", "email"),
 		},
 		{
 			name: "scope as array of interfaces",
 			claims: jwt.MapClaims{
 				"scope": []interface{}{"read:data", "write:data"},
 			},
-			expectedScopes: map[string]bool{"read:data": true, "write:data": true},
+			expectedScopes: mapset.NewSet("read:data", "write:data"),
 		},
 
 		// Alternative scope claim names
@@ -722,14 +723,14 @@ func TestExtractTokenScopes_Formats(t *testing.T) {
 			claims: jwt.MapClaims{
 				"scopes": []string{"api.read", "api.write"},
 			},
-			expectedScopes: map[string]bool{"api.read": true, "api.write": true},
+			expectedScopes: mapset.NewSet("api.read", "api.write"),
 		},
 		{
 			name: "scp claim (Azure AD style)",
 			claims: jwt.MapClaims{
 				"scp": "User.Read User.Write",
 			},
-			expectedScopes: map[string]bool{"User.Read": true, "User.Write": true},
+			expectedScopes: mapset.NewSet("User.Read", "User.Write"),
 		},
 
 		// Priority: scope > scopes > scp
@@ -740,28 +741,28 @@ func TestExtractTokenScopes_Formats(t *testing.T) {
 				"scopes": []string{"ignored"},
 				"scp":    "also_ignored",
 			},
-			expectedScopes: map[string]bool{"primary": true},
+			expectedScopes: mapset.NewSet("primary"),
 		},
 
 		// Empty/missing cases
 		{
 			name:           "no scope claim",
 			claims:         jwt.MapClaims{"sub": "user"},
-			expectedScopes: map[string]bool{},
+			expectedScopes: mapset.NewSet[string](),
 		},
 		{
 			name: "empty scope string",
 			claims: jwt.MapClaims{
 				"scope": "",
 			},
-			expectedScopes: map[string]bool{},
+			expectedScopes: mapset.NewSet[string](),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := extractTokenScopes(tt.claims)
-			assert.Equal(t, tt.expectedScopes, result)
+			assert.True(t, tt.expectedScopes.Equal(result), "expected %v, got %v", tt.expectedScopes, result)
 		})
 	}
 }

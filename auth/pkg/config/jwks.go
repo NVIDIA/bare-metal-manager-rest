@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
@@ -661,40 +662,6 @@ func (jcfg *JwksConfig) GetSubjectPrefix() string {
 	return jcfg.subjectPrefix
 }
 
-// MatchMode defines whether validation requires any or all values to match.
-type MatchMode int
-
-const (
-	// MatchAny requires at least one value to match.
-	MatchAny MatchMode = iota
-	// MatchAll requires all values to match.
-	MatchAll
-)
-
-// matchValues checks if tokenValues satisfy requiredValues based on mode.
-// MatchAny: returns true if tokenValues contains at least one of requiredValues.
-// MatchAll: returns true if tokenValues contains all of requiredValues.
-func matchValues(tokenValues map[string]bool, requiredValues []string, mode MatchMode) bool {
-	if len(requiredValues) == 0 {
-		return true
-	}
-	if mode == MatchAll {
-		for _, required := range requiredValues {
-			if !tokenValues[required] {
-				return false
-			}
-		}
-		return true
-	}
-	// MatchAny
-	for _, required := range requiredValues {
-		if tokenValues[required] {
-			return true
-		}
-	}
-	return false
-}
-
 // ValidateAudience checks token has at least one configured audience. Returns nil if none configured.
 func (jcfg *JwksConfig) ValidateAudience(claims jwt.MapClaims) error {
 	if len(jcfg.Audiences) == 0 {
@@ -704,11 +671,9 @@ func (jcfg *JwksConfig) ValidateAudience(claims jwt.MapClaims) error {
 	if err != nil {
 		return ErrInvalidAudience
 	}
-	tokenAudSet := make(map[string]bool, len(tokenAudiences))
-	for _, aud := range tokenAudiences {
-		tokenAudSet[aud] = true
-	}
-	if !matchValues(tokenAudSet, jcfg.Audiences, MatchAny) {
+	tokenAudSet := mapset.NewSet([]string(tokenAudiences)...)
+	requiredAudSet := mapset.NewSet(jcfg.Audiences...)
+	if tokenAudSet.Intersect(requiredAudSet).Cardinality() == 0 {
 		return ErrInvalidAudience
 	}
 	return nil
@@ -719,7 +684,9 @@ func (jcfg *JwksConfig) ValidateScopes(claims jwt.MapClaims) error {
 	if len(jcfg.Scopes) == 0 {
 		return nil
 	}
-	if !matchValues(extractTokenScopes(claims), jcfg.Scopes, MatchAll) {
+	tokenScopeSet := extractTokenScopes(claims)
+	requiredScopeSet := mapset.NewSet(jcfg.Scopes...)
+	if !tokenScopeSet.IsSuperset(requiredScopeSet) {
 		return ErrInvalidScope
 	}
 	return nil
@@ -798,8 +765,8 @@ func (jcfg *JwksConfig) GetOrgDataFromClaim(claims jwt.MapClaims, reqOrgFromRout
 }
 
 // extractTokenScopes extracts scopes from claims (tries "scope", "scopes", "scp").
-func extractTokenScopes(claims jwt.MapClaims) map[string]bool {
-	scopeSet := make(map[string]bool)
+func extractTokenScopes(claims jwt.MapClaims) mapset.Set[string] {
+	scopeSet := mapset.NewSet[string]()
 	var scopeClaimValue interface{}
 	for _, key := range scopeClaims {
 		if val, exists := claims[key]; exists {
@@ -812,7 +779,7 @@ func extractTokenScopes(claims jwt.MapClaims) map[string]bool {
 	}
 	scopes, _ := InterfaceToStringSlice(scopeClaimValue)
 	for _, scope := range scopes {
-		scopeSet[scope] = true
+		scopeSet.Add(scope)
 	}
 	return scopeSet
 }
