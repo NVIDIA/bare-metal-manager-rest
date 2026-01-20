@@ -29,34 +29,52 @@ import (
 	"github.com/spf13/cast"
 )
 
-// JWKS errors
-var (
-	ErrJWKSURLEmpty         = errors.New("JWKS URL is empty")
-	ErrJWKSNotInitialized   = errors.New("JWKS not initialized - call UpdateAllJWKS first")
-	ErrEmptyKeySet          = errors.New("JWKS key set is empty")
-	ErrNoValidKeys          = errors.New("JWKS contains no valid keys")
-	ErrInvalidUseParameter  = errors.New("invalid use parameter")
-	ErrJWKSUpdateInProgress = errors.New("JWKS update already in progress")
+// Constants for JWKS configuration
+const (
+	minUpdateInterval = 10 * time.Second
 )
 
-// Token validation errors
 var (
-	ErrInvalidAudience      = errors.New("token audience does not match issuer configuration")        // 401
-	ErrInvalidConfiguration = errors.New("no claim mapping configured for requested organization")    // 401
-	ErrInvalidScope         = errors.New("token scopes do not match required scopes for issuer")      // 403
-	ErrInvalidClaim         = errors.New("no roles found in token claims for organization")           // 401
-	ErrOrgAccessDenied      = errors.New("access denied to requested organization")                   // 403
-	ErrReservedOrgName      = errors.New("token claims a reserved organization name (impersonation)") // 403
-	ErrInvalidRole          = errors.New("role is not in allowed roles set")
+	// ErrJWKSURLEmpty is returned when JWKS URL is empty
+	ErrJWKSURLEmpty = errors.New("JWKS URL is empty")
+	// ErrJWKSNotInitialized is returned when JWKS has not been initialized
+	ErrJWKSNotInitialized = errors.New("JWKS not initialized - call UpdateAllJWKS first")
+	// ErrEmptyKeySet is returned when JWKS key set is empty
+	ErrEmptyKeySet = errors.New("JWKS key set is empty")
+	// ErrNoValidKeys is returned when JWKS contains no valid keys
+	ErrNoValidKeys = errors.New("JWKS contains no valid keys")
+	// ErrJWKSUpdateInProgress is returned when a JWKS update is already in progress
+	ErrJWKSUpdateInProgress = errors.New("JWKS update already in progress")
+
+	// ErrInvalidAudience is returned when token audience does not match (401)
+	ErrInvalidAudience = errors.New("token audience does not match issuer configuration")
+	// ErrInvalidConfiguration is returned when no claim mapping is configured (401)
+	ErrInvalidConfiguration = errors.New("no claim mapping configured for requested organization")
+	// ErrInvalidScope is returned when token scopes do not match (403)
+	ErrInvalidScope = errors.New("token scopes do not match required scopes for issuer")
+	// ErrInvalidClaim is returned when no roles found in token claims (401)
+	ErrInvalidClaim = errors.New("no roles found in token claims for organization")
+	// ErrReservedOrgName is returned when token claims a reserved organization name (403)
+	ErrReservedOrgName = errors.New("token claims a reserved organization name (impersonation)")
+	// ErrInvalidRole is returned when role is not in allowed roles set
+	ErrInvalidRole = errors.New("role is not in allowed roles set")
+
+	// ServiceAccountRoles are the default roles assigned to service accounts
+	ServiceAccountRoles = []string{"FORGE_PROVIDER_ADMIN", "FORGE_TENANT_ADMIN"}
+
+	// AllowedRoles is the set of valid roles that can be assigned to users.
+	// Both static roles in config and dynamic roles from claims must be from this set.
+	AllowedRoles = map[string]bool{
+		"FORGE_TENANT_ADMIN":   true,
+		"FORGE_PROVIDER_ADMIN": true,
+	}
+
+	isServiceAccountContextKey = AuthContextKey("isServiceAccount")
+	scopeClaims                = []string{"scope", "scopes", "scp"}
 )
 
 // AuthContextKey is a custom type for context keys to avoid collisions
 type AuthContextKey string
-
-// Context keys for authentication
-var (
-	isServiceAccountContextKey = AuthContextKey("isServiceAccount")
-)
 
 // SetIsServiceAccountInContext stores whether the request is from a service account
 func SetIsServiceAccountInContext(c echo.Context, isServiceAccount bool) {
@@ -73,15 +91,6 @@ func GetIsServiceAccountFromContext(c echo.Context) bool {
 	b, ok := v.(bool)
 	return ok && b
 }
-
-const (
-	minUpdateInterval = 10 * time.Second
-)
-
-// Claim name arrays for extracting values from different token formats
-var (
-	scopeClaims = []string{"scope", "scopes", "scp"}
-)
 
 // computeIssuerPrefix returns SHA256(issuerURL)[0:10] for namespacing subject claims.
 func computeIssuerPrefix(issuerURL string) string {
@@ -147,16 +156,6 @@ func (cm *ClaimMapping) ValidateMapping() bool {
 		return false
 	}
 	return cm.IsServiceAccount || cm.RolesAttribute != "" || len(cm.Roles) > 0 && validateRoles(cm.Roles)
-}
-
-// ServiceAccountRoles are the default roles assigned to service accounts
-var ServiceAccountRoles = []string{"FORGE_PROVIDER_ADMIN", "FORGE_TENANT_ADMIN"}
-
-// AllowedRoles is the set of valid roles that can be assigned to users
-// Both static roles in config and dynamic roles from claims must be from this set
-var AllowedRoles = map[string]bool{
-	"FORGE_TENANT_ADMIN":   true,
-	"FORGE_PROVIDER_ADMIN": true,
 }
 
 // validateRoles checks that all roles are in the AllowedRoles set

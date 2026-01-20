@@ -25,14 +25,14 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// Ensure KeycloakProcessor implements config.TokenProcessor interface
+var _ config.TokenProcessor = (*KeycloakProcessor)(nil)
+
 // KeycloakProcessor processes Keycloak JWT tokens
 type KeycloakProcessor struct {
 	dbSession      *cdb.Session
 	keycloakConfig *config.KeycloakConfig
 }
-
-// Ensure KeycloakProcessor implements config.TokenProcessor interface
-var _ config.TokenProcessor = (*KeycloakProcessor)(nil)
 
 // HandleToken processes Keycloak JWT tokens
 func (h *KeycloakProcessor) ProcessToken(c echo.Context, tokenStr string, jwksConfig *config.JwksConfig, logger zerolog.Logger) (*cdbm.User, *util.APIError) {

@@ -25,21 +25,21 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Claim name arrays for extracting user info from different token formats
 var (
+	// Claim name arrays for extracting user info from different token formats
 	firstNameClaims = []string{"given_name", "name", "preferred_username", "firstName", "first_name"}
 	lastNameClaims  = []string{"family_name", "lastName", "last_name"}
 	emailClaims     = []string{"email"}
 )
 
-// CustomProcessor processes custom external issuer JWT tokens
-// Supports both service accounts and user tokens with claim mappings
+// Ensure CustomProcessor implements config.TokenProcessor interface
+var _ config.TokenProcessor = (*CustomProcessor)(nil)
+
+// CustomProcessor processes custom external issuer JWT tokens.
+// Supports both service accounts and user tokens with claim mappings.
 type CustomProcessor struct {
 	dbSession *cdb.Session
 }
-
-// Ensure CustomProcessor implements config.TokenProcessor interface
-var _ config.TokenProcessor = (*CustomProcessor)(nil)
 
 // ProcessToken processes custom external issuer JWT tokens
 // Supports:

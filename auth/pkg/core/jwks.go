@@ -22,6 +22,9 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// DefaultJWKSTimeout is the default timeout for JWKS fetch operations
+const DefaultJWKSTimeout = 5 * time.Second
+
 var (
 	// ErrJWKSFetch is raised when JWKS cannot be fetched
 	ErrJWKSFetch = errors.New("failed to fetch JWKS")
@@ -30,9 +33,6 @@ var (
 	// ErrKeyNotFound is raised when a requested key is not found
 	ErrKeyNotFound = errors.New("key not found")
 )
-
-// DefaultJWKSTimeout is the default timeout for JWKS fetch operations
-const DefaultJWKSTimeout = 5 * time.Second
 
 // JWKS represents a set of JSON Web keys using go-jose
 type JWKS struct {
