@@ -129,7 +129,7 @@ spec:
             periodSeconds: 15
         # Embedded Vault sidecar container (dev mode for local development)
         - name: vault
-          image: hashicorp/vault:1.15
+          image: hashicorp/vault:1.21
           command:
             - /bin/sh
             - -c
