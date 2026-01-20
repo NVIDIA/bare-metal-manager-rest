@@ -125,7 +125,7 @@ func (cm *ClaimMapping) IsOrgDynamic() bool {
 // IsOrgStatic returns true if using a fixed org name (OrgName set).
 func (cm *ClaimMapping) IsOrgStatic() bool { return cm.OrgName != "" }
 
-// IsValidMapping validates the claim mapping configuration.
+// ValidateMapping validates the claim mapping configuration.
 // Valid mapping types:
 //   - StaticOrg-StaticRoles: OrgName + Roles
 //   - StaticOrg-DynamicRoles: OrgName + RolesAttribute
@@ -134,7 +134,7 @@ func (cm *ClaimMapping) IsOrgStatic() bool { return cm.OrgName != "" }
 //
 // Note: DynamicOrg requires DynamicRoles (rolesAttribute). Static roles and service accounts
 // are not allowed with dynamic org because the org is determined at runtime from the token.
-func (cm *ClaimMapping) IsValidMapping() bool {
+func (cm *ClaimMapping) ValidateMapping() bool {
 	if cm.IsOrgDynamic() {
 		return true // IsOrgDynamic already validates the dynamic mapping requirements
 	}
