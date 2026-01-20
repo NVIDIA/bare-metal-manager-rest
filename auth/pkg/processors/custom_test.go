@@ -617,7 +617,7 @@ func TestValidateAudiences_DirectTest(t *testing.T) {
 				Name:      "test",
 				Audiences: tt.configuredAudiences,
 			}
-			err := jwksConfig.ValidateAudiences(tt.tokenClaims)
+			err := jwksConfig.ValidateAudience(tt.tokenClaims)
 
 			if tt.shouldPass {
 				assert.NoError(t, err, "Expected no error for valid audience")
@@ -798,7 +798,7 @@ func TestCombinedValidation_DirectTest(t *testing.T) {
 			}
 
 			// Test audience first (mirrors actual validation order)
-			audErr := jwksConfig.ValidateAudiences(tt.tokenClaims)
+			audErr := jwksConfig.ValidateAudience(tt.tokenClaims)
 
 			// Only test scopes if audience passed
 			var scopeErr error

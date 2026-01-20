@@ -695,8 +695,8 @@ func matchValues(tokenValues map[string]bool, requiredValues []string, mode Matc
 	return false
 }
 
-// ValidateAudiences checks token has at least one configured audience. Returns nil if none configured.
-func (jcfg *JwksConfig) ValidateAudiences(claims jwt.MapClaims) error {
+// ValidateAudience checks token has at least one configured audience. Returns nil if none configured.
+func (jcfg *JwksConfig) ValidateAudience(claims jwt.MapClaims) error {
 	if len(jcfg.Audiences) == 0 {
 		return nil
 	}

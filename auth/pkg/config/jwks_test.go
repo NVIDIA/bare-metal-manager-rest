@@ -876,7 +876,7 @@ func TestValidateAudiences(t *testing.T) {
 			Audiences: nil,
 		}
 		claims := jwt.MapClaims{"sub": "user"}
-		err := config.ValidateAudiences(claims)
+		err := config.ValidateAudience(claims)
 		assert.NoError(t, err)
 	})
 
@@ -886,7 +886,7 @@ func TestValidateAudiences(t *testing.T) {
 			Audiences: []string{"carbide-rest-api", "other-api"},
 		}
 		claims := jwt.MapClaims{"sub": "user", "aud": "carbide-rest-api"}
-		err := config.ValidateAudiences(claims)
+		err := config.ValidateAudience(claims)
 		assert.NoError(t, err)
 	})
 
@@ -896,7 +896,7 @@ func TestValidateAudiences(t *testing.T) {
 			Audiences: []string{"carbide-rest-api"},
 		}
 		claims := jwt.MapClaims{"sub": "user", "aud": []string{"other", "carbide-rest-api"}}
-		err := config.ValidateAudiences(claims)
+		err := config.ValidateAudience(claims)
 		assert.NoError(t, err)
 	})
 
@@ -907,7 +907,7 @@ func TestValidateAudiences(t *testing.T) {
 		}
 		// Different case should NOT match (exact string comparison)
 		claims := jwt.MapClaims{"sub": "user", "aud": "carbide-rest-api"}
-		err := config.ValidateAudiences(claims)
+		err := config.ValidateAudience(claims)
 		assert.ErrorIs(t, err, ErrInvalidAudience)
 	})
 
@@ -917,7 +917,7 @@ func TestValidateAudiences(t *testing.T) {
 			Audiences: []string{"carbide-rest-api"},
 		}
 		claims := jwt.MapClaims{"sub": "user", "aud": "wrong-audience"}
-		err := config.ValidateAudiences(claims)
+		err := config.ValidateAudience(claims)
 		assert.ErrorIs(t, err, ErrInvalidAudience)
 	})
 
@@ -927,7 +927,7 @@ func TestValidateAudiences(t *testing.T) {
 			Audiences: []string{"carbide-rest-api"},
 		}
 		claims := jwt.MapClaims{"sub": "user"}
-		err := config.ValidateAudiences(claims)
+		err := config.ValidateAudience(claims)
 		assert.ErrorIs(t, err, ErrInvalidAudience)
 	})
 }

@@ -82,7 +82,7 @@ func (h *CustomProcessor) ProcessToken(c echo.Context, tokenStr string, jwksConf
 	reqOrgFromRoute := strings.ToLower(c.Param("orgName"))
 
 	// Step 1: Validate issuer-level audiences and scopes FIRST
-	if err := jwksConfig.ValidateAudiences(claims); err != nil {
+	if err := jwksConfig.ValidateAudience(claims); err != nil {
 		logger.Warn().Err(err).Msg("Token audience does not match issuer configuration")
 		return nil, util.NewAPIError(http.StatusUnauthorized, "Token audience does not match issuer configuration", nil)
 	}
