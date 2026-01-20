@@ -19,6 +19,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	"github.com/nvidia/carbide-rest/auth/pkg/config"
+	"github.com/nvidia/carbide-rest/auth/pkg/core"
 	"github.com/nvidia/carbide-rest/common/pkg/util"
 	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
@@ -96,13 +97,13 @@ func (h *CustomProcessor) ProcessToken(c echo.Context, tokenStr string, jwksConf
 	if err != nil {
 		// Handle specific error types with appropriate HTTP status codes
 		switch {
-		case errors.Is(err, config.ErrReservedOrgName):
+		case errors.Is(err, core.ErrReservedOrgName):
 			logger.Warn().Err(err).Str("requested_org", reqOrgFromRoute).Msg("Organization cannot be authorized dynamically using claims data")
 			return nil, util.NewAPIError(http.StatusForbidden, "Organization cannot be authorized dynamically using claims data", nil)
-		case errors.Is(err, config.ErrInvalidConfiguration):
+		case errors.Is(err, core.ErrInvalidConfiguration):
 			logger.Warn().Err(err).Str("requested_org", reqOrgFromRoute).Msg("No authorization configuration exists for organization specified in URL")
 			return nil, util.NewAPIError(http.StatusUnauthorized, "No authorization configuration exists for organization specified in URL", nil)
-		case errors.Is(err, config.ErrNoClaimRoles):
+		case errors.Is(err, core.ErrNoClaimRoles):
 			logger.Warn().Err(err).Str("requested_org", reqOrgFromRoute).Msg("Failed to extract organization roles from claims, invalid or non-existent role data")
 			return nil, util.NewAPIError(http.StatusUnauthorized, "Failed to extract organization roles from claims, invalid or non-existent role data", nil)
 		default:

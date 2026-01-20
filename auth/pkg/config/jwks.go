@@ -12,8 +12,6 @@ package config
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,52 +24,28 @@ import (
 	"github.com/nvidia/carbide-rest/auth/pkg/core"
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 	"github.com/pkg/errors"
-	"github.com/spf13/cast"
 )
 
-// Constants for JWKS configuration
+// =============================================================================
+// Constants
+// =============================================================================
+
 const (
 	minUpdateInterval = 10 * time.Second
 )
 
+
+// =============================================================================
+// Package Variables
+// =============================================================================
+
 var (
-	// ErrJWKSURLEmpty is returned when JWKS URL is empty
-	ErrJWKSURLEmpty = errors.New("JWKS URL is empty")
-	// ErrJWKSNotInitialized is returned when JWKS has not been initialized
-	ErrJWKSNotInitialized = errors.New("JWKS not initialized - call UpdateAllJWKS first")
-	// ErrEmptyKeySet is returned when JWKS key set is empty
-	ErrEmptyKeySet = errors.New("JWKS key set is empty")
-	// ErrNoValidKeys is returned when JWKS contains no valid keys
-	ErrNoValidKeys = errors.New("JWKS contains no valid keys")
-	// ErrJWKSUpdateInProgress is returned when a JWKS update is already in progress
-	ErrJWKSUpdateInProgress = errors.New("JWKS update already in progress")
-
-	// ErrInvalidAudience is returned when token audience does not match (401)
-	ErrInvalidAudience = errors.New("token audience does not match issuer configuration")
-	// ErrInvalidConfiguration is returned when no claim mapping is configured (401)
-	ErrInvalidConfiguration = errors.New("no claim mapping configured for requested organization")
-	// ErrInvalidScope is returned when token scopes do not match (403)
-	ErrInvalidScope = errors.New("token scopes do not match required scopes for issuer")
-	// ErrNoClaimRoles is returned when no roles found in token claims (401)
-	ErrNoClaimRoles = errors.New("no roles found in token claims for organization")
-	// ErrReservedOrgName is returned when token claims a reserved organization name (403)
-	ErrReservedOrgName = errors.New("token claims a reserved organization name")
-	// ErrInvalidRole is returned when role is not in allowed roles set
-	ErrInvalidRole = errors.New("role is not in allowed roles set")
-
-	// ServiceAccountRoles are the default roles assigned to service accounts
-	ServiceAccountRoles = []string{"FORGE_PROVIDER_ADMIN", "FORGE_TENANT_ADMIN"}
-
-	// AllowedRoles is the set of valid roles that can be assigned to users.
-	// Both static roles in config and dynamic roles from claims must be from this set.
-	AllowedRoles = map[string]bool{
-		"FORGE_TENANT_ADMIN":   true,
-		"FORGE_PROVIDER_ADMIN": true,
-	}
-
 	isServiceAccountContextKey = AuthContextKey("isServiceAccount")
-	scopeClaims                = []string{"scope", "scopes", "scp"}
 )
+
+// =============================================================================
+// AuthContextKey Type and Functions
+// =============================================================================
 
 // AuthContextKey is a custom type for context keys to avoid collisions
 type AuthContextKey string
@@ -92,11 +66,9 @@ func GetIsServiceAccountFromContext(c echo.Context) bool {
 	return ok && b
 }
 
-// computeIssuerPrefix returns SHA256(issuerURL)[0:10] for namespacing subject claims.
-func computeIssuerPrefix(issuerURL string) string {
-	hash := sha256.Sum256([]byte(issuerURL))
-	return hex.EncodeToString(hash[:])[:10]
-}
+// =============================================================================
+// ClaimMapping Struct and Methods
+// =============================================================================
 
 // ClaimMapping defines how to map JWT claims to organization data.
 // Dynamic mode: set OrgAttribute to extract org from token claims.
@@ -158,98 +130,15 @@ func (cm *ClaimMapping) ValidateMapping() bool {
 	return cm.IsServiceAccount || cm.RolesAttribute != "" || len(cm.Roles) > 0 && validateRoles(cm.Roles)
 }
 
-// validateRoles checks that all roles are in the AllowedRoles set
-// Returns false immediately upon finding the first invalid role
-func validateRoles(roles []string) bool {
-	for _, role := range roles {
-		if !AllowedRoles[role] {
-			return false
-		}
-	}
-	return true
-}
-
-// IsValidRole checks if a single role is in the AllowedRoles set
-func IsValidRole(role string) bool {
-	return AllowedRoles[role]
-}
-
-// FilterToAllowedRoles filters a list of roles to only include allowed roles
-func FilterToAllowedRoles(roles []string) (allowed []string, err error) {
-	for _, role := range roles {
-		if AllowedRoles[role] {
-			allowed = append(allowed, role)
-		}
-	}
-	if len(allowed) == 0 {
-		return nil, ErrInvalidRole
-	}
-	return allowed, nil
-}
-
 // ExtractRolesFromClaims returns roles based on mapping config: service account roles, dynamic extraction, or static roles.
 func (cm *ClaimMapping) ExtractRolesFromClaims(claims jwt.MapClaims) ([]string, error) {
 	if cm.IsServiceAccount {
 		return ServiceAccountRoles, nil
 	}
 	if cm.RolesAttribute != "" {
-		return extractNestedClaim(claims, cm.RolesAttribute)
+		return ExtractRolesFromClaimPath(claims, cm.RolesAttribute)
 	}
 	return cm.Roles, nil
-}
-
-func extractNestedClaim(claims jwt.MapClaims, path string) ([]string, error) {
-	var current any = claims
-
-	for _, key := range strings.Split(path, ".") {
-		switch m := current.(type) {
-		case jwt.MapClaims:
-			current = m[key]
-		case map[string]any:
-			current = m[key]
-		default:
-			return nil, nil
-		}
-
-		if current == nil {
-			return nil, nil
-		}
-	}
-
-	roles, err := InterfaceToStringSlice(current)
-	if err != nil {
-		return nil, err
-	}
-	return FilterToAllowedRoles(roles)
-}
-
-// extractStringClaim extracts a string from a nested claim path (e.g., "data.org"). Returns "" if not found.
-func extractStringClaim(claims jwt.MapClaims, path string) string {
-	if path == "" {
-		return ""
-	}
-
-	var current any = claims
-
-	for _, key := range strings.Split(path, ".") {
-		switch m := current.(type) {
-		case jwt.MapClaims:
-			current = m[key]
-		case map[string]any:
-			current = m[key]
-		default:
-			return ""
-		}
-
-		if current == nil {
-			return ""
-		}
-	}
-
-	if str, ok := current.(string); ok {
-		return str
-	}
-	return ""
 }
 
 // ExtractOrgFromClaims extracts org and display name from claims (dynamic mappings only).
@@ -258,9 +147,9 @@ func (cm *ClaimMapping) ExtractOrgFromClaims(claims jwt.MapClaims) (orgName stri
 		return "", ""
 	}
 
-	rawOrgName := extractStringClaim(claims, cm.OrgAttribute)
+	rawOrgName := core.ExtractStringClaim(claims, cm.OrgAttribute)
 	orgName = strings.ToLower(rawOrgName)
-	displayName = extractStringClaim(claims, cm.OrgDisplayAttribute)
+	displayName = core.ExtractStringClaim(claims, cm.OrgDisplayAttribute)
 
 	// If display name not found, use the original (non-lowercased) org name
 	if displayName == "" && rawOrgName != "" {
@@ -270,16 +159,9 @@ func (cm *ClaimMapping) ExtractOrgFromClaims(claims jwt.MapClaims) (orgName stri
 	return orgName, displayName
 }
 
-// InterfaceToStringSlice converts interface{} to []string. Handles space-separated strings, arrays, and slices.
-func InterfaceToStringSlice(v any) ([]string, error) {
-	if v == nil {
-		return nil, nil
-	}
-	if s, ok := v.(string); ok && strings.ContainsAny(s, " \t\n") {
-		return strings.Fields(s), nil
-	}
-	return cast.ToStringSliceE(v)
-}
+// =============================================================================
+// JwksConfig Struct, Constructor, and Methods
+// =============================================================================
 
 // JwksConfig holds configuration for a JWKS endpoint and token validation.
 type JwksConfig struct {
@@ -309,6 +191,23 @@ type JwksConfig struct {
 	subjectPrefix string // SHA256(issuer)[0:10] - namespaces subject claims
 }
 
+// NewJwksConfig is a function that initializes and returns a configuration object for managing JWKS
+func NewJwksConfig(name string, url string, issuer string, origin string, serviceAccount bool, audiences []string, scopes []string) *JwksConfig {
+	// Default to custom origin if not specified
+	if origin == "" {
+		origin = TokenOriginCustom
+	}
+	return &JwksConfig{
+		Name:           name,
+		URL:            url,
+		Issuer:         issuer,
+		Origin:         origin,
+		ServiceAccount: serviceAccount,
+		Audiences:      audiences,
+		Scopes:         scopes,
+	}
+}
+
 // GetKeyByID is a method that returns a JWK secret by ID with enhanced validation
 func (jcfg *JwksConfig) GetKeyByID(id string) (interface{}, error) {
 	// Validate input parameters
@@ -320,7 +219,7 @@ func (jcfg *JwksConfig) GetKeyByID(id string) (interface{}, error) {
 	defer jcfg.RUnlock()
 
 	if jcfg.jwks == nil {
-		return nil, ErrJWKSNotInitialized
+		return nil, core.ErrJWKSNotInitialized
 	}
 
 	key, err := jcfg.jwks.GetKeyByID(id)
@@ -381,13 +280,13 @@ func (jcfg *JwksConfig) shouldAllowJWKSUpdate() bool {
 // UpdateJWKS fetches and validates JWKS from the configured URL. Throttled to minUpdateInterval.
 func (jcfg *JwksConfig) UpdateJWKS() error {
 	if jcfg.URL == "" {
-		return ErrJWKSURLEmpty
+		return core.ErrJWKSURLEmpty
 	}
 	if !jcfg.shouldAllowJWKSUpdate() {
 		return nil
 	}
 	if !atomic.CompareAndSwapUint32(&jcfg.IsUpdating, 0, 1) {
-		return ErrJWKSUpdateInProgress
+		return core.ErrJWKSUpdateInProgress
 	}
 	defer atomic.StoreUint32(&jcfg.IsUpdating, 0)
 
@@ -400,7 +299,7 @@ func (jcfg *JwksConfig) UpdateJWKS() error {
 		return errors.Wrapf(err, "failed to update JWKS from %s", urlCopy)
 	}
 	if jwks.Set == nil || len(jwks.Set.Keys) == 0 {
-		return errors.Wrapf(ErrEmptyKeySet, "from %s", urlCopy)
+		return errors.Wrapf(core.ErrEmptyKeySet, "from %s", urlCopy)
 	}
 
 	validKeyCount := 0
@@ -410,7 +309,7 @@ func (jcfg *JwksConfig) UpdateJWKS() error {
 		}
 	}
 	if validKeyCount == 0 {
-		return errors.Wrapf(ErrNoValidKeys, "from %s", urlCopy)
+		return errors.Wrapf(core.ErrNoValidKeys, "from %s", urlCopy)
 	}
 
 	jcfg.Lock()
@@ -502,7 +401,7 @@ func (jcfg *JwksConfig) tryUpdateJWKSWithRetry() error {
 			if updateErr == nil {
 				return nil
 			}
-			if !errors.Is(updateErr, ErrJWKSUpdateInProgress) {
+			if !errors.Is(updateErr, core.ErrJWKSUpdateInProgress) {
 				return updateErr
 			}
 		}
@@ -516,7 +415,7 @@ func (jcfg *JwksConfig) tryUpdateJWKSWithRetry() error {
 		}
 	}
 
-	return ErrJWKSUpdateInProgress
+	return core.ErrJWKSUpdateInProgress
 }
 
 // tryMultipleKeysForValidation tries all candidate keys for algorithm-only validation
@@ -598,7 +497,7 @@ func (jcfg *JwksConfig) tryValidateWithFreshJWKS(token *jwt.Token, algorithm str
 func (jcfg *JwksConfig) getAllCandidateKeys(algorithm string) ([]interface{}, error) {
 	jwks := jcfg.GetJWKS()
 	if jwks == nil {
-		return nil, ErrJWKSNotInitialized
+		return nil, core.ErrJWKSNotInitialized
 	}
 
 	if algorithm == "" {
@@ -637,7 +536,7 @@ func (jcfg *JwksConfig) getAllCandidateKeys(algorithm string) ([]interface{}, er
 func (jcfg *JwksConfig) getKeyFromJWKS(kid string) (interface{}, error) {
 	jwks := jcfg.GetJWKS()
 	if jwks == nil {
-		return nil, ErrJWKSNotInitialized
+		return nil, core.ErrJWKSNotInitialized
 	}
 
 	if kid == "" {
@@ -656,7 +555,7 @@ func (jcfg *JwksConfig) GetClaimMappings() []ClaimMapping { return jcfg.ClaimMap
 // GetSubjectPrefix returns the issuer-derived prefix for namespacing subjects.
 func (jcfg *JwksConfig) GetSubjectPrefix() string {
 	if jcfg.subjectPrefix == "" && jcfg.Issuer != "" {
-		jcfg.subjectPrefix = computeIssuerPrefix(jcfg.Issuer)
+		jcfg.subjectPrefix = core.ComputeIssuerPrefix(jcfg.Issuer)
 	}
 	return jcfg.subjectPrefix
 }
@@ -668,12 +567,12 @@ func (jcfg *JwksConfig) ValidateAudience(claims jwt.MapClaims) error {
 	}
 	tokenAudiences, err := claims.GetAudience()
 	if err != nil {
-		return ErrInvalidAudience
+		return core.ErrInvalidAudience
 	}
 	tokenAudSet := mapset.NewSet([]string(tokenAudiences)...)
 	requiredAudSet := mapset.NewSet(jcfg.Audiences...)
 	if tokenAudSet.Intersect(requiredAudSet).Cardinality() == 0 {
-		return ErrInvalidAudience
+		return core.ErrInvalidAudience
 	}
 	return nil
 }
@@ -683,19 +582,20 @@ func (jcfg *JwksConfig) ValidateScopes(claims jwt.MapClaims) error {
 	if len(jcfg.Scopes) == 0 {
 		return nil
 	}
-	tokenScopeSet := extractTokenScopes(claims)
+	tokenScopes := core.ExtractTokenScopes(claims)
+	tokenScopeSet := mapset.NewSet(tokenScopes...)
 	requiredScopeSet := mapset.NewSet(jcfg.Scopes...)
 	if !tokenScopeSet.IsSuperset(requiredScopeSet) {
-		return ErrInvalidScope
+		return core.ErrInvalidScope
 	}
 	return nil
 }
 
 // GetOrgDataFromClaim extracts org data for the requested org and all accessible orgs.
 // This method validates org access and returns errors if:
-//   - ErrReservedOrgName: dynamic org claims a statically-configured org name
-//   - ErrInvalidConfiguration: no claim mapping configured for the requested org
-//   - ErrNoClaimRoles: no roles found for the requested org
+//   - core.ErrReservedOrgName: dynamic org claims a statically-configured org name
+//   - core.ErrInvalidConfiguration: no claim mapping configured for the requested org
+//   - core.ErrNoClaimRoles: no roles found for the requested org
 //
 // Returns orgData, isServiceAccount, and any error.
 func (jcfg *JwksConfig) GetOrgDataFromClaim(claims jwt.MapClaims, reqOrgFromRoute string) (cdbm.OrgData, bool, error) {
@@ -718,7 +618,7 @@ func (jcfg *JwksConfig) GetOrgDataFromClaim(claims jwt.MapClaims, reqOrgFromRout
 			orgNameLower := strings.ToLower(orgName)
 			if jcfg.ReservedOrgNames != nil && jcfg.ReservedOrgNames[orgNameLower] {
 				if orgNameLower == reqOrg {
-					return nil, false, ErrReservedOrgName
+					return nil, false, core.ErrReservedOrgName
 				}
 				continue
 			}
@@ -733,7 +633,7 @@ func (jcfg *JwksConfig) GetOrgDataFromClaim(claims jwt.MapClaims, reqOrgFromRout
 		roles, err = cm.ExtractRolesFromClaims(claims)
 		if err != nil || len(roles) == 0 {
 			if isReqOrg {
-				return nil, false, ErrNoClaimRoles
+				return nil, false, core.ErrNoClaimRoles
 			}
 			continue
 		}
@@ -757,45 +657,9 @@ func (jcfg *JwksConfig) GetOrgDataFromClaim(claims jwt.MapClaims, reqOrgFromRout
 	}
 
 	if !foundReqOrgMapping {
-		return nil, false, ErrInvalidConfiguration
+		return nil, false, core.ErrInvalidConfiguration
 	}
 
 	return orgData, isServiceAccount, nil
 }
 
-// extractTokenScopes extracts scopes from claims (tries "scope", "scopes", "scp").
-func extractTokenScopes(claims jwt.MapClaims) mapset.Set[string] {
-	scopeSet := mapset.NewSet[string]()
-	var scopeClaimValue interface{}
-	for _, key := range scopeClaims {
-		if val, exists := claims[key]; exists {
-			scopeClaimValue = val
-			break
-		}
-	}
-	if scopeClaimValue == nil {
-		return scopeSet
-	}
-	scopes, _ := InterfaceToStringSlice(scopeClaimValue)
-	for _, scope := range scopes {
-		scopeSet.Add(scope)
-	}
-	return scopeSet
-}
-
-// NewJwksConfig is a function that initializes and returns a configuration object for managing JWKS
-func NewJwksConfig(name string, url string, issuer string, origin string, serviceAccount bool, audiences []string, scopes []string) *JwksConfig {
-	// Default to custom origin if not specified
-	if origin == "" {
-		origin = TokenOriginCustom
-	}
-	return &JwksConfig{
-		Name:           name,
-		URL:            url,
-		Issuer:         issuer,
-		Origin:         origin,
-		ServiceAccount: serviceAccount,
-		Audiences:      audiences,
-		Scopes:         scopes,
-	}
-}

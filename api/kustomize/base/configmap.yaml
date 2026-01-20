@@ -51,7 +51,7 @@ data:
 
     issuers:
       - name: kas-legacy
-        origin: kas
+        origin: kas-legacy
         jwks: https://authn.nvidia.com/pubJWKS
         issuer: "authn.nvidia.com"
 

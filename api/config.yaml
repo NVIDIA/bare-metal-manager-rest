@@ -40,7 +40,7 @@ temporal:
 
 issuers:
   - name: kas
-    origin: kas
+    origin: kas-legacy
     jwks: https://authn.nvidia.com/pubJWKS
     issuer: "authn.nvidia.com"
 

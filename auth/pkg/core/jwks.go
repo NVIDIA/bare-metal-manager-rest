@@ -25,15 +25,6 @@ import (
 // DefaultJWKSTimeout is the default timeout for JWKS fetch operations
 const DefaultJWKSTimeout = 5 * time.Second
 
-var (
-	// ErrJWKSFetch is raised when JWKS cannot be fetched
-	ErrJWKSFetch = errors.New("failed to fetch JWKS")
-	// ErrInvalidJWK is raised when JWK is invalid
-	ErrInvalidJWK = errors.New("invalid JWK")
-	// ErrKeyNotFound is raised when a requested key is not found
-	ErrKeyNotFound = errors.New("key not found")
-)
-
 // JWKS represents a set of JSON Web keys using go-jose
 type JWKS struct {
 	Set *jose.JSONWebKeySet

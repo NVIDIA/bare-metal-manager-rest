@@ -26,6 +26,7 @@ import (
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/nvidia/carbide-rest/auth/pkg/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -298,7 +299,7 @@ func TestJwksConfig_Concurrency(t *testing.T) {
 	var unexpectedErrors []error
 	var updateInProgressCount int
 	for err := range errors {
-		if err == ErrJWKSUpdateInProgress {
+		if err == core.ErrJWKSUpdateInProgress {
 			updateInProgressCount++
 		} else {
 			unexpectedErrors = append(unexpectedErrors, err)
@@ -761,8 +762,9 @@ func TestExtractTokenScopes_Formats(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := extractTokenScopes(tt.claims)
-			assert.True(t, tt.expectedScopes.Equal(result), "expected %v, got %v", tt.expectedScopes, result)
+			result := core.ExtractTokenScopes(tt.claims)
+			resultSet := mapset.NewSet(result...)
+			assert.True(t, tt.expectedScopes.Equal(resultSet), "expected %v, got %v", tt.expectedScopes, resultSet)
 		})
 	}
 }
@@ -802,13 +804,13 @@ func TestValidateScopes(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("missing required scope returns ErrInvalidScope", func(t *testing.T) {
+	t.Run("missing required scope returns core.ErrInvalidScope", func(t *testing.T) {
 		claims := jwt.MapClaims{
 			"sub":   "user",
 			"scope": "carbide only", // missing "openid"
 		}
 		err := config.ValidateScopes(claims)
-		assert.ErrorIs(t, err, ErrInvalidScope)
+		assert.ErrorIs(t, err, core.ErrInvalidScope)
 	})
 
 	t.Run("no scopes configured accepts any token", func(t *testing.T) {
@@ -909,7 +911,7 @@ func TestValidateAudiences(t *testing.T) {
 		// Different case should NOT match (exact string comparison)
 		claims := jwt.MapClaims{"sub": "user", "aud": "carbide-rest-api"}
 		err := config.ValidateAudience(claims)
-		assert.ErrorIs(t, err, ErrInvalidAudience)
+		assert.ErrorIs(t, err, core.ErrInvalidAudience)
 	})
 
 	t.Run("token_audience_does_not_match", func(t *testing.T) {
@@ -919,7 +921,7 @@ func TestValidateAudiences(t *testing.T) {
 		}
 		claims := jwt.MapClaims{"sub": "user", "aud": "wrong-audience"}
 		err := config.ValidateAudience(claims)
-		assert.ErrorIs(t, err, ErrInvalidAudience)
+		assert.ErrorIs(t, err, core.ErrInvalidAudience)
 	})
 
 	t.Run("missing_audience_when_required_fails", func(t *testing.T) {
@@ -929,6 +931,6 @@ func TestValidateAudiences(t *testing.T) {
 		}
 		claims := jwt.MapClaims{"sub": "user"}
 		err := config.ValidateAudience(claims)
-		assert.ErrorIs(t, err, ErrInvalidAudience)
+		assert.ErrorIs(t, err, core.ErrInvalidAudience)
 	})
 }

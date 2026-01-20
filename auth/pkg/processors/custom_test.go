@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nvidia/carbide-rest/auth/pkg/config"
+	"github.com/nvidia/carbide-rest/auth/pkg/core"
 	testutil "github.com/nvidia/carbide-rest/auth/pkg/testing"
 	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
 )
@@ -622,7 +623,7 @@ func TestValidateAudiences_DirectTest(t *testing.T) {
 			if tt.shouldPass {
 				assert.NoError(t, err, "Expected no error for valid audience")
 			} else {
-				assert.ErrorIs(t, err, config.ErrInvalidAudience, "Expected invalid audience error")
+				assert.ErrorIs(t, err, core.ErrInvalidAudience, "Expected invalid audience error")
 			}
 		})
 	}
@@ -728,7 +729,7 @@ func TestValidateScopes_DirectTest(t *testing.T) {
 			if tt.shouldPass {
 				assert.NoError(t, err, "Expected no error for valid scopes")
 			} else {
-				assert.ErrorIs(t, err, config.ErrInvalidScope, "Expected invalid scope error")
+				assert.ErrorIs(t, err, core.ErrInvalidScope, "Expected invalid scope error")
 			}
 		})
 	}
@@ -811,10 +812,10 @@ func TestCombinedValidation_DirectTest(t *testing.T) {
 				assert.NoError(t, scopeErr, "Expected no scope error")
 			} else {
 				if tt.expectAudienceErr {
-					assert.ErrorIs(t, audErr, config.ErrInvalidAudience, "Expected invalid audience error")
+					assert.ErrorIs(t, audErr, core.ErrInvalidAudience, "Expected invalid audience error")
 				}
 				if tt.expectScopeErr {
-					assert.ErrorIs(t, scopeErr, config.ErrInvalidScope, "Expected invalid scope error")
+					assert.ErrorIs(t, scopeErr, core.ErrInvalidScope, "Expected invalid scope error")
 				}
 			}
 		})
