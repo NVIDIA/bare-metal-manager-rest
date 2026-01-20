@@ -385,9 +385,9 @@ func (c *Config) Validate() {
 	if len(issuersConfig) == 0 && !keycloakEnabled {
 		log.Panic().Msg("No issuers configured and Keycloak is disabled - authentication will not work")
 	} else if len(issuersConfig) > 0 && keycloakEnabled {
-		log.Info().Msg("Both issuers and Keycloak are enabled - multiple auth methods will be available")
+		log.Panic().Msg("KeyCloak is enabled, we cannot support any issuer configuration.")
 	} else if len(issuersConfig) > 0 {
-		log.Info().Msgf("Issuer configurations loaded: %d", len(issuersConfig))
+		log.Info().Msgf("%d Issuer configurations loaded", len(issuersConfig))
 	} else if keycloakEnabled {
 		log.Info().Msg("Keycloak authentication is enabled")
 	}
