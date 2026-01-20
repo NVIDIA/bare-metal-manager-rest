@@ -18,11 +18,11 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
-	"github.com/rs/zerolog"
 	"github.com/nvidia/carbide-rest/auth/pkg/config"
 	"github.com/nvidia/carbide-rest/common/pkg/util"
 	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	"github.com/rs/zerolog"
 )
 
 // Claim name arrays for extracting user info from different token formats
@@ -97,17 +97,17 @@ func (h *CustomProcessor) ProcessToken(c echo.Context, tokenStr string, jwksConf
 		// Handle specific error types with appropriate HTTP status codes
 		switch {
 		case errors.Is(err, config.ErrReservedOrgName):
-			logger.Warn().Err(err).Str("requested_org", reqOrgFromRoute).Msg("Token claims reserved organization name")
-			return nil, util.NewAPIError(http.StatusForbidden, "Token claims a reserved organization name", nil)
+			logger.Warn().Err(err).Str("requested_org", reqOrgFromRoute).Msg("Organization cannot be authorized dynamically using claims data")
+			return nil, util.NewAPIError(http.StatusForbidden, "Organization cannot be authorized dynamically using claims data", nil)
 		case errors.Is(err, config.ErrInvalidConfiguration):
-			logger.Warn().Err(err).Str("requested_org", reqOrgFromRoute).Msg("No claim mapping for requested org")
-			return nil, util.NewAPIError(http.StatusUnauthorized, "No claim mapping configured for requested organization", nil)
+			logger.Warn().Err(err).Str("requested_org", reqOrgFromRoute).Msg("No authorization configuration exists for organization specified in URL")
+			return nil, util.NewAPIError(http.StatusUnauthorized, "No authorization configuration exists for organization specified in URL", nil)
 		case errors.Is(err, config.ErrInvalidClaim):
-			logger.Warn().Err(err).Str("requested_org", reqOrgFromRoute).Msg("No roles found in token claims")
-			return nil, util.NewAPIError(http.StatusUnauthorized, "No roles found in token claims for organization", nil)
+			logger.Warn().Err(err).Str("requested_org", reqOrgFromRoute).Msg("Failed to extract organization roles from claims, invalid or non-existent role data")
+			return nil, util.NewAPIError(http.StatusUnauthorized, "Failed to extract organization roles from claims, invalid or non-existent role data", nil)
 		default:
-			logger.Warn().Err(err).Str("requested_org", reqOrgFromRoute).Msg("Token validation failed")
-			return nil, util.NewAPIError(http.StatusUnauthorized, "Token validation failed", nil)
+			logger.Warn().Err(err).Str("requested_org", reqOrgFromRoute).Msg("Failed to extract organization data from claims, invalid claim or configuration")
+			return nil, util.NewAPIError(http.StatusUnauthorized, "Failed to extract organization data from claims, invalid claim or configuration", nil)
 		}
 	}
 
