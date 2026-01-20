@@ -68,7 +68,7 @@ func (kc *KeycloakConfig) initializeJWKS() bool {
 	}
 
 	// Attempt to fetch JWKS during initialization
-	err := tempJwksConfig.UpdateJWKs()
+	err := tempJwksConfig.UpdateJWKS()
 	if err != nil {
 		log.Warn().Err(err).Msgf("Failed to fetch JWKS during initialization from URL %s for realm %s", jwksURL, kc.Realm)
 		return false

@@ -378,8 +378,8 @@ func (jcfg *JwksConfig) shouldAllowJWKSUpdate() bool {
 	return time.Since(jcfg.LastUpdated) >= minUpdateInterval
 }
 
-// UpdateJWKs fetches and validates JWKS from the configured URL. Throttled to minUpdateInterval.
-func (jcfg *JwksConfig) UpdateJWKs() error {
+// UpdateJWKS fetches and validates JWKS from the configured URL. Throttled to minUpdateInterval.
+func (jcfg *JwksConfig) UpdateJWKS() error {
 	if jcfg.URL == "" {
 		return ErrJWKSURLEmpty
 	}
@@ -498,7 +498,7 @@ func (jcfg *JwksConfig) tryUpdateJWKSWithRetry() error {
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
 		if attempt == 1 {
-			updateErr := jcfg.UpdateJWKs()
+			updateErr := jcfg.UpdateJWKS()
 			if updateErr == nil {
 				return nil
 			}

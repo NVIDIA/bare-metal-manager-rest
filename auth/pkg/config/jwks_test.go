@@ -234,7 +234,7 @@ func TestJwksConfig_UpdateJWKs(t *testing.T) {
 				Issuer: "test.example.com",
 			}
 
-			err := config.UpdateJWKs()
+			err := config.UpdateJWKS()
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -283,7 +283,7 @@ func TestJwksConfig_Concurrency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := config.UpdateJWKs()
+			err := config.UpdateJWKS()
 			if err != nil {
 				errors <- err
 			}
@@ -364,7 +364,7 @@ func TestJwksConfig_KeyOperations(t *testing.T) {
 		}
 
 		// Update should fail
-		err := config.UpdateJWKs()
+		err := config.UpdateJWKS()
 		assert.Error(t, err)
 
 		// Operations should still work safely
@@ -392,7 +392,7 @@ func TestJwksConfig_LastUpdate(t *testing.T) {
 
 	// After successful update, LastUpdated should be set
 	beforeUpdate := time.Now()
-	err := config.UpdateJWKs()
+	err := config.UpdateJWKS()
 	afterUpdate := time.Now()
 
 	require.NoError(t, err)
@@ -404,7 +404,7 @@ func TestJwksConfig_LastUpdate(t *testing.T) {
 	firstUpdate := config.LastUpdated
 	time.Sleep(10 * time.Millisecond) // Small delay - still within throttle window
 
-	err = config.UpdateJWKs()
+	err = config.UpdateJWKS()
 	require.NoError(t, err) // Should succeed but be throttled
 	assert.Equal(t, firstUpdate, config.LastUpdated, "LastUpdated should not change due to throttling")
 
@@ -428,7 +428,7 @@ func TestJwksConfig_ThrottlingMechanism(t *testing.T) {
 	}
 
 	t.Run("Initial update should succeed", func(t *testing.T) {
-		err := config.UpdateJWKs()
+		err := config.UpdateJWKS()
 		require.NoError(t, err, "Initial update should succeed")
 		assert.False(t, config.LastUpdated.IsZero(), "LastUpdated should be set after initial update")
 	})
@@ -438,7 +438,7 @@ func TestJwksConfig_ThrottlingMechanism(t *testing.T) {
 
 		// Multiple rapid updates should all be throttled
 		for i := 0; i < 5; i++ {
-			err := config.UpdateJWKs()
+			err := config.UpdateJWKS()
 			assert.NoError(t, err, "Throttled update should not return error")
 			assert.Equal(t, initialUpdate, config.LastUpdated, "LastUpdated should not change during throttle")
 			time.Sleep(time.Millisecond) // Small delay between attempts
@@ -453,7 +453,7 @@ func TestJwksConfig_ThrottlingMechanism(t *testing.T) {
 			wg.Add(1)
 			go func(goroutineID int) {
 				defer wg.Done()
-				err := config.UpdateJWKs()
+				err := config.UpdateJWKS()
 				// Should not return error - either successful update or throttled
 				assert.NoError(t, err, "Update should not error in goroutine %d", goroutineID)
 			}(i)
@@ -470,7 +470,7 @@ func TestJwksConfig_ThrottlingMechanism(t *testing.T) {
 			Issuer: "test.example.com",
 		}
 
-		err := freshConfig.UpdateJWKs()
+		err := freshConfig.UpdateJWKS()
 		assert.NoError(t, err, "Fresh config should allow update")
 		assert.False(t, freshConfig.LastUpdated.IsZero(), "LastUpdated should be set")
 	})
@@ -562,7 +562,7 @@ func TestGetKeyFromJWKS_NoKidWithAlgorithm(t *testing.T) {
 
 			// Create and configure JWKS config
 			jwksConfig := NewJwksConfig("test-config", jwksServer.URL, "test-issuer", TokenOriginSsa, false, nil, nil)
-			err = jwksConfig.UpdateJWKs()
+			err = jwksConfig.UpdateJWKS()
 			require.NoError(t, err, "Failed to update JWKS")
 
 			// Test token validation end-to-end (public API)

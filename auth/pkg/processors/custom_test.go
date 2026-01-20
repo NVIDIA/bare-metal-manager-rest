@@ -66,7 +66,7 @@ func setupTestEnvironment(t *testing.T, audiences []string, scopes []string) (*C
 	)
 
 	// Initialize JWKS
-	err = jwksConfig.UpdateJWKs()
+	err = jwksConfig.UpdateJWKS()
 	require.NoError(t, err)
 
 	// Create test database session
@@ -316,21 +316,21 @@ func TestCustomProcessor_ValidateScopes_Success(t *testing.T) {
 
 			_, apiErr := processor.ProcessToken(c, tokenString, jwksConfig, logger)
 
-		if tt.shouldPass {
-			// Check that we don't have scope-related errors
-			if apiErr != nil && (apiErr.Code == http.StatusUnauthorized || apiErr.Code == http.StatusForbidden) {
-				if contains(apiErr.Message, "scope") {
-					t.Errorf("Expected scope validation to pass, but got error: %s", apiErr.Message)
+			if tt.shouldPass {
+				// Check that we don't have scope-related errors
+				if apiErr != nil && (apiErr.Code == http.StatusUnauthorized || apiErr.Code == http.StatusForbidden) {
+					if contains(apiErr.Message, "scope") {
+						t.Errorf("Expected scope validation to pass, but got error: %s", apiErr.Message)
+					}
+				}
+			} else {
+				assert.NotNil(t, apiErr, "Expected error for invalid scopes")
+				if apiErr != nil {
+					// Scope validation failures return 403 Forbidden
+					assert.Equal(t, http.StatusForbidden, apiErr.Code)
+					assert.Contains(t, apiErr.Message, "scope")
 				}
 			}
-		} else {
-			assert.NotNil(t, apiErr, "Expected error for invalid scopes")
-			if apiErr != nil {
-				// Scope validation failures return 403 Forbidden
-				assert.Equal(t, http.StatusForbidden, apiErr.Code)
-				assert.Contains(t, apiErr.Message, "scope")
-			}
-		}
 		})
 	}
 }

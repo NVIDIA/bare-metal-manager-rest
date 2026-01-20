@@ -169,7 +169,7 @@ func (jc *JWTOriginConfig) UpdateAllJWKS() error {
 		wg.Add(1)
 		go func(innerJwksConfig *JwksConfig) {
 			defer wg.Done()
-			if err := innerJwksConfig.UpdateJWKs(); err != nil {
+			if err := innerJwksConfig.UpdateJWKS(); err != nil {
 				log.Warn().Err(err).Str("issuer", innerJwksConfig.Issuer).Msg("Failed to update JWKS")
 				errChan <- err
 			}

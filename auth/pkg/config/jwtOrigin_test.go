@@ -149,7 +149,7 @@ func TestJWTOptionalKID_GoJose(t *testing.T) {
 
 			// Create JWKS config and update keys
 			jwksConfig := NewJwksConfig("test-ssa-config", jwksServer.URL, "test-issuer", TokenOriginSsa, false, nil, nil)
-			err = jwksConfig.UpdateJWKs()
+			err = jwksConfig.UpdateJWKS()
 			require.NoError(t, err, "Failed to update JWKS")
 
 			// Test token validation directly with JWKS config
@@ -227,7 +227,7 @@ func TestJWTOptionalKID_MultipleKeys(t *testing.T) {
 
 			// Create JWKS config and update keys
 			jwksConfig := NewJwksConfig("test-ssa-config", jwksServer.URL, "test-issuer", TokenOriginSsa, false, nil, nil)
-			err = jwksConfig.UpdateJWKs()
+			err = jwksConfig.UpdateJWKS()
 			require.NoError(t, err, "Failed to update JWKS")
 
 			// Test token validation directly with JWKS config
@@ -296,7 +296,7 @@ func TestJWTOptionalKID_AlgorithmMatching(t *testing.T) {
 
 			// Create JWKS config
 			jwksConfig := NewJwksConfig("test-ssa-config", jwksServer.URL, "test-issuer", TokenOriginSsa, false, nil, nil)
-			err = jwksConfig.UpdateJWKs()
+			err = jwksConfig.UpdateJWKS()
 
 			if tt.shouldSucceed {
 				require.NoError(t, err, "Failed to update JWKS")
