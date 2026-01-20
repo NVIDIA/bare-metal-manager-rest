@@ -29,6 +29,9 @@ const (
 	TokenOriginCustom    = "custom"     // Custom/third-party tokens (default if not specified)
 )
 
+// AllowedOrigins is the list of valid token origins for the service
+var AllowedOrigins = []string{TokenOriginKasLegacy, TokenOriginKasSsa, TokenOriginKeycloak, TokenOriginCustom}
+
 // TokenProcessor interface for processing JWT tokens
 type TokenProcessor interface {
 	ProcessToken(c echo.Context, tokenStr string, jwksConfig *JwksConfig, logger zerolog.Logger) (*cdbm.User, *util.APIError)

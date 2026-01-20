@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -176,18 +177,14 @@ func (ic *IssuerConfig) GetAllowDuplicateStaticOrgNames() bool {
 
 // ParseOriginString converts a string origin to its string constant
 func ParseOriginString(origin string) (string, error) {
-	switch strings.ToLower(origin) {
-	case "kas-legacy":
-		return cauth.TokenOriginKasLegacy, nil
-	case "kas-ssa":
-		return cauth.TokenOriginKasSsa, nil
-	case "keycloak":
-		return cauth.TokenOriginKeycloak, nil
-	case "custom", "":
+	normalized := strings.ToLower(origin)
+	if normalized == "" {
 		return cauth.TokenOriginCustom, nil
-	default:
-		return "", fmt.Errorf("unknown origin: %s", origin)
 	}
+	if slices.Contains(cauth.AllowedOrigins, normalized) {
+		return normalized, nil
+	}
+	return "", fmt.Errorf("unknown origin: %s", origin)
 }
 
 // RateLimiterConfig holds configuration for rate limiting
