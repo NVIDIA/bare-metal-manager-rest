@@ -18,9 +18,9 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/rs/zerolog"
 	"github.com/nvidia/carbide-rest/common/pkg/util"
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	"github.com/rs/zerolog"
 )
 
 const (
@@ -36,8 +36,8 @@ const (
 	// Kas v2 NGC user email header
 	ngcUserEmailHeader = "X-Ngc-Email-Id"
 
-	// OrgUpdateStalePeriod is the duration after which an org's Updated field is considered stale
-	OrgUpdateStalePeriod = time.Minute
+	// OrgDataStalePeriod is the duration after which an org's Updated field is considered stale
+	OrgDataStalePeriod = time.Minute
 )
 
 // GetUpdatedUserOrgData merges the requested org from tokenOrgData into the existing user's OrgData.
@@ -48,7 +48,7 @@ const (
 // Update is needed if:
 // - Requested org doesn't exist in user's OrgData
 // - Requested org data has changed
-// - Requested org's Updated field is nil or stale (> OrgUpdateStalePeriod)
+// - Requested org's Updated field is nil or stale (> OrgDataStalePeriod)
 func GetUpdatedUserOrgData(existingUser cdbm.User, tokenOrgData cdbm.OrgData, reqOrgName string, logger zerolog.Logger) (*cdbm.User, *util.APIError) {
 	// Start with existing org data
 	mergedOrgData := existingUser.OrgData
@@ -65,7 +65,7 @@ func GetUpdatedUserOrgData(existingUser cdbm.User, tokenOrgData cdbm.OrgData, re
 
 	// Check if update is needed
 	existingOrg, existsInDB := mergedOrgData[reqOrgName]
-	isStale := !existsInDB || existingOrg.Updated == nil || time.Since(*existingOrg.Updated) > OrgUpdateStalePeriod
+	isStale := !existsInDB || existingOrg.Updated == nil || time.Since(*existingOrg.Updated) > OrgDataStalePeriod
 	needsUpdate := isStale || !existsInDB || !existingOrg.Equal(reqOrg)
 
 	if !needsUpdate {
