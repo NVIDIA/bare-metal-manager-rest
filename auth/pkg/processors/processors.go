@@ -50,15 +50,15 @@ func NewCustomProcessor(dbSession *cdb.Session) config.TokenProcessor {
 
 // InitializeProcessors sets up all token processors in the JWTOriginConfig
 func InitializeProcessors(joCfg *config.JWTOriginConfig, dbSession *cdb.Session, tc temporalClient.Client, encCfg *commonConfig.PayloadEncryptionConfig, kcfg *config.KeycloakConfig) {
-	for _, origin := range []int{config.TokenOriginKeycloak, config.TokenOriginSsa, config.TokenOriginKas, config.TokenOriginCustom} {
+	for _, origin := range []string{config.TokenOriginKeycloak, config.TokenOriginKasSsa, config.TokenOriginKasLegacy, config.TokenOriginCustom} {
 		switch origin {
 		case config.TokenOriginKeycloak:
 			processor := NewKeycloakProcessor(dbSession, kcfg)
 			joCfg.SetProcessorForOrigin(origin, processor)
-		case config.TokenOriginSsa:
+		case config.TokenOriginKasSsa:
 			processor := NewSSAProcessor(dbSession)
 			joCfg.SetProcessorForOrigin(origin, processor)
-		case config.TokenOriginKas:
+		case config.TokenOriginKasLegacy:
 			processor := NewKASProcessor(dbSession, tc, encCfg)
 			joCfg.SetProcessorForOrigin(origin, processor)
 		case config.TokenOriginCustom:

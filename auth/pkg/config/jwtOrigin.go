@@ -20,13 +20,13 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// TokenOrigin constants define the source of JWT tokens
+// These string values correspond to what's configured in the issuer configmap
 const (
-	TokenOriginUnknown = iota
-	TokenOriginKas
-	TokenOriginSsa
-	TokenOriginKeycloak
-	TokenOriginCustom
-	TokenOriginMax
+	TokenOriginKasLegacy = "kas-legacy" // Legacy KAS tokens
+	TokenOriginKasSsa    = "kas-ssa"    // KAS SSA tokens
+	TokenOriginKeycloak  = "keycloak"   // Keycloak tokens
+	TokenOriginCustom    = "custom"     // Custom/third-party tokens (default if not specified)
 )
 
 // TokenProcessor interface for processing JWT tokens
@@ -36,16 +36,16 @@ type TokenProcessor interface {
 
 // JWTOriginConfig holds configuration for JWT origins with multiple JWKS configs and handlers
 type JWTOriginConfig struct {
-	sync.RWMutex                        // protects concurrent access to configs and handlers maps
-	configs      map[string]*JwksConfig // map issuer -> JWKSConfig
-	processors   map[int]TokenProcessor // map TokenOrigin -> TokenProcessor
+	sync.RWMutex                           // protects concurrent access to configs and handlers maps
+	configs      map[string]*JwksConfig    // map issuer -> JWKSConfig
+	processors   map[string]TokenProcessor // map TokenOrigin -> TokenProcessor
 }
 
 // NewJWTOriginConfig initializes and returns a configuration object with empty maps
 func NewJWTOriginConfig() *JWTOriginConfig {
 	return &JWTOriginConfig{
 		configs:    make(map[string]*JwksConfig),
-		processors: make(map[int]TokenProcessor),
+		processors: make(map[string]TokenProcessor),
 	}
 }
 
@@ -58,14 +58,14 @@ func (jc *JWTOriginConfig) AddJwksConfig(cfg *JwksConfig) {
 }
 
 // AddConfig adds a new JWKS config with the specified name, issuer, URL, origin, and serviceAccount flag
-func (jc *JWTOriginConfig) AddConfig(name, issuer, url string, origin int, serviceAccount bool, audiences []string, scopes []string) {
+func (jc *JWTOriginConfig) AddConfig(name, issuer, url string, origin string, serviceAccount bool, audiences []string, scopes []string) {
 	jc.Lock()
 	defer jc.Unlock()
 	jc.configs[issuer] = NewJwksConfig(name, url, issuer, origin, serviceAccount, audiences, scopes)
 }
 
 // AddConfigWithProcessor adds a new JWKS config and processor for the specified origin
-func (jc *JWTOriginConfig) AddConfigWithProcessor(name, issuer, url string, origin int, serviceAccount bool, audiences []string, scopes []string, processor TokenProcessor) {
+func (jc *JWTOriginConfig) AddConfigWithProcessor(name, issuer, url string, origin string, serviceAccount bool, audiences []string, scopes []string, processor TokenProcessor) {
 	jc.Lock()
 	defer jc.Unlock()
 	jc.configs[issuer] = NewJwksConfig(name, url, issuer, origin, serviceAccount, audiences, scopes)
@@ -73,14 +73,14 @@ func (jc *JWTOriginConfig) AddConfigWithProcessor(name, issuer, url string, orig
 }
 
 // SetProcessorForOrigin sets a processor for the specified token origin
-func (jc *JWTOriginConfig) SetProcessorForOrigin(origin int, processor TokenProcessor) {
+func (jc *JWTOriginConfig) SetProcessorForOrigin(origin string, processor TokenProcessor) {
 	jc.Lock()
 	defer jc.Unlock()
 	jc.processors[origin] = processor
 }
 
 // GetProcessorByOrigin returns the processor for the specified origin
-func (jc *JWTOriginConfig) GetProcessorByOrigin(origin int) TokenProcessor {
+func (jc *JWTOriginConfig) GetProcessorByOrigin(origin string) TokenProcessor {
 	jc.RLock()
 	defer jc.RUnlock()
 	return jc.processors[origin]
@@ -105,7 +105,7 @@ func (jc *JWTOriginConfig) GetConfig(issuer string) *JwksConfig {
 }
 
 // GetConfigsByOrigin returns all JWKS configurations for the specified origin
-func (jc *JWTOriginConfig) GetConfigsByOrigin(origin int) map[string]*JwksConfig {
+func (jc *JWTOriginConfig) GetConfigsByOrigin(origin string) map[string]*JwksConfig {
 	jc.RLock()
 	defer jc.RUnlock()
 	result := make(map[string]*JwksConfig)
@@ -118,7 +118,7 @@ func (jc *JWTOriginConfig) GetConfigsByOrigin(origin int) map[string]*JwksConfig
 }
 
 // GetFirstConfigByOrigin returns the first JWKS configuration with the specified origin
-func (jc *JWTOriginConfig) GetFirstConfigByOrigin(origin int) *JwksConfig {
+func (jc *JWTOriginConfig) GetFirstConfigByOrigin(origin string) *JwksConfig {
 	jc.RLock()
 	defer jc.RUnlock()
 	for _, config := range jc.configs {
@@ -197,24 +197,6 @@ func (jc *JWTOriginConfig) UpdateAllJWKS() error {
 	return nil
 }
 
-// GetSsaConfig returns the first SSA configuration
-// Deprecated: Use GetFirstConfigByOrigin(TokenOriginSsa) instead
-func (jc *JWTOriginConfig) GetSsaConfig() *JwksConfig {
-	return jc.GetFirstConfigByOrigin(TokenOriginSsa)
-}
-
-// GetKasConfig returns the first KAS configuration
-// Deprecated: Use GetFirstConfigByOrigin(TokenOriginKas) instead
-func (jc *JWTOriginConfig) GetKasConfig() *JwksConfig {
-	return jc.GetFirstConfigByOrigin(TokenOriginKas)
-}
-
-// GetKeycloakConfig returns the first Keycloak configuration
-// Deprecated: Use GetFirstConfigByOrigin(TokenOriginKeycloak) instead
-func (jc *JWTOriginConfig) GetKeycloakConfig() *JwksConfig {
-	return jc.GetFirstConfigByOrigin(TokenOriginKeycloak)
-}
-
 // GetKeycloakProcessor returns the processor for Keycloak tokens
 func (jc *JWTOriginConfig) GetKeycloakProcessor() TokenProcessor {
 	jc.RLock()
@@ -226,14 +208,14 @@ func (jc *JWTOriginConfig) GetKeycloakProcessor() TokenProcessor {
 func (jc *JWTOriginConfig) GetSsaProcessor() TokenProcessor {
 	jc.RLock()
 	defer jc.RUnlock()
-	return jc.processors[TokenOriginSsa]
+	return jc.processors[TokenOriginKasSsa]
 }
 
 // GetKasProcessor returns the processor for KAS tokens
 func (jc *JWTOriginConfig) GetKasProcessor() TokenProcessor {
 	jc.RLock()
 	defer jc.RUnlock()
-	return jc.processors[TokenOriginKas]
+	return jc.processors[TokenOriginKasLegacy]
 }
 
 // SetProcessors sets all processors at once for easier initialization
@@ -241,8 +223,8 @@ func (jc *JWTOriginConfig) SetProcessors(keycloakProcessor, ssaProcessor, kasPro
 	jc.Lock()
 	defer jc.Unlock()
 	jc.processors[TokenOriginKeycloak] = keycloakProcessor
-	jc.processors[TokenOriginSsa] = ssaProcessor
-	jc.processors[TokenOriginKas] = kasProcessor
+	jc.processors[TokenOriginKasSsa] = ssaProcessor
+	jc.processors[TokenOriginKasLegacy] = kasProcessor
 }
 
 // IsServiceAccount checks if the given issuer supports service account tokens

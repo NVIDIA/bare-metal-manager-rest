@@ -63,7 +63,7 @@ func (kc *KeycloakConfig) initializeJWKS() bool {
 		Name:           fmt.Sprintf("keycloak-%s", kc.Realm),
 		URL:            jwksURL,
 		Issuer:         kc.Issuer,
-		Origin:         TokenOriginKeycloak,
+		Origin:         TokenOriginKeycloak, // "keycloak"
 		ServiceAccount: kc.ServiceAccountEnabled,
 	}
 

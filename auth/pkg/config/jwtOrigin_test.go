@@ -73,11 +73,11 @@ func TestNewJWTOriginConfig(t *testing.T) {
 			}
 
 			// Add token origins using the new API
-			got.AddConfig("kas", "authn.nvidia.com", tt.args.legacyJwksURL, TokenOriginKas, false, nil, nil)
-			got.AddConfig("ssa", "ssa.nvidia.com", tt.args.ssaJwksURL, TokenOriginSsa, false, nil, nil)
+			got.AddConfig("kas", "authn.nvidia.com", tt.args.legacyJwksURL, TokenOriginKasLegacy, false, nil, nil)
+			got.AddConfig("ssa", "ssa.nvidia.com", tt.args.ssaJwksURL, TokenOriginKasSsa, false, nil, nil)
 
 			// Verify configurations were added correctly
-			kasConfig := got.GetFirstConfigByOrigin(TokenOriginKas)
+			kasConfig := got.GetFirstConfigByOrigin(TokenOriginKasLegacy)
 			if kasConfig == nil {
 				t.Errorf("KAS config was not added correctly")
 			}
@@ -85,7 +85,7 @@ func TestNewJWTOriginConfig(t *testing.T) {
 				t.Errorf("KAS config URL = %v, want %v", kasConfig.URL, tt.args.legacyJwksURL)
 			}
 
-			ssaConfig := got.GetFirstConfigByOrigin(TokenOriginSsa)
+			ssaConfig := got.GetFirstConfigByOrigin(TokenOriginKasSsa)
 			if ssaConfig == nil {
 				t.Errorf("SSA config was not added correctly")
 			}
@@ -148,7 +148,7 @@ func TestJWTOptionalKID_GoJose(t *testing.T) {
 			defer jwksServer.Close()
 
 			// Create JWKS config and update keys
-			jwksConfig := NewJwksConfig("test-ssa-config", jwksServer.URL, "test-issuer", TokenOriginSsa, false, nil, nil)
+			jwksConfig := NewJwksConfig("test-ssa-config", jwksServer.URL, "test-issuer", TokenOriginKasSsa, false, nil, nil)
 			err = jwksConfig.UpdateJWKS()
 			require.NoError(t, err, "Failed to update JWKS")
 
@@ -226,7 +226,7 @@ func TestJWTOptionalKID_MultipleKeys(t *testing.T) {
 			defer jwksServer.Close()
 
 			// Create JWKS config and update keys
-			jwksConfig := NewJwksConfig("test-ssa-config", jwksServer.URL, "test-issuer", TokenOriginSsa, false, nil, nil)
+			jwksConfig := NewJwksConfig("test-ssa-config", jwksServer.URL, "test-issuer", TokenOriginKasSsa, false, nil, nil)
 			err = jwksConfig.UpdateJWKS()
 			require.NoError(t, err, "Failed to update JWKS")
 
@@ -295,7 +295,7 @@ func TestJWTOptionalKID_AlgorithmMatching(t *testing.T) {
 			defer jwksServer.Close()
 
 			// Create JWKS config
-			jwksConfig := NewJwksConfig("test-ssa-config", jwksServer.URL, "test-issuer", TokenOriginSsa, false, nil, nil)
+			jwksConfig := NewJwksConfig("test-ssa-config", jwksServer.URL, "test-issuer", TokenOriginKasSsa, false, nil, nil)
 			err = jwksConfig.UpdateJWKS()
 
 			if tt.shouldSucceed {

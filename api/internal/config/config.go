@@ -144,7 +144,7 @@ const (
 // This is the preferred configuration format that supports claim mappings
 type IssuerConfig struct {
 	Name                         string               `mapstructure:"name"`
-	Origin                       interface{}          `mapstructure:"origin"` // Can be int or string
+	Origin                       string               `mapstructure:"origin"` // String: "kas-legacy", "kas-ssa", "keycloak", "custom"
 	JWKS                         string               `mapstructure:"jwks"`
 	Issuer                       string               `mapstructure:"issuer"`
 	ServiceAccount               bool                 `mapstructure:"serviceAccount"`
@@ -155,20 +155,9 @@ type IssuerConfig struct {
 	AllowDuplicateStaticOrgNames bool                 `mapstructure:"allowDuplicateStaticOrgNames"` // When true, allows duplicate static org names across issuers
 }
 
-// GetOriginInt returns the origin as an integer
-func (ic *IssuerConfig) GetOriginInt() (int, error) {
-	switch v := ic.Origin.(type) {
-	case int:
-		return v, nil
-	case int64:
-		return int(v), nil
-	case float64:
-		return int(v), nil
-	case string:
-		return ParseOriginString(v)
-	default:
-		return 0, fmt.Errorf("invalid origin type: %T", ic.Origin)
-	}
+// GetOrigin parses the origin and returns it as a string constant
+func (ic *IssuerConfig) GetOrigin() (string, error) {
+	return ParseOriginString(ic.Origin)
 }
 
 // GetJWKSTimeout parses and returns the JWKS timeout duration
@@ -185,19 +174,19 @@ func (ic *IssuerConfig) GetAllowDuplicateStaticOrgNames() bool {
 	return ic.AllowDuplicateStaticOrgNames
 }
 
-// ParseOriginString converts a string origin to its integer constant
-func ParseOriginString(origin string) (int, error) {
+// ParseOriginString converts a string origin to its string constant
+func ParseOriginString(origin string) (string, error) {
 	switch strings.ToLower(origin) {
-	case "kas":
-		return cauth.TokenOriginKas, nil
-	case "ssa":
-		return cauth.TokenOriginSsa, nil
+	case "kas-legacy":
+		return cauth.TokenOriginKasLegacy, nil
+	case "kas-ssa":
+		return cauth.TokenOriginKasSsa, nil
 	case "keycloak":
 		return cauth.TokenOriginKeycloak, nil
-	case "custom":
+	case "custom", "":
 		return cauth.TokenOriginCustom, nil
 	default:
-		return 0, fmt.Errorf("unknown origin: %s", origin)
+		return "", fmt.Errorf("unknown origin: %s", origin)
 	}
 }
 
@@ -451,7 +440,7 @@ func (c *Config) GetOrInitJWTOriginConfig() *cauth.JWTOriginConfig {
 		}
 
 		for _, issuerCfg := range issuersConfig {
-			originInt, _ := issuerCfg.GetOriginInt() // Already validated
+			origin, _ := issuerCfg.GetOrigin() // Already validated
 			jwksTimeout, _ := issuerCfg.GetJWKSTimeout()
 
 			// Normalize org names in claim mappings and collect reserved names
@@ -475,7 +464,7 @@ func (c *Config) GetOrInitJWTOriginConfig() *cauth.JWTOriginConfig {
 				issuerCfg.Name,
 				issuerCfg.JWKS,
 				issuerCfg.Issuer,
-				originInt,
+				origin,
 				issuerCfg.ServiceAccount,
 				issuerCfg.Audiences,
 				issuerCfg.Scopes,
@@ -558,7 +547,7 @@ func (c *Config) ValidateIssuersConfig(issuers []IssuerConfig) error {
 	seenNames := make(map[string]bool)
 	seenURLs := make(map[string]bool)
 	seenStaticOrgs := make(map[string]bool)
-	hasDynamicOrg := false
+	seenDynamicOrg := false
 
 	for i, issuer := range issuers {
 		// Validate required fields
@@ -587,12 +576,8 @@ func (c *Config) ValidateIssuersConfig(issuers []IssuerConfig) error {
 		seenURLs[issuer.JWKS] = true
 
 		// Validate origin
-		originInt, err := issuer.GetOriginInt()
-		if err != nil {
+		if _, err := issuer.GetOrigin(); err != nil {
 			return fmt.Errorf("issuer %s: %w", issuer.Name, err)
-		}
-		if originInt >= cauth.TokenOriginMax {
-			return fmt.Errorf("issuer %s: origin must be less than %d", issuer.Name, cauth.TokenOriginMax)
 		}
 
 		// Validate JWKS timeout if specified
@@ -614,10 +599,10 @@ func (c *Config) ValidateIssuersConfig(issuers []IssuerConfig) error {
 
 			// Dynamic org mapping
 			if mapping.OrgAttribute != "" {
-				if hasDynamicOrg {
+				if seenDynamicOrg {
 					return fmt.Errorf("issuer %s: only one dynamic org mapping is allowed", issuer.Name)
 				}
-				hasDynamicOrg = true
+				seenDynamicOrg = true
 			}
 
 			// Static org mapping - check for duplicates unless allowDuplicateStaticOrgNames is true

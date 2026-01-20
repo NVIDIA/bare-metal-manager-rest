@@ -288,7 +288,7 @@ type JwksConfig struct {
 	sync.RWMutex               // protects JWKS access
 	URL          string        // JWKS endpoint URL
 	Issuer       string        // expected "iss" claim value
-	Origin       int           // token origin type
+	Origin       string        // token origin type (e.g., "kas-legacy", "kas-ssa", "keycloak", "custom")
 	LastUpdated  time.Time     // last JWKS update timestamp
 	jwks         *core.JWKS    // cached JWKS keys
 	JWKSTimeout  time.Duration // fetch timeout (default: 5s)
@@ -784,7 +784,11 @@ func extractTokenScopes(claims jwt.MapClaims) mapset.Set[string] {
 }
 
 // NewJwksConfig is a function that initializes and returns a configuration object for managing JWKS
-func NewJwksConfig(name string, url string, issuer string, origin int, serviceAccount bool, audiences []string, scopes []string) *JwksConfig {
+func NewJwksConfig(name string, url string, issuer string, origin string, serviceAccount bool, audiences []string, scopes []string) *JwksConfig {
+	// Default to custom origin if not specified
+	if origin == "" {
+		origin = TokenOriginCustom
+	}
 	return &JwksConfig{
 		Name:           name,
 		URL:            url,

@@ -87,7 +87,7 @@ func TestNewJwksConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config := NewJwksConfig("test-config", tt.url, tt.issuer, TokenOriginSsa, false, nil, nil)
+			config := NewJwksConfig("test-config", tt.url, tt.issuer, TokenOriginKasSsa, false, nil, nil)
 			require.NotNil(t, config)
 			tt.validate(t, config)
 
@@ -562,7 +562,7 @@ func TestGetKeyFromJWKS_NoKidWithAlgorithm(t *testing.T) {
 			defer jwksServer.Close()
 
 			// Create and configure JWKS config
-			jwksConfig := NewJwksConfig("test-config", jwksServer.URL, "test-issuer", TokenOriginSsa, false, nil, nil)
+			jwksConfig := NewJwksConfig("test-config", jwksServer.URL, "test-issuer", TokenOriginKasSsa, false, nil, nil)
 			err = jwksConfig.UpdateJWKS()
 			require.NoError(t, err, "Failed to update JWKS")
 
