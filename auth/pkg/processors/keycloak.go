@@ -99,8 +99,8 @@ func (h *KeycloakProcessor) ProcessToken(c echo.Context, tokenStr string, jwksCo
 		return nil, util.NewAPIError(http.StatusUnauthorized, "Failed to retrieve or create user record, DB error", nil)
 	}
 
-	// Use GetUpdatedUserOrgData to check if update is needed for the requested org
-	updatedUser, apiErr := GetUpdatedUserOrgData(*dbUser, tokenOrgData, reqOrgName, logger)
+	// Use GetUserWIthUpdatedOrgData to check if update is needed for the requested org
+	updatedUser, apiErr := GetUserWithUpdatedOrgData(*dbUser, tokenOrgData, reqOrgName, logger)
 	if apiErr != nil {
 		return nil, apiErr
 	}

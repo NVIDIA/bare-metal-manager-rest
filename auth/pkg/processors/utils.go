@@ -40,7 +40,7 @@ const (
 	OrgDataStalePeriod = time.Minute
 )
 
-// GetUpdatedUserOrgData merges the requested org from tokenOrgData into the existing user's OrgData.
+// GetUserWithUpdatedOrgData merges the requested org from tokenOrgData into the existing user's OrgData.
 // It only updates the specific org from the request, preserving other orgs.
 // Returns a partial User with updated OrgData if update is needed, or nil if no update needed.
 // Returns an error if the requested org is not found in token claims.
@@ -49,7 +49,7 @@ const (
 // - Requested org doesn't exist in user's OrgData
 // - Requested org data has changed
 // - Requested org's Updated field is nil or stale (> OrgDataStalePeriod)
-func GetUpdatedUserOrgData(existingUser cdbm.User, tokenOrgData cdbm.OrgData, reqOrgName string, logger zerolog.Logger) (*cdbm.User, *util.APIError) {
+func GetUserWithUpdatedOrgData(existingUser cdbm.User, tokenOrgData cdbm.OrgData, reqOrgName string, logger zerolog.Logger) (*cdbm.User, *util.APIError) {
 	// Start with existing org data
 	mergedOrgData := existingUser.OrgData
 	if mergedOrgData == nil {

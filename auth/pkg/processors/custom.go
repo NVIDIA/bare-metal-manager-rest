@@ -138,7 +138,7 @@ func (h *CustomProcessor) ProcessToken(c echo.Context, tokenStr string, jwksConf
 	}
 
 	// Get updated org data - only update the requested org, preserve others
-	updatedUser, apiErr := GetUpdatedUserOrgData(*dbUser, orgData, reqOrgFromRoute, logger)
+	updatedUser, apiErr := GetUserWithUpdatedOrgData(*dbUser, orgData, reqOrgFromRoute, logger)
 	if apiErr != nil {
 		return nil, apiErr
 	}
