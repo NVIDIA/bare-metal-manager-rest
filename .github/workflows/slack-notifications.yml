@@ -9,28 +9,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Send Slack Notification
-        uses: slackapi/slack-github-action@v1.24.0 # Use a pre-existing action
-        env:
-          # Use the secret you stored in GitHub
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        uses: slackapi/slack-github-action@v2.1.1 # Use a pre-existing action
         with:
-          # Customize your message using GitHub context variables
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
           payload: |
-            {
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": ":github: *carbide-rest* - ${{ github.event.pull_request.title }} by ${{ github.event.pull_request.user.login }}"
-                  }
-                },
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "${{ github.event.pull_request.html_url }}"
-                  }
-                }
-              ]
-            }
+            text: ":github: *carbide-rest* - ${{ github.event.pull_request.title }} by ${{ github.event.pull_request.user.login }} at ${{ github.event.pull_request.html_url }}"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: ":github: *carbide-rest* - ${{ github.event.pull_request.title }} by ${{ github.event.pull_request.user.login }}"
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "${{ github.event.pull_request.html_url }}"
