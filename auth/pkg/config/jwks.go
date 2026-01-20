@@ -119,7 +119,7 @@ type ClaimMapping struct {
 //
 // Service accounts are not allowed with dynamic orgs.
 func (cm *ClaimMapping) IsOrgDynamic() bool {
-	return cm.OrgAttribute != "" && cm.OrgDisplayAttribute != "" && cm.RolesAttribute != "" && !cm.IsServiceAccount
+	return cm.OrgAttribute != "" && cm.RolesAttribute != "" && !cm.IsServiceAccount
 }
 
 // IsOrgStatic returns true if using a fixed org name (OrgName set).
@@ -130,7 +130,7 @@ func (cm *ClaimMapping) IsOrgStatic() bool { return cm.OrgName != "" }
 //   - StaticOrg-StaticRoles: OrgName + Roles
 //   - StaticOrg-DynamicRoles: OrgName + RolesAttribute
 //   - StaticOrg-ServiceAccount: OrgName + IsServiceAccount
-//   - DynamicOrg-DynamicRoles: OrgAttribute + RolesAttribute + OrgDisplayAttribute
+//   - DynamicOrg-DynamicRoles: OrgAttribute (required) + RolesAttribute (required) + OrgDisplayAttribute (optional)
 //
 // Note: DynamicOrg requires DynamicRoles (rolesAttribute). Static roles and service accounts
 // are not allowed with dynamic org because the org is determined at runtime from the token.
