@@ -17,12 +17,12 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
-	"github.com/rs/zerolog"
 	"github.com/nvidia/carbide-rest/auth/pkg/config"
 	"github.com/nvidia/carbide-rest/auth/pkg/core/claim"
 	"github.com/nvidia/carbide-rest/common/pkg/util"
 	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	"github.com/rs/zerolog"
 )
 
 // KeycloakProcessor processes Keycloak JWT tokens
@@ -108,11 +108,11 @@ func (h *KeycloakProcessor) ProcessToken(c echo.Context, tokenStr string, jwksCo
 	// If user was created or needs updates, update with latest information
 	needsUpdate := created || updatedUser != nil
 	if needsUpdate {
-		var OrgDataParam cdbm.OrgData
+		var orgData cdbm.OrgData
 		if updatedUser != nil && updatedUser.OrgData != nil {
-			OrgDataParam = updatedUser.OrgData
+			orgData = updatedUser.OrgData
 		} else if dbUser.OrgData != nil {
-			OrgDataParam = dbUser.OrgData
+			orgData = dbUser.OrgData
 		}
 		// Regular update is sufficient since we're updating by UserID (primary key)
 		dbUser, err = userDAO.Update(context.Background(), nil, cdbm.UserUpdateInput{
@@ -120,7 +120,7 @@ func (h *KeycloakProcessor) ProcessToken(c echo.Context, tokenStr string, jwksCo
 			Email:     &email,
 			FirstName: &firstName,
 			LastName:  &lastName,
-			OrgData:   OrgDataParam,
+			OrgData:   orgData,
 		})
 		if err != nil {
 			logger.Error().Err(err).Msg("failed to update user in DB")
