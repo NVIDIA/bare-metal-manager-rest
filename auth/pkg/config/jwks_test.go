@@ -274,7 +274,7 @@ func TestJwksConfig_Concurrency(t *testing.T) {
 		Issuer: "test.example.com",
 	}
 
-	// Test concurrent access to UpdateJWKs
+	// Test concurrent access to UpdateAllJWKS
 	const numGoroutines = 10
 	var wg sync.WaitGroup
 	errors := make(chan error, numGoroutines)
@@ -311,7 +311,7 @@ func TestJwksConfig_Concurrency(t *testing.T) {
 
 	// Should not have any other types of errors
 	for _, err := range unexpectedErrors {
-		t.Errorf("Concurrent UpdateJWKs failed with unexpected error: %v", err)
+		t.Errorf("Concurrent UpdateAllJWKS failed with unexpected error: %v", err)
 	}
 
 	// Test concurrent read operations

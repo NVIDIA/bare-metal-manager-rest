@@ -31,7 +31,7 @@ import (
 // JWKS errors
 var (
 	ErrJWKSURLEmpty         = errors.New("JWKS URL is empty")
-	ErrJWKSNotInitialized   = errors.New("JWKS not initialized - call UpdateJWKs first")
+	ErrJWKSNotInitialized   = errors.New("JWKS not initialized - call UpdateAllJWKS first")
 	ErrEmptyKeySet          = errors.New("JWKS key set is empty")
 	ErrNoValidKeys          = errors.New("JWKS contains no valid keys")
 	ErrInvalidUseParameter  = errors.New("invalid use parameter")

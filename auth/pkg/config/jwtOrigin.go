@@ -11,14 +11,13 @@
 package config
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/labstack/echo/v4"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"github.com/nvidia/carbide-rest/common/pkg/util"
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -144,37 +143,37 @@ func (jc *JWTOriginConfig) GetAllConfigs() map[string]*JwksConfig {
 	return jc.configs
 }
 
-// UpdateJWKs updates the JWKs for all configurations in the map
+// UpdateAllJWKS updates the JWKs for all configurations in the map
 // Updates are performed in parallel for better performance with multiple issuers.
 // Continues on individual failures - only returns error if ALL updates fail.
-func (jc *JWTOriginConfig) UpdateJWKs() error {
+func (jc *JWTOriginConfig) UpdateAllJWKS() error {
 	// Collect configs under lock, then release before network I/O
 	jc.RLock()
-	configs := make([]*JwksConfig, 0, len(jc.configs))
+	jwksConfigs := make([]*JwksConfig, 0, len(jc.configs))
 	for _, config := range jc.configs {
 		if config != nil && config.URL != "" {
-			configs = append(configs, config)
+			jwksConfigs = append(jwksConfigs, config)
 		}
 	}
 	jc.RUnlock()
 
-	if len(configs) == 0 {
+	if len(jwksConfigs) == 0 {
 		return nil
 	}
 
 	// Update all configs in parallel
 	var wg sync.WaitGroup
-	errChan := make(chan error, len(configs))
+	errChan := make(chan error, len(jwksConfigs))
 
-	for _, config := range configs {
+	for _, jwksConfig := range jwksConfigs {
 		wg.Add(1)
-		go func(cfg *JwksConfig) {
+		go func(innerJwksConfig *JwksConfig) {
 			defer wg.Done()
-			if err := cfg.UpdateJWKs(); err != nil {
-				log.Warn().Err(err).Str("issuer", cfg.Issuer).Msg("Failed to update JWKS")
+			if err := innerJwksConfig.UpdateJWKs(); err != nil {
+				log.Warn().Err(err).Str("issuer", innerJwksConfig.Issuer).Msg("Failed to update JWKS")
 				errChan <- err
 			}
-		}(config)
+		}(jwksConfig)
 	}
 
 	wg.Wait()
@@ -186,14 +185,12 @@ func (jc *JWTOriginConfig) UpdateJWKs() error {
 		errs = append(errs, err)
 	}
 
-	if len(errs) == len(configs) {
-		log.Error().Int("failed", len(errs)).Int("total", len(configs)).
-			Msg("FATAL: All JWKS updates failed - no issuers available")
-		panic(fmt.Sprintf("all JWKS updates failed (%d issuers) - at least one issuer must be reachable at startup", len(errs)))
+	if len(errs) == len(jwksConfigs) {
+		log.Panic().Msgf("all JWKS updates failed (%d issuers) - at least one issuer must be reachable at startup", len(errs))
 	}
 
 	if len(errs) > 0 {
-		log.Warn().Int("failed", len(errs)).Int("total", len(configs)).Int("succeeded", len(configs)-len(errs)).
+		log.Warn().Int("failed", len(errs)).Int("total", len(jwksConfigs)).Int("succeeded", len(jwksConfigs)-len(errs)).
 			Msg("Some JWKS updates failed, continuing with available issuers")
 	}
 

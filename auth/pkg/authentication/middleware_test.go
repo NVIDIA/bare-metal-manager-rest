@@ -29,13 +29,13 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
+	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
 	temporalClient "go.temporal.io/sdk/client"
 	tmocks "go.temporal.io/sdk/mocks"
 )
@@ -112,7 +112,7 @@ func TestAuthProcessor(t *testing.T) {
 	joCfg.AddConfig("kas", "authn.nvidia.com", testServer.URL+"/kas", config2.TokenOriginKas, false, nil, nil)
 
 	// Initialize JWKS data for testing
-	if err := joCfg.UpdateJWKs(); err != nil {
+	if err := joCfg.UpdateAllJWKS(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -510,7 +510,7 @@ func TestValidateJWTTokens_WithoutExpiration(t *testing.T) {
 	cfg.AddConfig("kas", "authn.nvidia.com", testServer.URL+"/kas", config2.TokenOriginKas, false, nil, nil)
 
 	// Initialize JWKS data for testing
-	err := cfg.UpdateJWKs()
+	err := cfg.UpdateAllJWKS()
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -699,7 +699,7 @@ func TestHandlerInterface_TokenOriginRouting(t *testing.T) {
 	joCfg.AddConfig("kas", kasIssuer, testServer.URL+"/kas", config2.TokenOriginKas, false, nil, nil)
 
 	// Initialize JWKS data
-	require.NoError(t, joCfg.UpdateJWKs())
+	require.NoError(t, joCfg.UpdateAllJWKS())
 
 	// Initialize processors
 	encCfg := config.NewPayloadEncryptionConfig("test-encryption-key")
@@ -898,7 +898,7 @@ func TestProcessorInterface_ErrorScenarios(t *testing.T) {
 				cfg.AddConfig("default", tt.issuer, server.URL, tt.origin, false, nil, nil)
 			}
 
-			require.NoError(t, cfg.UpdateJWKs())
+			require.NoError(t, cfg.UpdateAllJWKS())
 
 			// Initialize processors
 			processors.InitializeProcessors(cfg, dbSession, tc, encCfg, nil)
@@ -960,7 +960,7 @@ func TestProcessorInterface_Mapping(t *testing.T) {
 	cfg.AddConfig("kas", kasIssuer, testServer.URL, config2.TokenOriginKas, false, nil, nil)
 	cfg.AddConfig("keycloak", keycloakIssuer, testServer.URL, config2.TokenOriginKeycloak, true, nil, nil)
 
-	require.NoError(t, cfg.UpdateJWKs())
+	require.NoError(t, cfg.UpdateAllJWKS())
 
 	// Initialize processors
 	processors.InitializeProcessors(cfg, dbSession, tc, encCfg, nil)

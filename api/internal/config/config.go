@@ -503,7 +503,7 @@ func (c *Config) GetOrInitJWTOriginConfig() *cauth.JWTOriginConfig {
 		}
 
 		// Initialize JWKS data
-		if err := c.JwtOriginConfig.UpdateJWKs(); err != nil {
+		if err := c.JwtOriginConfig.UpdateAllJWKS(); err != nil {
 			log.Warn().Err(err).Msg("Failed to update JWKS data")
 			return nil
 		} else {
