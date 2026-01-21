@@ -91,7 +91,7 @@ func (h *KeycloakProcessor) ProcessToken(c echo.Context, tokenStr string, jwksCo
 	config.SetIsServiceAccountInContext(c, isServiceAccount)
 
 	userDAO := cdbm.NewUserDAO(h.dbSession)
-	dbUser, created, err := userDAO.GetOrCreate(context.Background(), nil, cdbm.UserGetOrCreateInput{
+	dbUser, _, err := userDAO.GetOrCreate(context.Background(), nil, cdbm.UserGetOrCreateInput{
 		AuxiliaryID: &auxId,
 	})
 	if err != nil {
@@ -105,22 +105,13 @@ func (h *KeycloakProcessor) ProcessToken(c echo.Context, tokenStr string, jwksCo
 		return nil, apiErr
 	}
 
-	// If user was created or needs updates, update with latest information
-	needsUpdate := created || updatedUser != nil
-	if needsUpdate {
-		var orgData cdbm.OrgData
-		if updatedUser != nil && updatedUser.OrgData != nil {
-			orgData = updatedUser.OrgData
-		} else if dbUser.OrgData != nil {
-			orgData = dbUser.OrgData
-		}
-		// Regular update is sufficient since we're updating by UserID (primary key)
+	if updatedUser != nil {
 		dbUser, err = userDAO.Update(context.Background(), nil, cdbm.UserUpdateInput{
 			UserID:    dbUser.ID,
 			Email:     &email,
 			FirstName: &firstName,
 			LastName:  &lastName,
-			OrgData:   orgData,
+			OrgData:   updatedUser.OrgData,
 		})
 		if err != nil {
 			logger.Error().Err(err).Msg("failed to update user in DB")
