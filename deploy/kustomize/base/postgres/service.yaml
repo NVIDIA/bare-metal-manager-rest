@@ -24,3 +24,21 @@ spec:
   selector:
     app: postgres
 
+---
+# PostgreSQL NodePort Service for local development access
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-nodeport
+  labels:
+    app: postgres
+spec:
+  type: NodePort
+  ports:
+    - port: 5432
+      targetPort: 5432
+      nodePort: 30432
+      name: postgres
+  selector:
+    app: postgres
+

@@ -10,7 +10,7 @@ DOCKERFILE_DIR := docker/production
 
 # PostgreSQL container configuration
 POSTGRES_CONTAINER_NAME := project-test
-POSTGRES_PORT := 30432
+POSTGRES_PORT := 25432
 POSTGRES_USER := postgres
 POSTGRES_PASSWORD := postgres
 POSTGRES_DB := forgetest
