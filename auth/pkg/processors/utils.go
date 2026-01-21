@@ -155,11 +155,9 @@ func GetUpdatedUserFromHeaders(c echo.Context, existingUser cdbm.User, ngcOrgNam
 	}
 	sort.Strings(newNgcRoles)
 
-	var OrgData cdbm.OrgData
-	if existingUser.OrgData != nil {
-		OrgData = existingUser.OrgData
-	} else {
-		OrgData = cdbm.OrgData{}
+	orgData := existingUser.OrgData
+	if orgData == nil {
+		orgData = cdbm.OrgData{}
 	}
 
 	// Extract NGC org display name
@@ -190,8 +188,8 @@ func GetUpdatedUserFromHeaders(c echo.Context, existingUser cdbm.User, ngcOrgNam
 			Teams:       []cdbm.Team{},
 			Updated:     &now,
 		}
-		OrgData[ngcOrgName] = *ngcOrg
-		updatedUser.OrgData = OrgData
+		orgData[ngcOrgName] = *ngcOrg
+		updatedUser.OrgData = orgData
 		isUserUpdated = true
 	} else {
 		// Check if user has any role changes
@@ -213,8 +211,8 @@ func GetUpdatedUserFromHeaders(c echo.Context, existingUser cdbm.User, ngcOrgNam
 			now := time.Now().UTC()
 			ngcOrg.Roles = newNgcRoles
 			ngcOrg.Updated = &now
-			OrgData[ngcOrgName] = *ngcOrg
-			updatedUser.OrgData = OrgData
+			orgData[ngcOrgName] = *ngcOrg
+			updatedUser.OrgData = orgData
 			isUserUpdated = true
 		}
 
@@ -222,8 +220,8 @@ func GetUpdatedUserFromHeaders(c echo.Context, existingUser cdbm.User, ngcOrgNam
 			now := time.Now().UTC()
 			ngcOrg.DisplayName = ngcOrgDisplayName
 			ngcOrg.Updated = &now
-			OrgData[ngcOrgName] = *ngcOrg
-			updatedUser.OrgData = OrgData
+			orgData[ngcOrgName] = *ngcOrg
+			updatedUser.OrgData = orgData
 			isUserUpdated = true
 		}
 	}

@@ -87,8 +87,8 @@ func (h *SSAProcessor) ProcessToken(c echo.Context, tokenStr string, jwksCfg *co
 		return nil, util.NewAPIError(http.StatusUnauthorized, "Failed to retrieve user record, DB error", nil)
 	}
 
-	// Get org name from context
-	orgName := c.Get("orgName").(string)
+	// Get org name from URL path parameter
+	orgName := c.Param("orgName")
 
 	// SSA tokens are not service account tokens
 	config.SetIsServiceAccountInContext(c, false)

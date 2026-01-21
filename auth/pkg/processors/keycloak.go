@@ -83,8 +83,8 @@ func (h *KeycloakProcessor) ProcessToken(c echo.Context, tokenStr string, jwksCo
 		return nil, util.NewAPIError(http.StatusForbidden, "User does not have any roles assigned", nil)
 	}
 
-	// Get org name from context
-	reqOrgName := c.Get("orgName").(string)
+	// Get org name from URL path parameter
+	reqOrgName := c.Param("orgName")
 
 	// Set isServiceAccount in context based on clientId
 	isServiceAccount := claims.GetClientId() != "" && jwksConfig.ServiceAccount

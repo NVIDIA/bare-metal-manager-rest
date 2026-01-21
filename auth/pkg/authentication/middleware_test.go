@@ -145,8 +145,8 @@ func TestAuthProcessor(t *testing.T) {
 				path:  "/v2/org/testorg/user/current",
 				org:   "",
 			},
-			wantErrMsg:   "Request is missing authorization header",
-			wantRespCode: http.StatusUnauthorized,
+			wantErrMsg:   "Organization name is required in request path",
+			wantRespCode: http.StatusBadRequest,
 		},
 		{
 			name: "test auth processor error, no authorization header",
@@ -762,7 +762,9 @@ func TestHandlerInterface_TokenOriginRouting(t *testing.T) {
 
 				rec := httptest.NewRecorder()
 				c := e.NewContext(req, rec)
-				c.Set("ngcOrgName", "testorg")
+				c.SetParamNames("orgName")
+				c.SetParamValues("testorg")
+				c.Set("orgName", "testorg")
 
 				logger := log.With().Str("test", tt.name).Logger()
 				_, apiErr := handler.ProcessToken(c, tt.token, joCfg.GetConfig(tt.issuer), logger)
@@ -914,7 +916,9 @@ func TestProcessorInterface_ErrorScenarios(t *testing.T) {
 
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
-			c.Set("ngcOrgName", "testorg")
+			c.SetParamNames("orgName")
+			c.SetParamValues("testorg")
+			c.Set("orgName", "testorg")
 
 			logger := log.With().Str("test", tt.name).Logger()
 
