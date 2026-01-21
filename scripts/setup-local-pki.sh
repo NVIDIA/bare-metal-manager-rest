@@ -27,11 +27,34 @@ generate_ca() {
   CA_DIR=$(mktemp -d)
   trap "rm -rf $CA_DIR" EXIT
   
+  # Create CA config with proper key usage for CRL signing
+  cat > "$CA_DIR/ca.cnf" << 'EOFCNF'
+[req]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_ca
+prompt = no
+
+[req_distinguished_name]
+C = US
+ST = CA
+L = Local
+O = Carbide Dev
+OU = Dev
+CN = carbide-local-ca
+
+[v3_ca]
+basicConstraints = critical,CA:TRUE
+keyUsage = critical,keyCertSign,cRLSign,digitalSignature
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always,issuer:always
+EOFCNF
+
   openssl req -x509 -sha256 -nodes -newkey rsa:4096 \
     -keyout "$CA_DIR/ca.key" \
     -out "$CA_DIR/ca.crt" \
     -days 3650 \
-    -subj "/C=US/ST=CA/L=Local/O=Carbide Dev/OU=Dev/CN=carbide-local-ca"
+    -config "$CA_DIR/ca.cnf" \
+    -extensions v3_ca
   
   kubectl create secret generic vault-root-ca-certificate \
     --from-file=certificate="$CA_DIR/ca.crt" \

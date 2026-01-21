@@ -193,7 +193,7 @@ kind-apply:
 	kubectl apply -k $(KUSTOMIZE_OVERLAY)
 	@echo "Waiting for PostgreSQL..."
 	kubectl -n carbide wait --for=condition=ready pod -l app=postgres --timeout=120s
-	@echo "Waiting for Cert Manager (with embedded Vault - PKI auto-initialized)..."
+	@echo "Waiting for Cert Manager..."
 	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=180s
 	@echo "Waiting for Temporal..."
 	kubectl -n carbide wait --for=condition=ready pod -l app=temporal --timeout=120s
@@ -252,17 +252,19 @@ kind-reset:
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-elektraserver:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
+	@echo "Setting up PKI secrets for cert-manager..."
+	NAMESPACE=carbide ./scripts/setup-local-pki.sh
 	kubectl apply -k $(KUSTOMIZE_OVERLAY)
 	kubectl -n carbide wait --for=condition=ready pod -l app=postgres --timeout=120s
 	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=180s
-	@echo "Configuring cert-manager.io ClusterIssuer for Vault..."
+	@echo "Configuring cert-manager.io ClusterIssuer..."
 	kubectl apply -k deploy/kustomize/base/cert-manager-io/
 	kubectl -n carbide wait --for=condition=ready pod -l app=temporal --timeout=120s
 	kubectl -n carbide wait --for=condition=ready pod -l app=keycloak --timeout=180s
 	kubectl -n carbide wait --for=condition=complete job/db-migrations --timeout=120s
 	-kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-api --timeout=120s
 	-kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-workflow --timeout=60s
-	@echo "Waiting for Site Manager (fetches TLS cert from Vault)..."
+	@echo "Waiting for Site Manager..."
 	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=180s
 	./scripts/setup-local-site-agent.sh
 	@echo ""
@@ -274,7 +276,6 @@ kind-reset:
 	@echo ""
 	@echo "API: http://localhost:8388"
 	@echo "Keycloak: http://localhost:8080"
-	@echo "Vault: http://localhost:8200"
 	@echo "================================================================================"
 	@echo ""
 	@echo "Example: Get a token and list all sites:"

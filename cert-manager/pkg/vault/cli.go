@@ -19,6 +19,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/nvidia/carbide-rest/cert-manager/pkg/core"
+	"github.com/nvidia/carbide-rest/cert-manager/pkg/pki"
 	vaultcfg "github.com/nvidia/carbide-rest/cert-manager/pkg/vault/config"
 	kapi "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -72,12 +73,11 @@ func NewCommand() *cli.Command {
 				Value: caBaseDNSDefault,
 				Usage: "Base dns appended to common names",
 			},
-			&cli.StringFlag{
-				Name:     "vault-ingress-url",
-				Usage:    "ingress URL for this vault/csm pod for setting up CA",
-				EnvVars:  []string{"FORGE_VAULT_INGRESS_URL"},
-				Required: true,
-			},
+		&cli.StringFlag{
+			Name:    "vault-ingress-url",
+			Usage:   "ingress URL for this vault/csm pod for setting up CA (required when not using --use-native-pki)",
+			EnvVars: []string{"FORGE_VAULT_INGRESS_URL"},
+		},
 			&cli.StringFlag{
 				Name:    "cert-manager-secret-name",
 				Usage:   "name of secret to create for cert manager",
@@ -94,6 +94,48 @@ func NewCommand() *cli.Command {
 				EnvVars: []string{"SENTRY_DSN"},
 				Usage:   "DSN for sentry/glitchtip",
 			},
+			&cli.BoolFlag{
+				Name:    "use-native-pki",
+				Value:   false,
+				EnvVars: []string{"USE_NATIVE_PKI"},
+				Usage:   "Use native Go PKI instead of Vault for certificate generation",
+			},
+			&cli.StringFlag{
+				Name:    "ca-common-name",
+				Value:   "Carbide Local CA",
+				EnvVars: []string{"CA_COMMON_NAME"},
+				Usage:   "Common name for the CA certificate (only used with --use-native-pki)",
+			},
+			&cli.StringFlag{
+				Name:    "ca-organization",
+				Value:   "NVIDIA",
+				EnvVars: []string{"CA_ORGANIZATION"},
+				Usage:   "Organization for the CA certificate (only used with --use-native-pki)",
+			},
+			&cli.StringFlag{
+				Name:    "ca-cert-file",
+				Value:   "/vault/secrets/vault-root-ca-certificate/certificate",
+				EnvVars: []string{"CA_CERT_FILE"},
+				Usage:   "Primary path to CA certificate file (vault-style path)",
+			},
+			&cli.StringFlag{
+				Name:    "ca-key-file",
+				Value:   "/vault/secrets/vault-root-ca-private-key/privatekey",
+				EnvVars: []string{"CA_KEY_FILE"},
+				Usage:   "Primary path to CA private key file (vault-style path)",
+			},
+			&cli.StringFlag{
+				Name:    "alt-ca-cert-file",
+				Value:   "/etc/pki/ca/tls.crt",
+				EnvVars: []string{"ALT_CA_CERT_FILE"},
+				Usage:   "Alternate path to CA certificate file (for migration)",
+			},
+			&cli.StringFlag{
+				Name:    "alt-ca-key-file",
+				Value:   "/etc/pki/ca/tls.key",
+				EnvVars: []string{"ALT_CA_KEY_FILE"},
+				Usage:   "Alternate path to CA private key file (for migration)",
+			},
 		},
 		Before: func(c *cli.Context) error {
 			if c.Bool("debug") {
@@ -104,43 +146,78 @@ func NewCommand() *cli.Command {
 		Action: func(c *cli.Context) error {
 			ctx := c.Context
 			log := core.GetLogger(ctx)
-			vaultEndpoint := c.String("vault-endpoint")
+			useNativePKI := c.Bool("use-native-pki")
 
 			o := Options{
-				Addr:          ":" + c.String("tls-port"),
-				InsecureAddr:  ":" + c.String("insecure-port"),
-				VaultEndpoint: vaultEndpoint,
-				DNSName:       c.String("dns-name"),
-				CABaseDNS:     c.String("ca-base-dns"),
-				sentryDSN:     c.String("sentry-dsn"),
+				Addr:         ":" + c.String("tls-port"),
+				InsecureAddr: ":" + c.String("insecure-port"),
+				DNSName:      c.String("dns-name"),
+				CABaseDNS:    c.String("ca-base-dns"),
+				sentryDSN:    c.String("sentry-dsn"),
 			}
 
-			// Initialize vault
+			var certIssuer CertificateIssuer
+
+			if useNativePKI {
+				// Use native Go PKI instead of Vault
+				log.Info("Using native Go PKI for certificate generation")
+				caCertFile := c.String("ca-cert-file")
+				caKeyFile := c.String("ca-key-file")
+				altCACertFile := c.String("alt-ca-cert-file")
+				altCAKeyFile := c.String("alt-ca-key-file")
+				log.Infof("CA paths - primary: %s, alternate: %s", caCertFile, altCACertFile)
+				issuer, err := pki.NewNativeCertificateIssuer(pki.NativeCertificateIssuerOptions{
+					BaseDNS:       c.String("ca-base-dns"),
+					CACommonName:  c.String("ca-common-name"),
+					CAOrganization: c.String("ca-organization"),
+					CACertFile:    caCertFile,
+					CAKeyFile:     caKeyFile,
+					AltCACertFile: altCACertFile,
+					AltCAKeyFile:  altCAKeyFile,
+				})
+				if err != nil {
+					log.Errorf("Failed to create native PKI issuer: %v", err)
+					return err
+				}
+				certIssuer = issuer
+				log.Info("Native PKI issuer initialized successfully")
+		} else {
+			// Use Vault for certificate generation
+			vaultIngressURL := c.String("vault-ingress-url")
+			if vaultIngressURL == "" {
+				return errors.New("--vault-ingress-url is required when not using --use-native-pki")
+			}
+
+			vaultEndpoint := c.String("vault-endpoint")
+			o.VaultEndpoint = vaultEndpoint
+
 			log.Infof("Configuring vault at %s", vaultEndpoint)
-			vaultCfgCtrl, err := vaultcfg.NewController(vaultEndpoint,
-				c.String("vault-ingress-url"),
-				c.String("vault-secrets-root-path"))
-			if err != nil {
-				log.Errorf("Vault initialized failed, error: %v", err)
-				return err
-			}
-			vaultCfgCtrl.Start(ctx)
+				vaultCfgCtrl, err := vaultcfg.NewController(vaultEndpoint,
+					c.String("vault-ingress-url"),
+					c.String("vault-secrets-root-path"))
+				if err != nil {
+					log.Errorf("Vault initialized failed, error: %v", err)
+					return err
+				}
+				vaultCfgCtrl.Start(ctx)
 
-			// Wait for vault token to be sent from the channel once vault is initialized
-			log.Info("Waiting for vault to be initialized...")
-			vaultToken, ok := <-vaultCfgCtrl.TokenChan()
-			if !ok {
-				return errors.New("vault failed to initialize")
-			}
-			o.VaultToken = vaultToken
-			log.Info("Vault successfully initialized!")
-			certMgrSecret := c.String("cert-manager-secret-name")
-			if certMgrSecret != "" {
-				createCertMgrSecret(ctx, c.String("cert-manager-namespace"), certMgrSecret, vaultCfgCtrl.CertManagerToken())
+				// Wait for vault token to be sent from the channel once vault is initialized
+				log.Info("Waiting for vault to be initialized...")
+				vaultToken, ok := <-vaultCfgCtrl.TokenChan()
+				if !ok {
+					return errors.New("vault failed to initialize")
+				}
+				o.VaultToken = vaultToken
+				log.Info("Vault successfully initialized!")
+
+				certMgrSecret := c.String("cert-manager-secret-name")
+				if certMgrSecret != "" {
+					createCertMgrSecret(ctx, c.String("cert-manager-namespace"), certMgrSecret, vaultCfgCtrl.CertManagerToken())
+				}
 			}
 
 			log.Info("Configuring Certificate server")
-			s, err := NewServer(ctx, o)
+			s, err := NewServerWithIssuer(ctx, o, certIssuer)
 			if err != nil {
 				return err
 			}

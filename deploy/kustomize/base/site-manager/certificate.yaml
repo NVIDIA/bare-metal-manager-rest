@@ -37,6 +37,6 @@ spec:
     - carbide-rest-site-manager.carbide.svc.cluster.local
     - localhost
   issuerRef:
-    name: vault-issuer
+    name: carbide-ca-issuer
     kind: ClusterIssuer
     group: cert-manager.io

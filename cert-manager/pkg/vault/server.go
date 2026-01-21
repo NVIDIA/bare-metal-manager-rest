@@ -29,14 +29,15 @@ const (
 
 // Options defines options for the server
 type Options struct {
-	Addr                   string
-	InsecureAddr           string
+	Addr         string
+	InsecureAddr string
+	DNSName      string
+	CABaseDNS    string
+	sentryDSN    string
+	// VaultEndpoint and VaultToken are only used when running with Vault (deprecated path)
 	VaultEndpoint          string
 	VaultToken             string
 	VaultTokenExpiryMargin time.Duration
-	DNSName                string
-	CABaseDNS              string
-	sentryDSN              string
 }
 
 // Server defines a server
@@ -47,18 +48,30 @@ type Server struct {
 	insecService      *core.HTTPService
 }
 
-// NewServer returns a server instance
+// NewServer returns a server instance using Vault for certificate generation.
+// Deprecated: Use NewServerWithIssuer with pki.NewNativeCertificateIssuer instead.
 func NewServer(ctx context.Context, o Options) (*Server, error) {
-	s := &Server{Options: o}
 	certIssuer := NewVaultCertificateIssuer(ctx, CertificateIssuerOptions{
 		VaultOptions: core.VaultOptions{
-			Addr:       s.VaultEndpoint,
-			VaultToken: s.VaultToken,
+			Addr:       o.VaultEndpoint,
+			VaultToken: o.VaultToken,
 		},
-		BaseDNS:        s.CABaseDNS,
+		BaseDNS:        o.CABaseDNS,
 		CertificateTTL: "90d",
 	})
+	return NewServerWithIssuer(ctx, o, certIssuer)
+}
+
+// NewServerWithIssuer returns a server instance with the provided certificate issuer.
+// This is the primary entry point - pass a native PKI issuer or Vault issuer.
+func NewServerWithIssuer(ctx context.Context, o Options, certIssuer CertificateIssuer) (*Server, error) {
+	if certIssuer == nil {
+		panic("certIssuer is required")
+	}
+
+	s := &Server{Options: o}
 	s.certificateIssuer = certIssuer
+
 	err := s.tlsSetup(ctx)
 	if err != nil {
 		return nil, err
