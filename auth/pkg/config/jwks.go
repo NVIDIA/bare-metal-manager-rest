@@ -34,7 +34,6 @@ const (
 	minUpdateInterval = 10 * time.Second
 )
 
-
 // =============================================================================
 // Package Variables
 // =============================================================================
@@ -662,4 +661,3 @@ func (jcfg *JwksConfig) GetOrgDataFromClaim(claims jwt.MapClaims, reqOrgFromRout
 
 	return orgData, isServiceAccount, nil
 }
-

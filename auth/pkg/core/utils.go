@@ -13,6 +13,7 @@ package core
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -31,15 +32,75 @@ var ScopeClaims = []string{"scope", "scopes", "scp"}
 // =============================================================================
 
 // InterfaceToStringSlice converts interface{} to []string.
-// Handles space-separated strings, arrays, and slices.
+// Supports multiple common formats from various IdPs:
+//   - Native array/slice: ["role1", "role2"]
+//   - JSON-encoded string array: "[\"role1\", \"role2\"]"
+//   - Space-separated: "role1 role2"
+//   - Comma-separated: "role1,role2" or "role1, role2"
+//   - Semicolon-separated: "role1;role2"
+//   - Single value: "role1"
 func InterfaceToStringSlice(v any) ([]string, error) {
 	if v == nil {
 		return nil, nil
 	}
-	if s, ok := v.(string); ok && strings.ContainsAny(s, " \t\n") {
-		return strings.Fields(s), nil
+
+	// Handle string values with various formats
+	if s, ok := v.(string); ok {
+		return parseStringToSlice(s), nil
 	}
+
+	// Handle native arrays/slices
 	return cast.ToStringSliceE(v)
+}
+
+// parseStringToSlice parses a string into a slice using common delimiters.
+// Tries formats in order: JSON array, comma-separated, semicolon-separated, space-separated.
+func parseStringToSlice(s string) []string {
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return nil
+	}
+
+	// Try JSON array format first: ["role1", "role2"]
+	if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+		var jsonArray []string
+		if err := json.Unmarshal([]byte(trimmed), &jsonArray); err == nil {
+			return trimAndFilter(jsonArray)
+		}
+		// If JSON parsing fails, fall through to other methods
+	}
+
+	// Try comma-separated: "role1,role2" or "role1, role2"
+	if strings.Contains(trimmed, ",") {
+		parts := strings.Split(trimmed, ",")
+		return trimAndFilter(parts)
+	}
+
+	// Try semicolon-separated: "role1;role2"
+	if strings.Contains(trimmed, ";") {
+		parts := strings.Split(trimmed, ";")
+		return trimAndFilter(parts)
+	}
+
+	// Try space/tab/newline-separated: "role1 role2"
+	if strings.ContainsAny(trimmed, " \t\n") {
+		return strings.Fields(trimmed)
+	}
+
+	// Single value
+	return []string{trimmed}
+}
+
+// trimAndFilter trims whitespace from each element and removes empty strings.
+func trimAndFilter(parts []string) []string {
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 // ComputeIssuerPrefix returns SHA256(issuerURL)[0:10] for namespacing subject claims.
