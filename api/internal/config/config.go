@@ -371,9 +371,9 @@ func (c *Config) Validate() {
 	if len(issuersConfig) == 0 && !keycloakEnabled {
 		log.Panic().Msg("No issuers configured and Keycloak is disabled - authentication will not work")
 	} else if len(issuersConfig) > 0 && keycloakEnabled {
-		log.Panic().Msg("KeyCloak is enabled, we cannot support any issuer configuration.")
+		log.Panic().Msg("KeyCloak is enabled, we cannot support any JWT issuer based configuration")
 	} else if len(issuersConfig) > 0 {
-		log.Info().Msgf("%d Issuer configurations loaded", len(issuersConfig))
+		log.Info().Msgf("Loaded a total of %d JWT issuer based auth configuration", len(issuersConfig))
 	} else if keycloakEnabled {
 		log.Info().Msg("Keycloak authentication is enabled")
 	}
@@ -573,8 +573,15 @@ func (c *Config) ValidateIssuersConfig(issuers []IssuerConfig) error {
 		seenURLs[issuer.JWKS] = true
 
 		// Validate origin
-		if _, err := issuer.GetOrigin(); err != nil {
+		origin, err := issuer.GetOrigin()
+		if err != nil {
 			return fmt.Errorf("issuer %s: %w", issuer.Name, err)
+		}
+
+		// ClaimMappings are only allowed for custom origin issuers
+		// keycloak, kas-ssa, and kas-legacy have their own predefined claim extraction logic
+		if len(issuer.ClaimMappings) > 0 && origin != cauth.TokenOriginCustom {
+			return fmt.Errorf("issuer %s: claimMappings are only allowed for custom origin issuers (origin: %s)", issuer.Name, origin)
 		}
 
 		// Validate JWKS timeout if specified
@@ -584,7 +591,7 @@ func (c *Config) ValidateIssuersConfig(issuers []IssuerConfig) error {
 			}
 		}
 
-		// Validate claim mappings
+		// Validate claim mappings (only for custom origin, but check is already done above)
 		for j, mapping := range issuer.ClaimMappings {
 			if mapping.OrgAttribute == "" && mapping.OrgName == "" {
 				return fmt.Errorf("issuer %s: claimMapping %d: either orgAttribute or orgName must be specified", issuer.Name, j)
@@ -603,10 +610,11 @@ func (c *Config) ValidateIssuersConfig(issuers []IssuerConfig) error {
 			}
 
 			// Static org mapping - check for duplicates unless allowDuplicateStaticOrgNames is true
+			// Normalize org names to lowercase for comparison
 			if mapping.OrgName != "" {
 				normalizedOrg := strings.ToLower(mapping.OrgName)
 				if seenStaticOrgs[normalizedOrg] && !issuer.GetAllowDuplicateStaticOrgNames() {
-					return fmt.Errorf("issuer %s: duplicate static org: %s", issuer.Name, mapping.OrgName)
+					return fmt.Errorf("issuer %s: duplicate static org: %s (normalized: %s)", issuer.Name, mapping.OrgName, normalizedOrg)
 				}
 				seenStaticOrgs[normalizedOrg] = true
 			}

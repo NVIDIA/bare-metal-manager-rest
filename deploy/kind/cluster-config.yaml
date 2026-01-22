@@ -36,10 +36,6 @@ nodes:
       - containerPort: 30081
         hostPort: 8081
         protocol: TCP
-      # PostgreSQL direct access
-      - containerPort: 30432
-        hostPort: 5432
-        protocol: TCP
     kubeadmConfigPatches:
       - |
         kind: InitConfiguration

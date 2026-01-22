@@ -553,7 +553,7 @@ func (jcfg *JwksConfig) GetClaimMappings() []ClaimMapping { return jcfg.ClaimMap
 
 // GetSubjectPrefix returns the issuer-derived prefix for namespacing subjects.
 func (jcfg *JwksConfig) GetSubjectPrefix() string {
-	if jcfg.subjectPrefix == "" && jcfg.Issuer != "" {
+	if jcfg.Origin == TokenOriginCustom && jcfg.subjectPrefix == "" && jcfg.Issuer != "" {
 		jcfg.subjectPrefix = core.ComputeIssuerPrefix(jcfg.Issuer)
 	}
 	return jcfg.subjectPrefix

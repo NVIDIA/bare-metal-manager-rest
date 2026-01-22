@@ -61,37 +61,13 @@ data:
       serviceName: cloud-api
 
     keycloak:
-      enabled: false
+      enabled: true
       baseURL: http://keycloak:8080
       externalBaseURL: http://localhost:8080
       realm: carbide-dev
       clientID: carbide-api
       clientSecretPath: /var/secrets/keycloak/client-secret
       serviceAccount: true
-
-    issuers:
-      - name: keycloak-custom
-        origin: custom
-        issuer: http://localhost:8080/realms/carbide-dev
-        jwks: http://keycloak:8080/realms/carbide-dev/protocol/openid-connect/certs
-        claimMappings:
-          # test-org: static org with static roles
-          - orgName: test-org
-            orgDisplayName: Test Organization
-            roles:
-              - FORGE_TENANT_ADMIN
-          # test-org1: static org with service account privileges
-          - orgName: test-org1
-            orgDisplayName: Test Organization 1
-            isServiceAccount: true
-          # test-org2: static org with dynamic roles from token attribute
-          - orgName: test-org2
-            orgDisplayName: Test Organization 2
-            rolesAttribute: roles
-          # Dynamic org and dynamic roles from token attributes
-          - orgAttribute: org
-            orgDisplayAttribute: org_display
-            rolesAttribute: roles
 
     rateLimiter:
       enabled: false
