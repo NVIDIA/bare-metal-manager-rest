@@ -369,7 +369,7 @@ func (c *Config) Validate() {
 	}
 
 	if len(issuersConfig) == 0 && !keycloakEnabled {
-		log.Panic().Msg("No issuers configured and Keycloak is disabled - authentication will not work")
+		log.Panic().Msg("No JWT issuer based auth configured and Keycloak is disabled")
 	} else if len(issuersConfig) > 0 && keycloakEnabled {
 		log.Panic().Msg("KeyCloak is enabled, we cannot support any JWT issuer based configuration")
 	} else if len(issuersConfig) > 0 {
