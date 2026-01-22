@@ -212,10 +212,8 @@ kind-apply:
 
 # Rebuild and redeploy apps only (faster iteration)
 kind-redeploy: docker-build-local kind-load
-	kubectl apply -k $(KUSTOMIZE_OVERLAY)
 	kubectl -n carbide rollout restart deployment/carbide-rest-api
-	kubectl -n carbide rollout restart deployment/cloud-worker
-	kubectl -n carbide rollout restart deployment/site-worker
+	kubectl -n carbide rollout restart deployment/carbide-rest-workflow
 	kubectl -n carbide rollout restart deployment/carbide-rest-site-agent
 	kubectl -n carbide rollout restart deployment/carbide-rest-elektraserver
 	kubectl -n carbide rollout restart deployment/carbide-rest-cert-manager
