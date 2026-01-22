@@ -17,22 +17,22 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
-	"github.com/rs/zerolog"
 	"github.com/nvidia/carbide-rest/auth/pkg/config"
 	"github.com/nvidia/carbide-rest/auth/pkg/core/claim"
 	"github.com/nvidia/carbide-rest/common/pkg/util"
 	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	"github.com/rs/zerolog"
 )
+
+// Ensure KeycloakProcessor implements config.TokenProcessor interface
+var _ config.TokenProcessor = (*KeycloakProcessor)(nil)
 
 // KeycloakProcessor processes Keycloak JWT tokens
 type KeycloakProcessor struct {
 	dbSession      *cdb.Session
 	keycloakConfig *config.KeycloakConfig
 }
-
-// Ensure KeycloakProcessor implements config.TokenProcessor interface
-var _ config.TokenProcessor = (*KeycloakProcessor)(nil)
 
 // HandleToken processes Keycloak JWT tokens
 func (h *KeycloakProcessor) ProcessToken(c echo.Context, tokenStr string, jwksConfig *config.JwksConfig, logger zerolog.Logger) (*cdbm.User, *util.APIError) {
@@ -77,14 +77,21 @@ func (h *KeycloakProcessor) ProcessToken(c echo.Context, tokenStr string, jwksCo
 		firstName = claims.GetClientId()
 	}
 
-	orgData := claims.ToOrgData()
+	tokenOrgData := claims.ToOrgData()
 
-	if len(orgData) == 0 {
+	if len(tokenOrgData) == 0 {
 		return nil, util.NewAPIError(http.StatusForbidden, "User does not have any roles assigned", nil)
 	}
 
+	// Get org name from URL path parameter
+	reqOrgName := c.Param("orgName")
+
+	// Set isServiceAccount in context based on clientId
+	isServiceAccount := claims.GetClientId() != "" && jwksConfig.ServiceAccount
+	config.SetIsServiceAccountInContext(c, isServiceAccount)
+
 	userDAO := cdbm.NewUserDAO(h.dbSession)
-	dbUser, created, err := userDAO.GetOrCreate(context.Background(), nil, cdbm.UserGetOrCreateInput{
+	dbUser, _, err := userDAO.GetOrCreate(context.Background(), nil, cdbm.UserGetOrCreateInput{
 		AuxiliaryID: &auxId,
 	})
 	if err != nil {
@@ -92,16 +99,19 @@ func (h *KeycloakProcessor) ProcessToken(c echo.Context, tokenStr string, jwksCo
 		return nil, util.NewAPIError(http.StatusUnauthorized, "Failed to retrieve or create user record, DB error", nil)
 	}
 
-	// If user was created or needs updates, update with latest information
-	needsUpdate := created || !dbUser.OrgData.Equal(orgData)
-	if needsUpdate {
-		// Regular update is sufficient since we're updating by UserID (primary key)
+	// Use GetUserWIthUpdatedOrgData to check if update is needed for the requested org
+	updatedUser, apiErr := GetUserWithUpdatedOrgData(*dbUser, tokenOrgData, reqOrgName, logger)
+	if apiErr != nil {
+		return nil, apiErr
+	}
+
+	if updatedUser != nil {
 		dbUser, err = userDAO.Update(context.Background(), nil, cdbm.UserUpdateInput{
 			UserID:    dbUser.ID,
 			Email:     &email,
 			FirstName: &firstName,
 			LastName:  &lastName,
-			OrgData:   orgData,
+			OrgData:   updatedUser.OrgData,
 		})
 		if err != nil {
 			logger.Error().Err(err).Msg("failed to update user in DB")

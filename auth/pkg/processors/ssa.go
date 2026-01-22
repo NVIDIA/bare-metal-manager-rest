@@ -17,29 +17,27 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
-	"github.com/rs/zerolog"
 	"github.com/nvidia/carbide-rest/auth/pkg/config"
 	"github.com/nvidia/carbide-rest/auth/pkg/core/claim"
 	"github.com/nvidia/carbide-rest/common/pkg/util"
 	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	"github.com/rs/zerolog"
 )
 
+// NGC KAS Headers for SSA tokens
 const (
-	// NGC KAS Headers for SSA tokens
-	// Legacy Starfleet ID header
-	legacyStarfleetIDHeader = "X-Starfleet-Id"
-	// Kas v2 Starfleet ID header
-	starfleetIDHeader = "NV-Actor-Id"
+	legacyStarfleetIDHeader = "X-Starfleet-Id" // Legacy Starfleet ID header
+	starfleetIDHeader       = "NV-Actor-Id"    // Kas v2 Starfleet ID header
 )
+
+// Ensure SSAProcessor implements config.TokenProcessor interface
+var _ config.TokenProcessor = (*SSAProcessor)(nil)
 
 // SSAProcessor processes SSA JWT tokens
 type SSAProcessor struct {
 	dbSession *cdb.Session
 }
-
-// Ensure SSAProcessor implements config.TokenProcessor interface
-var _ config.TokenProcessor = (*SSAProcessor)(nil)
 
 // HandleToken processes SSA JWT tokens
 func (h *SSAProcessor) ProcessToken(c echo.Context, tokenStr string, jwksCfg *config.JwksConfig, logger zerolog.Logger) (*cdbm.User, *util.APIError) {
@@ -89,11 +87,14 @@ func (h *SSAProcessor) ProcessToken(c echo.Context, tokenStr string, jwksCfg *co
 		return nil, util.NewAPIError(http.StatusUnauthorized, "Failed to retrieve user record, DB error", nil)
 	}
 
-	// Get org name from context
-	ngcOrgName := c.Get("ngcOrgName").(string)
+	// Get org name from URL path parameter
+	orgName := c.Param("orgName")
+
+	// SSA tokens are not service account tokens
+	config.SetIsServiceAccountInContext(c, false)
 
 	// Update user record if necessary
-	updatedUser, apiErr := GetUpdatedUserFromHeaders(c, *dbUser, ngcOrgName, logger)
+	updatedUser, apiErr := GetUpdatedUserFromHeaders(c, *dbUser, orgName, logger)
 	if apiErr != nil {
 		return nil, apiErr
 	}

@@ -48,13 +48,6 @@ data:
         enabled: false
       encryptionKeyPath: /var/secrets/temporal/encryption-key
 
-    auth:
-      - name: keycloak
-        origin: 2
-        url: http://keycloak:8080/realms/carbide-dev/protocol/openid-connect/certs
-        issuer: "http://localhost:8080/realms/carbide-dev"
-        serviceAccount: true
-
     siteManager:
       enabled: true
       svcEndpoint: "https://carbide-rest-site-manager:8100/v1/site"

@@ -29,13 +29,13 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
+	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
 	temporalClient "go.temporal.io/sdk/client"
 	tmocks "go.temporal.io/sdk/mocks"
 )
@@ -108,11 +108,11 @@ func TestAuthProcessor(t *testing.T) {
 	defer func() { testServer.Close() }()
 
 	joCfg := config2.NewJWTOriginConfig()
-	joCfg.AddConfig("ssa", "ssa.nvidia.com", testServer.URL+"/ssa", config2.TokenOriginSsa, false, nil, nil)
-	joCfg.AddConfig("kas", "authn.nvidia.com", testServer.URL+"/kas", config2.TokenOriginKas, false, nil, nil)
+	joCfg.AddConfig("ssa", "ssa.nvidia.com", testServer.URL+"/ssa", config2.TokenOriginKasSsa, false, nil, nil)
+	joCfg.AddConfig("kas", "authn.nvidia.com", testServer.URL+"/kas", config2.TokenOriginKasLegacy, false, nil, nil)
 
 	// Initialize JWKS data for testing
-	if err := joCfg.UpdateJWKs(); err != nil {
+	if err := joCfg.UpdateAllJWKS(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -145,8 +145,8 @@ func TestAuthProcessor(t *testing.T) {
 				path:  "/v2/org/testorg/user/current",
 				org:   "",
 			},
-			wantErrMsg:   "Request is missing authorization header",
-			wantRespCode: http.StatusUnauthorized,
+			wantErrMsg:   "Organization name is required in request path",
+			wantRespCode: http.StatusBadRequest,
 		},
 		{
 			name: "test auth processor error, no authorization header",
@@ -472,7 +472,19 @@ func Test_getUpdatedUserFromHeaders(t *testing.T) {
 				assert.Equal(t, *tt.want.Email, *got.Email)
 			}
 			if tt.want.OrgData != nil {
-				assert.Equal(t, tt.want.OrgData, got.OrgData)
+				// Compare OrgData fields individually, ignoring the Updated timestamp
+				assert.Equal(t, len(tt.want.OrgData), len(got.OrgData), "OrgData should have same number of orgs")
+				for orgName, expectedOrg := range tt.want.OrgData {
+					actualOrg, exists := got.OrgData[orgName]
+					assert.True(t, exists, "Org %s should exist in result", orgName)
+					if exists {
+						assert.Equal(t, expectedOrg.Name, actualOrg.Name, "Org name should match")
+						assert.Equal(t, expectedOrg.DisplayName, actualOrg.DisplayName, "DisplayName should match")
+						assert.Equal(t, expectedOrg.Roles, actualOrg.Roles, "Roles should match")
+						assert.Equal(t, expectedOrg.Teams, actualOrg.Teams, "Teams should match")
+						// Note: Updated timestamp is intentionally not compared as it's set dynamically
+					}
+				}
 			}
 		})
 	}
@@ -494,32 +506,32 @@ func TestValidateJWTTokens_WithoutExpiration(t *testing.T) {
 	defer func() { testServer.Close() }()
 
 	cfg := config2.NewJWTOriginConfig()
-	cfg.AddConfig("ssa", "ssa.nvidia.com", testServer.URL+"/ssa", config2.TokenOriginSsa, false, nil, nil)
-	cfg.AddConfig("kas", "authn.nvidia.com", testServer.URL+"/kas", config2.TokenOriginKas, false, nil, nil)
+	cfg.AddConfig("ssa", "ssa.nvidia.com", testServer.URL+"/ssa", config2.TokenOriginKasSsa, false, nil, nil)
+	cfg.AddConfig("kas", "authn.nvidia.com", testServer.URL+"/kas", config2.TokenOriginKasLegacy, false, nil, nil)
 
 	// Initialize JWKS data for testing
-	err := cfg.UpdateJWKs()
+	err := cfg.UpdateAllJWKS()
 	require.NoError(t, err)
 
 	tests := []struct {
 		name        string
 		token       string
-		origin      int
+		origin      string
 		jwksConfig  *config2.JwksConfig
 		expectValid bool
 	}{
 		{
 			name:        "validate SSA token signature bypassing expiration",
 			token:       sampleSsaToken,
-			origin:      config2.TokenOriginSsa,
-			jwksConfig:  cfg.GetSsaConfig(),
+			origin:      config2.TokenOriginKasSsa,
+			jwksConfig:  cfg.GetFirstConfigByOrigin(config2.TokenOriginKasSsa),
 			expectValid: true,
 		},
 		{
 			name:        "validate legacy KAS token signature bypassing expiration",
 			token:       samplelegacyKasToken,
-			origin:      config2.TokenOriginKas,
-			jwksConfig:  cfg.GetKasConfig(),
+			origin:      config2.TokenOriginKasLegacy,
+			jwksConfig:  cfg.GetFirstConfigByOrigin(config2.TokenOriginKasLegacy),
 			expectValid: true,
 		},
 	}
@@ -539,12 +551,12 @@ func TestValidateJWTTokens_WithoutExpiration(t *testing.T) {
 
 			var claims jwt.Claims
 			switch tt.origin {
-			case config2.TokenOriginKas:
+			case config2.TokenOriginKasLegacy:
 				claims = &claim.NgcKasClaims{}
-			case config2.TokenOriginSsa:
+			case config2.TokenOriginKasSsa:
 				claims = &claim.SsaClaims{}
 			default:
-				t.Fatalf("unsupported token origin: %d", tt.origin)
+				t.Fatalf("unsupported token origin: %s", tt.origin)
 			}
 
 			// Create a key function that retrieves the public key from JWKS
@@ -573,13 +585,13 @@ func TestValidateJWTTokens_WithoutExpiration(t *testing.T) {
 
 				// Additional checks based on token type
 				switch tt.origin {
-				case config2.TokenOriginSsa:
+				case config2.TokenOriginKasSsa:
 					ssaClaims, ok := token.Claims.(*claim.SsaClaims)
 					assert.True(t, ok, "Claims should be SSA claims")
 					assert.NotEmpty(t, ssaClaims.Subject, "SSA token should have subject")
 					assert.NotEmpty(t, ssaClaims.Issuer, "SSA token should have issuer")
 					t.Logf("SSA Token - Subject: %s, Issuer: %s", ssaClaims.Subject, ssaClaims.Issuer)
-				case config2.TokenOriginKas:
+				case config2.TokenOriginKasLegacy:
 					kasClaims, ok := token.Claims.(*claim.NgcKasClaims)
 					assert.True(t, ok, "Claims should be NGC KAS claims")
 					assert.NotEmpty(t, kasClaims.Subject, "KAS token should have subject")
@@ -598,21 +610,21 @@ func TestJWTTokenStructureAndClaims(t *testing.T) {
 	tests := []struct {
 		name        string
 		token       string
-		origin      int
+		origin      string
 		expectedKID string
 		expectedAlg string
 	}{
 		{
 			name:        "SSA token structure",
 			token:       sampleSsaToken,
-			origin:      config2.TokenOriginSsa,
+			origin:      config2.TokenOriginKasSsa,
 			expectedKID: "2c58e180-149a-4818-9bfc-5f2a6b6dbd8a",
 			expectedAlg: "ES256",
 		},
 		{
 			name:        "Legacy KAS token structure",
 			token:       samplelegacyKasToken,
-			origin:      config2.TokenOriginKas,
+			origin:      config2.TokenOriginKasLegacy,
 			expectedKID: "B3D2:ZQHB:M5YX:NFBJ:DFI4:U4WX:PH5E:4JXH:CNAY:WYTJ:AZWC:RALK",
 			expectedAlg: "RS256",
 		},
@@ -683,11 +695,11 @@ func TestHandlerInterface_TokenOriginRouting(t *testing.T) {
 
 	// Setup JWT origin config with multiple token origins
 	joCfg := config2.NewJWTOriginConfig()
-	joCfg.AddConfig("ssa", ssaIssuer, testServer.URL+"/ssa", config2.TokenOriginSsa, false, nil, nil)
-	joCfg.AddConfig("kas", kasIssuer, testServer.URL+"/kas", config2.TokenOriginKas, false, nil, nil)
+	joCfg.AddConfig("ssa", ssaIssuer, testServer.URL+"/ssa", config2.TokenOriginKasSsa, false, nil, nil)
+	joCfg.AddConfig("kas", kasIssuer, testServer.URL+"/kas", config2.TokenOriginKasLegacy, false, nil, nil)
 
 	// Initialize JWKS data
-	require.NoError(t, joCfg.UpdateJWKs())
+	require.NoError(t, joCfg.UpdateAllJWKS())
 
 	// Initialize processors
 	encCfg := config.NewPayloadEncryptionConfig("test-encryption-key")
@@ -697,7 +709,7 @@ func TestHandlerInterface_TokenOriginRouting(t *testing.T) {
 		name          string
 		token         string
 		issuer        string
-		origin        int
+		origin        string
 		expectedError string
 		headers       map[string]string
 		shouldPass    bool
@@ -707,7 +719,7 @@ func TestHandlerInterface_TokenOriginRouting(t *testing.T) {
 			name:       "SSA token routing to SSA handler",
 			token:      sampleSsaToken,
 			issuer:     ssaIssuer,
-			origin:     config2.TokenOriginSsa,
+			origin:     config2.TokenOriginKasSsa,
 			shouldPass: false, // Should fail due to expiration
 			headers: map[string]string{
 				starfleetIDHeader: testStarfleetID,
@@ -720,7 +732,7 @@ func TestHandlerInterface_TokenOriginRouting(t *testing.T) {
 			name:       "KAS token routing to KAS handler",
 			token:      samplelegacyKasToken,
 			issuer:     kasIssuer,
-			origin:     config2.TokenOriginKas,
+			origin:     config2.TokenOriginKasLegacy,
 			shouldPass: false, // Should fail due to expiration
 			validateError: func(t *testing.T, err error) {
 				assert.True(t, errors.Is(err, jwt.ErrTokenExpired), "Should be token expired error")
@@ -738,9 +750,9 @@ func TestHandlerInterface_TokenOriginRouting(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Verify handler exists for known origins
-			if tt.origin != 0 {
+			if tt.origin != "" {
 				handler := joCfg.GetProcessorByOrigin(tt.origin)
-				assert.NotNil(t, handler, "Handler should exist for origin %d", tt.origin)
+				assert.NotNil(t, handler, "Handler should exist for origin %s", tt.origin)
 
 				// Test handler directly
 				req := httptest.NewRequest(http.MethodGet, "/v2/org/testorg/user/current", nil)
@@ -750,7 +762,9 @@ func TestHandlerInterface_TokenOriginRouting(t *testing.T) {
 
 				rec := httptest.NewRecorder()
 				c := e.NewContext(req, rec)
-				c.Set("ngcOrgName", "testorg")
+				c.SetParamNames("orgName")
+				c.SetParamValues("testorg")
+				c.Set("orgName", "testorg")
 
 				logger := log.With().Str("test", tt.name).Logger()
 				_, apiErr := handler.ProcessToken(c, tt.token, joCfg.GetConfig(tt.issuer), logger)
@@ -813,7 +827,7 @@ func TestProcessorInterface_ErrorScenarios(t *testing.T) {
 		name          string
 		setupServer   func() *httptest.Server
 		issuer        string
-		origin        int
+		origin        string
 		token         string
 		expectedError error
 		headers       map[string]string
@@ -828,7 +842,7 @@ func TestProcessorInterface_ErrorScenarios(t *testing.T) {
 				}))
 			},
 			issuer:        ssaIssuer,
-			origin:        config2.TokenOriginSsa,
+			origin:        config2.TokenOriginKasSsa,
 			token:         sampleSsaToken, // This token is expired
 			expectedError: jwt.ErrTokenExpired,
 			headers: map[string]string{
@@ -845,7 +859,7 @@ func TestProcessorInterface_ErrorScenarios(t *testing.T) {
 				}))
 			},
 			issuer:        kasIssuer,
-			origin:        config2.TokenOriginKas,
+			origin:        config2.TokenOriginKasLegacy,
 			token:         samplelegacyKasToken, // This token is expired
 			expectedError: jwt.ErrTokenExpired,
 		},
@@ -859,7 +873,7 @@ func TestProcessorInterface_ErrorScenarios(t *testing.T) {
 				}))
 			},
 			issuer:        ssaIssuer,
-			origin:        config2.TokenOriginSsa,
+			origin:        config2.TokenOriginKasSsa,
 			token:         "invalid.token.structure", // Malformed token
 			expectedError: jwt.ErrTokenMalformed,
 			headers: map[string]string{
@@ -878,15 +892,15 @@ func TestProcessorInterface_ErrorScenarios(t *testing.T) {
 
 			// Add appropriate config based on the test case origin
 			switch tt.origin {
-			case config2.TokenOriginSsa:
+			case config2.TokenOriginKasSsa:
 				cfg.AddConfig("ssa", tt.issuer, server.URL, tt.origin, false, nil, nil)
-			case config2.TokenOriginKas:
+			case config2.TokenOriginKasLegacy:
 				cfg.AddConfig("kas", tt.issuer, server.URL, tt.origin, false, nil, nil)
 			default:
 				cfg.AddConfig("default", tt.issuer, server.URL, tt.origin, false, nil, nil)
 			}
 
-			require.NoError(t, cfg.UpdateJWKs())
+			require.NoError(t, cfg.UpdateAllJWKS())
 
 			// Initialize processors
 			processors.InitializeProcessors(cfg, dbSession, tc, encCfg, nil)
@@ -902,7 +916,9 @@ func TestProcessorInterface_ErrorScenarios(t *testing.T) {
 
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
-			c.Set("ngcOrgName", "testorg")
+			c.SetParamNames("orgName")
+			c.SetParamValues("testorg")
+			c.Set("orgName", "testorg")
 
 			logger := log.With().Str("test", tt.name).Logger()
 
@@ -944,18 +960,18 @@ func TestProcessorInterface_Mapping(t *testing.T) {
 
 	// Setup JWT origin config
 	cfg := config2.NewJWTOriginConfig()
-	cfg.AddConfig("ssa", ssaIssuer, testServer.URL, config2.TokenOriginSsa, false, nil, nil)
-	cfg.AddConfig("kas", kasIssuer, testServer.URL, config2.TokenOriginKas, false, nil, nil)
+	cfg.AddConfig("ssa", ssaIssuer, testServer.URL, config2.TokenOriginKasSsa, false, nil, nil)
+	cfg.AddConfig("kas", kasIssuer, testServer.URL, config2.TokenOriginKasLegacy, false, nil, nil)
 	cfg.AddConfig("keycloak", keycloakIssuer, testServer.URL, config2.TokenOriginKeycloak, true, nil, nil)
 
-	require.NoError(t, cfg.UpdateJWKs())
+	require.NoError(t, cfg.UpdateAllJWKS())
 
 	// Initialize processors
 	processors.InitializeProcessors(cfg, dbSession, tc, encCfg, nil)
 
 	t.Run("verify_processor_mapping_by_origin", func(t *testing.T) {
-		ssaProcessor := cfg.GetProcessorByOrigin(config2.TokenOriginSsa)
-		kasProcessor := cfg.GetProcessorByOrigin(config2.TokenOriginKas)
+		ssaProcessor := cfg.GetProcessorByOrigin(config2.TokenOriginKasSsa)
+		kasProcessor := cfg.GetProcessorByOrigin(config2.TokenOriginKasLegacy)
 		keycloakProcessor := cfg.GetProcessorByOrigin(config2.TokenOriginKeycloak)
 
 		assert.NotNil(t, ssaProcessor, "SSA processor should be initialized")
@@ -969,8 +985,8 @@ func TestProcessorInterface_Mapping(t *testing.T) {
 	})
 
 	t.Run("verify_processor_mapping_by_issuer", func(t *testing.T) {
-		ssaProcessor := cfg.GetProcessorByOrigin(config2.TokenOriginSsa)
-		kasProcessor := cfg.GetProcessorByOrigin(config2.TokenOriginKas)
+		ssaProcessor := cfg.GetProcessorByOrigin(config2.TokenOriginKasSsa)
+		kasProcessor := cfg.GetProcessorByOrigin(config2.TokenOriginKasLegacy)
 		keycloakProcessor := cfg.GetProcessorByOrigin(config2.TokenOriginKeycloak)
 
 		// Test exact issuer matching

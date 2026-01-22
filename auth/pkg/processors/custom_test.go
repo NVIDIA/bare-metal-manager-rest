@@ -27,8 +27,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nvidia/carbide-rest/auth/pkg/config"
+	"github.com/nvidia/carbide-rest/auth/pkg/core"
 	testutil "github.com/nvidia/carbide-rest/auth/pkg/testing"
-	"github.com/nvidia/carbide-rest/common/pkg/util"
 	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
 )
 
@@ -67,7 +67,7 @@ func setupTestEnvironment(t *testing.T, audiences []string, scopes []string) (*C
 	)
 
 	// Initialize JWKS
-	err = jwksConfig.UpdateJWKs()
+	err = jwksConfig.UpdateJWKS()
 	require.NoError(t, err)
 
 	// Create test database session
@@ -319,7 +319,7 @@ func TestCustomProcessor_ValidateScopes_Success(t *testing.T) {
 
 			if tt.shouldPass {
 				// Check that we don't have scope-related errors
-				if apiErr != nil && apiErr.Code == http.StatusUnauthorized {
+				if apiErr != nil && (apiErr.Code == http.StatusUnauthorized || apiErr.Code == http.StatusForbidden) {
 					if contains(apiErr.Message, "scope") {
 						t.Errorf("Expected scope validation to pass, but got error: %s", apiErr.Message)
 					}
@@ -327,7 +327,8 @@ func TestCustomProcessor_ValidateScopes_Success(t *testing.T) {
 			} else {
 				assert.NotNil(t, apiErr, "Expected error for invalid scopes")
 				if apiErr != nil {
-					assert.Equal(t, http.StatusUnauthorized, apiErr.Code)
+					// Scope validation failures return 403 Forbidden
+					assert.Equal(t, http.StatusForbidden, apiErr.Code)
 					assert.Contains(t, apiErr.Message, "scope")
 				}
 			}
@@ -393,8 +394,9 @@ func TestCustomProcessor_ValidateScopes_Failure(t *testing.T) {
 
 			_, apiErr := processor.ProcessToken(c, tokenString, jwksConfig, logger)
 
+			// Scope validation failures return 403 Forbidden (not 401 Unauthorized)
 			require.NotNil(t, apiErr, "Expected error for invalid scopes")
-			assert.Equal(t, http.StatusUnauthorized, apiErr.Code)
+			assert.Equal(t, http.StatusForbidden, apiErr.Code)
 			assert.Contains(t, apiErr.Message, "scope")
 		})
 	}
@@ -482,14 +484,19 @@ func TestCustomProcessor_CombinedAudienceAndScope_Validation(t *testing.T) {
 
 			if tt.shouldPass {
 				// May still have DB errors, but no audience/scope errors
-				if apiErr != nil && apiErr.Code == http.StatusUnauthorized {
+				if apiErr != nil && (apiErr.Code == http.StatusUnauthorized || apiErr.Code == http.StatusForbidden) {
 					if contains(apiErr.Message, "audience") || contains(apiErr.Message, "scope") {
 						t.Errorf("Expected validation to pass, but got error: %s", apiErr.Message)
 					}
 				}
 			} else {
 				require.NotNil(t, apiErr, "Expected error for validation failure")
-				assert.Equal(t, http.StatusUnauthorized, apiErr.Code)
+				// Scope failures return 403, audience failures return 401
+				if tt.errorShouldContain == "scope" {
+					assert.Equal(t, http.StatusForbidden, apiErr.Code)
+				} else {
+					assert.Equal(t, http.StatusUnauthorized, apiErr.Code)
+				}
 				assert.Contains(t, apiErr.Message, tt.errorShouldContain)
 			}
 		})
@@ -548,22 +555,20 @@ func TestCustomProcessor_MissingScopeClaim(t *testing.T) {
 
 	_, apiErr := processor.ProcessToken(c, tokenString, jwksConfig, logger)
 
+	// Missing scope claim when scopes are required returns 403 Forbidden
 	require.NotNil(t, apiErr, "Expected error for missing scope claim")
-	assert.Equal(t, http.StatusUnauthorized, apiErr.Code)
+	assert.Equal(t, http.StatusForbidden, apiErr.Code)
 	assert.Contains(t, apiErr.Message, "scope")
 }
 
 // Direct validation tests - these test the validation functions without database dependencies
 
 func TestValidateAudiences_DirectTest(t *testing.T) {
-	logger := zerolog.Nop()
-
 	tests := []struct {
 		name                string
 		tokenClaims         jwt.MapClaims
 		configuredAudiences []string
 		shouldPass          bool
-		errorContains       string
 	}{
 		{
 			name: "single audience matches - carbide example",
@@ -588,7 +593,6 @@ func TestValidateAudiences_DirectTest(t *testing.T) {
 			},
 			configuredAudiences: []string{"api.carbide.com"},
 			shouldPass:          false,
-			errorContains:       "audience",
 		},
 		{
 			name: "missing audience claim",
@@ -597,7 +601,6 @@ func TestValidateAudiences_DirectTest(t *testing.T) {
 			},
 			configuredAudiences: []string{"api.carbide.com"},
 			shouldPass:          false,
-			errorContains:       "audience claim",
 		},
 		{
 			name: "no configured audiences - validation skipped",
@@ -611,28 +614,27 @@ func TestValidateAudiences_DirectTest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateAudiences(tt.tokenClaims, tt.configuredAudiences, logger)
+			jwksConfig := &config.JwksConfig{
+				Name:      "test",
+				Audiences: tt.configuredAudiences,
+			}
+			err := jwksConfig.ValidateAudience(tt.tokenClaims)
 
 			if tt.shouldPass {
-				assert.Nil(t, err, "Expected no error for valid audience")
+				assert.NoError(t, err, "Expected no error for valid audience")
 			} else {
-				require.NotNil(t, err, "Expected error for invalid audience")
-				assert.Contains(t, err.Message, tt.errorContains)
-				assert.Equal(t, http.StatusUnauthorized, err.Code)
+				assert.ErrorIs(t, err, core.ErrInvalidAudience, "Expected invalid audience error")
 			}
 		})
 	}
 }
 
 func TestValidateScopes_DirectTest(t *testing.T) {
-	logger := zerolog.Nop()
-
 	tests := []struct {
 		name           string
 		tokenClaims    jwt.MapClaims
 		requiredScopes []string
 		shouldPass     bool
-		errorContains  string
 	}{
 		{
 			name: "single scope matches - scopes array with carbide",
@@ -665,7 +667,6 @@ func TestValidateScopes_DirectTest(t *testing.T) {
 			},
 			requiredScopes: []string{"carbide"},
 			shouldPass:     false,
-			errorContains:  "scope",
 		},
 		{
 			name: "missing scope claim",
@@ -674,7 +675,6 @@ func TestValidateScopes_DirectTest(t *testing.T) {
 			},
 			requiredScopes: []string{"carbide"},
 			shouldPass:     false,
-			errorContains:  "scope claim",
 		},
 		{
 			name: "no required scopes - validation skipped",
@@ -715,35 +715,35 @@ func TestValidateScopes_DirectTest(t *testing.T) {
 			},
 			requiredScopes: []string{"carbide", "admin"},
 			shouldPass:     false,
-			errorContains:  "missing required scopes",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateScopes(tt.tokenClaims, tt.requiredScopes, logger)
+			jwksConfig := &config.JwksConfig{
+				Name:   "test",
+				Scopes: tt.requiredScopes,
+			}
+			err := jwksConfig.ValidateScopes(tt.tokenClaims)
 
 			if tt.shouldPass {
-				assert.Nil(t, err, "Expected no error for valid scopes")
+				assert.NoError(t, err, "Expected no error for valid scopes")
 			} else {
-				require.NotNil(t, err, "Expected error for invalid scopes")
-				assert.Contains(t, err.Message, tt.errorContains)
-				assert.Equal(t, http.StatusUnauthorized, err.Code)
+				assert.ErrorIs(t, err, core.ErrInvalidScope, "Expected invalid scope error")
 			}
 		})
 	}
 }
 
 func TestCombinedValidation_DirectTest(t *testing.T) {
-	logger := zerolog.Nop()
-
 	tests := []struct {
 		name                string
 		tokenClaims         jwt.MapClaims
 		configuredAudiences []string
 		requiredScopes      []string
 		shouldPass          bool
-		errorContains       string
+		expectAudienceErr   bool
+		expectScopeErr      bool
 	}{
 		{
 			name: "both audience and scopes valid - carbide example",
@@ -764,7 +764,7 @@ func TestCombinedValidation_DirectTest(t *testing.T) {
 			configuredAudiences: []string{"api.carbide.com"},
 			requiredScopes:      []string{"carbide"},
 			shouldPass:          false,
-			errorContains:       "scope",
+			expectScopeErr:      true,
 		},
 		{
 			name: "invalid audience, valid scopes",
@@ -775,7 +775,7 @@ func TestCombinedValidation_DirectTest(t *testing.T) {
 			configuredAudiences: []string{"api.carbide.com"},
 			requiredScopes:      []string{"carbide"},
 			shouldPass:          false,
-			errorContains:       "audience",
+			expectAudienceErr:   true,
 		},
 		{
 			name: "both invalid",
@@ -786,33 +786,37 @@ func TestCombinedValidation_DirectTest(t *testing.T) {
 			configuredAudiences: []string{"api.carbide.com"},
 			requiredScopes:      []string{"carbide"},
 			shouldPass:          false,
-			errorContains:       "audience", // Audience checked first
+			expectAudienceErr:   true, // Audience checked first
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Test audience first
-			audErr := validateAudiences(tt.tokenClaims, tt.configuredAudiences, logger)
-
-			// Only test scopes if audience passed
-			var scopeErr *util.APIError
-			if audErr == nil {
-				scopeErr = validateScopes(tt.tokenClaims, tt.requiredScopes, logger)
+			jwksConfig := &config.JwksConfig{
+				Name:      "test",
+				Audiences: tt.configuredAudiences,
+				Scopes:    tt.requiredScopes,
 			}
 
-			// Determine final result
-			finalErr := audErr
-			if finalErr == nil {
-				finalErr = scopeErr
+			// Test audience first (mirrors actual validation order)
+			audErr := jwksConfig.ValidateAudience(tt.tokenClaims)
+
+			// Only test scopes if audience passed
+			var scopeErr error
+			if audErr == nil {
+				scopeErr = jwksConfig.ValidateScopes(tt.tokenClaims)
 			}
 
 			if tt.shouldPass {
-				assert.Nil(t, finalErr, "Expected no error for valid token")
+				assert.NoError(t, audErr, "Expected no audience error")
+				assert.NoError(t, scopeErr, "Expected no scope error")
 			} else {
-				require.NotNil(t, finalErr, "Expected error for invalid token")
-				assert.Contains(t, finalErr.Message, tt.errorContains)
-				assert.Equal(t, http.StatusUnauthorized, finalErr.Code)
+				if tt.expectAudienceErr {
+					assert.ErrorIs(t, audErr, core.ErrInvalidAudience, "Expected invalid audience error")
+				}
+				if tt.expectScopeErr {
+					assert.ErrorIs(t, scopeErr, core.ErrInvalidScope, "Expected invalid scope error")
+				}
 			}
 		})
 	}

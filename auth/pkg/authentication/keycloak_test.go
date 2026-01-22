@@ -887,7 +887,7 @@ func TestAuthProcessor_KeycloakFlowWithMockJWKS(t *testing.T) {
 	joCfg.AddConfig("keycloak", jwksServer.URL+"/realms/forge", jwksServer.URL+"/realms/forge/protocol/openid-connect/certs", config.TokenOriginKeycloak, true, nil, nil)
 
 	// Initialize JWKS data for testing
-	if err := joCfg.UpdateJWKs(); err != nil {
+	if err := joCfg.UpdateAllJWKS(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1015,6 +1015,7 @@ func TestAuthProcessor_KeycloakFlowWithMockJWKS(t *testing.T) {
 			c := e.NewContext(req, rec)
 			c.SetParamNames("orgName")
 			c.SetParamValues(tt.orgName)
+			c.Set("orgName", tt.orgName) // Set in context for KeycloakProcessor
 			c.SetPath(tt.path)
 
 			// Execute auth processor
@@ -1080,7 +1081,7 @@ func TestAuthProcessor_KeycloakServiceAccountsDisabled(t *testing.T) {
 	joCfg.AddConfig("keycloak", jwksServer.URL+"/realms/forge", jwksServer.URL+"/realms/forge/protocol/openid-connect/certs", config.TokenOriginKeycloak, keycloakConfigDisabled.ServiceAccountEnabled, nil, nil)
 
 	// Initialize JWKS data for testing
-	if err := joCfg.UpdateJWKs(); err != nil {
+	if err := joCfg.UpdateAllJWKS(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1158,6 +1159,7 @@ func TestAuthProcessor_KeycloakServiceAccountsDisabled(t *testing.T) {
 			c := e.NewContext(req, rec)
 			c.SetParamNames("orgName")
 			c.SetParamValues(tt.orgName)
+			c.Set("orgName", tt.orgName) // Set in context for KeycloakProcessor
 			c.SetPath(tt.path)
 
 			// Execute auth processor with service accounts DISABLED
