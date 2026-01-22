@@ -113,16 +113,16 @@ func ComputeIssuerPrefix(issuerURL string) string {
 // Claim Extraction Functions
 // =============================================================================
 
-// ExtractClaimValue extracts any value from a nested claim path (e.g., "data.roles").
-// Returns nil if the path is empty or the value is not found.
-func ExtractClaimValue(claims jwt.MapClaims, path string) any {
-	if path == "" {
+// GetClaimAttribute extracts any value from a nested claim attribute (e.g., "data.roles").
+// Returns nil if the attribute is empty or the value is not found.
+func GetClaimAttribute(claims jwt.MapClaims, attribute string) any {
+	if attribute == "" {
 		return nil
 	}
 
 	var current any = claims
 
-	for _, key := range strings.Split(path, ".") {
+	for _, key := range strings.Split(attribute, ".") {
 		switch m := current.(type) {
 		case jwt.MapClaims:
 			current = m[key]
@@ -140,19 +140,22 @@ func ExtractClaimValue(claims jwt.MapClaims, path string) any {
 	return current
 }
 
-// ExtractStringClaim extracts a string from a nested claim path (e.g., "data.org").
-// Returns empty string if not found or if the value is not a string.
-func ExtractStringClaim(claims jwt.MapClaims, path string) string {
-	value := ExtractClaimValue(claims, path)
-	if str, ok := value.(string); ok {
-		return str
+// GetClaimAttributeAsString extracts a string from nested claim attributes (e.g., "data.org").
+// Accepts multiple attributes and returns the first non-empty string found.
+// Returns empty string if none found or if values are not strings.
+func GetClaimAttributeAsString(claims jwt.MapClaims, attributes ...string) string {
+	for _, attribute := range attributes {
+		value := GetClaimAttribute(claims, attribute)
+		if str, ok := value.(string); ok && str != "" {
+			return str
+		}
 	}
 	return ""
 }
 
-// ExtractTokenScopes extracts scopes from claims (tries "scope", "scopes", "scp").
+// GetScopes extracts scopes from claims (tries "scope", "scopes", "scp").
 // Returns a slice of scope strings.
-func ExtractTokenScopes(claims jwt.MapClaims) []string {
+func GetScopes(claims jwt.MapClaims) []string {
 	var scopeClaimValue any
 	for _, key := range ScopeClaims {
 		if val, exists := claims[key]; exists {

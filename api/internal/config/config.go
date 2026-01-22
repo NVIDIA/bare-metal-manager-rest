@@ -427,33 +427,37 @@ func (c *Config) GetOrInitJWTOriginConfig() *cauth.JWTOriginConfig {
 	if c.JwtOriginConfig == nil {
 		c.JwtOriginConfig = cauth.NewJWTOriginConfig()
 
-		// Collect all reserved org names from dynamic mappings
-		reservedOrgNames := make(map[string]bool)
-
-		// Load issuers config
+		// Load and validate issuers config
 		issuersConfig := c.GetIssuersConfig()
 		if err := c.ValidateIssuersConfig(issuersConfig); err != nil {
 			log.Panic().Err(err).Msg("Invalid issuers configuration")
 		}
 
+		// First pass: collect all static org names (lowercased) from all issuers
+		reservedOrgNames := make(map[string]bool)
+		for _, issuerCfg := range issuersConfig {
+			for _, mapping := range issuerCfg.ClaimMappings {
+				if mapping.OrgName != "" {
+					reservedOrgNames[strings.ToLower(mapping.OrgName)] = true
+				}
+			}
+		}
+
+		// Second pass: create jwksConfigs and assign reservedOrgNames only to those with dynamic mappings
 		for _, issuerCfg := range issuersConfig {
 			origin, _ := issuerCfg.GetOrigin() // Already validated
 			jwksTimeout, _ := issuerCfg.GetJWKSTimeout()
 
-			// Normalize org names in claim mappings and collect reserved names
+			// Normalize org names in claim mappings and check for dynamic mappings
 			normalizedMappings := make([]cauth.ClaimMapping, len(issuerCfg.ClaimMappings))
+			hasDynamicMapping := false
 			for i, mapping := range issuerCfg.ClaimMappings {
 				normalizedMappings[i] = mapping
 				if mapping.OrgName != "" {
 					normalizedMappings[i].OrgName = strings.ToLower(mapping.OrgName)
 				}
-				// If this is a dynamic org mapping, collect static org names as reserved
 				if mapping.OrgAttribute != "" {
-					for _, m := range issuerCfg.ClaimMappings {
-						if m.OrgName != "" {
-							reservedOrgNames[strings.ToLower(m.OrgName)] = true
-						}
-					}
+					hasDynamicMapping = true
 				}
 			}
 
@@ -468,7 +472,11 @@ func (c *Config) GetOrInitJWTOriginConfig() *cauth.JWTOriginConfig {
 			)
 			jwksCfg.JWKSTimeout = jwksTimeout
 			jwksCfg.ClaimMappings = normalizedMappings
-			jwksCfg.ReservedOrgNames = reservedOrgNames
+
+			// Only assign reservedOrgNames to configs with dynamic claim mappings
+			if hasDynamicMapping {
+				jwksCfg.ReservedOrgNames = reservedOrgNames
+			}
 
 			c.JwtOriginConfig.AddJwksConfig(jwksCfg)
 		}
@@ -591,7 +599,6 @@ func (c *Config) ValidateIssuersConfig(issuers []IssuerConfig) error {
 			}
 		}
 
-		// Validate claim mappings (only for custom origin, but check is already done above)
 		for j, mapping := range issuer.ClaimMappings {
 			if mapping.OrgAttribute == "" && mapping.OrgName == "" {
 				return fmt.Errorf("issuer %s: claimMapping %d: either orgAttribute or orgName must be specified", issuer.Name, j)
@@ -599,6 +606,29 @@ func (c *Config) ValidateIssuersConfig(issuers []IssuerConfig) error {
 
 			if mapping.OrgAttribute != "" && mapping.OrgName != "" {
 				return fmt.Errorf("issuer %s: claimMapping %d: cannot specify both orgAttribute and orgName", issuer.Name, j)
+			}
+
+			// orgDisplayName can only be specified with orgName (static org), not with orgAttribute (dynamic org)
+			if mapping.OrgDisplayName != "" && mapping.OrgName == "" {
+				return fmt.Errorf("issuer %s: claimMapping %d: orgDisplayName can only be specified when orgName is specified", issuer.Name, j)
+			}
+
+			// roles and rolesAttribute are mutually exclusive
+			if len(mapping.Roles) > 0 && mapping.RolesAttribute != "" {
+				return fmt.Errorf("issuer %s: claimMapping %d: cannot specify both roles and rolesAttribute", issuer.Name, j)
+			}
+
+			// Service account validation
+			if mapping.IsServiceAccount {
+				if len(mapping.Roles) > 0 {
+					return fmt.Errorf("issuer %s: claimMapping %d: roles cannot be specified when isServiceAccount is true", issuer.Name, j)
+				}
+				if mapping.RolesAttribute != "" {
+					return fmt.Errorf("issuer %s: claimMapping %d: rolesAttribute cannot be specified when isServiceAccount is true", issuer.Name, j)
+				}
+				if mapping.OrgAttribute != "" {
+					return fmt.Errorf("issuer %s: claimMapping %d: orgAttribute cannot be specified when isServiceAccount is true", issuer.Name, j)
+				}
 			}
 
 			// Dynamic org mapping
@@ -610,11 +640,10 @@ func (c *Config) ValidateIssuersConfig(issuers []IssuerConfig) error {
 			}
 
 			// Static org mapping - check for duplicates unless allowDuplicateStaticOrgNames is true
-			// Normalize org names to lowercase for comparison
 			if mapping.OrgName != "" {
 				normalizedOrg := strings.ToLower(mapping.OrgName)
 				if seenStaticOrgs[normalizedOrg] && !issuer.GetAllowDuplicateStaticOrgNames() {
-					return fmt.Errorf("issuer %s: duplicate static org: %s (normalized: %s)", issuer.Name, mapping.OrgName, normalizedOrg)
+					return fmt.Errorf("issuer %s: duplicate static org: %s", issuer.Name, mapping.OrgName)
 				}
 				seenStaticOrgs[normalizedOrg] = true
 			}

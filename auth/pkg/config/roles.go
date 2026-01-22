@@ -69,10 +69,10 @@ func FilterToAllowedRoles(roles []string) (allowed []string, err error) {
 // Role Extraction Functions
 // =============================================================================
 
-// ExtractRolesFromClaimPath extracts roles from a nested claim path and filters to allowed roles.
-// Returns nil if the path doesn't exist or contains no valid roles.
-func ExtractRolesFromClaimPath(claims jwt.MapClaims, path string) ([]string, error) {
-	value := core.ExtractClaimValue(claims, path)
+// GetRolesFromAttribute extracts roles from a nested claim attribute and filters to allowed roles.
+// Returns nil if the attribute doesn't exist or contains no valid roles.
+func GetRolesFromAttribute(claims jwt.MapClaims, attribute string) ([]string, error) {
+	value := core.GetClaimAttribute(claims, attribute)
 	if value == nil {
 		return nil, nil
 	}

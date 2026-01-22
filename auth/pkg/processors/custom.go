@@ -126,8 +126,8 @@ func (h *CustomProcessor) ProcessToken(c echo.Context, tokenStr string, jwksConf
 	config.SetIsServiceAccountInContext(c, isServiceAccount)
 
 	// Extract user info from claims
-	firstName, lastName := extractNames(claims)
-	email := extractStringClaim(claims, emailClaims...)
+	firstName, lastName := GetNames(claims)
+	email := GetEmail(claims)
 
 	userDAO := cdbm.NewUserDAO(h.dbSession)
 	dbUser, _, err := userDAO.GetOrCreate(context.Background(), nil, cdbm.UserGetOrCreateInput{
@@ -163,22 +163,15 @@ func (h *CustomProcessor) ProcessToken(c echo.Context, tokenStr string, jwksConf
 	return dbUser, nil
 }
 
-// extractStringClaim extracts a string value from claims, trying multiple keys
-func extractStringClaim(claims jwt.MapClaims, keys ...string) string {
-	for _, key := range keys {
-		if val, ok := claims[key]; ok {
-			if str, ok := val.(string); ok && str != "" {
-				return str
-			}
-		}
-	}
-	return ""
+// GetEmail extracts email from claims using common email claim keys.
+func GetEmail(claims jwt.MapClaims) string {
+	return core.GetClaimAttributeAsString(claims, emailClaims...)
 }
 
-// extractNames extracts firstName and lastName from claims, splitting firstName if lastName is empty
-func extractNames(claims jwt.MapClaims) (firstName, lastName string) {
-	firstName = extractStringClaim(claims, firstNameClaims...)
-	lastName = extractStringClaim(claims, lastNameClaims...)
+// GetNames extracts firstName and lastName from claims, splitting firstName if lastName is empty.
+func GetNames(claims jwt.MapClaims) (firstName, lastName string) {
+	firstName = core.GetClaimAttributeAsString(claims, firstNameClaims...)
+	lastName = core.GetClaimAttributeAsString(claims, lastNameClaims...)
 
 	// If lastName is empty but firstName has multiple words, split it
 	if lastName == "" && firstName != "" {

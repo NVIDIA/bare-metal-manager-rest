@@ -678,9 +678,9 @@ func createTokenWithBadKid(t *testing.T, privateKey *rsa.PrivateKey, badKid stri
 	return tokenString
 }
 
-// TestExtractTokenScopes_Formats tests scope extraction from JWT claims
+// TestGetScopes_Formats tests scope extraction from JWT claims
 // Supports both OAuth 2.0 space-separated strings and OIDC array formats
-func TestExtractTokenScopes_Formats(t *testing.T) {
+func TestGetScopes_Formats(t *testing.T) {
 	tests := []struct {
 		name           string
 		claims         jwt.MapClaims
@@ -762,7 +762,7 @@ func TestExtractTokenScopes_Formats(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := core.ExtractTokenScopes(tt.claims)
+			result := core.GetScopes(tt.claims)
 			resultSet := mapset.NewSet(result...)
 			assert.True(t, tt.expectedScopes.Equal(resultSet), "expected %v, got %v", tt.expectedScopes, resultSet)
 		})

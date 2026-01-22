@@ -100,34 +100,11 @@ type ClaimMapping struct {
 //
 // Service accounts are not allowed with dynamic orgs.
 func (cm *ClaimMapping) IsOrgDynamic() bool {
-	return cm.OrgAttribute != "" && cm.RolesAttribute != "" && !cm.IsServiceAccount
+	return cm.OrgAttribute != ""
 }
 
 // IsOrgStatic returns true if using a fixed org name (OrgName set).
 func (cm *ClaimMapping) IsOrgStatic() bool { return cm.OrgName != "" }
-
-// ValidateMapping validates the claim mapping configuration.
-// Valid mapping types:
-//   - StaticOrg-StaticRoles: OrgName + Roles
-//   - StaticOrg-DynamicRoles: OrgName + RolesAttribute
-//   - StaticOrg-ServiceAccount: OrgName + IsServiceAccount
-//   - DynamicOrg-DynamicRoles: OrgAttribute (required) + RolesAttribute (required) + OrgDisplayAttribute (optional)
-//
-// Note: DynamicOrg requires DynamicRoles (rolesAttribute). Static roles and service accounts
-// are not allowed with dynamic org because the org is determined at runtime from the token.
-func (cm *ClaimMapping) ValidateMapping() bool {
-	if cm.IsOrgDynamic() {
-		return true // IsOrgDynamic already validates the dynamic mapping requirements
-	}
-	if cm.OrgAttribute != "" {
-		// Has OrgAttribute but doesn't satisfy IsOrgDynamic - invalid dynamic mapping
-		return false
-	}
-	if cm.OrgName == "" {
-		return false
-	}
-	return cm.IsServiceAccount || cm.RolesAttribute != "" || len(cm.Roles) > 0 && validateRoles(cm.Roles)
-}
 
 // GetRoles returns roles based on mapping config: service account roles, dynamic extraction, or static roles.
 func (cm *ClaimMapping) GetRoles(claims jwt.MapClaims) ([]string, error) {
@@ -135,20 +112,25 @@ func (cm *ClaimMapping) GetRoles(claims jwt.MapClaims) ([]string, error) {
 		return ServiceAccountRoles, nil
 	}
 	if cm.RolesAttribute != "" {
-		return ExtractRolesFromClaimPath(claims, cm.RolesAttribute)
+		return GetRolesFromAttribute(claims, cm.RolesAttribute)
 	}
 	return cm.Roles, nil
 }
 
-// ExtractOrgFromClaims extracts org and display name from claims (dynamic mappings only).
-func (cm *ClaimMapping) ExtractOrgFromClaims(claims jwt.MapClaims) (orgName string, displayName string) {
+// GetOrgNameAndDisplayName extracts org and display name from claims (dynamic mappings only).
+func (cm *ClaimMapping) GetOrgNameAndDisplayName(claims jwt.MapClaims) (orgName string, displayName string) {
 	if !cm.IsOrgDynamic() {
-		return "", ""
+		orgName = cm.OrgName
+		displayName = cm.OrgDisplayName
+		if displayName == "" {
+			displayName = orgName
+		}
+		return orgName, displayName
 	}
 
-	rawOrgName := core.ExtractStringClaim(claims, cm.OrgAttribute)
+	rawOrgName := core.GetClaimAttributeAsString(claims, cm.OrgAttribute)
 	orgName = strings.ToLower(rawOrgName)
-	displayName = core.ExtractStringClaim(claims, cm.OrgDisplayAttribute)
+	displayName = core.GetClaimAttributeAsString(claims, cm.OrgDisplayAttribute)
 
 	// If display name not found, use the original (non-lowercased) org name
 	if displayName == "" && rawOrgName != "" {
@@ -581,7 +563,7 @@ func (jcfg *JwksConfig) ValidateScopes(claims jwt.MapClaims) error {
 	if len(jcfg.Scopes) == 0 {
 		return nil
 	}
-	tokenScopes := core.ExtractTokenScopes(claims)
+	tokenScopes := core.GetScopes(claims)
 	tokenScopeSet := mapset.NewSet(tokenScopes...)
 	requiredScopeSet := mapset.NewSet(jcfg.Scopes...)
 	if !tokenScopeSet.IsSuperset(requiredScopeSet) {
@@ -601,32 +583,15 @@ func (jcfg *JwksConfig) GetOrgDataFromClaim(claims jwt.MapClaims, reqOrgFromRout
 	reqOrg := strings.ToLower(reqOrgFromRoute)
 
 	for _, cm := range jcfg.ClaimMappings {
-		var orgName, displayName string
-
-		switch {
-		case cm.IsOrgDynamic():
-			orgName, displayName = cm.ExtractOrgFromClaims(claims)
-			if orgName == "" {
-				continue
-			}
-			orgNameLower := strings.ToLower(orgName)
-			if jcfg.ReservedOrgNames != nil && jcfg.ReservedOrgNames[orgNameLower] {
-				if orgNameLower == reqOrg {
-					return nil, false, core.ErrReservedOrgName
-				}
-				continue
-			}
-		case cm.IsOrgStatic():
-			orgName = cm.OrgName
-			displayName = cm.OrgDisplayName
-		}
-
-		orgNameLower := strings.ToLower(orgName)
-		if orgNameLower != reqOrg {
+		orgName, displayName := cm.GetOrgNameAndDisplayName(claims)
+		if orgName != reqOrg {
 			continue
 		}
 
-		// Found the requested org - extract roles and return
+		if cm.IsOrgDynamic() && jcfg.ReservedOrgNames != nil && jcfg.ReservedOrgNames[orgName] {
+			return nil, false, core.ErrReservedOrgName
+		}
+
 		roles, err := cm.GetRoles(claims)
 		if err != nil || len(roles) == 0 {
 			return nil, false, core.ErrNoClaimRoles
@@ -634,8 +599,8 @@ func (jcfg *JwksConfig) GetOrgDataFromClaim(claims jwt.MapClaims, reqOrgFromRout
 
 		now := time.Now().UTC()
 		orgData := cdbm.OrgData{
-			orgNameLower: cdbm.Org{
-				Name:        orgNameLower,
+			orgName: cdbm.Org{
+				Name:        orgName,
 				DisplayName: displayName,
 				OrgType:     "ENTERPRISE",
 				Roles:       roles,
