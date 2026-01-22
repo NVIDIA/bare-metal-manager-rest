@@ -129,8 +129,8 @@ func (cm *ClaimMapping) ValidateMapping() bool {
 	return cm.IsServiceAccount || cm.RolesAttribute != "" || len(cm.Roles) > 0 && validateRoles(cm.Roles)
 }
 
-// ExtractRolesFromClaims returns roles based on mapping config: service account roles, dynamic extraction, or static roles.
-func (cm *ClaimMapping) ExtractRolesFromClaims(claims jwt.MapClaims) ([]string, error) {
+// GetRoles returns roles based on mapping config: service account roles, dynamic extraction, or static roles.
+func (cm *ClaimMapping) GetRoles(claims jwt.MapClaims) ([]string, error) {
 	if cm.IsServiceAccount {
 		return ServiceAccountRoles, nil
 	}
@@ -590,7 +590,7 @@ func (jcfg *JwksConfig) ValidateScopes(claims jwt.MapClaims) error {
 	return nil
 }
 
-// GetOrgDataFromClaim extracts org data for the requested org and all accessible orgs.
+// GetOrgDataFromClaim extracts org data for the requested org from claim mappings.
 // This method validates org access and returns errors if:
 //   - core.ErrReservedOrgName: dynamic org claims a statically-configured org name
 //   - core.ErrInvalidConfiguration: no claim mapping configured for the requested org
@@ -599,14 +599,9 @@ func (jcfg *JwksConfig) ValidateScopes(claims jwt.MapClaims) error {
 // Returns orgData, isServiceAccount, and any error.
 func (jcfg *JwksConfig) GetOrgDataFromClaim(claims jwt.MapClaims, reqOrgFromRoute string) (cdbm.OrgData, bool, error) {
 	reqOrg := strings.ToLower(reqOrgFromRoute)
-	orgData := make(cdbm.OrgData)
-	foundReqOrgMapping := false
-	isServiceAccount := false
 
 	for _, cm := range jcfg.ClaimMappings {
 		var orgName, displayName string
-		var roles []string
-		var err error
 
 		switch {
 		case cm.IsOrgDynamic():
@@ -627,37 +622,30 @@ func (jcfg *JwksConfig) GetOrgDataFromClaim(claims jwt.MapClaims, reqOrgFromRout
 		}
 
 		orgNameLower := strings.ToLower(orgName)
-		isReqOrg := orgNameLower == reqOrg
-
-		roles, err = cm.ExtractRolesFromClaims(claims)
-		if err != nil || len(roles) == 0 {
-			if isReqOrg {
-				return nil, false, core.ErrNoClaimRoles
-			}
+		if orgNameLower != reqOrg {
 			continue
 		}
 
-		org := cdbm.Org{
-			Name:        orgNameLower,
-			DisplayName: displayName,
-			OrgType:     "ENTERPRISE",
-			Roles:       roles,
-			Teams:       []cdbm.Team{},
+		// Found the requested org - extract roles and return
+		roles, err := cm.GetRoles(claims)
+		if err != nil || len(roles) == 0 {
+			return nil, false, core.ErrNoClaimRoles
 		}
-		// Set Updated timestamp for the requested org
-		if isReqOrg {
-			foundReqOrgMapping = true
-			isServiceAccount = cm.IsServiceAccount
 
-			now := time.Now().UTC()
-			org.Updated = &now
+		now := time.Now().UTC()
+		orgData := cdbm.OrgData{
+			orgNameLower: cdbm.Org{
+				Name:        orgNameLower,
+				DisplayName: displayName,
+				OrgType:     "ENTERPRISE",
+				Roles:       roles,
+				Teams:       []cdbm.Team{},
+				Updated:     &now,
+			},
 		}
-		orgData[orgNameLower] = org
+
+		return orgData, cm.IsServiceAccount, nil
 	}
 
-	if !foundReqOrgMapping {
-		return nil, false, core.ErrInvalidConfiguration
-	}
-
-	return orgData, isServiceAccount, nil
+	return nil, false, core.ErrInvalidConfiguration
 }
