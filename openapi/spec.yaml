@@ -12442,7 +12442,7 @@ components:
           $ref: '#/components/schemas/Labels'
         interfaces:
           type: array
-          description: 'At least one interface must be specified. Either Subnet or VPC Prefix interfaces allowed, only one of the Subnets or VPC Prefixes can be attached over Physical interface. If only one Subnet is specified, then it will be attached over physical interface regardless of the value of isPhysical. In case of VPC Prefix isPhysical will be always be true'
+          description: 'At least one interface must be specified. Either Subnet or VPC Prefix interfaces allowed. Only one of the Subnets or VPC Prefixes can be attached over Physical interface. If only one Subnet is specified, then it will be attached over physical interface regardless of the value of isPhysical. In case of VPC Prefix, isPhysical will always be true'
           items:
             $ref: '#/components/schemas/InterfaceCreateRequest'
         infinibandInterfaces:
@@ -12473,6 +12473,7 @@ components:
         - name
         - tenantId
         - vpcId
+        - interfaces
     BatchInstanceCreateRequest:
       title: BatchInstanceCreateRequest
       type: object
@@ -12615,6 +12616,7 @@ components:
         - tenantId
         - instanceTypeId
         - vpcId
+        - interfaces
     InstanceUpdateRequest:
       title: InstanceUpdateRequest
       type: object
