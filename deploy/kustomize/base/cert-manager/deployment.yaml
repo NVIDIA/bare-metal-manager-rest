@@ -98,3 +98,5 @@ spec:
         - name: vault-root-ca-private-key
           secret:
             secretName: vault-root-ca-private-key
+        - name: tmp
+          emptyDir: {}

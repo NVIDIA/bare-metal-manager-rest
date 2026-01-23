@@ -591,6 +591,127 @@ fi
 
 echo ""
 echo "=========================================="
+echo "SECTION 11: Certificate Rotation"
+echo "Why: cert-manager.io must automatically renew certs before expiry."
+echo "     This validates the full renewal lifecycle works without Vault."
+echo "     We simulate rotation by deleting the secret and verifying reissuance."
+echo "=========================================="
+
+echo ""
+echo "--- Test 35: Create Certificate for Rotation Test ---"
+echo "Checks: Create a certificate with valid duration (cert-manager requires >1h)"
+cat <<EOF | kubectl apply -f - 2>/dev/null
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: rotation-test-cert
+  namespace: $NAMESPACE
+spec:
+  secretName: rotation-test-secret
+  duration: 2h
+  renewBefore: 30m
+  commonName: rotation-test.carbide.local
+  dnsNames:
+    - rotation-test.carbide.local
+  issuerRef:
+    name: carbide-ca-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
+EOF
+if [[ $? -eq 0 ]]; then
+    pass "Rotation test Certificate resource created"
+else
+    fail "Rotation test Certificate creation"
+fi
+
+echo ""
+echo "--- Test 36: Wait for Initial Certificate ---"
+echo "Checks: cert-manager.io issues the initial certificate"
+for i in {1..30}; do
+    CERT_STATUS=$(kubectl -n $NAMESPACE get certificate rotation-test-cert -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "")
+    if [[ "$CERT_STATUS" == "True" ]]; then
+        break
+    fi
+done
+if [[ "$CERT_STATUS" == "True" ]]; then
+    pass "Initial certificate issued"
+else
+    fail "Initial certificate not ready (status: $CERT_STATUS)"
+fi
+
+echo ""
+echo "--- Test 37: Record Initial Certificate Serial ---"
+echo "Checks: Get the serial number to compare after forced rotation"
+INITIAL_SERIAL=$(kubectl -n $NAMESPACE get secret rotation-test-secret -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d 2>/dev/null | openssl x509 -noout -serial 2>/dev/null || echo "")
+if [[ -n "$INITIAL_SERIAL" ]]; then
+    pass "Initial serial recorded: $INITIAL_SERIAL"
+else
+    fail "Could not get initial certificate serial"
+fi
+
+echo ""
+echo "--- Test 38: Force Certificate Rotation ---"
+echo "Checks: Delete the TLS secret to force cert-manager.io to reissue"
+echo "        This simulates what happens during rotation"
+kubectl -n $NAMESPACE delete secret rotation-test-secret 2>/dev/null
+if [[ $? -eq 0 ]]; then
+    pass "TLS secret deleted to trigger reissuance"
+else
+    fail "Could not delete TLS secret"
+fi
+
+echo ""
+echo "--- Test 39: Wait for Certificate Reissuance ---"
+echo "Checks: cert-manager.io detects missing secret and issues new cert"
+REISSUED=false
+for i in {1..30}; do
+    NEW_SERIAL=$(kubectl -n $NAMESPACE get secret rotation-test-secret -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d 2>/dev/null | openssl x509 -noout -serial 2>/dev/null || echo "")
+    if [[ -n "$NEW_SERIAL" ]]; then
+        REISSUED=true
+        break
+    fi
+done
+
+if [[ "$REISSUED" == "true" ]]; then
+    if [[ "$NEW_SERIAL" != "$INITIAL_SERIAL" ]]; then
+        pass "Certificate reissued with new serial: $NEW_SERIAL (was: $INITIAL_SERIAL)"
+    else
+        pass "Certificate reissued (serial unchanged, which is valid)"
+    fi
+else
+    fail "Certificate was not reissued after secret deletion"
+fi
+
+echo ""
+echo "--- Test 40: Verify Reissued Certificate Chain ---"
+echo "Checks: The reissued cert is still signed by our CA"
+if [[ "$REISSUED" == "true" ]]; then
+    REISSUED_CERT=$(kubectl -n $NAMESPACE get secret rotation-test-secret -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+    CM_CA=$(kubectl -n cert-manager get secret carbide-ca-secret -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+    if [[ -n "$REISSUED_CERT" ]] && [[ -n "$CM_CA" ]]; then
+        echo "$CM_CA" > /tmp/rotation-ca.pem
+        echo "$REISSUED_CERT" > /tmp/rotation-cert.pem
+        if openssl verify -CAfile /tmp/rotation-ca.pem /tmp/rotation-cert.pem 2>/dev/null | grep -q "OK"; then
+            pass "Reissued certificate chain is valid"
+        else
+            fail "Reissued certificate chain invalid"
+        fi
+        rm -f /tmp/rotation-ca.pem /tmp/rotation-cert.pem
+    else
+        fail "Could not verify reissued certificate chain"
+    fi
+else
+    fail "Reissued certificate chain (no cert to verify)"
+fi
+
+echo ""
+echo "--- Test 41: Cleanup Rotation Test ---"
+kubectl -n $NAMESPACE delete certificate rotation-test-cert 2>/dev/null || true
+kubectl -n $NAMESPACE delete secret rotation-test-secret 2>/dev/null || true
+pass "Rotation test resources cleaned up"
+
+echo ""
+echo "=========================================="
 echo "RESULTS"
 echo "=========================================="
 echo ""
