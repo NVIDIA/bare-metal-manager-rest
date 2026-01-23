@@ -745,7 +745,8 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Machine specified in request does not belong to Site: %s", site.Name), nil)
 		}
 
-		// Ensure specified Machine is healthy OR caller allows unhealthy Machines
+		// Validate Machine availability. Note: allowUnhealthyMachine also bypasses
+		// the Ready status check, not just health - consider renaming the parameter later.
 		allowUnhealthyMachine := false
 		if apiRequest.AllowUnhealthyMachine != nil {
 			allowUnhealthyMachine = *apiRequest.AllowUnhealthyMachine
