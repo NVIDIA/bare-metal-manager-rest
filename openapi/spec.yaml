@@ -5632,13 +5632,13 @@ paths:
         '403':
           $ref: '#/components/responses/ForbiddenError'
       description: |
-        Batch create multiple Instances for Tenant with topology-optimized machine allocation.
+        Batch create multiple Instances for Tenant with rack-aware machine allocation.
 
         This endpoint creates multiple instances in a single atomic transaction. All instances share the same configuration (interfaces, OS, SSH keys, etc.) but are assigned different machines.
 
-        When `topologyOptimized` is true (default), the system attempts to allocate all instances on machines within the same rack or topology domain (e.g., for NVLink connectivity). If insufficient machines are available in a single topology domain, the request will fail.
+        When `topologyOptimized` is true (default), all instances must be allocated on machines within the same rack. If insufficient machines are available in a single rack, the request will fail.
 
-        When `topologyOptimized` is false, instances can be spread across different racks for maximum availability.
+        When `topologyOptimized` is false, instances can be spread across different racks.
 
         Instance names are automatically generated using the `namePrefix` with a random 6-character suffix (e.g., "worker" becomes "worker-abc123", "worker-def456").
 
@@ -12442,7 +12442,7 @@ components:
           $ref: '#/components/schemas/Labels'
         interfaces:
           type: array
-          description: 'Either Subnet or VPC Prefix interfaces allowed, Only one of the Subnets or VPC Prefixes can be attached over Physical interface. If only one Subnet is specified, then it will be attached over physical interface regardless of the value of isPhysical. In case of VPC Prefix isPhysical will be always be true'
+          description: 'At least one interface must be specified. Either Subnet or VPC Prefix interfaces allowed, only one of the Subnets or VPC Prefixes can be attached over Physical interface. If only one Subnet is specified, then it will be attached over physical interface regardless of the value of isPhysical. In case of VPC Prefix isPhysical will be always be true'
           items:
             $ref: '#/components/schemas/InterfaceCreateRequest'
         infinibandInterfaces:
@@ -12524,13 +12524,13 @@ components:
         namePrefix:
           type: string
           minLength: 2
-          maxLength: 250
+          maxLength: 240
           description: Prefix for instance names. Instances will be named with this prefix followed by a random 6-character suffix (e.g., "worker" becomes "worker-abc123")
         count:
           type: integer
-          minimum: 1
-          maximum: 100
-          description: Number of instances to create in this batch
+          minimum: 2
+          maximum: 18
+          description: Number of instances to create in this batch. Minimum 2, maximum 18 (limited by topology domain size)
         description:
           type:
             - string
@@ -12581,7 +12581,7 @@ components:
           $ref: '#/components/schemas/Labels'
         interfaces:
           type: array
-          description: 'Interface configuration shared across all instances. Either Subnet or VPC Prefix interfaces allowed, Only one of the Subnets or VPC Prefixes can be attached over Physical interface.'
+          description: 'Interface configuration shared across all instances. At least one interface must be specified. Either Subnet or VPC Prefix interfaces allowed, only one of the Subnets or VPC Prefixes can be attached over Physical interface.'
           items:
             $ref: '#/components/schemas/InterfaceCreateRequest'
         infinibandInterfaces:
@@ -12608,7 +12608,7 @@ components:
         topologyOptimized:
           type: boolean
           default: true
-          description: 'When true (default), all instances must be allocated on machines within the same rack or topology domain (e.g., for NVLink connectivity). When false, instances can be spread across different racks for maximum availability.'
+          description: 'When true (default), all instances must be allocated on machines within the same rack. When false, instances can be spread across different racks.'
       required:
         - namePrefix
         - count
