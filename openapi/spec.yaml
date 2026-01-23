@@ -5576,6 +5576,124 @@ paths:
                     - a7bf2f9c-12f0-4673-be47-12be6d9e16c8
       tags:
         - Instance
+  '/v2/org/{org}/carbide/instance/batch':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+    post:
+      summary: Batch Create Instances
+      operationId: batch-create-instance
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Instance'
+              examples:
+                Batch created Instances:
+                  value:
+                    - id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
+                      name: worker-abc123
+                      description: Worker node for distributed training
+                      tenantId: f97df110-f4de-492e-8849-4a6af68026b0
+                      infrastructureProviderId: e94bcfda-f6cb-42e4-80ec-516811e5abbf
+                      siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
+                      instanceTypeId: 41e36058-8403-4086-a9b8-39cb5bc9cb98
+                      vpcId: 5e28ad7c-5fb7-46d6-a28a-fc0ba6fdc4a3
+                      machineId: fm100ht4v4mce2qstjnl8970nnj3ie6ecek4mtjn27pea4kre5gsa49jg0g
+                      operatingSystemId: eaeb86ee-c435-444e-9e01-8346f67f194b
+                      controllerInstanceId: null
+                      status: Pending
+                      created: '2019-08-24T14:15:22Z'
+                      updated: '2019-08-24T14:15:22Z'
+                    - id: 85c5e7b2-89f1-4e32-9d3a-8e1f5a2c7d90
+                      name: worker-def456
+                      description: Worker node for distributed training
+                      tenantId: f97df110-f4de-492e-8849-4a6af68026b0
+                      infrastructureProviderId: e94bcfda-f6cb-42e4-80ec-516811e5abbf
+                      siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
+                      instanceTypeId: 41e36058-8403-4086-a9b8-39cb5bc9cb98
+                      vpcId: 5e28ad7c-5fb7-46d6-a28a-fc0ba6fdc4a3
+                      machineId: gn200iu5w5ndf3rtukol9081ook4jf7fdfl5nuok38qfb5lsf6hub50kh1h
+                      operatingSystemId: eaeb86ee-c435-444e-9e01-8346f67f194b
+                      controllerInstanceId: null
+                      status: Pending
+                      created: '2019-08-24T14:15:22Z'
+                      updated: '2019-08-24T14:15:22Z'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      description: |
+        Batch create multiple Instances for Tenant with rack-aware machine allocation.
+
+        This endpoint creates multiple instances in a single atomic transaction. All instances share the same configuration (interfaces, OS, SSH keys, etc.) but are assigned different machines.
+
+        When `topologyOptimized` is true (default), all instances must be allocated on machines within the same rack. If insufficient machines are available in a single rack, the request will fail.
+
+        When `topologyOptimized` is false, instances can be spread across different racks.
+
+        Instance names are automatically generated using the `namePrefix` with a random 6-character suffix (e.g., "worker" becomes "worker-abc123", "worker-def456").
+
+        Org must have a Tenant entity. User must have `FORGE_TENANT_ADMIN` authorization role.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchInstanceCreateRequest'
+            examples:
+              Topology-optimized batch with InfiniBand:
+                value:
+                  namePrefix: gpu-worker
+                  count: 4
+                  description: GPU worker nodes for distributed training
+                  tenantId: f97df110-f4de-492e-8849-4a6af68026b0
+                  instanceTypeId: 41e36058-8403-4086-a9b8-39cb5bc9cb98
+                  vpcId: 5e28ad7c-5fb7-46d6-a28a-fc0ba6fdc4a3
+                  operatingSystemId: eaeb86ee-c435-444e-9e01-8346f67f194b
+                  topologyOptimized: true
+                  interfaces:
+                    - subnetId: 1f232bf0-7b90-456e-b9b0-38d9fea4171a
+                      isPhysical: true
+                  infinibandInterfaces:
+                    - partitionId: 4f4decba-7d7f-46b9-9e5f-e5d71c2e0666
+                      device: 'MT2910 Family [ConnectX-7]'
+                      deviceInstance: 0
+                      isPhysical: true
+                  nvLinkInterfaces:
+                    - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+                      deviceInstance: 0
+                    - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+                      deviceInstance: 1
+                  sshKeyGroupIds:
+                    - 497f6eca-6276-4993-bfeb-53cbbbba6f08
+              Cross-rack batch with VPC Prefix:
+                value:
+                  namePrefix: inference-node
+                  count: 8
+                  description: Inference nodes spread across racks
+                  tenantId: f97df110-f4de-492e-8849-4a6af68026b0
+                  instanceTypeId: 83e71f8f-65d3-44ba-92ba-19daac2e497a
+                  vpcId: ebcd2d2a-deca-4ac4-b079-d7a97fff8a6b
+                  operatingSystemId: eaeb86ee-c435-444e-9e01-8346f67f194b
+                  topologyOptimized: false
+                  labels:
+                    workload: inference
+                    tier: production
+                  interfaces:
+                    - vpcPrefixId: 000bc42b-f946-472e-83d4-ddf7e365e148
+                      isPhysical: true
+                  sshKeyGroupIds:
+                    - a7bf2f9c-12f0-4673-be47-12be6d9e16c8
+      tags:
+        - Instance
   '/v2/org/{org}/carbide/instance/{instanceId}':
     parameters:
       - schema:
@@ -12324,7 +12442,7 @@ components:
           $ref: '#/components/schemas/Labels'
         interfaces:
           type: array
-          description: 'Either Subnet or VPC Prefix interfaces allowed, Only one of the Subnets or VPC Prefixes can be attached over Physical interface. If only one Subnet is specified, then it will be attached over physical interface regardless of the value of isPhysical. In case of VPC Prefix isPhysical will be always be true'
+          description: 'At least one interface must be specified. Either Subnet or VPC Prefix interfaces allowed. Only one of the Subnets or VPC Prefixes can be attached over Physical interface. If only one Subnet is specified, then it will be attached over physical interface regardless of the value of isPhysical. In case of VPC Prefix, isPhysical will always be true'
           items:
             $ref: '#/components/schemas/InterfaceCreateRequest'
         infinibandInterfaces:
@@ -12355,6 +12473,150 @@ components:
         - name
         - tenantId
         - vpcId
+        - interfaces
+    BatchInstanceCreateRequest:
+      title: BatchInstanceCreateRequest
+      type: object
+      description: Request data to batch create multiple Instances with topology-optimized machine allocation
+      examples:
+        - namePrefix: gpu-worker
+          count: 4
+          description: GPU worker nodes for distributed training
+          tenantId: f97df110-f4de-492e-8849-4a6af68026b0
+          instanceTypeId: 41e36058-8403-4086-a9b8-39cb5bc9cb98
+          vpcId: 5e28ad7c-5fb7-46d6-a28a-fc0ba6fdc4a3
+          operatingSystemId: eaeb86ee-c435-444e-9e01-8346f67f194b
+          topologyOptimized: true
+          labels:
+            workload: training
+            env: production
+          interfaces:
+            - subnetId: 1f232bf0-7b90-456e-b9b0-38d9fea4171a
+              isPhysical: true
+          infinibandInterfaces:
+            - partitionId: 4f4decba-7d7f-46b9-9e5f-e5d71c2e0666
+              device: 'MT2910 Family [ConnectX-7]'
+              deviceInstance: 0
+              isPhysical: true
+          nvLinkInterfaces:
+            - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+              deviceInstance: 0
+            - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
+              deviceInstance: 1
+          sshKeyGroupIds:
+            - a7bf2f9c-12f0-4673-be47-12be6d9e16c8
+        - namePrefix: inference-node
+          count: 8
+          description: Inference nodes spread across racks
+          tenantId: f97df110-f4de-492e-8849-4a6af68026b0
+          instanceTypeId: 83e71f8f-65d3-44ba-92ba-19daac2e497a
+          vpcId: ebcd2d2a-deca-4ac4-b079-d7a97fff8a6b
+          operatingSystemId: eaeb86ee-c435-444e-9e01-8346f67f194b
+          topologyOptimized: false
+          interfaces:
+            - vpcPrefixId: 000bc42b-f946-472e-83d4-ddf7e365e148
+              isPhysical: true
+          dpuExtensionServiceDeployments:
+            - dpuExtensionServiceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
+              version: V1-T1761856992374052
+          sshKeyGroupIds:
+            - a7bf2f9c-12f0-4673-be47-12be6d9e16c8
+      properties:
+        namePrefix:
+          type: string
+          minLength: 2
+          maxLength: 240
+          description: Prefix for instance names. Instances will be named with this prefix followed by a random 6-character suffix (e.g., "worker" becomes "worker-abc123")
+        count:
+          type: integer
+          minimum: 2
+          maximum: 18
+          description: Number of instances to create in this batch. Minimum 2, maximum 18 (limited by topology domain size)
+        description:
+          type:
+            - string
+            - 'null'
+          description: 'Description applied to all instances in the batch, optional'
+          maxLength: 1024
+        tenantId:
+          type: string
+          format: uuid
+          description: ID of the Tenant creating the Instances
+        instanceTypeId:
+          type: string
+          format: uuid
+          description: ID of the Instance Type to use for all Instances in the batch
+        vpcId:
+          type: string
+          format: uuid
+          description: ID of the VPC the Instances should belong to
+        userData:
+          type:
+            - string
+            - 'null'
+          description: User data applied to all instances. Can only be specified if allowOverride is set to true in Operating System
+        operatingSystemId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+          description: Must be specified if iPXE Script field is empty
+        networkSecurityGroupId:
+          type:
+            - string
+            - 'null'
+          format: uuid
+          description: ID of a Network Security Group to attach to all instances
+        ipxeScript:
+          type:
+            - string
+            - 'null'
+          description: 'Override iPXE script specified in OS, must be specified if Operating System is not specified'
+        alwaysBootWithCustomIpxe:
+          type: boolean
+          description: 'When set to true, the iPXE script specified by OS or overridden here will always be run when rebooting the Instances. OS must be of iPXE type.'
+        phoneHomeEnabled:
+          type: boolean
+          description: 'When set to true, the Instances will be enabled with the Phone Home service.'
+        labels:
+          $ref: '#/components/schemas/Labels'
+        interfaces:
+          type: array
+          description: 'Interface configuration shared across all instances. At least one interface must be specified. Either Subnet or VPC Prefix interfaces allowed, only one of the Subnets or VPC Prefixes can be attached over Physical interface.'
+          items:
+            $ref: '#/components/schemas/InterfaceCreateRequest'
+        infinibandInterfaces:
+          type: array
+          description: InfiniBand interface configuration shared across all instances
+          items:
+            $ref: '#/components/schemas/InfiniBandInterfaceCreateRequest'
+        dpuExtensionServiceDeployments:
+          type: array
+          description: DPU Extension Services to deploy to all instances in the batch
+          items:
+            $ref: '#/components/schemas/DpuExtensionServiceDeploymentRequest'
+        nvLinkInterfaces:
+          type: array
+          description: NVLink interface configuration shared across all instances
+          items:
+            $ref: '#/components/schemas/NVLinkInterfaceCreateRequest'
+        sshKeyGroupIds:
+          type: array
+          description: SSH Key Group IDs that will provide Serial over LAN access to all instances
+          items:
+            type: string
+            format: uuid
+        topologyOptimized:
+          type: boolean
+          default: true
+          description: 'When true (default), all instances must be allocated on machines within the same rack. When false, instances can be spread across different racks.'
+      required:
+        - namePrefix
+        - count
+        - tenantId
+        - instanceTypeId
+        - vpcId
+        - interfaces
     InstanceUpdateRequest:
       title: InstanceUpdateRequest
       type: object

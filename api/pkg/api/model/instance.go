@@ -359,7 +359,7 @@ type APIInstanceCreateRequest struct {
 	// DpuExtensionServiceDeployments is the list of DpuExtensionServiceDeployments to create for the Instance
 	DpuExtensionServiceDeployments []APIDpuExtensionServiceDeploymentRequest `json:"dpuExtensionServiceDeployments"`
 	// NVLinkInterfaces is the list of NVLinkInterface to create for the Instance
-	NVLinkInterfaces []APINVLinkInterfaceCreateOrUpdateRequest `json:"nvlInterfaces"`
+	NVLinkInterfaces []APINVLinkInterfaceCreateOrUpdateRequest `json:"nvLinkInterfaces"`
 	// SSHKeyGroupIDs is a list of SSHKeyID objects
 	SSHKeyGroupIDs []string `json:"sshKeyGroupIds"`
 	// Labels is a key value objects
@@ -403,7 +403,7 @@ type APIBatchInstanceCreateRequest struct {
 	// InfiniBandInterfaces is the list of InfiniBandInterface to create for each instance (shared across all instances)
 	InfiniBandInterfaces []APIInfiniBandInterfaceCreateOrUpdateRequest `json:"infinibandInterfaces"`
 	// NVLinkInterfaces is the list of NVLinkInterface to create for each instance (shared across all instances)
-	NVLinkInterfaces []APINVLinkInterfaceCreateOrUpdateRequest `json:"nvlinkInterfaces"`
+	NVLinkInterfaces []APINVLinkInterfaceCreateOrUpdateRequest `json:"nvLinkInterfaces"`
 	// DpuExtensionServiceDeployments is the list of DpuExtensionServiceDeployments to create for each Instance (shared across all instances)
 	DpuExtensionServiceDeployments []APIDpuExtensionServiceDeploymentRequest `json:"dpuExtensionServiceDeployments"`
 	// SSHKeyGroupIDs is a list of SSHKeyGroup IDs (shared across all instances)
@@ -412,8 +412,8 @@ type APIBatchInstanceCreateRequest struct {
 	Labels map[string]string `json:"labels"`
 	// NetworkSecurityGroupID is the ID of a desired NSG to attach to all instances (shared across all instances)
 	NetworkSecurityGroupID *string `json:"networkSecurityGroupId"`
-	// TopologyOptimized indicates whether to enforce topology-optimized placement (e.g., same rack, NVLink domain)
-	// If true, all instances must be allocated on the same topology domain or the request will fail
+	// TopologyOptimized indicates whether to enforce rack-aware placement
+	// If true, all instances must be allocated on machines within the same rack or the request will fail
 	TopologyOptimized *bool `json:"topologyOptimized"`
 }
 
@@ -1100,7 +1100,7 @@ type APIInstanceUpdateRequest struct {
 	// DpuExtensionServiceDeployments is the list of DpuExtensionServiceDeployments to update for the Instance
 	DpuExtensionServiceDeployments []APIDpuExtensionServiceDeploymentRequest `json:"dpuExtensionServiceDeployments"`
 	// NVLinkInterfaces is the list of NVLinkInterface to update for the Instance
-	NVLinkInterfaces []APINVLinkInterfaceCreateOrUpdateRequest `json:"nvlInterfaces"`
+	NVLinkInterfaces []APINVLinkInterfaceCreateOrUpdateRequest `json:"nvLinkInterfaces"`
 	// SSHKeyGroupIDs is a list of SSHKeyID objects
 	SSHKeyGroupIDs []string `json:"sshKeyGroupIds"`
 	// NetworkSecurityGroupID is the ID of Network Security Group to attach to the Instance
