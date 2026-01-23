@@ -5585,7 +5585,7 @@ paths:
         required: true
         description: Name of the Org
     post:
-      summary: Create Batch Instances
+      summary: Batch Create Instances
       operationId: batch-create-instance
       responses:
         '201':
