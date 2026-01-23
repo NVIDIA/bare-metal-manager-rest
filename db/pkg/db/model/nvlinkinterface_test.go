@@ -16,11 +16,11 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/nvidia/carbide-rest/db/pkg/db"
 	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
 	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	otrace "go.opentelemetry.io/otel/trace"
 )
 
@@ -785,6 +785,148 @@ func TestNVLinkInterfaceSQLDAO_Update(t *testing.T) {
 	}
 }
 
+func TestNVLinkInterfaceSQLDAO_UpdateMultiple(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+	TestSetupSchema(t, dbSession)
+
+	ipu := testBuildUser(t, dbSession, nil, testGenerateStarfleetID(), db.GetStrPtr("johnd@test.com"), db.GetStrPtr("John"), db.GetStrPtr("Doe"))
+	ip := testBuildInfrastructureProvider(t, dbSession, nil, "test-ip", "Test Provider", ipu.ID)
+	tnu := testBuildUser(t, dbSession, nil, testGenerateStarfleetID(), db.GetStrPtr("jdoetenant@test.com"), db.GetStrPtr("Tenant"), db.GetStrPtr("Doe"))
+	tn := testBuildTenant(t, dbSession, nil, "test-tenant", "test-tenant-org", tnu.ID)
+	st := testBuildSite(t, dbSession, nil, ip.ID, "test-site", "Test Site", ip.Org, ipu.ID)
+
+	vpc := testInstanceBuildVpc(t, dbSession, ip, st, tn, "testVpc")
+	instanceType := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType")
+	machine := testMachineBuildMachine(t, dbSession, ip.ID, st.ID, &instanceType.ID, db.GetStrPtr("mcTypeTest"))
+	allocation := testInstanceBuildAllocation(t, dbSession, ip, tn, st, "testAllocation")
+	allocationConstraint := testBuildAllocationConstraint(t, dbSession, allocation, AllocationResourceTypeInstanceType, instanceType.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+	operatingSystem := testInstanceBuildOperatingSystem(t, dbSession, "testOS")
+	isd := NewInstanceDAO(dbSession)
+	instance, err := isd.Create(
+		ctx, nil,
+		InstanceCreateInput{
+			Name:                     "test1",
+			AllocationID:             &allocation.ID,
+			AllocationConstraintID:   &allocationConstraint.ID,
+			TenantID:                 tn.ID,
+			InfrastructureProviderID: ip.ID,
+			SiteID:                   st.ID,
+			InstanceTypeID:           &instanceType.ID,
+			VpcID:                    vpc.ID,
+			MachineID:                &machine.ID,
+			Hostname:                 db.GetStrPtr("test.com"),
+			OperatingSystemID:        db.GetUUIDPtr(operatingSystem.ID),
+			IpxeScript:               db.GetStrPtr("ipxe"),
+			AlwaysBootWithCustomIpxe: true,
+			UserData:                 db.GetStrPtr("userdata"),
+			InfinityRCRStatus:        db.GetStrPtr("RESOURCE_GRANTED"),
+			Status:                   InstanceStatusPending,
+			CreatedBy:                tnu.ID,
+		},
+	)
+	assert.Nil(t, err)
+
+	nvllp := testBuildNVLinkLogicalPartition(t, dbSession, nil, "test-nvlinklogicalpartition", nil, tn.Org, tn.ID, st.ID, db.GetStrPtr(NVLinkLogicalPartitionStatusReady), tnu.ID)
+
+	// Create multiple NVLinkInterfaces for batch update testing
+	nvli1 := testBuildNVLinkInterface(t, dbSession, nil, st.ID, instance.ID, nvllp.ID, nil, db.GetStrPtr("Nvidia GB200"), 0, db.GetStrPtr("guid1"), db.GetStrPtr(NVLinkInterfaceStatusReady), tnu.ID)
+	nvli2 := testBuildNVLinkInterface(t, dbSession, nil, st.ID, instance.ID, nvllp.ID, nil, db.GetStrPtr("Nvidia GB200"), 1, db.GetStrPtr("guid2"), db.GetStrPtr(NVLinkInterfaceStatusReady), tnu.ID)
+	nvli3 := testBuildNVLinkInterface(t, dbSession, nil, st.ID, instance.ID, nvllp.ID, nil, db.GetStrPtr("Nvidia GB200"), 2, db.GetStrPtr("guid3"), db.GetStrPtr(NVLinkInterfaceStatusReady), tnu.ID)
+
+	nvlisd := NewNVLinkInterfaceDAO(dbSession)
+
+	// OTEL Spanner configuration
+	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
+
+	tests := []struct {
+		desc               string
+		inputs             []NVLinkInterfaceUpdateInput
+		expectError        bool
+		expectedCount      int
+		verifyChildSpanner bool
+	}{
+		{
+			desc: "update batch of three nvlink interfaces",
+			inputs: []NVLinkInterfaceUpdateInput{
+				{
+					NVLinkInterfaceID: nvli1.ID,
+					Status:            db.GetStrPtr(NVLinkInterfaceStatusDeleting),
+				},
+				{
+					NVLinkInterfaceID: nvli2.ID,
+					Status:            db.GetStrPtr(NVLinkInterfaceStatusDeleting),
+				},
+				{
+					NVLinkInterfaceID: nvli3.ID,
+					Status:            db.GetStrPtr(NVLinkInterfaceStatusPending),
+					DeviceInstance:    db.GetIntPtr(10),
+				},
+			},
+			expectError:        false,
+			expectedCount:      3,
+			verifyChildSpanner: true,
+		},
+		{
+			desc:               "update batch with empty input",
+			inputs:             []NVLinkInterfaceUpdateInput{},
+			expectError:        false,
+			expectedCount:      0,
+			verifyChildSpanner: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, err := nvlisd.UpdateMultiple(ctx, nil, tc.inputs)
+			assert.Equal(t, tc.expectError, err != nil)
+			if !tc.expectError {
+				assert.NotNil(t, got)
+				assert.Equal(t, tc.expectedCount, len(got))
+				// Verify results are returned in the same order as inputs
+				for i, nvli := range got {
+					assert.Equal(t, tc.inputs[i].NVLinkInterfaceID, nvli.ID, "result order should match input order")
+					if tc.inputs[i].Status != nil {
+						assert.Equal(t, *tc.inputs[i].Status, nvli.Status)
+					}
+					if tc.inputs[i].DeviceInstance != nil {
+						assert.Equal(t, *tc.inputs[i].DeviceInstance, nvli.DeviceInstance)
+					}
+				}
+			}
+
+			if tc.verifyChildSpanner {
+				span := otrace.SpanFromContext(ctx)
+				assert.True(t, span.SpanContext().IsValid())
+				_, ok := ctx.Value(stracer.TracerKey).(otrace.Tracer)
+				assert.True(t, ok)
+			}
+		})
+	}
+}
+
+func TestNVLinkInterfaceSQLDAO_UpdateMultiple_ExceedsMaxBatchItems(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+	nvlisd := NewNVLinkInterfaceDAO(dbSession)
+
+	// Create inputs exceeding MaxBatchItems
+	inputs := make([]NVLinkInterfaceUpdateInput, db.MaxBatchItems+1)
+	for i := range inputs {
+		inputs[i] = NVLinkInterfaceUpdateInput{
+			NVLinkInterfaceID: uuid.New(),
+			Status:            db.GetStrPtr(NVLinkInterfaceStatusDeleting),
+		}
+	}
+
+	_, err := nvlisd.UpdateMultiple(ctx, nil, inputs)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "batch size")
+	assert.Contains(t, err.Error(), "exceeds maximum allowed")
+}
+
 func TestNVLinkInterfaceSQLDAO_Clear(t *testing.T) {
 	ctx := context.Background()
 	// Create test DB
@@ -1010,19 +1152,18 @@ func TestNVLinkInterfaceSQLDAO_Delete(t *testing.T) {
 	}
 }
 
-
 func TestNVLinkInterfaceSQLDAO_CreateMultiple(t *testing.T) {
 	ctx := context.Background()
 	dbSession := testInitDB(t)
 	defer dbSession.Close()
 	TestSetupSchema(t, dbSession)
-	
+
 	ipu := testBuildUser(t, dbSession, nil, testGenerateStarfleetID(), db.GetStrPtr("johnd@test.com"), db.GetStrPtr("John"), db.GetStrPtr("Doe"))
 	ip := testBuildInfrastructureProvider(t, dbSession, nil, "test-ip", "Test Provider", ipu.ID)
 	tnu := testBuildUser(t, dbSession, nil, testGenerateStarfleetID(), db.GetStrPtr("jdoetenant@test.com"), db.GetStrPtr("Tenant"), db.GetStrPtr("Doe"))
 	tn := testBuildTenant(t, dbSession, nil, "test-tenant", "test-tenant-org", tnu.ID)
 	st := testBuildSite(t, dbSession, nil, ip.ID, "test-site", "Test Site", ip.Org, ipu.ID)
-	
+
 	vpc := testInstanceBuildVpc(t, dbSession, ip, st, tn, "testVpc")
 	instanceType := testInstanceBuildInstanceType(t, dbSession, ip, "testInstanceType")
 	machine := testMachineBuildMachine(t, dbSession, ip.ID, st.ID, &instanceType.ID, db.GetStrPtr("mcTypeTest"))
@@ -1052,9 +1193,9 @@ func TestNVLinkInterfaceSQLDAO_CreateMultiple(t *testing.T) {
 		},
 	)
 	assert.Nil(t, err)
-	
+
 	nvllp := testBuildNVLinkLogicalPartition(t, dbSession, nil, "test-nvlinklogicalpartition", nil, tn.Org, tn.ID, st.ID, db.GetStrPtr(NVLinkLogicalPartitionStatusReady), tnu.ID)
-	
+
 	nvlisd := NewNVLinkInterfaceDAO(dbSession)
 
 	// OTEL Spanner configuration
