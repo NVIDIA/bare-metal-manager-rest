@@ -16,10 +16,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/uptrace/bun"
 	"github.com/nvidia/carbide-rest/db/pkg/db"
 	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
 	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
+	"github.com/uptrace/bun"
 )
 
 const (
@@ -51,7 +51,7 @@ var (
 	}
 
 	// DpuExtensionServiceOrderByFields is a list of valid order by fields for the DpuExtensionService model
-	DpuExtensionServiceOrderByFields = []string{"id", "status", "created", "updated"}
+	DpuExtensionServiceOrderByFields = []string{"id", "name", "status", "created", "updated"}
 	// DpuExtensionServiceRelatedEntities is a list of valid relation by fields for the DpuExtensionService model
 	DpuExtensionServiceRelatedEntities = map[string]bool{
 		SiteRelationName:     true,

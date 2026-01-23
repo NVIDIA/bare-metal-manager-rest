@@ -1,3 +1,4 @@
+#!/bin/bash
 # SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: LicenseRef-NvidiaProprietary
 #
@@ -7,26 +8,10 @@
 # disclosure or distribution of this material and related documentation
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
+#
 
-# carbide-rest-cert-manager Service (includes embedded Vault)
-apiVersion: v1
-kind: Service
-metadata:
-  name: carbide-rest-cert-manager
-  labels:
-    app: carbide-rest-cert-manager
-spec:
-  type: ClusterIP
-  ports:
-    - port: 8000
-      targetPort: 8000
-      name: https
-    - port: 8001
-      targetPort: 8001
-      name: http
-    - port: 8200
-      targetPort: 8200
-      protocol: TCP
-      name: vault
-  selector:
-    app: carbide-rest-cert-manager
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+echo "Starting OpenAPI Redoc Server at http://127.0.0.1:8090";
+
+docker run -it --rm -p 8090:80 -v $SCRIPT_DIR/spec.yaml:/usr/share/nginx/html/openapi.yaml -e SPEC_URL=openapi.yaml redocly/redoc

@@ -24,6 +24,14 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+var (
+	// DefaultMockResponses provides standard mock responses for tests (backward compatibility)
+	DefaultMockResponses = GetDefaultMockResponses()
+
+	// globalTestRSAKey is the global test RSA key - generated once and reused across tests
+	globalTestRSAKey *rsa.PrivateKey
+)
+
 // TestMockResponses contains all mock response data
 type TestMockResponses struct {
 	AdminLogin string
@@ -50,9 +58,6 @@ func GetDefaultMockResponses() TestMockResponses {
 		JWKS:       jwks,
 	}
 }
-
-// DefaultMockResponses provides standard mock responses for tests (backward compatibility)
-var DefaultMockResponses = GetDefaultMockResponses()
 
 // MockKeycloakServerConfig configures the mock server behavior
 type MockKeycloakServerConfig struct {
@@ -209,9 +214,6 @@ func handleJWKSEndpoint(res http.ResponseWriter, req *http.Request, config MockK
 	res.WriteHeader(http.StatusOK)
 	res.Write([]byte(config.Responses.JWKS))
 }
-
-// Global test RSA key - generated once and reused across tests
-var globalTestRSAKey *rsa.PrivateKey
 
 // GetConsistentTestRSAKey returns a consistent RSA key for testing
 // This ensures JWT tokens and JWKS responses use the same key

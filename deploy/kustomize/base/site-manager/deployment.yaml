@@ -68,4 +68,3 @@ spec:
         - name: tls-certs
           secret:
             secretName: site-manager-tls
-            optional: true

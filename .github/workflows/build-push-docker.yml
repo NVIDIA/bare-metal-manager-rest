@@ -8,7 +8,7 @@
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
 
-name: Build and Push Docker Images to NVCR
+name: Build and Push Docker Images
 
 on:
   workflow_call:

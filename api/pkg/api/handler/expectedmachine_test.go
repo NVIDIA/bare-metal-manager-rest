@@ -16,15 +16,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/uptrace/bun/extra/bundebug"
 	"github.com/nvidia/carbide-rest/api/internal/config"
 	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
 	"github.com/nvidia/carbide-rest/api/pkg/api/model"
@@ -32,12 +30,16 @@ import (
 	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/uptrace/bun/extra/bundebug"
 	tmocks "go.temporal.io/sdk/mocks"
 )
 
 // testExpectedMachineInitDB initializes a test database session
 func testExpectedMachineInitDB(t *testing.T) *cdb.Session {
-	dbSession := cdbu.GetTestDBSession(t, true)
+	dbSession := cdbu.GetTestDBSession(t, false)
 	dbSession.DB.AddQueryHook(bundebug.NewQueryHook(
 		bundebug.WithEnabled(false),
 		bundebug.FromEnv("BUNDEBUG"),
@@ -1014,6 +1016,20 @@ func TestUpdateExpectedMachineHandler_Handle(t *testing.T) {
 			},
 		},
 		{
+			name: "body ID mismatch with URL should return 400",
+			id:   testEM.ID.String(),
+			requestBody: model.APIExpectedMachineUpdateRequest{
+				ID:                  cdb.GetStrPtr(uuid.New().String()), // different from URL
+				ChassisSerialNumber: cdb.GetStrPtr("SHOULD-NOT-UPDATE"),
+			},
+			setupContext: func(c echo.Context) {
+				c.Set("user", createMockUser(org))
+				c.SetParamNames("orgName", "id")
+				c.SetParamValues(org, testEM.ID.String())
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
 			name: "cannot update on unmanaged site",
 			id:   unmanagedEM.ID.String(),
 			requestBody: model.APIExpectedMachineUpdateRequest{
@@ -1533,6 +1549,640 @@ func TestTenantWithTargetedInstanceCreationCapability(t *testing.T) {
 			// Run custom validation if provided
 			if tt.validateResp != nil && rec.Code == tt.expectedStatus {
 				tt.validateResp(t, rec)
+			}
+		})
+	}
+}
+
+// TestCreateExpectedMachinesHandler_Handle tests the batch create handler
+func TestCreateExpectedMachinesHandler_Handle(t *testing.T) {
+	// Setup
+	e := echo.New()
+
+	// Initialize test database
+	dbSession := testExpectedMachineInitDB(t)
+	defer dbSession.Close()
+
+	cfg := common.GetTestConfig()
+
+	// Prepare client pool for workflow calls
+	tcfg, _ := cfg.GetTemporalConfig()
+	scp := sc.NewClientPool(tcfg)
+
+	// Create test data first to get the site ID
+	org := "test-org"
+	infraProv, site := testExpectedMachineSetupTestData(t, dbSession, org)
+
+	// Add mock temporal client for the site
+	mockTemporalClient := &tmocks.Client{}
+	mockWorkflowRun := &tmocks.WorkflowRun{}
+	mockWorkflowRun.On("GetID").Return("test-workflow-id")
+
+	// Track workflow request to generate corresponding results
+	var capturedRequest interface{}
+	var workflowFailures map[int]string
+
+	// Capture the workflow request when ExecuteWorkflow is called
+	mockTemporalClient.Mock.On("ExecuteWorkflow", mock.Anything, mock.Anything, "CreateExpectedMachines", mock.Anything).
+		Run(func(args mock.Arguments) {
+			// Capture the request argument (index 3)
+			capturedRequest = args.Get(3)
+		}).
+		Return(mockWorkflowRun, nil)
+
+	// Mock Get to populate results based on captured request
+	mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			// Cast result to BatchExpectedMachineOperationResponse and populate
+			if resultPtr, ok := args.Get(1).(*cwssaws.BatchExpectedMachineOperationResponse); ok {
+				// Extract machines from the captured request
+				if req, ok := capturedRequest.(*cwssaws.BatchExpectedMachineOperationRequest); ok {
+					if req.ExpectedMachines != nil && req.ExpectedMachines.ExpectedMachines != nil {
+						// Create results for each machine (all successful for tests)
+						results := make([]*cwssaws.ExpectedMachineOperationResult, 0, len(req.ExpectedMachines.ExpectedMachines))
+						for idx, machine := range req.ExpectedMachines.ExpectedMachines {
+							if machine != nil && machine.Id != nil {
+								success := true
+								var errMsg *string
+								if workflowFailures != nil {
+									if msg, ok := workflowFailures[idx]; ok {
+										success = false
+										errMsg = &msg
+									}
+								}
+								result := &cwssaws.ExpectedMachineOperationResult{
+									Id:      machine.Id,
+									Success: success,
+								}
+								if errMsg != nil {
+									result.ErrorMessage = errMsg
+								}
+								results = append(results, result)
+							}
+						}
+						resultPtr.Results = results
+					}
+				}
+			}
+		}).
+		Return(nil)
+
+	scp.IDClientMap[site.ID.String()] = mockTemporalClient
+
+	handler := NewCreateExpectedMachinesHandler(dbSession, nil, scp, cfg)
+
+	// Helper function to create mock user
+	createMockUser := func(org string) *cdbm.User {
+		return &cdbm.User{
+			StarfleetID: cdb.GetStrPtr("test-user"),
+			OrgData: cdbm.OrgData{
+				org: cdbm.Org{
+					ID:          123,
+					Name:        org,
+					DisplayName: org,
+					OrgType:     "ENTERPRISE",
+					Roles:       []string{"FORGE_PROVIDER_ADMIN"},
+				},
+			},
+		}
+	}
+
+	// Test cases
+	tests := []struct {
+		name           string
+		requestBody    []model.APIExpectedMachineCreateRequest
+		setupContext   func(c echo.Context)
+		expectedStatus int
+		validateResp   func(t *testing.T, body []byte)
+		workflowErrors map[int]string
+	}{
+		{
+			name: "successful batch creation",
+			requestBody: []model.APIExpectedMachineCreateRequest{
+				{
+					SiteID:                   site.ID.String(),
+					BmcMacAddress:            "00:11:22:33:44:01",
+					DefaultBmcUsername:       cdb.GetStrPtr("admin"),
+					DefaultBmcPassword:       cdb.GetStrPtr("password"),
+					ChassisSerialNumber:      "BATCH-CHASSIS-001",
+					FallbackDPUSerialNumbers: []string{"DPU001"},
+					Labels:                   map[string]string{"env": "test"},
+				},
+				{
+					SiteID:                   site.ID.String(),
+					BmcMacAddress:            "00:11:22:33:44:02",
+					DefaultBmcUsername:       cdb.GetStrPtr("admin"),
+					DefaultBmcPassword:       cdb.GetStrPtr("password"),
+					ChassisSerialNumber:      "BATCH-CHASSIS-002",
+					FallbackDPUSerialNumbers: []string{"DPU002"},
+					Labels:                   map[string]string{"env": "test"},
+				},
+			},
+			setupContext: func(c echo.Context) {
+				c.Set("user", createMockUser(org))
+				c.SetParamNames("orgName")
+				c.SetParamValues(org)
+			},
+			expectedStatus: http.StatusCreated,
+			validateResp: func(t *testing.T, body []byte) {
+				var response []model.APIExpectedMachine
+				err := json.Unmarshal(body, &response)
+				assert.Nil(t, err)
+				assert.Equal(t, 2, len(response))
+			},
+		},
+		{
+			name: "batch creation with SKU",
+			requestBody: []model.APIExpectedMachineCreateRequest{
+				{
+					SiteID:                   site.ID.String(),
+					BmcMacAddress:            "00:11:22:33:44:03",
+					DefaultBmcUsername:       cdb.GetStrPtr("admin"),
+					DefaultBmcPassword:       cdb.GetStrPtr("password"),
+					ChassisSerialNumber:      "BATCH-CHASSIS-003",
+					FallbackDPUSerialNumbers: []string{"DPU003"},
+					SkuID:                    cdb.GetStrPtr("test-sku-uuid-1"),
+					Labels:                   map[string]string{"env": "test"},
+				},
+				{
+					SiteID:                   site.ID.String(),
+					BmcMacAddress:            "00:11:22:33:44:04",
+					DefaultBmcUsername:       cdb.GetStrPtr("admin"),
+					DefaultBmcPassword:       cdb.GetStrPtr("password"),
+					ChassisSerialNumber:      "BATCH-CHASSIS-004",
+					FallbackDPUSerialNumbers: []string{"DPU004"},
+					SkuID:                    cdb.GetStrPtr("test-sku-uuid-2"),
+					Labels:                   map[string]string{"env": "test"},
+				},
+			},
+			setupContext: func(c echo.Context) {
+				c.Set("user", createMockUser(org))
+				c.SetParamNames("orgName")
+				c.SetParamValues(org)
+			},
+			expectedStatus: http.StatusCreated,
+			validateResp: func(t *testing.T, body []byte) {
+				var response []model.APIExpectedMachine
+				err := json.Unmarshal(body, &response)
+				assert.Nil(t, err)
+				assert.Equal(t, 2, len(response))
+			},
+		},
+		{
+			name:        "empty batch should fail",
+			requestBody: []model.APIExpectedMachineCreateRequest{},
+			setupContext: func(c echo.Context) {
+				c.Set("user", createMockUser(org))
+				c.SetParamNames("orgName")
+				c.SetParamValues(org)
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name: "duplicate MAC in batch should fail",
+			requestBody: []model.APIExpectedMachineCreateRequest{
+				{
+					SiteID:              site.ID.String(),
+					BmcMacAddress:       "00:11:22:33:44:05",
+					ChassisSerialNumber: "BATCH-CHASSIS-005",
+				},
+				{
+					SiteID:              site.ID.String(),
+					BmcMacAddress:       "00:11:22:33:44:05", // Duplicate
+					ChassisSerialNumber: "BATCH-CHASSIS-006",
+				},
+			},
+			setupContext: func(c echo.Context) {
+				c.Set("user", createMockUser(org))
+				c.SetParamNames("orgName")
+				c.SetParamValues(org)
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name: "invalid SKU ID should fail",
+			requestBody: []model.APIExpectedMachineCreateRequest{
+				{
+					SiteID:              site.ID.String(),
+					BmcMacAddress:       "00:11:22:33:44:06",
+					ChassisSerialNumber: "BATCH-CHASSIS-007",
+					SkuID:               cdb.GetStrPtr("invalid-sku-id"),
+				},
+			},
+			setupContext: func(c echo.Context) {
+				c.Set("user", createMockUser(org))
+				c.SetParamNames("orgName")
+				c.SetParamValues(org)
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+	}
+
+	_ = infraProv // Ensure infraProv is used to avoid compiler warning
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			workflowFailures = tt.workflowErrors
+			// Create request
+			reqBody, _ := json.Marshal(tt.requestBody)
+			req := httptest.NewRequest(http.MethodPost, "/v2/org/test-org/forge/expected-machine/batch", bytes.NewReader(reqBody))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			req = req.WithContext(context.Background())
+
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+
+			// Setup context
+			tt.setupContext(c)
+
+			// Execute
+			err := handler.Handle(c)
+
+			// Assert
+			assert.Nil(t, err)
+			assert.Equal(t, tt.expectedStatus, rec.Code)
+			if tt.expectedStatus != rec.Code {
+				t.Errorf("Response: %v", rec.Body.String())
+			}
+
+			// Validate response if provided
+			if tt.validateResp != nil && rec.Code == tt.expectedStatus {
+				tt.validateResp(t, rec.Body.Bytes())
+			}
+		})
+	}
+}
+
+// TestUpdateExpectedMachinesHandler_Handle tests the batch update handler
+func TestUpdateExpectedMachinesHandler_Handle(t *testing.T) {
+	// Setup
+	e := echo.New()
+
+	// Initialize test database
+	dbSession := testExpectedMachineInitDB(t)
+	defer dbSession.Close()
+
+	cfg := common.GetTestConfig()
+
+	// Prepare client pool for workflow calls
+	tcfg, _ := cfg.GetTemporalConfig()
+	scp := sc.NewClientPool(tcfg)
+
+	// Create test data
+	org := "test-org"
+	infraProv, site := testExpectedMachineSetupTestData(t, dbSession, org)
+
+	ctx := context.Background()
+
+	// Create a second site for testing cross-site validation
+	site2 := &cdbm.Site{
+		ID:                       uuid.New(),
+		Name:                     "test-site-2",
+		Org:                      org,
+		InfrastructureProviderID: infraProv.ID,
+		Status:                   cdbm.SiteStatusRegistered,
+	}
+	_, err := dbSession.DB.NewInsert().Model(site2).Exec(ctx)
+	assert.Nil(t, err)
+
+	// Create test ExpectedMachines on site 1
+	emDAO := cdbm.NewExpectedMachineDAO(dbSession)
+	testEM1, err := emDAO.Create(ctx, nil, cdbm.ExpectedMachineCreateInput{
+		ExpectedMachineID:        uuid.New(),
+		SiteID:                   site.ID,
+		BmcMacAddress:            "00:11:22:33:44:10",
+		ChassisSerialNumber:      "BATCH-UPDATE-001",
+		FallbackDpuSerialNumbers: []string{"DPU010"},
+		Labels:                   map[string]string{"env": "test"},
+	})
+	assert.Nil(t, err)
+
+	testEM2, err := emDAO.Create(ctx, nil, cdbm.ExpectedMachineCreateInput{
+		ExpectedMachineID:        uuid.New(),
+		SiteID:                   site.ID,
+		BmcMacAddress:            "00:11:22:33:44:11",
+		ChassisSerialNumber:      "BATCH-UPDATE-002",
+		FallbackDpuSerialNumbers: []string{"DPU011"},
+		Labels:                   map[string]string{"env": "test"},
+	})
+	assert.Nil(t, err)
+
+	// Create test ExpectedMachine on site 2 for cross-site validation
+	testEM3, err := emDAO.Create(ctx, nil, cdbm.ExpectedMachineCreateInput{
+		ExpectedMachineID:        uuid.New(),
+		SiteID:                   site2.ID,
+		BmcMacAddress:            "00:11:22:33:44:12",
+		ChassisSerialNumber:      "BATCH-UPDATE-003",
+		FallbackDpuSerialNumbers: []string{"DPU012"},
+		Labels:                   map[string]string{"env": "test"},
+	})
+	assert.Nil(t, err)
+
+	// Add mock temporal client for the site
+	mockTemporalClient := &tmocks.Client{}
+	mockWorkflowRun := &tmocks.WorkflowRun{}
+	mockWorkflowRun.On("GetID").Return("test-workflow-id")
+
+	// Track workflow request to generate corresponding results
+	var capturedRequest interface{}
+	var workflowFailures map[int]string
+
+	// Capture the workflow request when ExecuteWorkflow is called
+	mockTemporalClient.Mock.On("ExecuteWorkflow", mock.Anything, mock.Anything, "UpdateExpectedMachines", mock.Anything).
+		Run(func(args mock.Arguments) {
+			// Capture the request argument (index 3)
+			capturedRequest = args.Get(3)
+		}).
+		Return(mockWorkflowRun, nil)
+
+	// Mock Get to populate results based on captured request
+	mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			// Cast result to BatchExpectedMachineOperationResponse and populate
+			if resultPtr, ok := args.Get(1).(*cwssaws.BatchExpectedMachineOperationResponse); ok {
+				// Extract machines from the captured request
+				if req, ok := capturedRequest.(*cwssaws.BatchExpectedMachineOperationRequest); ok {
+					if req.ExpectedMachines != nil && req.ExpectedMachines.ExpectedMachines != nil {
+						// Create results for each machine (all successful for tests)
+						results := make([]*cwssaws.ExpectedMachineOperationResult, 0, len(req.ExpectedMachines.ExpectedMachines))
+						for idx, machine := range req.ExpectedMachines.ExpectedMachines {
+							if machine != nil && machine.Id != nil {
+								success := true
+								var errMsg *string
+								if workflowFailures != nil {
+									if msg, ok := workflowFailures[idx]; ok {
+										success = false
+										errMsg = &msg
+									}
+								}
+								result := &cwssaws.ExpectedMachineOperationResult{
+									Id:      machine.Id,
+									Success: success,
+								}
+								if errMsg != nil {
+									result.ErrorMessage = errMsg
+								}
+								results = append(results, result)
+							}
+						}
+						resultPtr.Results = results
+					}
+				}
+			}
+		}).
+		Return(nil)
+
+	scp.IDClientMap[site.ID.String()] = mockTemporalClient
+
+	handler := NewUpdateExpectedMachinesHandler(dbSession, nil, scp, cfg)
+
+	// Helper function to create mock user
+	createMockUser := func(org string) *cdbm.User {
+		return &cdbm.User{
+			StarfleetID: cdb.GetStrPtr("test-user"),
+			OrgData: cdbm.OrgData{
+				org: cdbm.Org{
+					ID:          123,
+					Name:        org,
+					DisplayName: org,
+					OrgType:     "ENTERPRISE",
+					Roles:       []string{"FORGE_PROVIDER_ADMIN"},
+				},
+			},
+		}
+	}
+
+	// Test cases
+	tests := []struct {
+		name           string
+		requestBody    []model.APIExpectedMachineUpdateRequest
+		setupContext   func(c echo.Context)
+		expectedStatus int
+		validateResp   func(t *testing.T, body []byte)
+		workflowErrors map[int]string
+	}{
+		{
+			name: "successful batch update",
+			requestBody: []model.APIExpectedMachineUpdateRequest{
+				{
+					ID:                  cdb.GetStrPtr(testEM1.ID.String()),
+					ChassisSerialNumber: cdb.GetStrPtr("UPDATED-BATCH-001"),
+					Labels:              map[string]string{"env": "updated"},
+				},
+				{
+					ID:                  cdb.GetStrPtr(testEM2.ID.String()),
+					ChassisSerialNumber: cdb.GetStrPtr("UPDATED-BATCH-002"),
+					Labels:              map[string]string{"env": "updated"},
+				},
+			},
+			setupContext: func(c echo.Context) {
+				c.Set("user", createMockUser(org))
+				c.SetParamNames("orgName")
+				c.SetParamValues(org)
+			},
+			expectedStatus: http.StatusOK,
+			validateResp: func(t *testing.T, body []byte) {
+				var response []model.APIExpectedMachine
+				err := json.Unmarshal(body, &response)
+				assert.Nil(t, err)
+				assert.Equal(t, 2, len(response))
+			},
+		},
+		{
+			name:        "empty batch should fail",
+			requestBody: []model.APIExpectedMachineUpdateRequest{},
+			setupContext: func(c echo.Context) {
+				c.Set("user", createMockUser(org))
+				c.SetParamNames("orgName")
+				c.SetParamValues(org)
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name: "missing ID in batch item should fail",
+			requestBody: []model.APIExpectedMachineUpdateRequest{
+				{
+					ChassisSerialNumber: cdb.GetStrPtr("MISSING-ID"),
+				},
+			},
+			setupContext: func(c echo.Context) {
+				c.Set("user", createMockUser(org))
+				c.SetParamNames("orgName")
+				c.SetParamValues(org)
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name: "non-existent machine should fail",
+			requestBody: []model.APIExpectedMachineUpdateRequest{
+				{
+					ID:                  cdb.GetStrPtr("12345678-1234-1234-1234-123456789099"),
+					ChassisSerialNumber: cdb.GetStrPtr("SHOULD-FAIL"),
+				},
+			},
+			setupContext: func(c echo.Context) {
+				c.Set("user", createMockUser(org))
+				c.SetParamNames("orgName")
+				c.SetParamValues(org)
+			},
+			expectedStatus: http.StatusNotFound,
+		},
+		{
+			name: "invalid SKU ID should fail",
+			requestBody: []model.APIExpectedMachineUpdateRequest{
+				{
+					ID:    cdb.GetStrPtr(testEM1.ID.String()),
+					SkuID: cdb.GetStrPtr("invalid-sku-id"),
+				},
+			},
+			setupContext: func(c echo.Context) {
+				c.Set("user", createMockUser(org))
+				c.SetParamNames("orgName")
+				c.SetParamValues(org)
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name: "duplicate IDs in request should fail",
+			requestBody: []model.APIExpectedMachineUpdateRequest{
+				{
+					ID:                  cdb.GetStrPtr(testEM1.ID.String()),
+					ChassisSerialNumber: cdb.GetStrPtr("UPDATED-DUP-1"),
+				},
+				{
+					ID:                  cdb.GetStrPtr(testEM1.ID.String()), // duplicate
+					ChassisSerialNumber: cdb.GetStrPtr("UPDATED-DUP-2"),
+				},
+			},
+			setupContext: func(c echo.Context) {
+				c.Set("user", createMockUser(org))
+				c.SetParamNames("orgName")
+				c.SetParamValues(org)
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name: "too many machines should fail",
+			requestBody: func() []model.APIExpectedMachineUpdateRequest {
+				items := make([]model.APIExpectedMachineUpdateRequest, 101)
+				for i := 0; i < 101; i++ {
+					items[i] = model.APIExpectedMachineUpdateRequest{
+						ID:                  cdb.GetStrPtr(uuid.New().String()),
+						ChassisSerialNumber: cdb.GetStrPtr(fmt.Sprintf("SERIAL-%03d", i)),
+					}
+				}
+				return items
+			}(),
+			setupContext: func(c echo.Context) {
+				c.Set("user", createMockUser(org))
+				c.SetParamNames("orgName")
+				c.SetParamValues(org)
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name: "machines from different sites should fail",
+			requestBody: []model.APIExpectedMachineUpdateRequest{
+				{
+					ID:                  cdb.GetStrPtr(testEM1.ID.String()),
+					ChassisSerialNumber: cdb.GetStrPtr("UPDATED-SITE1"),
+				},
+				{
+					ID:                  cdb.GetStrPtr(testEM3.ID.String()), // This is on site2
+					ChassisSerialNumber: cdb.GetStrPtr("UPDATED-SITE2"),
+				},
+			},
+			setupContext: func(c echo.Context) {
+				c.Set("user", createMockUser(org))
+				c.SetParamNames("orgName")
+				c.SetParamValues(org)
+			},
+			expectedStatus: http.StatusBadRequest,
+			validateResp: func(t *testing.T, body []byte) {
+				// Verify error message mentions site mismatch
+				bodyStr := string(body)
+				assert.Contains(t, bodyStr, "does not belong to the same Site")
+			},
+		},
+		{
+			name: "bad siteID with duplicate MAC and duplicate serial should fail with validation errors",
+			requestBody: []model.APIExpectedMachineUpdateRequest{
+				{
+					ID:                  cdb.GetStrPtr(testEM1.ID.String()),
+					BmcMacAddress:       cdb.GetStrPtr("ff:ff:ff:ff:ff:ff"), // lowercase
+					ChassisSerialNumber: cdb.GetStrPtr("Duplicate-Everything"), // mixed case
+				},
+				{
+					ID:                  cdb.GetStrPtr(testEM2.ID.String()),
+					BmcMacAddress:       cdb.GetStrPtr("FF:FF:FF:FF:FF:FF"),    // uppercase (duplicate MAC, different case)
+					ChassisSerialNumber: cdb.GetStrPtr("DUPLICATE-EVERYTHING"), // uppercase (duplicate serial, different case)
+				},
+				{
+					ID:                  cdb.GetStrPtr("00000000-0000-0000-0000-000000000099"), // non-existent ID (bad siteID)
+					BmcMacAddress:       cdb.GetStrPtr("AA:AA:AA:AA:AA:AA"),
+					ChassisSerialNumber: cdb.GetStrPtr("NONEXISTENT-SERIAL"),
+				},
+			},
+			setupContext: func(c echo.Context) {
+				c.Set("user", createMockUser(org))
+				c.SetParamNames("orgName")
+				c.SetParamValues(org)
+			},
+			expectedStatus: http.StatusBadRequest,
+			validateResp: func(t *testing.T, body []byte) {
+				// Verify error response contains validation errors for duplicate MAC and serial
+				bodyStr := string(body)
+				t.Logf("Response body: %s", bodyStr)
+
+				// Parse the JSON response to verify structure
+				var errResp map[string]interface{}
+				err := json.Unmarshal(body, &errResp)
+				assert.Nil(t, err)
+
+				// Should have validation errors in data field
+				assert.Contains(t, bodyStr, "bmcMacAddress")
+				assert.Contains(t, bodyStr, "duplicate BMC MAC address")
+				assert.Contains(t, bodyStr, "chassisSerialNumber")
+				assert.Contains(t, bodyStr, "duplicate chassis serial number")
+
+				// The error should be about validation, not about machines being found
+				// since the duplicate check happens before the DB query for non-existent machines
+				// This test verifies case-insensitive comparison (ff:ff vs FF:FF and Duplicate vs DUPLICATE)
+				assert.Contains(t, bodyStr, "Failed to validate Expected Machine update data")
+			},
+		},
+	}
+
+	_ = infraProv // Ensure infraProv is used to avoid compiler warning
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			workflowFailures = tt.workflowErrors
+			// Create request
+			reqBody, _ := json.Marshal(tt.requestBody)
+			req := httptest.NewRequest(http.MethodPatch, "/v2/org/test-org/forge/expected-machine/batch", bytes.NewReader(reqBody))
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			req = req.WithContext(context.Background())
+
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+
+			// Setup context
+			tt.setupContext(c)
+
+			// Execute
+			err := handler.Handle(c)
+
+			// Assert
+			assert.Nil(t, err)
+			assert.Equal(t, tt.expectedStatus, rec.Code)
+			if tt.expectedStatus != rec.Code {
+				t.Errorf("Response: %v", rec.Body.String())
+			}
+
+			// Validate response if provided
+			if tt.validateResp != nil && rec.Code == tt.expectedStatus {
+				tt.validateResp(t, rec.Body.Bytes())
 			}
 		})
 	}

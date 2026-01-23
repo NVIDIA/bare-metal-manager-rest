@@ -8,7 +8,7 @@
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
 
-name: Build and Push All Docker Images
+name: Carbide REST CI
 
 # Trigger on push to main/master or any tag
 on:
@@ -19,7 +19,7 @@ on:
       - feat/**
       - fix/**
       - chore/**
-      - hotfix/**
+      - release/**
       - version/**
     tags:
       - 'v*.*.*'
@@ -40,7 +40,68 @@ jobs:
     needs: prepare
     uses: ./.github/workflows/lint-and-test.yml
 
-  # Step 3: Build and push all Docker images
+  # Step 3: Build Go binaries
+  build-binaries:
+    name: Build Go Binaries
+    needs:
+      - prepare
+      - lint-and-test
+    with:
+      upload_artifact: true
+    uses: ./.github/workflows/build-binaries.yml
+
+  # Step 4: Security Scan
+  # Step 4.1: Secret Scan with TruffleHog
+  security-secret-scan:
+    name: Secret Scan with TruffleHog
+    needs: prepare
+    runs-on: linux-amd64-cpu4
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for secret scanning
+      - name: Run TruffleHog Scan
+        uses: NVIDIA/dsx-github-actions/.github/actions/trufflehog-scan@55d1e0af17fb4431edaca19fbd5c78fecd29d18a
+        with:
+          extra-args: '--results=verified,unknown --only-verified'
+          post-pr-comment: 'true'
+          fail-on-findings: 'true'
+
+  # Step 4.2: Trivy Vulnerability Scan
+  security-trivy-scan:
+    name: Trivy Vulnerability Scan
+    needs: prepare
+    runs-on: linux-amd64-cpu4
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy Scan
+        uses: NVIDIA/dsx-github-actions/.github/actions/trivy-scan@55d1e0af17fb4431edaca19fbd5c78fecd29d18a
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          vuln-type: 'os,library'
+          scanners: 'vuln,secret,misconfig'
+          severity: 'HIGH,CRITICAL'
+          ignore-unfixed: 'true'
+          upload-sarif: 'false'  # Disable upload until GHAS is enabled, such as the repo be public
+          post-pr-comment: 'true'
+          fail-on-findings: 'false' # FIXME: Disabled until all issues are fixed
+
+  # Step 5: Build and push all Docker images
   build-and-push:
     name: Build and Push Docker Images
     needs:
@@ -56,20 +117,23 @@ jobs:
       branch_name: ${{ needs.prepare.outputs.branch_name }}
       # Pass as string to avoid boolean type conversion issues
       is_main_branch: ${{ needs.prepare.outputs.is_main_branch }}
-      # Push images on all branches (including PRs for branch-sha tags)
       # Only main gets latest and version tags
-      push_enabled: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+      push_enabled: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
     secrets:
       NVCR_USERNAME: ${{ secrets.NVCR_STG_USERNAME }}
       NVCR_TOKEN: ${{ secrets.NVCR_STG_TOKEN }}
 
-  # Step 4: Promote to release candidate (only on main branch)
+  # Step 6: Promote to release candidate
   promote-carbide-rest-to-release-candidate:
     name: Promote Carbide REST to Release Candidate
     needs:
       - prepare
+      - lint-and-test
       - build-and-push
-    if: github.ref == 'refs/heads/main'
+    if: |
+      github.ref == 'refs/heads/main' ||
+      startsWith(github.ref, 'refs/heads/release/') ||
+      startsWith(github.ref, 'refs/tags/v')
     uses: ./.github/workflows/promotion.yaml
     with:
       runner: ubuntu-latest

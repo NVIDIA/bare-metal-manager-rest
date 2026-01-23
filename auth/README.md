@@ -1,0 +1,282 @@
+# Issuer Configuration Guide
+
+Configure external identity providers (IdPs) for JWT authentication in cloud-api.
+
+## Configuration Structure
+
+```yaml
+issuers:
+  - name: "my-idp"                              # Unique identifier (required)
+    issuer: "https://auth.example.com"          # Expected JWT "iss" claim (required)
+    jwks: "https://auth.example.com/.well-known/jwks.json"  # JWKS URL (required)
+    jwksTimeout: "5s"                           # Fetch timeout (default: 5s)
+    audiences: ["my-api"]                       # Token must have ≥1 (optional)
+    scopes: ["openid", "carbide"]               # Token must have ALL (optional)
+    claimMappings:                              # Required - see types below
+      - orgName: "my-orgA"
+        orgDisplayName: "My Organization A"
+        roles: ["FORGE_PROVIDER_ADMIN"]
+      - orgName: "my-orgB"
+        orgDisplayName: "My Organization B"
+        roles: ["FORGE_TENANT_ADMIN"]
+```
+
+### Key Concepts
+
+- **Only two roles allowed:** `FORGE_TENANT_ADMIN`, `FORGE_PROVIDER_ADMIN`
+- **Audiences:** token needs at least one match → 401 on failure
+- **Scopes:** token needs all configured → 403 on failure (checks `scope`, `scopes`, `scp` claims)
+
+---
+
+## Claim Mapping Types
+
+| Type | Configuration | Limit | Use Case |
+|------|---------------|-------|----------|
+| **A: Static-Static** | `orgName` + `roles` | Unlimited* | Fixed org & roles |
+| **B: Static-Dynamic** | `orgName` + `rolesAttribute` | Unlimited* | Fixed org, roles from token |
+| **C: Service Account** | `orgName` + `isServiceAccount: true` | 1 global** | M2M with admin roles |
+| **D: Dynamic-Dynamic** | `orgAttribute` + `orgDisplayAttribute` + `rolesAttribute` | 1 global | Multi-tenant IdP |
+
+\*Each `orgName` must be globally unique across all issuers  
+\*\*1 per issuer URL in connected mode; 1 total in disconnected mode
+
+---
+
+### Type A: Static Org + Static Roles
+
+```yaml
+claimMappings:
+  - orgName: "acme-corp"
+    orgDisplayName: "ACME Corp"
+    roles: ["FORGE_TENANT_ADMIN"]
+```
+
+### Type B: Static Org + Dynamic Roles
+
+```yaml
+claimMappings:
+  - orgName: "acme-corp"
+    orgDisplayName: "ACME Corp"
+    rolesAttribute: "roles"
+```
+
+- **Nested paths supported:** Use dot notation (e.g., `realm_access.roles`, `data.auth.roles`)
+- **Role formats:** Array `["ROLE"]` or space-separated string `"ROLE1 ROLE2"`
+
+### Type C: Service Account
+
+```yaml
+claimMappings:
+  - orgName: "automation"
+    orgDisplayName: "Automation"
+    isServiceAccount: true               # Gets both admin roles automatically
+```
+
+### Type D: Dynamic Org + Dynamic Roles
+
+```yaml
+claimMappings:
+  - orgAttribute: "org"                  # Claim path for org name
+    orgDisplayAttribute: "org_display"   # Claim path for display name
+    rolesAttribute: "roles"              # Claim path for roles
+```
+
+- **Nested paths supported:** All three attributes support dot notation (e.g., `data.org`, `data.org_display`, `data.roles`)
+- **Dynamic orgs cannot claim statically-defined org names** (reserved)
+
+---
+
+## Complete Examples
+
+### Corporate SSO (Type A)
+
+```yaml
+issuers:
+  - name: corporate-sso
+    issuer: "https://login.corp.com"
+    jwks: "https://login.corp.com/.well-known/jwks.json"
+    audiences: ["carbide-api"]
+    claimMappings:
+      - orgName: "corporate"
+        orgDisplayName: "Corporate"
+        roles: ["FORGE_TENANT_ADMIN"]
+```
+
+### Multi-Tenant IdP (Type D)
+
+```yaml
+issuers:
+  - name: saas-provider
+    issuer: "https://auth.saas.com"
+    jwks: "https://auth.saas.com/.well-known/jwks.json"
+    audiences: ["api"]
+    scopes: ["carbide"]
+    claimMappings:
+      - orgAttribute: "tenant_id"
+        orgDisplayAttribute: "tenant_name"
+        rolesAttribute: "carbide_roles"
+```
+
+### Multiple Orgs per Issuer
+
+```yaml
+claimMappings:
+  - orgName: "shared"
+    orgDisplayName: "Shared Resources"
+    roles: ["FORGE_TENANT_ADMIN"]
+  - orgName: "main"
+    orgDisplayName: "Main Org"
+    rolesAttribute: "main_roles"
+```
+
+---
+
+## Validation Rules
+
+| Rule | Constraint |
+|------|------------|
+| Issuer name | Must be unique across all configs |
+| Issuer URL | Can only appear once (no merging) |
+| `orgName` | Must be globally unique across all issuers |
+| Type C (Service Account) | 1 total (disconnected) or 1 per issuer (connected) |
+| Type D (Dynamic Org) | Only 1 allowed across all issuers |
+| Static `orgDisplayName` | Required for Types A, B, C |
+
+---
+
+## Supported Algorithms
+
+`RS256`, `RS384`, `RS512`, `PS256`, `PS384`, `PS512`, `ES256`, `ES384`, `ES512`, `EdDSA`
+
+---
+
+## Troubleshooting
+
+| Error | Solution |
+|-------|----------|
+| Token audience mismatch | Check `aud` claim; update `audiences` or remove to skip |
+| Token scopes mismatch | Check `scope`/`scopes`/`scp` claim; ensure all required scopes present |
+| Invalid token | Verify `jwks` URL accessible; `issuer` matches `iss` claim exactly |
+| Invalid claim mapping | Add `roles`, `rolesAttribute`, or `isServiceAccount` |
+
+---
+
+## Keycloak Integration
+
+To use Keycloak as an identity provider, update the Cloud-API ConfigMap.
+
+### Prerequisites
+
+- **Fully Qualified Domain Name (FQDN)** for your Keycloak instance
+  - Example: `https://auth.forge.acme.com`
+  - This URL must be accessible by both the API server and end users
+
+### Ingress Security Requirements
+
+Once Keycloak configuration is finalized, the ingress controller for the Keycloak domain must be restricted to only allow:
+
+| Allowed Pattern | Purpose |
+|-----------------|---------|
+| `/realms/{realm}/protocol/openid-connect/certs` | Public JWKS endpoint for token validation |
+| `/realms/{realm}/protocol/openid-connect/auth` | IDP authentication callbacks |
+| `/realms/{realm}/broker/*/endpoint` | Identity provider broker callbacks |
+
+> **Warning:** All other paths (especially `/admin/*` and `/realms/{realm}/protocol/openid-connect/token`) should be blocked from external access.
+
+### Required Configuration Values
+
+| Configuration | Description | Example |
+|---------------|-------------|---------|
+| `keycloak.enabled` | Enable Keycloak integration | `true` |
+| `keycloak.baseURL` | Internal Keycloak URL (cluster-internal) | `http://keycloak.keycloak.svc.cluster.local:8080` |
+| `keycloak.externalBaseURL` | External Keycloak URL (must match token issuer) | `https://auth.forge.acme.com` |
+| `keycloak.realm` | Keycloak realm name | `carbide` |
+| `keycloak.clientID` | OAuth client ID | `carbide-cloud` |
+| `keycloak.clientSecretPath` | Path to mounted client secret | `/var/secrets/keycloak/client-secret` |
+| `keycloak.serviceAccount` | Enable service account features | `true` |
+
+### Step 1: Create the Client Secret in Kubernetes
+
+```bash
+kubectl create secret generic keycloak-client-secret \
+  --namespace cloud-api \
+  --from-literal=client-secret="${OAUTH_CLIENT_SECRET}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+### Step 2: Update the Cloud-API ConfigMap
+
+Edit the `cloud-api-config` ConfigMap in the `cloud-api` namespace:
+
+```bash
+kubectl edit configmap cloud-api-config -n cloud-api
+```
+
+Add the Keycloak configuration section:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloud-api-config
+  namespace: cloud-api
+data:
+  config.yaml: |
+    # Keycloak integration configuration
+    keycloak:
+      enabled: true
+      baseURL: http://keycloak.keycloak.svc.cluster.local:8080
+      externalBaseURL: https://auth.forge.acme.com
+      realm: carbide
+      clientID: carbide-cloud
+      clientSecretPath: /var/secrets/keycloak/client-secret
+      serviceAccount: true
+```
+
+**Key Configuration Notes:**
+
+| Field | Important Consideration |
+|-------|-------------------------|
+| `baseURL` | Use cluster-internal URL for API-to-Keycloak communication (avoids external network hops) |
+| `externalBaseURL` | Must match the `iss` claim in JWT tokens exactly |
+
+### Step 3: Mount the Client Secret Volume
+
+Ensure the Cloud-API Deployment mounts the Keycloak client secret:
+
+```yaml
+spec:
+  template:
+    spec:
+      containers:
+        - name: cloud-api
+          volumeMounts:
+            - name: keycloak-client-secret
+              mountPath: /var/secrets/keycloak/
+              readOnly: true
+      volumes:
+        - name: keycloak-client-secret
+          secret:
+            secretName: keycloak-client-secret
+```
+
+### Step 4: Apply Configuration and Restart
+
+```bash
+# Restart the Cloud-API deployment to pick up changes
+kubectl rollout restart deployment/cloud-api -n cloud-api
+
+# Verify the pods are running
+kubectl get pods -n cloud-api -l app.kubernetes.io/name=cloud-api
+
+# Check logs for Keycloak configuration
+kubectl logs -n cloud-api -l app.kubernetes.io/name=cloud-api --tail=50 | grep -i keycloak
+```
+
+Expected log messages:
+
+```
+Creating new Keycloak configuration
+Keycloak configuration created successfully
+```

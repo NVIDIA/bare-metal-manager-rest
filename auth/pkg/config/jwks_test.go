@@ -23,8 +23,10 @@ import (
 	"testing"
 	"time"
 
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/nvidia/carbide-rest/auth/pkg/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -86,7 +88,7 @@ func TestNewJwksConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config := NewJwksConfig("test-config", tt.url, tt.issuer, TokenOriginSsa, false, nil, nil)
+			config := NewJwksConfig("test-config", tt.url, tt.issuer, TokenOriginKasSsa, false, nil, nil)
 			require.NotNil(t, config)
 			tt.validate(t, config)
 
@@ -234,7 +236,7 @@ func TestJwksConfig_UpdateJWKs(t *testing.T) {
 				Issuer: "test.example.com",
 			}
 
-			err := config.UpdateJWKs()
+			err := config.UpdateJWKS()
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -274,7 +276,7 @@ func TestJwksConfig_Concurrency(t *testing.T) {
 		Issuer: "test.example.com",
 	}
 
-	// Test concurrent access to UpdateJWKs
+	// Test concurrent access to UpdateAllJWKS
 	const numGoroutines = 10
 	var wg sync.WaitGroup
 	errors := make(chan error, numGoroutines)
@@ -283,7 +285,7 @@ func TestJwksConfig_Concurrency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := config.UpdateJWKs()
+			err := config.UpdateJWKS()
 			if err != nil {
 				errors <- err
 			}
@@ -297,7 +299,7 @@ func TestJwksConfig_Concurrency(t *testing.T) {
 	var unexpectedErrors []error
 	var updateInProgressCount int
 	for err := range errors {
-		if err == ErrJWKSUpdateInProgress {
+		if err == core.ErrJWKSUpdateInProgress {
 			updateInProgressCount++
 		} else {
 			unexpectedErrors = append(unexpectedErrors, err)
@@ -311,7 +313,7 @@ func TestJwksConfig_Concurrency(t *testing.T) {
 
 	// Should not have any other types of errors
 	for _, err := range unexpectedErrors {
-		t.Errorf("Concurrent UpdateJWKs failed with unexpected error: %v", err)
+		t.Errorf("Concurrent UpdateAllJWKS failed with unexpected error: %v", err)
 	}
 
 	// Test concurrent read operations
@@ -364,7 +366,7 @@ func TestJwksConfig_KeyOperations(t *testing.T) {
 		}
 
 		// Update should fail
-		err := config.UpdateJWKs()
+		err := config.UpdateJWKS()
 		assert.Error(t, err)
 
 		// Operations should still work safely
@@ -392,7 +394,7 @@ func TestJwksConfig_LastUpdate(t *testing.T) {
 
 	// After successful update, LastUpdated should be set
 	beforeUpdate := time.Now()
-	err := config.UpdateJWKs()
+	err := config.UpdateJWKS()
 	afterUpdate := time.Now()
 
 	require.NoError(t, err)
@@ -404,7 +406,7 @@ func TestJwksConfig_LastUpdate(t *testing.T) {
 	firstUpdate := config.LastUpdated
 	time.Sleep(10 * time.Millisecond) // Small delay - still within throttle window
 
-	err = config.UpdateJWKs()
+	err = config.UpdateJWKS()
 	require.NoError(t, err) // Should succeed but be throttled
 	assert.Equal(t, firstUpdate, config.LastUpdated, "LastUpdated should not change due to throttling")
 
@@ -428,7 +430,7 @@ func TestJwksConfig_ThrottlingMechanism(t *testing.T) {
 	}
 
 	t.Run("Initial update should succeed", func(t *testing.T) {
-		err := config.UpdateJWKs()
+		err := config.UpdateJWKS()
 		require.NoError(t, err, "Initial update should succeed")
 		assert.False(t, config.LastUpdated.IsZero(), "LastUpdated should be set after initial update")
 	})
@@ -438,7 +440,7 @@ func TestJwksConfig_ThrottlingMechanism(t *testing.T) {
 
 		// Multiple rapid updates should all be throttled
 		for i := 0; i < 5; i++ {
-			err := config.UpdateJWKs()
+			err := config.UpdateJWKS()
 			assert.NoError(t, err, "Throttled update should not return error")
 			assert.Equal(t, initialUpdate, config.LastUpdated, "LastUpdated should not change during throttle")
 			time.Sleep(time.Millisecond) // Small delay between attempts
@@ -453,7 +455,7 @@ func TestJwksConfig_ThrottlingMechanism(t *testing.T) {
 			wg.Add(1)
 			go func(goroutineID int) {
 				defer wg.Done()
-				err := config.UpdateJWKs()
+				err := config.UpdateJWKS()
 				// Should not return error - either successful update or throttled
 				assert.NoError(t, err, "Update should not error in goroutine %d", goroutineID)
 			}(i)
@@ -470,7 +472,7 @@ func TestJwksConfig_ThrottlingMechanism(t *testing.T) {
 			Issuer: "test.example.com",
 		}
 
-		err := freshConfig.UpdateJWKs()
+		err := freshConfig.UpdateJWKS()
 		assert.NoError(t, err, "Fresh config should allow update")
 		assert.False(t, freshConfig.LastUpdated.IsZero(), "LastUpdated should be set")
 	})
@@ -561,8 +563,8 @@ func TestGetKeyFromJWKS_NoKidWithAlgorithm(t *testing.T) {
 			defer jwksServer.Close()
 
 			// Create and configure JWKS config
-			jwksConfig := NewJwksConfig("test-config", jwksServer.URL, "test-issuer", TokenOriginSsa, false, nil, nil)
-			err = jwksConfig.UpdateJWKs()
+			jwksConfig := NewJwksConfig("test-config", jwksServer.URL, "test-issuer", TokenOriginKasSsa, false, nil, nil)
+			err = jwksConfig.UpdateJWKS()
 			require.NoError(t, err, "Failed to update JWKS")
 
 			// Test token validation end-to-end (public API)
@@ -674,4 +676,261 @@ func createTokenWithBadKid(t *testing.T, privateKey *rsa.PrivateKey, badKid stri
 	tokenString, err := createJWTWithGoJose(privateKey, jose.RS256, badKid)
 	require.NoError(t, err, "Failed to create token with bad kid")
 	return tokenString
+}
+
+// TestGetScopes_Formats tests scope extraction from JWT claims
+// Supports both OAuth 2.0 space-separated strings and OIDC array formats
+func TestGetScopes_Formats(t *testing.T) {
+	tests := []struct {
+		name           string
+		claims         jwt.MapClaims
+		expectedScopes mapset.Set[string]
+	}{
+		// Space-separated string format (OAuth 2.0 RFC 6749)
+		{
+			name: "scope as space-separated string",
+			claims: jwt.MapClaims{
+				"scope": "openid profile email",
+			},
+			expectedScopes: mapset.NewSet("openid", "profile", "email"),
+		},
+		{
+			name: "scope as single string",
+			claims: jwt.MapClaims{
+				"scope": "carbide",
+			},
+			expectedScopes: mapset.NewSet("carbide"),
+		},
+
+		// Array format (modern OIDC implementations)
+		{
+			name: "scope as array of strings",
+			claims: jwt.MapClaims{
+				"scope": []string{"openid", "profile", "email"},
+			},
+			expectedScopes: mapset.NewSet("openid", "profile", "email"),
+		},
+		{
+			name: "scope as array of interfaces",
+			claims: jwt.MapClaims{
+				"scope": []interface{}{"read:data", "write:data"},
+			},
+			expectedScopes: mapset.NewSet("read:data", "write:data"),
+		},
+
+		// Alternative scope claim names
+		{
+			name: "scopes (plural) as array",
+			claims: jwt.MapClaims{
+				"scopes": []string{"api.read", "api.write"},
+			},
+			expectedScopes: mapset.NewSet("api.read", "api.write"),
+		},
+		{
+			name: "scp claim (Azure AD style)",
+			claims: jwt.MapClaims{
+				"scp": "User.Read User.Write",
+			},
+			expectedScopes: mapset.NewSet("User.Read", "User.Write"),
+		},
+
+		// Priority: scope > scopes > scp
+		{
+			name: "scope takes priority over scopes and scp",
+			claims: jwt.MapClaims{
+				"scope":  "primary",
+				"scopes": []string{"ignored"},
+				"scp":    "also_ignored",
+			},
+			expectedScopes: mapset.NewSet("primary"),
+		},
+
+		// Empty/missing cases
+		{
+			name:           "no scope claim",
+			claims:         jwt.MapClaims{"sub": "user"},
+			expectedScopes: mapset.NewSet[string](),
+		},
+		{
+			name: "empty scope string",
+			claims: jwt.MapClaims{
+				"scope": "",
+			},
+			expectedScopes: mapset.NewSet[string](),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := core.GetScopes(tt.claims)
+			resultSet := mapset.NewSet(result...)
+			assert.True(t, tt.expectedScopes.Equal(resultSet), "expected %v, got %v", tt.expectedScopes, resultSet)
+		})
+	}
+}
+
+// TestValidateScopes tests scope validation
+func TestValidateScopes(t *testing.T) {
+	// Config with issuer-level scopes
+	config := &JwksConfig{
+		Name:   "scope-test",
+		Scopes: []string{"carbide", "openid"}, // Requires BOTH scopes at issuer level
+	}
+
+	t.Run("scope as space-separated string matches", func(t *testing.T) {
+		claims := jwt.MapClaims{
+			"sub":   "user",
+			"scope": "carbide openid profile", // space-separated
+		}
+		err := config.ValidateScopes(claims)
+		require.NoError(t, err)
+	})
+
+	t.Run("scope as array matches", func(t *testing.T) {
+		claims := jwt.MapClaims{
+			"sub":   "user",
+			"scope": []string{"carbide", "openid", "profile"}, // array
+		}
+		err := config.ValidateScopes(claims)
+		require.NoError(t, err)
+	})
+
+	t.Run("scope as interface array matches", func(t *testing.T) {
+		claims := jwt.MapClaims{
+			"sub":   "user",
+			"scope": []interface{}{"carbide", "openid"}, // interface array
+		}
+		err := config.ValidateScopes(claims)
+		require.NoError(t, err)
+	})
+
+	t.Run("missing required scope returns core.ErrInvalidScope", func(t *testing.T) {
+		claims := jwt.MapClaims{
+			"sub":   "user",
+			"scope": "carbide only", // missing "openid"
+		}
+		err := config.ValidateScopes(claims)
+		assert.ErrorIs(t, err, core.ErrInvalidScope)
+	})
+
+	t.Run("no scopes configured accepts any token", func(t *testing.T) {
+		noScopeConfig := &JwksConfig{
+			Name: "no-scope-test",
+			// No Scopes configured
+		}
+		claims := jwt.MapClaims{
+			"sub": "user",
+			// No scope claim at all
+		}
+		err := noScopeConfig.ValidateScopes(claims)
+		require.NoError(t, err)
+	})
+}
+
+// TestAudienceFormats tests that audience claims work with both string and array formats
+// Note: golang-jwt v5's claims.GetAudience() handles both formats automatically
+func TestAudienceFormats(t *testing.T) {
+	t.Run("audience as single string", func(t *testing.T) {
+		claims := jwt.MapClaims{
+			"sub": "user",
+			"aud": "api.example.com", // single string
+		}
+		aud, err := claims.GetAudience()
+		require.NoError(t, err)
+		assert.Equal(t, []string{"api.example.com"}, []string(aud))
+	})
+
+	t.Run("audience as array of strings", func(t *testing.T) {
+		claims := jwt.MapClaims{
+			"sub": "user",
+			"aud": []string{"api1.example.com", "api2.example.com"}, // array
+		}
+		aud, err := claims.GetAudience()
+		require.NoError(t, err)
+		assert.Equal(t, []string{"api1.example.com", "api2.example.com"}, []string(aud))
+	})
+
+	t.Run("audience as array of interfaces", func(t *testing.T) {
+		claims := jwt.MapClaims{
+			"sub": "user",
+			"aud": []interface{}{"api1.example.com", "api2.example.com"}, // interface array
+		}
+		aud, err := claims.GetAudience()
+		require.NoError(t, err)
+		assert.Equal(t, []string{"api1.example.com", "api2.example.com"}, []string(aud))
+	})
+
+	t.Run("missing audience returns empty", func(t *testing.T) {
+		claims := jwt.MapClaims{
+			"sub": "user",
+			// No aud claim
+		}
+		aud, err := claims.GetAudience()
+		require.NoError(t, err)
+		assert.Empty(t, aud)
+	})
+}
+
+// TestValidateAudiences tests audience validation
+func TestValidateAudiences(t *testing.T) {
+	t.Run("no_audiences_configured_passes", func(t *testing.T) {
+		config := &JwksConfig{
+			Name:      "test",
+			Audiences: nil,
+		}
+		claims := jwt.MapClaims{"sub": "user"}
+		err := config.ValidateAudience(claims)
+		assert.NoError(t, err)
+	})
+
+	t.Run("token_matches_one_of_configured_audiences", func(t *testing.T) {
+		config := &JwksConfig{
+			Name:      "test",
+			Audiences: []string{"carbide-rest-api", "other-api"},
+		}
+		claims := jwt.MapClaims{"sub": "user", "aud": "carbide-rest-api"}
+		err := config.ValidateAudience(claims)
+		assert.NoError(t, err)
+	})
+
+	t.Run("token_audience_array_matches_configured", func(t *testing.T) {
+		config := &JwksConfig{
+			Name:      "test",
+			Audiences: []string{"carbide-rest-api"},
+		}
+		claims := jwt.MapClaims{"sub": "user", "aud": []string{"other", "carbide-rest-api"}}
+		err := config.ValidateAudience(claims)
+		assert.NoError(t, err)
+	})
+
+	t.Run("token_audience_exact_match_required", func(t *testing.T) {
+		config := &JwksConfig{
+			Name:      "test",
+			Audiences: []string{"Carbide-REST-API"},
+		}
+		// Different case should NOT match (exact string comparison)
+		claims := jwt.MapClaims{"sub": "user", "aud": "carbide-rest-api"}
+		err := config.ValidateAudience(claims)
+		assert.ErrorIs(t, err, core.ErrInvalidAudience)
+	})
+
+	t.Run("token_audience_does_not_match", func(t *testing.T) {
+		config := &JwksConfig{
+			Name:      "test",
+			Audiences: []string{"carbide-rest-api"},
+		}
+		claims := jwt.MapClaims{"sub": "user", "aud": "wrong-audience"}
+		err := config.ValidateAudience(claims)
+		assert.ErrorIs(t, err, core.ErrInvalidAudience)
+	})
+
+	t.Run("missing_audience_when_required_fails", func(t *testing.T) {
+		config := &JwksConfig{
+			Name:      "test",
+			Audiences: []string{"carbide-rest-api"},
+		}
+		claims := jwt.MapClaims{"sub": "user"}
+		err := config.ValidateAudience(claims)
+		assert.ErrorIs(t, err, core.ErrInvalidAudience)
+	})
 }

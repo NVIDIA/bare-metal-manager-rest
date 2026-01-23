@@ -49,17 +49,11 @@ data:
         caPath: /var/secrets/temporal/certs/client-cloud/ca.crt
       encryptionKey: "carbide"
 
-    auth:
+    issuers:
       - name: kas-legacy
-        origin: 1 # TokenOriginKas
-        url: https://authn.nvidia.com/pubJWKS
+        origin: kas-legacy
+        jwks: https://authn.nvidia.com/pubJWKS
         issuer: "authn.nvidia.com"
-        serviceAccount: false
-      - name: kas-ssa
-        origin: 2 # TokenOriginSsa
-        url: https://example.ssa.nvidia.com/.well-known/jwks.json
-        issuer: "https://example.ssa.nvidia.com"
-        serviceAccount: false
 
     siteManager:
       enabled: true

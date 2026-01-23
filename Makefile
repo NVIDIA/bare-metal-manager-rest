@@ -193,10 +193,8 @@ kind-apply:
 	kubectl apply -k $(KUSTOMIZE_OVERLAY)
 	@echo "Waiting for PostgreSQL..."
 	kubectl -n carbide wait --for=condition=ready pod -l app=postgres --timeout=120s
-	@echo "Waiting for Vault..."
-	kubectl -n carbide wait --for=condition=ready pod -l app=vault --timeout=60s
-	@echo "Setting up local PKI..."
-	VAULT_ADDR=http://localhost:8200 ./scripts/setup-local-pki.sh
+	@echo "Waiting for Cert Manager (with embedded Vault - PKI auto-initialized)..."
+	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=180s
 	@echo "Waiting for Temporal..."
 	kubectl -n carbide wait --for=condition=ready pod -l app=temporal --timeout=120s
 	@echo "Waiting for Keycloak..."
@@ -205,9 +203,6 @@ kind-apply:
 	kubectl -n carbide wait --for=condition=complete job/db-migrations --timeout=120s
 	@echo "Waiting for API service..."
 	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-api --timeout=120s || true
-	@echo "Waiting for Cert Manager..."
-	kubectl -n carbide rollout restart deployment/carbide-rest-cert-manager || true
-	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=120s || true
 	@echo "Waiting for Site Manager..."
 	kubectl -n carbide rollout restart deployment/carbide-rest-site-manager || true
 	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=120s || true
@@ -237,6 +232,12 @@ kind-reset:
 	-kind delete cluster --name $(KIND_CLUSTER_NAME)
 	kind create cluster --name $(KIND_CLUSTER_NAME) --config deploy/kind/cluster-config.yaml
 	kubectl apply -f deploy/kustomize/base/crds/
+	@echo "Installing cert-manager.io..."
+	kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
+	@echo "Waiting for cert-manager deployments..."
+	kubectl -n cert-manager rollout status deployment/cert-manager --timeout=120s
+	kubectl -n cert-manager rollout status deployment/cert-manager-webhook --timeout=120s
+	kubectl -n cert-manager rollout status deployment/cert-manager-cainjector --timeout=120s
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-api:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-api .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-workflow:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-workflow .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-site-manager:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-manager .
@@ -253,13 +254,16 @@ kind-reset:
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kubectl apply -k $(KUSTOMIZE_OVERLAY)
 	kubectl -n carbide wait --for=condition=ready pod -l app=postgres --timeout=120s
-	kubectl -n carbide wait --for=condition=ready pod -l app=vault --timeout=60s
-	VAULT_ADDR=http://localhost:8200 ./scripts/setup-local-pki.sh
+	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=180s
+	@echo "Configuring cert-manager.io ClusterIssuer for Vault..."
+	kubectl apply -k deploy/kustomize/base/cert-manager-io/
 	kubectl -n carbide wait --for=condition=ready pod -l app=temporal --timeout=120s
 	kubectl -n carbide wait --for=condition=ready pod -l app=keycloak --timeout=180s
 	kubectl -n carbide wait --for=condition=complete job/db-migrations --timeout=120s
 	-kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-api --timeout=120s
 	-kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-workflow --timeout=60s
+	@echo "Waiting for Site Manager (fetches TLS cert from Vault)..."
+	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=180s
 	./scripts/setup-local-site-agent.sh
 	@echo ""
 	@echo "================================================================================"

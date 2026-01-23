@@ -19,10 +19,15 @@ import (
 	"github.com/google/uuid"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
-	validationIs "github.com/go-ozzo/ozzo-validation/v4/is"
+	validationis "github.com/go-ozzo/ozzo-validation/v4/is"
 
 	"github.com/nvidia/carbide-rest/api/pkg/api/model/util"
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+)
+
+const (
+	// ExpectedMachineMaxBatchItems is the maximum number of ExpectedMachines allowed in a single batch operation
+	ExpectedMachineMaxBatchItems = 100
 )
 
 // APIExpectedMachineCreateRequest is the data structure to capture instance request to create a new ExpectedMachine
@@ -48,16 +53,21 @@ type APIExpectedMachineCreateRequest struct {
 // Validate ensure the values passed in request are acceptable
 func (emcr *APIExpectedMachineCreateRequest) Validate() error {
 	err := validation.ValidateStruct(emcr,
+		validation.Field(&emcr.SiteID,
+			validation.When(emcr.SiteID != "", validationis.UUID.Error(validationErrorInvalidUUID))),
 		validation.Field(&emcr.BmcMacAddress,
 			validation.Required.Error(validationErrorValueRequired),
-			validationIs.MAC),
+			validationis.MAC),
 		validation.Field(&emcr.DefaultBmcUsername,
 			validation.Length(0, 16).Error("BMC username must be 16 characters or less")),
 		validation.Field(&emcr.DefaultBmcPassword,
 			validation.Length(0, 20).Error("BMC password must be 20 characters or less")),
 		validation.Field(&emcr.ChassisSerialNumber,
 			validation.Required.Error(validationErrorValueRequired),
+			validation.Match(util.NotAllWhitespaceRegexp).Error("Chassis serial number consists only of whitespace"),
 			validation.Length(1, 32).Error("Chassis serial number must be 32 characters or less")),
+		validation.Field(&emcr.SkuID,
+			validation.NilOrNotEmpty.Error("SkuID cannot be empty")),
 	)
 
 	if err != nil {
@@ -99,8 +109,9 @@ func (emcr *APIExpectedMachineCreateRequest) Validate() error {
 }
 
 // APIExpectedMachineUpdateRequest is the data structure to capture user request to update an ExpectedMachine
-// For now same as CreateRequest
 type APIExpectedMachineUpdateRequest struct {
+	// ID is required for batch updates (must be empty or match path value for single update)
+	ID *string `json:"id"`
 	// BmcMacAddress is the MAC address of the expected machine's BMC
 	BmcMacAddress *string `json:"bmcMacAddress"`
 	// BmcUsername is the username of the expected machine's BMC
@@ -119,34 +130,37 @@ type APIExpectedMachineUpdateRequest struct {
 
 // Validate ensure the values passed in request are acceptable
 func (emur *APIExpectedMachineUpdateRequest) Validate() error {
-	// Validate DefaultBmcUsername: if provided, cannot be empty
-	if emur.DefaultBmcUsername != nil && *emur.DefaultBmcUsername == "" {
-		return validation.Errors{
-			"defaultBmcUsername": errors.New("BMC Username cannot be empty"),
+	if emur.ID != nil {
+		if *emur.ID == "" {
+			return validation.Errors{
+				"id": errors.New("ID cannot be empty"),
+			}
 		}
-	}
-
-	// Validate DefaultBmcPassword: if provided, cannot be empty
-	if emur.DefaultBmcPassword != nil && *emur.DefaultBmcPassword == "" {
-		return validation.Errors{
-			"defaultBmcPassword": errors.New("BMC Password cannot be empty"),
-		}
-	}
-
-	// Validate ChassisSerialNumber: if provided, must be 1-32 characters
-	if emur.ChassisSerialNumber != nil && *emur.ChassisSerialNumber == "" {
-		return validation.Errors{
-			"chassisSerialNumber": errors.New("Chassis Serial Number number must be 1-32 characters"),
+		if _, err := uuid.Parse(*emur.ID); err != nil {
+			return validation.Errors{
+				"id": errors.New("ID must be a valid UUID"),
+			}
 		}
 	}
 
 	err := validation.ValidateStruct(emur,
 		validation.Field(&emur.DefaultBmcUsername,
+			validation.NilOrNotEmpty.Error("BMC Username cannot be empty"),
+			validation.When(emur.DefaultBmcUsername != nil && *emur.DefaultBmcUsername != "",
+				validation.Match(util.NotAllWhitespaceRegexp).Error("BMC Username consists only of whitespace")),
 			validation.Length(1, 16).Error("BMC Username must be 1-16 characters")),
 		validation.Field(&emur.DefaultBmcPassword,
+			validation.NilOrNotEmpty.Error("BMC Password cannot be empty"),
+			validation.When(emur.DefaultBmcPassword != nil && *emur.DefaultBmcPassword != "",
+				validation.Match(util.NotAllWhitespaceRegexp).Error("BMC Password consists only of whitespace")),
 			validation.Length(1, 20).Error("BMC Password must be 1-20 characters")),
 		validation.Field(&emur.ChassisSerialNumber,
+			validation.NilOrNotEmpty.Error("Chassis Serial Number cannot be empty"),
+			validation.When(emur.ChassisSerialNumber != nil && *emur.ChassisSerialNumber != "",
+				validation.Match(util.NotAllWhitespaceRegexp).Error("Chassis Serial Number consists only of whitespace")),
 			validation.Length(1, 32).Error("Chassis Serial Number must be 1-32 characters")),
+		validation.Field(&emur.SkuID,
+			validation.NilOrNotEmpty.Error("SkuID cannot be empty")),
 	)
 
 	if err != nil {
@@ -196,7 +210,7 @@ type APIExpectedMachine struct {
 	// SiteID is the ID of the site this machine belongs to
 	SiteID uuid.UUID `json:"siteId"`
 	// Site is the site information
-	Site *APISite `json:"site"`
+	Site *APISite `json:"site,omitempty"`
 	// ChassisSerialNumber is the serial number of the expected machine's chassis
 	ChassisSerialNumber string `json:"chassisSerialNumber"`
 	// FallbackDPUSerialNumbers is the serial numbers of the expected machine's fallback DPUs
@@ -204,11 +218,11 @@ type APIExpectedMachine struct {
 	// SkuID is the ID of the SKU
 	SkuID *string `json:"skuId"`
 	// Sku is the SKU information
-	Sku *APISku `json:"sku"`
+	Sku *APISku `json:"sku,omitempty"`
 	// MachineID is the ID of the Machine associated with this Expected Machine
 	MachineID *string `json:"machineId"`
 	// Machine is the optional Machine information associated with this Expected Machine
-	Machine *APIMachineSummary `json:"machine"`
+	Machine *APIMachineSummary `json:"machine,omitempty"`
 	// Labels is the labels of the expected machine
 	Labels map[string]string `json:"labels"`
 	// Created indicates the ISO datetime string for when the ExpectedMachine was created
@@ -226,18 +240,25 @@ func NewAPIExpectedMachine(dibp *cdbm.ExpectedMachine) *APIExpectedMachine {
 		ChassisSerialNumber:      dibp.ChassisSerialNumber,
 		FallbackDPUSerialNumbers: dibp.FallbackDpuSerialNumbers,
 		SkuID:                    dibp.SkuID,
-		Sku:                      NewAPISku(dibp.Sku),
 		MachineID:                dibp.MachineID,
 		Labels:                   dibp.Labels,
 		Created:                  dibp.Created,
 		Updated:                  dibp.Updated,
 	}
-	// Map Site if available
+
+	// Expand Site details if available
 	if dibp.Site != nil {
 		site := NewAPISite(*dibp.Site, []cdbm.StatusDetail{}, nil)
 		apiem.Site = &site
 	}
-	// Map Machine if available
+
+	// Expand SKU details if available
+	if dibp.Sku != nil {
+		sku := NewAPISku(dibp.Sku)
+		apiem.Sku = sku
+	}
+
+	// Expand Machine details if available
 	if dibp.Machine != nil {
 		machine := NewAPIMachineSummary(dibp.Machine)
 		apiem.Machine = machine

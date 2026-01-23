@@ -8,7 +8,7 @@
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
 
-# carbide-rest-cert-manager (credsmgr) Deployment
+# carbide-rest-cert-manager (credsmgr) Deployment with embedded Vault sidecar
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -26,6 +26,7 @@ spec:
         app: carbide-rest-cert-manager
     spec:
       serviceAccountName: carbide-rest-cert-manager
+      terminationGracePeriodSeconds: 5
       initContainers:
         # Copy secrets to writable directory and set permissions
         - name: init-secrets
@@ -83,8 +84,8 @@ spec:
         - name: cert-manager
           image: localhost:5000/carbide-rest-cert-manager:latest
           args:
-            - --vault-endpoint=http://vault:8200
-            - --vault-ingress-url=http://vault:8200
+            - --vault-endpoint=http://127.0.0.1:8200
+            - --vault-ingress-url=http://carbide-rest-cert-manager:8200
             - --vault-secrets-root-path=/vault/secrets
             - --tls-port=8000
             - --insecure-port=8001
@@ -107,6 +108,13 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "250m"
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - sleep 5
           readinessProbe:
             httpGet:
               path: /healthz
@@ -119,6 +127,100 @@ spec:
               port: 8001
             initialDelaySeconds: 60
             periodSeconds: 15
+        # Embedded Vault sidecar container (dev mode for local development)
+        - name: vault
+          image: hashicorp/vault:1.21
+          command:
+            - /bin/sh
+            - -c
+            - |
+              # Start Vault in dev mode in background
+              vault server -dev -dev-root-token-id=root -dev-listen-address=0.0.0.0:8200 &
+              VAULT_PID=$!
+              
+              # Wait for Vault to be ready
+              echo "Waiting for Vault to start..."
+              until vault status 2>/dev/null; do
+                echo "Vault not ready yet..."
+                sleep 1
+              done
+              echo "Vault is ready"
+              
+              # Initialize PKI
+              echo "Setting up PKI..."
+              vault secrets enable pki 2>/dev/null || echo "PKI already enabled"
+              vault secrets tune -max-lease-ttl=87600h pki
+              
+              # Generate root CA
+              echo "Generating root CA..."
+              vault write -format=json pki/root/generate/internal \
+                common_name="Carbide Local Dev CA" \
+                issuer_name="root-2024" \
+                ttl=87600h > /tmp/ca_result.json 2>/dev/null || echo "Root CA may already exist"
+              
+              # Export CA certificate to shared volume
+              echo "Exporting CA certificate..."
+              mkdir -p /vault/secrets/vault-root-ca-certificate
+              vault read -field=certificate pki/cert/ca > /vault/secrets/vault-root-ca-certificate/certificate
+              echo "CA certificate exported to /vault/secrets/vault-root-ca-certificate/certificate"
+              
+              # Configure PKI URLs
+              vault write pki/config/urls \
+                issuing_certificates="http://127.0.0.1:8200/v1/pki/ca" \
+                crl_distribution_points="http://127.0.0.1:8200/v1/pki/crl"
+              
+              # Create role for issuing certs
+              vault write pki/roles/cloud-cert \
+                allowed_domains="carbide.local,localhost,carbide,svc.cluster.local,carbide.svc.cluster.local,carbide-rest-cert-manager,carbide-rest-site-manager" \
+                allow_subdomains=true \
+                allow_any_name=true \
+                max_ttl=720h
+              
+              echo "PKI setup complete"
+              
+              # Wait for Vault process
+              wait $VAULT_PID
+          volumeMounts:
+            - name: vault-secrets
+              mountPath: /vault/secrets
+          env:
+            - name: VAULT_ADDR
+              value: http://127.0.0.1:8200
+            - name: VAULT_TOKEN
+              value: "root"
+          ports:
+            - containerPort: 8200
+              name: http-vault
+              protocol: TCP
+            - containerPort: 8201
+              name: internal-vault
+              protocol: TCP
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+          readinessProbe:
+            httpGet:
+              path: /v1/sys/health
+              port: 8200
+            failureThreshold: 2
+            initialDelaySeconds: 5
+            periodSeconds: 3
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /v1/sys/health
+              port: 8200
+            failureThreshold: 3
+            periodSeconds: 6
+            timeoutSeconds: 5
+          securityContext:
+            capabilities:
+              add:
+                - IPC_LOCK
       volumes:
         - name: vault-secrets
           emptyDir: {}

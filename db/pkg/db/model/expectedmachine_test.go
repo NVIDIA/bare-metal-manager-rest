@@ -10,7 +10,6 @@
  * its affiliates is strictly prohibited.
  */
 
-
 package model
 
 import (
@@ -29,26 +28,35 @@ import (
 
 // reset the tables needed for ExpectedMachine tests
 func testExpectedMachineSetupSchema(t *testing.T, dbSession *db.Session) {
+	ctx := context.Background()
 	// create User table
-	err := dbSession.DB.ResetModel(context.Background(), (*User)(nil))
+	err := dbSession.DB.ResetModel(ctx, (*User)(nil))
 	assert.Nil(t, err)
 	// create InfrastructureProvider table
-	err = dbSession.DB.ResetModel(context.Background(), (*InfrastructureProvider)(nil))
+	err = dbSession.DB.ResetModel(ctx, (*InfrastructureProvider)(nil))
 	assert.Nil(t, err)
 	// create Site table
-	err = dbSession.DB.ResetModel(context.Background(), (*Site)(nil))
+	err = dbSession.DB.ResetModel(ctx, (*Site)(nil))
 	assert.Nil(t, err)
 	// create InstanceType table (required by Machine)
-	err = dbSession.DB.ResetModel(context.Background(), (*InstanceType)(nil))
+	err = dbSession.DB.ResetModel(ctx, (*InstanceType)(nil))
 	assert.Nil(t, err)
 	// create SKU table
-	err = dbSession.DB.ResetModel(context.Background(), (*SKU)(nil))
+	err = dbSession.DB.ResetModel(ctx, (*SKU)(nil))
 	assert.Nil(t, err)
 	// create Machine table (must be before ExpectedMachine due to foreign key)
-	err = dbSession.DB.ResetModel(context.Background(), (*Machine)(nil))
+	err = dbSession.DB.ResetModel(ctx, (*Machine)(nil))
 	assert.Nil(t, err)
 	// create ExpectedMachine table
-	err = dbSession.DB.ResetModel(context.Background(), (*ExpectedMachine)(nil))
+	err = dbSession.DB.ResetModel(ctx, (*ExpectedMachine)(nil))
+	assert.Nil(t, err)
+
+	// Add deferrable unique constraint for (bmc_mac_address, site_id) combination
+	// This constraint is defined in migration 20260112100000_expected_machine_unique_bmc_site.go
+	// DEFERRABLE INITIALLY DEFERRED allows batch operations like MAC swaps
+	_, err = dbSession.DB.Exec("ALTER TABLE expected_machine DROP CONSTRAINT IF EXISTS expected_machine_bmc_mac_address_site_id_key")
+	assert.Nil(t, err)
+	_, err = dbSession.DB.Exec("ALTER TABLE expected_machine ADD CONSTRAINT expected_machine_bmc_mac_address_site_id_key UNIQUE (bmc_mac_address, site_id) DEFERRABLE INITIALLY DEFERRED")
 	assert.Nil(t, err)
 }
 
@@ -68,10 +76,25 @@ func TestExpectedMachineSQLDAO_Create(t *testing.T) {
 	// OTEL Spanner configuration
 	_, _, ctx = testCommonTraceProviderSetup(t, ctx)
 
+	// Create a second site for cross-site tests
+	site2 := TestBuildSite(t, dbSession, ip, "test-site-2", user)
+
+	// Pre-create an ExpectedMachine to test duplicate MAC constraint
+	testMacAddress := "AA:BB:CC:DD:EE:FF"
+	_, err := emsd.Create(ctx, nil, ExpectedMachineCreateInput{
+		ExpectedMachineID:   uuid.New(),
+		SiteID:              site.ID,
+		BmcMacAddress:       testMacAddress,
+		ChassisSerialNumber: "CHASSIS-PREEXISTING",
+		CreatedBy:           user.ID,
+	})
+	assert.NoError(t, err)
+
 	tests := []struct {
 		desc               string
 		inputs             []ExpectedMachineCreateInput
 		expectError        bool
+		errorContains      string
 		verifyChildSpanner bool
 	}{
 		{
@@ -119,16 +142,46 @@ func TestExpectedMachineSQLDAO_Create(t *testing.T) {
 			},
 			expectError: false,
 		},
+		{
+			desc: "fail to create duplicate MAC address in same site",
+			inputs: []ExpectedMachineCreateInput{
+				{
+					ExpectedMachineID:   uuid.New(),
+					SiteID:              site.ID,
+					BmcMacAddress:       testMacAddress,
+					ChassisSerialNumber: "CHASSIS-DUPLICATE",
+					CreatedBy:           user.ID,
+				},
+			},
+			expectError:   true,
+			errorContains: "duplicate key value",
+		},
+		{
+			desc: "succeed creating same MAC address in different site",
+			inputs: []ExpectedMachineCreateInput{
+				{
+					ExpectedMachineID:   uuid.New(),
+					SiteID:              site2.ID,
+					BmcMacAddress:       testMacAddress,
+					ChassisSerialNumber: "CHASSIS-DIFFERENT-SITE",
+					CreatedBy:           user.ID,
+				},
+			},
+			expectError: false,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.desc, func(t *testing.T) {
 			for _, input := range tc.inputs {
 				em, err := emsd.Create(ctx, nil, input)
 				if err != nil {
-					assert.True(t, tc.expectError)
+					assert.True(t, tc.expectError, "Expected error but got none")
 					assert.Nil(t, em)
+					if tc.errorContains != "" {
+						assert.Contains(t, err.Error(), tc.errorContains, "Error should contain expected substring")
+					}
 				} else {
-					assert.False(t, tc.expectError)
+					assert.False(t, tc.expectError, "Expected success but got error: %v", err)
 					assert.NotNil(t, em)
 					assert.Equal(t, input.BmcMacAddress, em.BmcMacAddress)
 					assert.Equal(t, input.ChassisSerialNumber, em.ChassisSerialNumber)
@@ -591,7 +644,7 @@ func TestExpectedMachineSQLDAO_GetAll_MachineIDsFilter(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 2, total)
 	assert.Equal(t, 2, len(got))
-	
+
 	// Verify the correct ExpectedMachines were returned
 	foundEM1 := false
 	foundEM2 := false
@@ -786,6 +839,7 @@ func TestExpectedMachineSQLDAO_Update(t *testing.T) {
 		desc               string
 		input              ExpectedMachineUpdateInput
 		expectedError      bool
+		errorContains      string
 		verifyChildSpanner bool
 	}{
 		{
@@ -824,6 +878,15 @@ func TestExpectedMachineSQLDAO_Update(t *testing.T) {
 			},
 			expectedError: false,
 		},
+		{
+			desc: "fail to update to duplicate MAC address in same site",
+			input: ExpectedMachineUpdateInput{
+				ExpectedMachineID: emsExp[2].ID,
+				BmcMacAddress:     db.GetStrPtr(emsExp[1].BmcMacAddress), // emsExp[1] hasn't been modified yet
+			},
+			expectedError: true,
+			errorContains: "duplicate key value",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -831,6 +894,9 @@ func TestExpectedMachineSQLDAO_Update(t *testing.T) {
 			assert.Equal(t, tc.expectedError, err != nil)
 			if err != nil {
 				t.Logf("%s", err.Error())
+				if tc.errorContains != "" {
+					assert.Contains(t, err.Error(), tc.errorContains, "Error should contain expected substring")
+				}
 			}
 			if !tc.expectedError {
 				assert.Nil(t, err)
@@ -1112,6 +1178,70 @@ func TestExpectedMachineSQLDAO_CreateMultiple(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestExpectedMachineSQLDAO_UpdateMultiple_MacSwap(t *testing.T) {
+	ctx := context.Background()
+	dbSession := testInitDB(t)
+	defer dbSession.Close()
+	testExpectedMachineSetupSchema(t, dbSession)
+
+	// Create test dependencies
+	user := TestBuildUser(t, dbSession, "test-user", "test-org", []string{"admin"})
+	ip := TestBuildInfrastructureProvider(t, dbSession, "test-provider", "test-org", user)
+	site := TestBuildSite(t, dbSession, ip, "test-site", user)
+
+	emsd := NewExpectedMachineDAO(dbSession)
+
+	// Create two ExpectedMachines with different MAC addresses
+	macAddress1 := "AA:BB:CC:DD:EE:01"
+	macAddress2 := "AA:BB:CC:DD:EE:02"
+
+	em1, err := emsd.Create(ctx, nil, ExpectedMachineCreateInput{
+		ExpectedMachineID:   uuid.New(),
+		SiteID:              site.ID,
+		BmcMacAddress:       macAddress1,
+		ChassisSerialNumber: "CHASSIS-SWAP-001",
+		CreatedBy:           user.ID,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, em1)
+
+	em2, err := emsd.Create(ctx, nil, ExpectedMachineCreateInput{
+		ExpectedMachineID:   uuid.New(),
+		SiteID:              site.ID,
+		BmcMacAddress:       macAddress2,
+		ChassisSerialNumber: "CHASSIS-SWAP-002",
+		CreatedBy:           user.ID,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, em2)
+
+	// Attempt to swap MAC addresses in a batch operation
+	// This succeeds because the unique constraint is deferrable (checks are deferred until commit)
+	results, err := emsd.UpdateMultiple(ctx, nil, []ExpectedMachineUpdateInput{
+		{
+			ExpectedMachineID: em1.ID,
+			BmcMacAddress:     db.GetStrPtr(macAddress2), // Give em1 the MAC from em2
+		},
+		{
+			ExpectedMachineID: em2.ID,
+			BmcMacAddress:     db.GetStrPtr(macAddress1), // Give em2 the MAC from em1
+		},
+	})
+
+	assert.NoError(t, err, "Swapping MAC addresses in a batch operation should succeed with deferrable constraint")
+	assert.NotNil(t, results)
+	assert.Equal(t, 2, len(results))
+
+	// Verify the swap was successful
+	updatedEM1, err := emsd.Get(ctx, nil, em1.ID, nil, false)
+	assert.NoError(t, err)
+	assert.Equal(t, macAddress2, updatedEM1.BmcMacAddress, "em1 should now have em2's original MAC address")
+
+	updatedEM2, err := emsd.Get(ctx, nil, em2.ID, nil, false)
+	assert.NoError(t, err)
+	assert.Equal(t, macAddress1, updatedEM2.BmcMacAddress, "em2 should now have em1's original MAC address")
 }
 
 func TestExpectedMachineSQLDAO_UpdateMultiple(t *testing.T) {

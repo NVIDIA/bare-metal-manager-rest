@@ -50,13 +50,16 @@ func Auth(dbSession *cdb.Session, tc temporalClient.Client, joCfg *config.JWTOri
 func AuthProcessor(c echo.Context, joCfg *config.JWTOriginConfig) *util.APIError {
 	logger := log.With().Str("Middleware", "Auth").Logger()
 
-	ngcOrgName := c.Param("orgName")
+	orgName := c.Param("orgName")
 
-	logger = logger.With().Str("Org", ngcOrgName).Logger()
-	logger.Info().Msgf("Starting auth processing for org: %s, path: %s", ngcOrgName, c.Path())
+	// we expect the org name to be in the path and as a parameter
+	if orgName == "" {
+		logger.Warn().Msg("request received without org name in request path, access denied")
+		return util.NewAPIError(http.StatusBadRequest, "Organization name is required in request path", nil)
+	}
 
-	// Set org name in context
-	c.Set("ngcOrgName", ngcOrgName)
+	logger = logger.With().Str("Org", orgName).Logger()
+	logger.Info().Msgf("Starting auth processing for org: %s, path: %s", orgName, c.Path())
 
 	// Validate NGC token in auth header
 	// Extract auth header

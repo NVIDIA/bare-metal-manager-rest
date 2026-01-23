@@ -23,8 +23,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rs/zerolog/log"
+	validation "github.com/go-ozzo/ozzo-validation/v4"
 	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
+	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -1405,4 +1406,90 @@ func GetNVLinkLogicalPartitionCountStats(ctx context.Context, tx *cdb.Tx, dbSess
 	}
 
 	return stats, nil
+}
+
+// ~~~~~ UniqueChecker - Generic Uniqueness Validation ~~~~~ //
+
+// UniqueChecker is a generic struct for tracking uniqueness of values and detecting duplicates.
+// It's designed to validate uniqueness constraints in batch operations (create/update handlers).
+// T is the type of the reference unique ID being checked (usually UUID).
+type UniqueChecker[T comparable] struct {
+	// idToUniqueValue maps each main identifier to the secondary unique value
+	idToUniqueValue map[T]string
+	// uniqueValueCount tracks how many unique values are associated with each ID (ideally one)
+	// This is useful for reporting duplicate counts per ID
+	uniqueValueCount map[string]int
+}
+
+// NewUniqueChecker creates and initializes a new UniqueChecker
+func NewUniqueChecker[T comparable]() *UniqueChecker[T] {
+	return &UniqueChecker[T]{
+		idToUniqueValue:  make(map[T]string),
+		uniqueValueCount: make(map[string]int),
+	}
+}
+
+// Update updates or adds a unique value associated with a principal ID, allowing overwrites.
+func (uc *UniqueChecker[T]) Update(id T, uniqueValue string) {
+	uniqueValue = strings.ToLower(uniqueValue)
+	previousValue, exists := uc.idToUniqueValue[id]
+	if exists {
+		if uniqueValue == previousValue {
+			// No change in value, no-op
+			return
+		}
+		// Change of value, decrement previous value count then add as new value
+		uc.uniqueValueCount[previousValue] -= 1
+		if uc.uniqueValueCount[previousValue] <= 0 {
+			delete(uc.uniqueValueCount, previousValue)
+		}
+	}
+	// add/replace mapping
+	uc.idToUniqueValue[id] = uniqueValue
+	// track count of unique values
+	if _, exists := uc.uniqueValueCount[uniqueValue]; !exists {
+		uc.uniqueValueCount[uniqueValue] = 1
+	} else {
+		uc.uniqueValueCount[uniqueValue] += 1
+	}
+}
+
+func (uc *UniqueChecker[T]) DoesIDHaveConflict(id T) bool {
+	uniqueValue, exists := uc.idToUniqueValue[id]
+	if !exists {
+		return false
+	}
+	count, exists := uc.uniqueValueCount[uniqueValue]
+	if !exists {
+		return false
+	}
+	return count > 1
+}
+
+// GetDuplicates returns an array of duplicates values.
+// Note: values are in lowercase.
+func (uc *UniqueChecker[T]) GetDuplicates() []string {
+	duplicates := []string{}
+	for uniqueValue, count := range uc.uniqueValueCount {
+		if count > 1 {
+			duplicates = append(duplicates, uniqueValue)
+		}
+	}
+	return duplicates
+}
+
+// HasDuplicates returns true if any duplicates have been detected
+func (uc *UniqueChecker[T]) HasDuplicates() bool {
+	return len(uc.GetDuplicates()) > 0
+}
+
+// AddToValidationError adds a new error entry or augments an existing one into a validation.Errors{} map
+func AddToValidationErrors(errs validation.Errors, key string, err error) {
+	if existingErr, exists := errs[key]; exists {
+		// Augment existing error by combining messages
+		errs[key] = errors.New(strings.Join([]string{existingErr.Error(), err.Error()}, ", "))
+	} else {
+		// Add new error
+		errs[key] = err
+	}
 }

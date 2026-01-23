@@ -8,36 +8,18 @@
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
 
-# Vault Service
-apiVersion: v1
-kind: Service
+# ClusterIssuer using Vault PKI backend (embedded in cert-manager pod)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
 metadata:
-  name: vault
-  labels:
-    app: vault
+  name: vault-issuer
 spec:
-  type: ClusterIP
-  ports:
-    - port: 8200
-      targetPort: 8200
-      name: http
-  selector:
-    app: vault
----
-# NodePort service for Vault UI access from host
-apiVersion: v1
-kind: Service
-metadata:
-  name: vault-nodeport
-  labels:
-    app: vault
-spec:
-  type: NodePort
-  ports:
-    - port: 8200
-      targetPort: 8200
-      nodePort: 30200
-      name: http
-  selector:
-    app: vault
-
+  vault:
+    # Vault server URL (embedded in carbide-rest-cert-manager pod)
+    server: http://carbide-rest-cert-manager.carbide.svc.cluster.local:8200
+    # PKI path and role configured in Vault
+    path: pki/sign/cloud-cert
+    auth:
+      tokenSecretRef:
+        name: vault-token
+        key: token

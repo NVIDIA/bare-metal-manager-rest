@@ -28,13 +28,15 @@ func init() {
 			handlePanic(terr, "failed to begin transaction")
 		}
 
-		// Drop unique index if it exists
-		_, err := tx.Exec("DROP INDEX IF EXISTS expected_machine_bmc_mac_address_site_id_key")
+		// Drop unique constraint if it exists (for idempotency)
+		_, err := tx.Exec("ALTER TABLE expected_machine DROP CONSTRAINT IF EXISTS expected_machine_bmc_mac_address_site_id_key")
 		handleError(tx, err)
 
-		// Add unique index for bmc_mac_address and site_id combination
+		// Add deferrable unique constraint for bmc_mac_address and site_id combination
 		// This ensures that within a site, each BMC MAC address is unique
-		_, err = tx.Exec("CREATE UNIQUE INDEX expected_machine_bmc_mac_address_site_id_key ON expected_machine(bmc_mac_address, site_id)")
+		// DEFERRABLE INITIALLY DEFERRED allows constraint checks to be deferred until transaction commit,
+		// enabling batch operations like MAC address swaps without intermediate violations
+		_, err = tx.Exec("ALTER TABLE expected_machine ADD CONSTRAINT expected_machine_bmc_mac_address_site_id_key UNIQUE (bmc_mac_address, site_id) DEFERRABLE INITIALLY DEFERRED")
 		handleError(tx, err)
 
 		terr = tx.Commit()
@@ -42,7 +44,7 @@ func init() {
 			handlePanic(terr, "failed to commit transaction")
 		}
 
-		fmt.Print(" [up migration] Added unique index on (bmc_mac_address, site_id) for expected_machine table. ")
+		fmt.Print(" [up migration] Added deferrable unique constraint on (bmc_mac_address, site_id) for expected_machine table. ")
 		return nil
 	}, func(ctx context.Context, db *bun.DB) error {
 		fmt.Print(" [down migration] No action taken")

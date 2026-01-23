@@ -31,9 +31,7 @@ resources:
   - keycloak/deployment.yaml
   - keycloak/service.yaml
   - keycloak/realm-configmap.yaml
-  - vault/deployment.yaml
-  - vault/service.yaml
-  - vault/init-job.yaml
+  # Vault is embedded in cert-manager pod (see cert-manager/deployment.yaml)
   
   # Secrets
   - secrets/secrets.yaml
@@ -60,6 +58,7 @@ resources:
   - site-manager/deployment.yaml
   - site-manager/service.yaml
   - site-manager/rbac.yaml
+  - site-manager/certificate.yaml
 
 commonLabels:
   app.kubernetes.io/part-of: carbide-rest
