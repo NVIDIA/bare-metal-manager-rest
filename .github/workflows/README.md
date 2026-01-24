@@ -9,16 +9,13 @@ The primary workflow that orchestrates the entire build and push process.
 
 **Triggers:**
 - Push to `main` branch (builds and pushes)
-- Push to `feature/docker-build-push-nvcr` branch (builds only, does not push)
 - Push of version tags (e.g., `v1.2.3`) (builds and pushes)
 - Pull requests to `main` (builds only, does not push)
+- Push to `feat/my-task` branch (builds only, does not push)
 - Manual trigger via workflow_dispatch
 
 **Build-Only Mode:**
-The workflow supports building without pushing to test Dockerfiles before secrets are configured. This happens automatically on:
-- Feature branches
-- Pull requests
-- Any branch that isn't `main` or a tag
+The workflow supports building without pushing to test Dockerfiles before secrets are configured. Pushes to any branch other than `main` will execute in build-only mode.
 
 ### 2. `prepare-build-info.yml` - Build Information Preparation
 Reusable workflow that generates version information and build metadata.
@@ -103,38 +100,40 @@ build-and-push:
 ### Enable/Disable Push
 
 Images are pushed only when:
-- Event is NOT a pull request
-- Branch is `main` or a version tag
+- Event is a commit or tag push
+- Branch is `main` or a version git tag is pushed
+- Developers add a commit message in a branch with `push-container` in commit message
 - Secrets are properly configured (login step is skipped if secrets are missing)
 
 **Build-Only Mode (No Push):**
 The workflow automatically runs in build-only mode on:
-- Feature branches (like `feature/docker-build-push-nvcr`)
-- Pull requests
-- Any branch not in the allowed list
+- Feature branches (like `feature/docker-build-push-nvcr`) when commit message doesn't include `push-container`
 
 This allows you to:
 - Test Dockerfiles before secrets are configured
-- Verify builds succeed in CI
+- Verify that builds succeed in CI
 - See build logs and results in GitHub Actions
-
-To always build without pushing (dry run), set `push_enabled: false` in `main-build.yml`.
 
 ## Docker Image Tagging
 
-Each image is tagged with three tags:
+Pushes to `main` branch will receive the following tags:
 
-1. **Git SHA Tag**: `<image>:<short-sha>` (e.g., `carbide-rest-api:abc1234`)
+1. **VERSION + Git Short SHA**: `<image>:1.0.0=<short-sha>` (e.g., `carbide-rest-api:1.0.0-abc1234`)
    - Primary tag for reproducibility and traceability
-   - Always unique per commit
+   - Unique for each commit in `main` branch
 
-2. **Version Tag**: `<image>:<version>` (e.g., `carbide-rest-api:v1.2.3-5-gabc1234`)
-   - Generated from git describe
-   - Shows version, commits since tag, and SHA
+2. **Latest Tag**: `<image>:latest`
+   - Points to the most recent successful build on `main` branch
 
-3. **Latest Tag**: `<image>:latest`
-   - Points to the most recent successful build
-   - Convenient for development/testing
+Version git tags will receive the following docker tag:
+
+1. **Version Tag**: `<image>:<tag>` (e.g., `carbide-rest-api:v1.2.3`)
+   - Based on tags pushed with v* format
+
+Commits to branches containing `push-container` will receive Git short SHA tag:
+
+1. **Branch Name + Git Short SHA Tag**: `<image>:fix-api-<short-sha>` (e.g., `carbide-rest-api:fix-api-ghi678`)
+   - Allows developers to push their in-progress work to dev environments
 
 ## Usage Examples
 
@@ -168,7 +167,7 @@ docker login nvcr.io
 # Password: <your-ngc-api-key>
 
 # Pull by SHA (recommended for production)
-docker pull nvcr.io/your-org/carbide/carbide-rest-api:abc1234
+docker pull nvcr.io/your-org/carbide/carbide-rest-api:1.2.3-abc1234
 
 # Pull by version
 docker pull nvcr.io/your-org/carbide/carbide-rest-api:v1.2.3
@@ -250,4 +249,3 @@ For issues or questions:
 - Check GitHub Actions logs for detailed error messages
 - Review NVCR documentation: https://docs.nvidia.com/ngc/
 - Verify Docker build locally before pushing
-
