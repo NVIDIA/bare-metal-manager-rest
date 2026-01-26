@@ -107,7 +107,7 @@ jobs:
           if [ "${{ inputs.is_main_branch }}" == "true" ]; then
             TAGS="${TAGS},${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.semantic_version }}-${{ inputs.short_sha }}"
             TAGS="${TAGS},${{ inputs.target_registry }}/${{ inputs.service_name }}:latest"
-          else if [ "${{ inputs.release_tag }}" != "" ]; then
+          elif [ "${{ inputs.release_tag }}" != "" ]; then
             TAGS="${TAGS},${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.release_tag }}"
           else
             TAGS="${TAGS},${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.branch_sha_tag }}"
