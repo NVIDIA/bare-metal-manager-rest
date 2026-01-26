@@ -612,24 +612,27 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 	}
 
 	skgDAO := cdbm.NewSSHKeyGroupDAO(cih.dbSession)
-
-	skgs, _, err := skgDAO.GetAll(ctx, nil, cdbm.SSHKeyGroupFilterInput{SSHKeyGroupIDs: sshKeyGroupIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
-	if err != nil {
-		logger.Error().Err(err).Msg("error retrieving SSH Key Groups from DB by IDs")
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve SSH Key Groups from DB by IDs", nil)
-	}
-
-	sshKeyGroupIDMap := map[uuid.UUID]*cdbm.SSHKeyGroup{}
-	for i := range skgs {
-		sshKeyGroupIDMap[skgs[i].ID] = &skgs[i]
-	}
-
 	skgsaDAO := cdbm.NewSSHKeyGroupSiteAssociationDAO(cih.dbSession)
 
-	skgsas, _, err := skgsaDAO.GetAll(ctx, nil, sshKeyGroupIDs, &site.ID, nil, nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
-	if err != nil {
-		logger.Error().Err(err).Msg("error retrieving SSH Key Group Site Associations from DB by SSH Key Group IDs & Site ID")
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve SSH Key Group Site Associations from DB", nil)
+	sshKeyGroupIDMap := map[uuid.UUID]*cdbm.SSHKeyGroup{}
+	skgs := []cdbm.SSHKeyGroup{}
+	skgsas := []cdbm.SSHKeyGroupSiteAssociation{}
+	if len(sshKeyGroupIDs) > 0 {
+		var err error
+		skgs, _, err = skgDAO.GetAll(ctx, nil, cdbm.SSHKeyGroupFilterInput{SSHKeyGroupIDs: sshKeyGroupIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		if err != nil {
+			logger.Error().Err(err).Msg("error retrieving SSH Key Groups from DB by IDs")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve SSH Key Groups from DB by IDs", nil)
+		}
+		for i := range skgs {
+			sshKeyGroupIDMap[skgs[i].ID] = &skgs[i]
+		}
+
+		skgsas, _, err = skgsaDAO.GetAll(ctx, nil, sshKeyGroupIDs, &site.ID, nil, nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+		if err != nil {
+			logger.Error().Err(err).Msg("error retrieving SSH Key Group Site Associations from DB by SSH Key Group IDs & Site ID")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve SSH Key Group Site Associations from DB", nil)
+		}
 	}
 
 	skgSiteAssociationIDMap := map[uuid.UUID]*cdbm.SSHKeyGroupSiteAssociation{}
@@ -2086,7 +2089,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 	}
 
 	// Batch fetch Subnets from DB
-	subnets := make(map[uuid.UUID]*cdbm.Subnet)
+	subnetIDMap := make(map[uuid.UUID]*cdbm.Subnet)
 	if len(subnetIDs) > 0 {
 		subnetList, _, err := sbDAO.GetAll(ctx, nil, cdbm.SubnetFilterInput{SubnetIDs: subnetIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
 		if err != nil {
@@ -2094,12 +2097,12 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Subnets from DB by IDs", nil)
 		}
 		for i := range subnetList {
-			subnets[subnetList[i].ID] = &subnetList[i]
+			subnetIDMap[subnetList[i].ID] = &subnetList[i]
 		}
 	}
 
 	// Batch fetch VPC Prefixes from DB
-	vpcPrefixes := make(map[uuid.UUID]*cdbm.VpcPrefix)
+	vpcPrefixIDMap := make(map[uuid.UUID]*cdbm.VpcPrefix)
 	if len(vpcPrefixIDs) > 0 {
 		vpcPrefixList, _, err := vpDAO.GetAll(ctx, nil, cdbm.VpcPrefixFilterInput{VpcPrefixIDs: vpcPrefixIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
 		if err != nil {
@@ -2107,7 +2110,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve VPC Prefixes from DB by IDs", nil)
 		}
 		for i := range vpcPrefixList {
-			vpcPrefixes[vpcPrefixList[i].ID] = &vpcPrefixList[i]
+			vpcPrefixIDMap[vpcPrefixList[i].ID] = &vpcPrefixList[i]
 		}
 	}
 
@@ -2119,7 +2122,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 		if ifc.SubnetID != nil {
 			subnetID := uuid.MustParse(*ifc.SubnetID)
 
-			subnet, ok := subnets[subnetID]
+			subnet, ok := subnetIDMap[subnetID]
 			if !ok {
 				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Could not find Subnet with ID specified in request data", nil)
 			}
@@ -2150,7 +2153,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 		if ifc.VpcPrefixID != nil {
 			vpcPrefixID := uuid.MustParse(*ifc.VpcPrefixID)
 
-			vpcPrefix, ok := vpcPrefixes[vpcPrefixID]
+			vpcPrefix, ok := vpcPrefixIDMap[vpcPrefixID]
 			if !ok {
 				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Could not find VPC Prefix with ID specified in request data", nil)
 			}
