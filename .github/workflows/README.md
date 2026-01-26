@@ -12,7 +12,7 @@ The primary workflow that orchestrates the entire build and push process.
 - Push of version tags (e.g., `v1.2.3`) (builds and pushes)
 - Pull requests to `main` (builds only, does not push)
 - Push to `feat/my-task` branch (builds only, does not push)
-- Manual trigger via workflow_dispatch
+- Manual trigger via workflow_dispatch, will adhere to above rules
 
 **Build-Only Mode:**
 The workflow supports building without pushing to test Dockerfiles before secrets are configured. Pushes to any branch other than `main` will execute in build-only mode.
@@ -21,10 +21,11 @@ The workflow supports building without pushing to test Dockerfiles before secret
 Reusable workflow that generates version information and build metadata.
 
 **Outputs:**
-- `version`: Generated from git describe or tag name
+- `version`: Value from VERSION file
 - `short_sha`: 7-character git commit SHA
 - `full_sha`: Full git commit SHA
 - `target_registry`: Target NVCR registry path
+- `release_tag`: Tags in the format of `v*.*.*`
 
 ### 3. `build-push-docker.yml` - Docker Build and Push
 Reusable workflow that builds and pushes all Docker images.
@@ -76,10 +77,12 @@ Edit `.github/workflows/prepare-build-info.yml` and update the `target_registry`
 
 ```yaml
 # Line ~57
-target_registry="nvcr.io/your-org/carbide"
+target_registry="nvcr.io/dxs/your-team/carbide"
 ```
 
-Replace `your-org` with your NVCR organization or team name.
+Replace `your-team` with appropriate NGC team name. Available options are:
+- *carbide-dev*: For all development images
+- *carbide*: Production promoted images
 
 ### Customize Runner
 
@@ -137,11 +140,11 @@ Commits to branches containing `push-container` will receive Git short SHA tag:
 
 ## Usage Examples
 
-### Trigger on Push
+### Manual Trigger on Push to Feature Branch
 ```bash
 git add .
-git commit -m "Update API"
-git push origin main
+git commit -m "Updated code. push-container"
+git push origin feat/my-feature
 ```
 
 ### Trigger on Tag
@@ -167,13 +170,13 @@ docker login nvcr.io
 # Password: <your-ngc-api-key>
 
 # Pull by SHA (recommended for production)
-docker pull nvcr.io/your-org/carbide/carbide-rest-api:1.2.3-abc1234
+docker pull nvcr.io/dsx/your-team/carbide/carbide-rest-api:1.2.3-abc1234
 
 # Pull by version
-docker pull nvcr.io/your-org/carbide/carbide-rest-api:v1.2.3
+docker pull nvcr.io/dsx/your-team/carbide/carbide-rest-api:v1.2.3
 
 # Pull latest
-docker pull nvcr.io/your-org/carbide/carbide-rest-api:latest
+docker pull nvcr.io/dsx/your-team/carbide/carbide-rest-api:latest
 ```
 
 ## Build Cache
