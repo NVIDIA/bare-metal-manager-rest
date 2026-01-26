@@ -334,6 +334,7 @@ func (s *Suite) TestManagerSiteTest() error {
 	if err != nil {
 		return err
 	}
+	defer httpResp.Body.Close()
 	if http.StatusOK == httpResp.StatusCode {
 		return fmt.Errorf("status code is OK %+v", httpResp.StatusCode)
 	}
@@ -351,6 +352,7 @@ func (s *Suite) TestManagerSiteTest() error {
 	if err != nil {
 		return err
 	}
+	defer httpResp.Body.Close()
 	if http.StatusOK != httpResp.StatusCode {
 		return fmt.Errorf("status code is !OK %+v", httpResp.StatusCode)
 	}
@@ -360,6 +362,7 @@ func (s *Suite) TestManagerSiteTest() error {
 	if err != nil {
 		return err
 	}
+	defer r.Body.Close()
 	if http.StatusOK != r.StatusCode {
 		return fmt.Errorf("status code is !OK %+v", r.StatusCode)
 	}
@@ -378,6 +381,7 @@ func (s *Suite) TestManagerSiteTest() error {
 	if err != nil {
 		return err
 	}
+	defer httpResp.Body.Close()
 	if http.StatusOK != httpResp.StatusCode {
 		return fmt.Errorf("status code is !OK %+v", httpResp.StatusCode)
 	}
@@ -387,6 +391,7 @@ func (s *Suite) TestManagerSiteTest() error {
 	if err != nil {
 		return err
 	}
+	defer r.Body.Close()
 	if http.StatusOK != r.StatusCode {
 		return fmt.Errorf("status code is !OK %+v", r.StatusCode)
 	}
@@ -396,6 +401,7 @@ func (s *Suite) TestManagerSiteTest() error {
 	if err != nil {
 		return err
 	}
+	defer r.Body.Close()
 	if http.StatusOK != r.StatusCode {
 		return fmt.Errorf("status code is !OK %+v", r.StatusCode)
 	}
@@ -406,6 +412,7 @@ func (s *Suite) TestManagerSiteTest() error {
 	if err != nil {
 		return err
 	}
+	defer r.Body.Close()
 	if http.StatusOK != r.StatusCode {
 		return fmt.Errorf("status code is !OK %+v", r.StatusCode)
 	}
@@ -423,6 +430,7 @@ func (s *Suite) TestManagerSiteTest() error {
 	if err != nil {
 		return err
 	}
+	defer httpResp.Body.Close()
 	if http.StatusOK != httpResp.StatusCode {
 		return fmt.Errorf("status code is !OK %+v", httpResp.StatusCode)
 	}
@@ -437,6 +445,7 @@ func (s *Suite) TestManagerSiteTest() error {
 	if err != nil {
 		return err
 	}
+	defer httpResp.Body.Close()
 	if http.StatusOK != httpResp.StatusCode {
 		return fmt.Errorf("status code is !OK %+v", httpResp.StatusCode)
 	}
@@ -450,6 +459,7 @@ func (s *Suite) TestManagerSiteTest() error {
 	if err != nil {
 		return err
 	}
+	defer httpResp.Body.Close()
 	if http.StatusOK != httpResp.StatusCode {
 		return fmt.Errorf("status code is !OK %+v", httpResp.StatusCode)
 	}
@@ -459,6 +469,7 @@ func (s *Suite) TestManagerSiteTest() error {
 	if err != nil {
 		return err
 	}
+	defer httpResp.Body.Close()
 	if http.StatusOK != httpResp.StatusCode {
 		return fmt.Errorf("status code is !OK %+v", httpResp.StatusCode)
 	}
@@ -468,6 +479,7 @@ func (s *Suite) TestManagerSiteTest() error {
 	if err != nil {
 		return err
 	}
+	defer r.Body.Close()
 	if http.StatusOK != r.StatusCode {
 		return fmt.Errorf("status code is !OK %+v", r.StatusCode)
 	}
@@ -489,6 +501,7 @@ func (s *Suite) TestManagerSiteTest() error {
 	if err != nil {
 		return err
 	}
+	defer r.Body.Close()
 	if http.StatusOK != r.StatusCode {
 		return fmt.Errorf("status code is !OK %+v", r.StatusCode)
 	}
