@@ -10,6 +10,12 @@
 
 ---
 version: v1
-directories:
-  - site-agent/workflows/v1
-  - site-agent/rla/v1
+plugins:
+  - name: go
+    out: protobuf/v1
+    opt: paths=source_relative
+  - name: go-grpc
+    out: protobuf/v1
+    opt:
+      - paths=source_relative
+      - require_unimplemented_servers=false

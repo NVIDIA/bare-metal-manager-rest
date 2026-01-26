@@ -125,25 +125,33 @@ docker-build:
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) -f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-db .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) -f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-cert-manager .
 
-proto:
-	if [ -d "carbide-core" ]; then rm -rf carbide-core; fi
-	git clone ssh://git@github.com/nvidia/carbide-core.git
+carbide-proto:
+	if [ -d "carbide-core" ]; then cd carbide-core && git pull; else git clone ssh://git@github.com/nvidia/carbide-core.git; fi
 	ls carbide-core/rpc/proto
 	@for file in carbide-core/rpc/proto/*.proto; do \
 		cp "$$file" "workflow-schema/site-agent/workflows/v1/$$(basename "$$file" .proto)_carbide.proto"; \
 		echo "Copied: $$file"; \
-		./workflow-schema/scripts/add-go-package-option.sh "workflow-schema/site-agent/workflows/v1/$$(basename "$$file" .proto)_carbide.proto"; \
+		./workflow-schema/scripts/add-go-package-option.sh "workflow-schema/site-agent/workflows/v1/$$(basename "$$file" .proto)_carbide.proto" "github.com/nvidia/carbide-rest/workflow-schema/proto"; \
 	done
 	rm -rf carbide-core
 
-protogen:
-	cd workflow-schema
-	# Lint is disabled for now
-	# echo "Checking validity of proto files"
-	# buf lint
-	echo "Generating go proto files now"
-	buf generate
-	cd ..
+carbide-protogen:
+	echo "Generating protobuf for Carbide"
+	cd workflow-schema && buf generate
+
+rla-proto:
+	if [ -d "rla" ]; then cd rla && git pull; else echo "RLA repository expected in carbide-rest/rla, but not found"; exit 1; fi
+	ls rla/proto/v1
+	@for file in rla/proto/v1/*.proto; do \
+		cp "$$file" "workflow-schema/rla/proto/v1/"; \
+		echo "Copied: $$file"; \
+		./workflow-schema/scripts/add-go-package-option.sh "workflow-schema/$$file" "github.com/nvidia/carbide-rest/workflow-schema/rla"; \
+	done
+	rm -rf rla
+
+rla-protogen:
+	echo "Generating protobuf for RLA"
+	cd workflow-schema/rla && buf generate
 
 # =============================================================================
 # Kind Local Deployment Targets
