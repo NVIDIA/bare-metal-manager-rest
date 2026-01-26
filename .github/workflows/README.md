@@ -77,7 +77,7 @@ Edit `.github/workflows/prepare-build-info.yml` and update the `target_registry`
 
 ```yaml
 # Line ~57
-target_registry="nvcr.io/dxs/your-team/carbide"
+target_registry="nvcr.io/dsx/your-team/carbide"
 ```
 
 Replace `your-team` with appropriate NGC team name. Available options are:
