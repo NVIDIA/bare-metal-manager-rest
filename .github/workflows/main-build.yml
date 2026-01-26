@@ -19,7 +19,7 @@ on:
       - feat/**
       - fix/**
       - chore/**
-      - release/**
+      - hotfix/**
       - version/**
     tags:
       - 'v*.*.*'
@@ -94,7 +94,7 @@ jobs:
           scan-type: 'fs'
           scan-ref: '.'
           vuln-type: 'os,library'
-          scanners: 'vuln,secret,misconfig'
+          scanners: 'vuln,secret,misconfig,license'
           severity: 'HIGH,CRITICAL'
           ignore-unfixed: 'true'
           upload-sarif: 'false'  # Disable upload until GHAS is enabled, such as the repo be public
@@ -117,8 +117,9 @@ jobs:
       branch_name: ${{ needs.prepare.outputs.branch_name }}
       # Pass as string to avoid boolean type conversion issues
       is_main_branch: ${{ needs.prepare.outputs.is_main_branch }}
-      # Only main gets latest and version tags
-      push_enabled: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+      # Images are only pushed for main branch, version tags
+      push_enabled: ${{ ((github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && github.event_name == 'push') || needs.prepare.outputs.push_requested == 'true' }}
+      release_tag: ${{ needs.prepare.outputs.release_tag }}
     secrets:
       NVCR_USERNAME: ${{ secrets.NVCR_STG_USERNAME }}
       NVCR_TOKEN: ${{ secrets.NVCR_STG_TOKEN }}
@@ -132,7 +133,6 @@ jobs:
       - build-and-push
     if: |
       github.ref == 'refs/heads/main' ||
-      startsWith(github.ref, 'refs/heads/release/') ||
       startsWith(github.ref, 'refs/tags/v')
     uses: ./.github/workflows/promotion.yaml
     with:
