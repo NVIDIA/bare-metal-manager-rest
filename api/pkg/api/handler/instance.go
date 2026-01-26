@@ -414,27 +414,29 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 	}
 
 	// Fetch Subnets from DB by IDs
-	subnets, _, err := sbDAO.GetAll(ctx, nil, cdbm.SubnetFilterInput{SubnetIDs: subnetIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
-	if err != nil {
-		logger.Error().Err(err).Msg("error retrieving Subnets from DB by IDs")
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Subnets from DB by IDs", nil)
-	}
-
 	subnetIDMap := make(map[uuid.UUID]*cdbm.Subnet)
-	for _, subnet := range subnets {
-		subnetIDMap[subnet.ID] = &subnet
+	if len(subnetIDs) > 0 {
+		subnets, _, err := sbDAO.GetAll(ctx, nil, cdbm.SubnetFilterInput{SubnetIDs: subnetIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		if err != nil {
+			logger.Error().Err(err).Msg("error retrieving Subnets from DB by IDs")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Subnets from DB by IDs", nil)
+		}
+		for i := range subnets {
+			subnetIDMap[subnets[i].ID] = &subnets[i]
+		}
 	}
 
 	// Fetch VPC Prefixes from DB by IDs
-	vpcPrefixes, _, err := vpDAO.GetAll(ctx, nil, cdbm.VpcPrefixFilterInput{VpcPrefixIDs: vpcPrefixIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
-	if err != nil {
-		logger.Error().Err(err).Msg("error retrieving VPC Prefixes from DB by IDs")
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve VPC Prefixes from DB by IDs", nil)
-	}
-
 	vpcPrefixIDMap := make(map[uuid.UUID]*cdbm.VpcPrefix)
-	for _, vpcPrefix := range vpcPrefixes {
-		vpcPrefixIDMap[vpcPrefix.ID] = &vpcPrefix
+	if len(vpcPrefixIDs) > 0 {
+		vpcPrefixes, _, err := vpDAO.GetAll(ctx, nil, cdbm.VpcPrefixFilterInput{VpcPrefixIDs: vpcPrefixIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		if err != nil {
+			logger.Error().Err(err).Msg("error retrieving VPC Prefixes from DB by IDs")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve VPC Prefixes from DB by IDs", nil)
+		}
+		for i := range vpcPrefixes {
+			vpcPrefixIDMap[vpcPrefixes[i].ID] = &vpcPrefixes[i]
+		}
 	}
 
 	dbifcs := []cdbm.Interface{}
@@ -529,15 +531,16 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 	}
 
 	desDAO := cdbm.NewDpuExtensionServiceDAO(cih.dbSession)
-	dess, _, err := desDAO.GetAll(ctx, nil, cdbm.DpuExtensionServiceFilterInput{DpuExtensionServiceIDs: desIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
-	if err != nil {
-		logger.Error().Err(err).Msg("error retrieving DPU Extension Services from DB by IDs")
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve DPU Extension Services from DB by IDs", nil)
-	}
-
 	desIDMap := map[uuid.UUID]*cdbm.DpuExtensionService{}
-	for i := range dess {
-		desIDMap[dess[i].ID] = &dess[i]
+	if len(desIDs) > 0 {
+		dess, _, err := desDAO.GetAll(ctx, nil, cdbm.DpuExtensionServiceFilterInput{DpuExtensionServiceIDs: desIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		if err != nil {
+			logger.Error().Err(err).Msg("error retrieving DPU Extension Services from DB by IDs")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve DPU Extension Services from DB by IDs", nil)
+		}
+		for i := range dess {
+			desIDMap[dess[i].ID] = &dess[i]
+		}
 	}
 
 	for _, apiDesd := range apiRequest.DpuExtensionServiceDeployments {
@@ -617,8 +620,8 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 	}
 
 	sshKeyGroupIDMap := map[uuid.UUID]*cdbm.SSHKeyGroup{}
-	for _, skg := range skgs {
-		sshKeyGroupIDMap[skg.ID] = &skg
+	for i := range skgs {
+		sshKeyGroupIDMap[skgs[i].ID] = &skgs[i]
 	}
 
 	skgsaDAO := cdbm.NewSSHKeyGroupSiteAssociationDAO(cih.dbSession)
