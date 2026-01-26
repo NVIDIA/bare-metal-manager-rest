@@ -94,7 +94,7 @@ jobs:
           scan-type: 'fs'
           scan-ref: '.'
           vuln-type: 'os,library'
-          scanners: 'vuln,secret,misconfig'
+          scanners: 'vuln,secret,misconfig,license'
           severity: 'HIGH,CRITICAL'
           ignore-unfixed: 'true'
           upload-sarif: 'false'  # Disable upload until GHAS is enabled, such as the repo be public
