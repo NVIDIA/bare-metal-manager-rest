@@ -22,9 +22,9 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.opentelemetry.io/otel"
 
-	wflows "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/carbide"
 	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/instance"
+	wflows "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -333,9 +333,9 @@ func TestInstanceWorkflows(t *testing.T) {
 				Variant: &wflows.OperatingSystem_Ipxe{
 					Ipxe: &wflows.IpxeOperatingSystem{
 						IpxeScript: "#!ipxe",
-						UserData:   &testUserData,
 					},
 				},
+				UserData: &testUserData,
 			},
 		},
 		Status: &wflows.InstanceStatus{},

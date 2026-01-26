@@ -94,9 +94,9 @@ func (cih CreateInstanceHandler) buildInstanceCreateRequestOsConfig(c echo.Conte
 			Variant: &cwssaws.OperatingSystem_Ipxe{
 				Ipxe: &cwssaws.IpxeOperatingSystem{
 					IpxeScript: *apiRequest.IpxeScript,
-					UserData:   apiRequest.UserData,
 				},
 			},
+			UserData: apiRequest.UserData,
 		}, nil, nil
 	}
 
@@ -185,9 +185,9 @@ func (cih CreateInstanceHandler) buildInstanceCreateRequestOsConfig(c echo.Conte
 			Variant: &cwssaws.OperatingSystem_Ipxe{
 				Ipxe: &cwssaws.IpxeOperatingSystem{
 					IpxeScript: *apiRequest.IpxeScript,
-					UserData:   apiRequest.UserData,
 				},
 			},
+			UserData: apiRequest.UserData,
 		}, osID, nil
 	} else {
 		return &cwssaws.OperatingSystem{
@@ -1609,9 +1609,9 @@ func (uih UpdateInstanceHandler) buildInstanceUpdateRequestOsConfig(c echo.Conte
 			Variant: &cwssaws.OperatingSystem_Ipxe{
 				Ipxe: &cwssaws.IpxeOperatingSystem{
 					IpxeScript: *apiRequest.IpxeScript,
-					UserData:   apiRequest.UserData,
 				},
 			},
+			UserData: apiRequest.UserData,
 		}, nil, nil
 	}
 
@@ -1743,9 +1743,9 @@ func (uih UpdateInstanceHandler) buildInstanceUpdateRequestOsConfig(c echo.Conte
 				Variant: &cwssaws.OperatingSystem_Ipxe{
 					Ipxe: &cwssaws.IpxeOperatingSystem{
 						IpxeScript: *ipxeScript,
-						UserData:   userData,
 					},
 				},
+				UserData: userData,
 			}, osID, nil
 		} else if os.Type == cdbm.OperatingSystemTypeImage {
 			return &cwssaws.OperatingSystem{
@@ -1766,9 +1766,9 @@ func (uih UpdateInstanceHandler) buildInstanceUpdateRequestOsConfig(c echo.Conte
 		Variant: &cwssaws.OperatingSystem_Ipxe{
 			Ipxe: &cwssaws.IpxeOperatingSystem{
 				IpxeScript: *ipxeScript,
-				UserData:   userData,
 			},
 		},
+		UserData: userData,
 	}, osID, nil
 }
 

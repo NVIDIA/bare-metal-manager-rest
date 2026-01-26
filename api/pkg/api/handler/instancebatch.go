@@ -92,9 +92,9 @@ func (bcih BatchCreateInstanceHandler) buildBatchInstanceCreateRequestOsConfig(c
 			Variant: &cwssaws.OperatingSystem_Ipxe{
 				Ipxe: &cwssaws.IpxeOperatingSystem{
 					IpxeScript: *apiRequest.IpxeScript,
-					UserData:   apiRequest.UserData,
 				},
 			},
+			UserData: apiRequest.UserData,
 		}, nil, nil
 	}
 
@@ -183,9 +183,9 @@ func (bcih BatchCreateInstanceHandler) buildBatchInstanceCreateRequestOsConfig(c
 			Variant: &cwssaws.OperatingSystem_Ipxe{
 				Ipxe: &cwssaws.IpxeOperatingSystem{
 					IpxeScript: *apiRequest.IpxeScript,
-					UserData:   apiRequest.UserData,
 				},
 			},
+			UserData: apiRequest.UserData,
 		}, osID, nil
 	} else {
 		return &cwssaws.OperatingSystem{
