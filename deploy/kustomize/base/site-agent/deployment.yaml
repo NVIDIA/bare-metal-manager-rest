@@ -34,32 +34,27 @@ spec:
             - -c
             - |
               mkdir -p /etc/temporal-certs/ca /etc/temporal-certs/client
-              # Copy certs if they exist
-              if [ -f /tmp/certs/ca.crt ]; then
-                cp /tmp/certs/ca.crt /etc/temporal-certs/ca/tls.crt
+              # Copy Temporal TLS certs from the workflow-temporal-client-tls secret
+              # Site-agent expects CA at /etc/temporal-certs/ca/ca.crt
+              if [ -f /tmp/temporal-certs/ca.crt ]; then
+                cp /tmp/temporal-certs/ca.crt /etc/temporal-certs/ca/ca.crt
+                echo "Copied CA cert to /etc/temporal-certs/ca/ca.crt"
               else
-                # Create dummy cert for local dev (TLS disabled anyway)
-                echo "-----BEGIN CERTIFICATE-----" > /etc/temporal-certs/ca/tls.crt
-                echo "placeholder" >> /etc/temporal-certs/ca/tls.crt
-                echo "-----END CERTIFICATE-----" >> /etc/temporal-certs/ca/tls.crt
+                echo "ERROR: No CA cert found in /tmp/temporal-certs/"
               fi
-              if [ -f /tmp/certs/tls.crt ]; then
-                cp /tmp/certs/tls.crt /etc/temporal-certs/client/tls.crt
-                cp /tmp/certs/tls.key /etc/temporal-certs/client/tls.key
+              if [ -f /tmp/temporal-certs/tls.crt ]; then
+                cp /tmp/temporal-certs/tls.crt /etc/temporal-certs/client/tls.crt
+                cp /tmp/temporal-certs/tls.key /etc/temporal-certs/client/tls.key
+                echo "Copied client certs from Temporal TLS secret"
               else
-                echo "-----BEGIN CERTIFICATE-----" > /etc/temporal-certs/client/tls.crt
-                echo "placeholder" >> /etc/temporal-certs/client/tls.crt
-                echo "-----END CERTIFICATE-----" >> /etc/temporal-certs/client/tls.crt
-                echo "-----BEGIN PRIVATE KEY-----" > /etc/temporal-certs/client/tls.key
-                echo "placeholder" >> /etc/temporal-certs/client/tls.key
-                echo "-----END PRIVATE KEY-----" >> /etc/temporal-certs/client/tls.key
+                echo "ERROR: No client cert found in /tmp/temporal-certs/"
               fi
               ls -la /etc/temporal-certs/ca/ /etc/temporal-certs/client/
           volumeMounts:
             - name: temporal-certs
               mountPath: /etc/temporal-certs
-            - name: carbide-certs
-              mountPath: /tmp/certs
+            - name: temporal-tls-source
+              mountPath: /tmp/temporal-certs
               readOnly: true
       containers:
         - name: site-agent
@@ -104,3 +99,6 @@ spec:
             optional: true
         - name: temporal-certs
           emptyDir: {}
+        - name: temporal-tls-source
+          secret:
+            secretName: workflow-temporal-client-tls

@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+
+# Temporal namespace setup job
+# This job creates the required Temporal namespaces after the frontend is ready
+# Must run after cert-manager.io has issued the TLS certificates
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: temporal-namespace-setup
+  labels:
+    app: temporal
+    component: namespace-setup
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: temporal
+        component: namespace-setup
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        # Wait for Temporal frontend to be ready
+        - name: wait-for-frontend
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for Temporal frontend..."
+              until nc -z temporal-frontend.carbide.svc.cluster.local 7233; do
+                echo "Frontend not ready, waiting..."
+                sleep 5
+              done
+              echo "Temporal frontend is ready!"
+      containers:
+        - name: temporal-namespace-setup
+          image: temporalio/admin-tools:1.26.2
+          command:
+            - sh
+            - -c
+            - |
+              set -x
+              
+              echo "Creating Temporal namespaces..."
+              
+              # Create cloud namespace for workflow workers
+              temporal operator namespace create cloud \
+                --address temporal-frontend.carbide.svc.cluster.local:7233 \
+                --tls \
+                --tls-disable-host-verification \
+                --tls-ca-path /etc/temporal/certs/ca.crt || echo "cloud namespace may already exist"
+              
+              # Create site namespace for site workers
+              temporal operator namespace create site \
+                --address temporal-frontend.carbide.svc.cluster.local:7233 \
+                --tls \
+                --tls-disable-host-verification \
+                --tls-ca-path /etc/temporal/certs/ca.crt || echo "site namespace may already exist"
+              
+              echo "Namespace setup complete!"
+              
+              # List namespaces to verify
+              temporal operator namespace list \
+                --address temporal-frontend.carbide.svc.cluster.local:7233 \
+                --tls \
+                --tls-disable-host-verification \
+                --tls-ca-path /etc/temporal/certs/ca.crt
+          volumeMounts:
+            - name: tls-certs
+              mountPath: /etc/temporal/certs
+              readOnly: true
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+      volumes:
+        - name: tls-certs
+          secret:
+            secretName: workflow-temporal-client-tls

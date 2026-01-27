@@ -213,7 +213,8 @@ kind-apply:
 # Rebuild and redeploy apps only (faster iteration)
 kind-redeploy: docker-build-local kind-load
 	kubectl -n carbide rollout restart deployment/carbide-rest-api
-	kubectl -n carbide rollout restart deployment/carbide-rest-workflow
+	kubectl -n carbide rollout restart deployment/cloud-worker
+	kubectl -n carbide rollout restart deployment/site-worker
 	kubectl -n carbide rollout restart deployment/carbide-rest-site-agent
 	kubectl -n carbide rollout restart deployment/carbide-rest-elektraserver
 	kubectl -n carbide rollout restart deployment/carbide-rest-cert-manager
@@ -259,11 +260,24 @@ kind-reset:
 	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=180s
 	@echo "Configuring cert-manager.io ClusterIssuer..."
 	kubectl apply -k deploy/kustomize/base/cert-manager-io/
-	kubectl -n carbide wait --for=condition=ready pod -l app=temporal --timeout=120s
+	@echo "Waiting for Temporal certificates to be issued..."
+	kubectl -n carbide wait --for=condition=Ready certificate/temporal-frontend-tls --timeout=120s || true
+	@echo "Waiting for Temporal schema setup..."
+	kubectl -n carbide wait --for=condition=complete job/temporal-schema-setup --timeout=300s || true
+	@echo "Waiting for Temporal services..."
+	kubectl -n carbide wait --for=condition=ready pod -l app=temporal,component=frontend --timeout=180s || true
+	kubectl -n carbide wait --for=condition=ready pod -l app=temporal,component=history --timeout=180s || true
+	kubectl -n carbide wait --for=condition=ready pod -l app=temporal,component=matching --timeout=180s || true
+	kubectl -n carbide wait --for=condition=ready pod -l app=temporal,component=worker --timeout=180s || true
+	@echo "Waiting for Temporal namespace setup..."
+	kubectl -n carbide wait --for=condition=complete job/temporal-namespace-setup --timeout=120s || true
+	@echo "Temporal multi-pod deployment ready"
 	kubectl -n carbide wait --for=condition=ready pod -l app=keycloak --timeout=180s
 	kubectl -n carbide wait --for=condition=complete job/db-migrations --timeout=120s
 	-kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-api --timeout=120s
-	-kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-workflow --timeout=60s
+	@echo "Waiting for workflow workers..."
+	-kubectl -n carbide wait --for=condition=ready pod -l app=cloud-worker --timeout=120s
+	-kubectl -n carbide wait --for=condition=ready pod -l app=site-worker --timeout=120s
 	@echo "Waiting for Site Manager..."
 	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=180s
 	./scripts/setup-local-site-agent.sh

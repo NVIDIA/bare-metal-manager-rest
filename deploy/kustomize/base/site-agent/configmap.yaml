@@ -21,7 +21,7 @@ data:
   CARBIDE_SEC_OPT: "0"
   # Placeholder UUID - updated by setup-local-site-agent.sh with real site ID from API
   CLUSTER_ID: "00000000-0000-4000-8000-000000000001"
-  TEMPORAL_HOST: "temporal"
+  TEMPORAL_HOST: "temporal-frontend"
   TEMPORAL_PORT: "7233"
   TEMPORAL_PUBLISH_NAMESPACE: "site"
   TEMPORAL_PUBLISH_QUEUE: "site"
@@ -30,7 +30,7 @@ data:
   TEMPORAL_SUBSCRIBE_QUEUE: "00000000-0000-4000-8000-000000000001"
   DEV_MODE: "true"
   ENABLE_DEBUG: "true"
-  ENABLE_TLS: "false"
+  ENABLE_TLS: "true"
   POD_NAME: "carbide-rest-site-agent-0"
   POD_NAMESPACE: "carbide"
   METRICS_PORT: "2112"

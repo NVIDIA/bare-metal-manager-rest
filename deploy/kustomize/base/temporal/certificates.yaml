@@ -1,0 +1,123 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+
+# Certificate for Temporal frontend service
+# Used for mTLS with clients (API, Workflow) and internode communication
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: temporal-frontend-tls
+  namespace: carbide
+spec:
+  secretName: temporal-frontend-tls
+  duration: 2160h # 90 days
+  renewBefore: 360h # 15 days
+  commonName: temporal-frontend
+  dnsNames:
+    - temporal-frontend
+    - temporal-frontend.carbide
+    - temporal-frontend.carbide.svc
+    - temporal-frontend.carbide.svc.cluster.local
+    # Also allow connections to the main temporal service name
+    - temporal
+    - temporal.carbide
+    - temporal.carbide.svc
+    - temporal.carbide.svc.cluster.local
+    # Namespace-prefixed names used by Go SDK clients
+    # The workflow code prepends Temporal namespace to serverName
+    - cloud.temporal-frontend
+    - site.temporal-frontend
+  usages:
+    - server auth
+    - client auth
+    - digital signature
+    - key encipherment
+  issuerRef:
+    name: carbide-ca-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+# Certificate for Temporal history service
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: temporal-history-tls
+  namespace: carbide
+spec:
+  secretName: temporal-history-tls
+  duration: 2160h
+  renewBefore: 360h
+  commonName: temporal-history
+  dnsNames:
+    - temporal-history
+    - temporal-history.carbide
+    - temporal-history.carbide.svc
+    - temporal-history.carbide.svc.cluster.local
+  usages:
+    - server auth
+    - client auth
+    - digital signature
+    - key encipherment
+  issuerRef:
+    name: carbide-ca-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+# Certificate for Temporal matching service
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: temporal-matching-tls
+  namespace: carbide
+spec:
+  secretName: temporal-matching-tls
+  duration: 2160h
+  renewBefore: 360h
+  commonName: temporal-matching
+  dnsNames:
+    - temporal-matching
+    - temporal-matching.carbide
+    - temporal-matching.carbide.svc
+    - temporal-matching.carbide.svc.cluster.local
+  usages:
+    - server auth
+    - client auth
+    - digital signature
+    - key encipherment
+  issuerRef:
+    name: carbide-ca-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+# Certificate for Temporal worker service
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: temporal-worker-tls
+  namespace: carbide
+spec:
+  secretName: temporal-worker-tls
+  duration: 2160h
+  renewBefore: 360h
+  commonName: temporal-worker
+  dnsNames:
+    - temporal-worker
+    - temporal-worker.carbide
+    - temporal-worker.carbide.svc
+    - temporal-worker.carbide.svc.cluster.local
+  usages:
+    - server auth
+    - client auth
+    - digital signature
+    - key encipherment
+  issuerRef:
+    name: carbide-ca-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io

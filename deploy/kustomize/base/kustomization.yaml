@@ -26,8 +26,13 @@ resources:
   - postgres/service.yaml
   - postgres/init-configmap.yaml
   - postgres/adminer.yaml
-  - temporal/deployment.yaml
-  - temporal/service.yaml
+  # Temporal multi-pod deployment with mTLS
+  - temporal/config.yaml
+  - temporal/multi-pod-deployment.yaml
+  - temporal/multi-pod-services.yaml
+  - temporal/certificates.yaml
+  - temporal/schema-job.yaml
+  - temporal/namespace-job.yaml
   - keycloak/deployment.yaml
   - keycloak/service.yaml
   - keycloak/realm-configmap.yaml
@@ -45,6 +50,7 @@ resources:
   - api/configmap.yaml
   - workflow/deployment.yaml
   - workflow/configmap.yaml
+  - workflow/certificate.yaml
   - elektraserver/deployment.yaml
   - elektraserver/service.yaml
   - site-agent/deployment.yaml

@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+
+# Certificate for workflow service Temporal client TLS
+# Issued by cert-manager.io using the native Go CA (no Vault required)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: workflow-temporal-client
+  namespace: carbide
+spec:
+  secretName: workflow-temporal-client-tls
+  duration: 2160h # 90 days
+  renewBefore: 360h # 15 days
+  commonName: workflow.carbide.local
+  dnsNames:
+    - workflow.carbide.local
+    - cloud-worker
+    - site-worker
+  usages:
+    - client auth
+    - digital signature
+    - key encipherment
+  issuerRef:
+    name: carbide-ca-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io

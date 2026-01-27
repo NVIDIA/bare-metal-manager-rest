@@ -48,4 +48,20 @@ data:
     
     \c keycloak
     GRANT ALL ON SCHEMA public TO keycloak;
+    
+    -- Create temporal databases (for Temporal workflow engine)
+    \c postgres
+    CREATE DATABASE temporal WITH ENCODING 'UTF8';
+    CREATE USER temporal WITH PASSWORD 'temporal';
+    GRANT ALL PRIVILEGES ON DATABASE temporal TO temporal;
+    
+    \c temporal
+    GRANT ALL ON SCHEMA public TO temporal;
+    
+    \c postgres
+    CREATE DATABASE temporal_visibility WITH ENCODING 'UTF8';
+    GRANT ALL PRIVILEGES ON DATABASE temporal_visibility TO temporal;
+    
+    \c temporal_visibility
+    GRANT ALL ON SCHEMA public TO temporal;
 

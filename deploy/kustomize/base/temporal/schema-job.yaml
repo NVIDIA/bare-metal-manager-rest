@@ -1,0 +1,99 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+
+# Temporal schema setup job
+# This job runs the temporal-sql-tool to set up database schemas
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: temporal-schema-setup
+  labels:
+    app: temporal
+    component: schema-setup
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: temporal
+        component: schema-setup
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        # Wait for postgres to be ready
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for postgres..."
+              until nc -z postgres.carbide.svc.cluster.local 5432; do
+                echo "Postgres not ready, waiting..."
+                sleep 2
+              done
+              echo "Postgres is ready!"
+      containers:
+        - name: temporal-schema-setup
+          image: temporalio/admin-tools:1.26.2
+          command:
+            - sh
+            - -c
+            - |
+              set -ex
+              
+              # Setup default database schema
+              echo "Setting up default database schema..."
+              temporal-sql-tool \
+                --plugin postgres12 \
+                --ep postgres.carbide.svc.cluster.local \
+                -p 5432 \
+                -u temporal \
+                --pw temporal \
+                --db temporal \
+                setup-schema -v 0.0
+              
+              temporal-sql-tool \
+                --plugin postgres12 \
+                --ep postgres.carbide.svc.cluster.local \
+                -p 5432 \
+                -u temporal \
+                --pw temporal \
+                --db temporal \
+                update-schema -d /etc/temporal/schema/postgresql/v12/temporal/versioned
+              
+              # Setup visibility database schema
+              echo "Setting up visibility database schema..."
+              temporal-sql-tool \
+                --plugin postgres12 \
+                --ep postgres.carbide.svc.cluster.local \
+                -p 5432 \
+                -u temporal \
+                --pw temporal \
+                --db temporal_visibility \
+                setup-schema -v 0.0
+              
+              temporal-sql-tool \
+                --plugin postgres12 \
+                --ep postgres.carbide.svc.cluster.local \
+                -p 5432 \
+                -u temporal \
+                --pw temporal \
+                --db temporal_visibility \
+                update-schema -d /etc/temporal/schema/postgresql/v12/visibility/versioned
+              
+              echo "Schema setup complete!"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"

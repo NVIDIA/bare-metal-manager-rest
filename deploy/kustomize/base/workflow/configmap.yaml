@@ -31,13 +31,17 @@ data:
       password: forge
 
     temporal:
-      host: temporal
+      host: temporal-frontend
       port: 7233
-      serverName: temporal
+      serverName: temporal-frontend
       namespace: cloud
       queue: cloud
       tls:
-        enabled: false
+        enabled: true
+        certPath: /var/secrets/temporal/certs/tls.crt
+        keyPath: /var/secrets/temporal/certs/tls.key
+        caPath: /var/secrets/temporal/certs/ca.crt
+        disableHostVerification: true
       encryptionKeyPath: /var/secrets/temporal/encryption-key
 
     ngc:

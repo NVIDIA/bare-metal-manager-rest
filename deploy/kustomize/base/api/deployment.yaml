@@ -46,6 +46,9 @@ spec:
             - name: temporal-encryption-key
               mountPath: /var/secrets/temporal
               readOnly: true
+            - name: temporal-tls-certs
+              mountPath: /var/secrets/temporal/certs
+              readOnly: true
           resources:
             requests:
               memory: "128Mi"
@@ -81,3 +84,6 @@ spec:
             items:
               - key: temporal-encryption-key
                 path: encryption-key
+        - name: temporal-tls-certs
+          secret:
+            secretName: workflow-temporal-client-tls

@@ -131,9 +131,13 @@ else
     fi
 fi
 
-# Create Temporal namespace
+# Create Temporal namespace for this site
+# Uses the multi-pod Temporal deployment with TLS
 echo "Creating Temporal namespace..."
-kubectl -n $NAMESPACE exec deployment/temporal -- temporal operator namespace create -n "$SITE_ID" 2>/dev/null || true
+kubectl -n $NAMESPACE run temporal-ns-create-$SITE_ID --rm -it --restart=Never \
+    --image=temporalio/admin-tools:1.26.2 \
+    --overrides='{"spec":{"containers":[{"name":"temporal-ns-create","image":"temporalio/admin-tools:1.26.2","command":["temporal","operator","namespace","create","'"$SITE_ID"'","--address","temporal-frontend:7233","--tls","--tls-disable-host-verification","--tls-ca-path","/etc/temporal/certs/ca.crt"],"volumeMounts":[{"name":"tls-certs","mountPath":"/etc/temporal/certs","readOnly":true}]}],"volumes":[{"name":"tls-certs","secret":{"secretName":"workflow-temporal-client-tls"}}]}}' \
+    2>/dev/null || true
 
 # Update site-agent configmap
 echo "Updating site-agent configuration..."
