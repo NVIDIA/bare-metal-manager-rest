@@ -20,8 +20,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
 	cClient "github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 func TestManageInstance_UpdateInstanceConfigOnSite(t *testing.T) {
@@ -74,9 +74,9 @@ func TestManageInstance_UpdateInstanceConfigOnSite(t *testing.T) {
 							Variant: &cwssaws.OperatingSystem_Ipxe{
 								Ipxe: &cwssaws.IpxeOperatingSystem{
 									IpxeScript: ipxeScript,
-									UserData:   &userData,
 								},
 							},
+							UserData: &userData,
 						},
 					},
 				},
@@ -147,9 +147,9 @@ func TestManageInstance_CreateInstanceOnSiteOnSite(t *testing.T) {
 							Variant: &cwssaws.OperatingSystem_Ipxe{
 								Ipxe: &cwssaws.IpxeOperatingSystem{
 									IpxeScript: ipxeScript,
-									UserData:   &userData,
 								},
 							},
+							UserData: &userData,
 						},
 					},
 				},
@@ -228,9 +228,9 @@ func TestManageInstance_CreateInstancesOnSite(t *testing.T) {
 									Variant: &cwssaws.OperatingSystem_Ipxe{
 										Ipxe: &cwssaws.IpxeOperatingSystem{
 											IpxeScript: ipxeScript,
-											UserData:   &userData,
 										},
 									},
+									UserData: &userData,
 								},
 							},
 						},
@@ -252,9 +252,9 @@ func TestManageInstance_CreateInstancesOnSite(t *testing.T) {
 									Variant: &cwssaws.OperatingSystem_Ipxe{
 										Ipxe: &cwssaws.IpxeOperatingSystem{
 											IpxeScript: ipxeScript,
-											UserData:   &userData,
 										},
 									},
+									UserData: &userData,
 								},
 							},
 						},
