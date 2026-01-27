@@ -156,6 +156,8 @@ done
 | `carbide-rest-db` | Database migrations (run to completion) |
 | `carbide-rest-cert-manager` | Certificate manager |
 
+
+
 ## Architecture
 
 | Service | Binary | Description |
@@ -172,6 +174,48 @@ Supporting modules:
 - **auth** - Authentication and authorization
 - **ipam** - IP Address Management
 
+## Pre-commit Hooks
+
+This project uses [pre-commit](https://pre-commit.com/) with [TruffleHog](https://github.com/trufflesecurity/trufflehog) for secret detection to prevent accidentally committing sensitive information like API keys, passwords, or tokens.
+
+### Setup
+
+```bash
+# Install pre-commit hooks (first time setup)
+make pre-commit-install
+```
+
+This will:
+1. Install `pre-commit` if not already installed
+2. Install `trufflehog` if not already installed
+3. Configure git hooks for pre-commit and pre-push
+
+### Usage
+
+Once installed, TruffleHog automatically scans your changes on every `git commit` and `git push`.
+
+To manually run the scan on all files:
+
+```bash
+make pre-commit-run
+```
+
+Example output:
+
+```
+❯ make pre-commit-run
+pre-commit run --all-files
+[INFO] Initializing environment for https://github.com/trufflesecurity/trufflehog.
+TruffleHog Secret Scan...................................................Passed
+```
+
+### Other Commands
+
+```bash
+make pre-commit-update  # Update hooks to latest versions
+```
+
 ## License
 
 See [LICENSE](LICENSE) for details.
+

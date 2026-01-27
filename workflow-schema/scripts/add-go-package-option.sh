@@ -1,27 +1,33 @@
 #!/bin/bash
 
-# Script to add go_package option to proto files if not already present
-# Usage: ./add_go_package_option.sh <proto_file>
+# Script to add go_package option to proto files
+# Removes any existing go_package option and adds the new one
+# Usage: ./add_go_package_option.sh <proto_file> <go_package_path>
 
 set -e
 
-if [ $# -eq 0 ]; then
-    echo "Usage: $0 <proto_file>"
+if [ $# -lt 2 ]; then
+    echo "Usage: $0 <proto_file> <go_package_path>"
+    echo "Example: $0 myfile.proto github.com/nvidia/carbide-rest/workflow-schema/proto"
     exit 1
 fi
 
 PROTO_FILE="$1"
-GO_PACKAGE_OPTION='option go_package = "github.com/nvidia/carbide-rest/workflow-schema/proto";'
+GO_PACKAGE_PATH="$2"
+GO_PACKAGE_OPTION="option go_package = \"$GO_PACKAGE_PATH\";"
 
 if [ ! -f "$PROTO_FILE" ]; then
     echo "Error: File '$PROTO_FILE' not found"
     exit 1
 fi
 
-# Check if the go_package option already exists
-if grep -qF "$GO_PACKAGE_OPTION" "$PROTO_FILE"; then
-    echo "File '$PROTO_FILE' already has go_package option. Skipping."
-    exit 0
+# Remove any existing go_package option
+if grep -q "^option go_package" "$PROTO_FILE"; then
+    echo "Removing existing go_package option from '$PROTO_FILE'"
+    # Create temp file without the go_package line
+    TEMP_FILE=$(mktemp)
+    grep -v "^option go_package" "$PROTO_FILE" > "$TEMP_FILE"
+    mv "$TEMP_FILE" "$PROTO_FILE"
 fi
 
 # Find the line number of the last import statement
@@ -64,4 +70,4 @@ NR == line {
 # Replace the original file with the modified one
 mv "$TEMP_FILE" "$PROTO_FILE"
 
-echo "Added go_package option to '$PROTO_FILE'"
+echo "Added go_package option '$GO_PACKAGE_PATH' to '$PROTO_FILE'"
