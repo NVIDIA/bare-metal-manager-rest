@@ -439,7 +439,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 		}
 	}
 
-	dbifcs := []cdbm.Interface{}
+	dbInterfaces := []cdbm.Interface{}
 	isInterfaceDeviceInfoPresent := false
 
 	for _, ifc := range apiRequest.Interfaces {
@@ -472,7 +472,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("VPC: %v specified in request must have Ethernet network virtualization type in order to create Subnet based interfaces", vpc.ID), nil)
 			}
 
-			dbifcs = append(dbifcs, cdbm.Interface{SubnetID: &subnetID, IsPhysical: ifc.IsPhysical, Status: cdbm.InterfaceStatusPending})
+			dbInterfaces = append(dbInterfaces, cdbm.Interface{SubnetID: &subnetID, IsPhysical: ifc.IsPhysical, Status: cdbm.InterfaceStatusPending})
 		}
 
 		if ifc.VpcPrefixID != nil {
@@ -508,7 +508,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 				isInterfaceDeviceInfoPresent = true
 			}
 
-			dbifcs = append(dbifcs, cdbm.Interface{
+			dbInterfaces = append(dbInterfaces, cdbm.Interface{
 				VpcPrefixID:       &vpcPrefixID,
 				Device:            ifc.Device,
 				DeviceInstance:    ifc.DeviceInstance,
@@ -994,7 +994,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 			}
 
 			// Validate DPU Interfaces if Instance Type DPU capability is present and matches with the request
-			err = apiRequest.ValidateMultiEthernetDeviceInterfaces(itDpuCaps, dbifcs)
+			err = apiRequest.ValidateMultiEthernetDeviceInterfaces(itDpuCaps, dbInterfaces)
 			if err != nil {
 				logger.Error().Msgf("DPU interfaces validation failed: %s", err)
 				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "DPU interfaces validation failed", err)
@@ -1153,7 +1153,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 	// The first Subnet is automatically added to the physical interface
 	ifcs := []cdbm.Interface{}
 	ifcDAO := cdbm.NewInterfaceDAO(cih.dbSession)
-	for _, dbifc := range dbifcs {
+	for _, dbifc := range dbInterfaces {
 		input := cdbm.InterfaceCreateInput{
 			InstanceID:        instance.ID,
 			SubnetID:          dbifc.SubnetID,
@@ -2115,7 +2115,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 	}
 
 	// Validate each Interface against fetched data
-	dbifcs := []cdbm.Interface{}
+	dbInterfaces := []cdbm.Interface{}
 	isDeviceInfoPresent := false
 
 	for _, ifc := range apiRequest.Interfaces {
@@ -2147,7 +2147,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("VPC: %v specified in request must have Ethernet network virtualization type in order to create Subnet based interfaces", instance.VpcID), nil)
 			}
 
-			dbifcs = append(dbifcs, cdbm.Interface{SubnetID: &subnetID, IsPhysical: ifc.IsPhysical, Status: cdbm.InterfaceStatusPending})
+			dbInterfaces = append(dbInterfaces, cdbm.Interface{SubnetID: &subnetID, IsPhysical: ifc.IsPhysical, Status: cdbm.InterfaceStatusPending})
 		}
 
 		if ifc.VpcPrefixID != nil {
@@ -2182,7 +2182,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 				isDeviceInfoPresent = true
 			}
 
-			dbifcs = append(dbifcs, cdbm.Interface{
+			dbInterfaces = append(dbInterfaces, cdbm.Interface{
 				VpcPrefixID:       &vpcPrefixID,
 				Device:            ifc.Device,
 				DeviceInstance:    ifc.DeviceInstance,
@@ -2218,7 +2218,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 		}
 
 		// Validate DPU Interfaces if Instance Type DPU capability is present and matches with the request
-		err = apiRequest.ValidateMultiEthernetDeviceInterfaces(itDpuCaps, dbifcs)
+		err = apiRequest.ValidateMultiEthernetDeviceInterfaces(itDpuCaps, dbInterfaces)
 		if err != nil {
 			logger.Error().Msgf("Failed to validate configuration for one or more multi-Ethernet device Interfaces: %s", err)
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate configuration for one or more multi-Ethernet device Interfaces", err)
@@ -2678,7 +2678,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 	// Create new Interface records in the DB if specified in request
 	var newdbIfcs []cdbm.Interface
 	if len(apiRequest.Interfaces) > 0 {
-		for _, dbifc := range dbifcs {
+		for _, dbifc := range dbInterfaces {
 			input := cdbm.InterfaceCreateInput{
 				InstanceID:        instance.ID,
 				SubnetID:          dbifc.SubnetID,

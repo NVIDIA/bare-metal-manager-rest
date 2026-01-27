@@ -465,31 +465,31 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 	// Batch fetch Subnets from DB
 	subnetIDMap := make(map[uuid.UUID]*cdbm.Subnet)
 	if len(subnetIDs) > 0 {
-		subnetList, _, err := subnetDAO.GetAll(ctx, nil, cdbm.SubnetFilterInput{SubnetIDs: subnetIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		subnets, _, err := subnetDAO.GetAll(ctx, nil, cdbm.SubnetFilterInput{SubnetIDs: subnetIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving Subnets from DB by IDs")
 			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Subnets from DB by IDs", nil)
 		}
-		for i := range subnetList {
-			subnetIDMap[subnetList[i].ID] = &subnetList[i]
+		for i := range subnets {
+			subnetIDMap[subnets[i].ID] = &subnets[i]
 		}
 	}
 
 	// Batch fetch VPC Prefixes from DB
 	vpcPrefixIDMap := make(map[uuid.UUID]*cdbm.VpcPrefix)
 	if len(vpcPrefixIDs) > 0 {
-		vpcPrefixList, _, err := vpDAO.GetAll(ctx, nil, cdbm.VpcPrefixFilterInput{VpcPrefixIDs: vpcPrefixIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		vpcPrefixes, _, err := vpDAO.GetAll(ctx, nil, cdbm.VpcPrefixFilterInput{VpcPrefixIDs: vpcPrefixIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving VPC Prefixes from DB by IDs")
 			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve VPC Prefixes from DB by IDs", nil)
 		}
-		for i := range vpcPrefixList {
-			vpcPrefixIDMap[vpcPrefixList[i].ID] = &vpcPrefixList[i]
+		for i := range vpcPrefixes {
+			vpcPrefixIDMap[vpcPrefixes[i].ID] = &vpcPrefixes[i]
 		}
 	}
 
-	// Validate each Interface against fetched data and build dbifcs
-	dbifcs := []cdbm.Interface{}
+	// Validate each Interface against fetched data and build dbInterfaces
+	dbInterfaces := []cdbm.Interface{}
 	isDeviceInfoPresent := false
 
 	for _, ifc := range apiRequest.Interfaces {
@@ -521,7 +521,7 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("VPC: %v specified in request must have Ethernet network virtualization type in order to create Subnet based interfaces", vpc.ID), nil)
 			}
 
-			dbifcs = append(dbifcs, cdbm.Interface{
+			dbInterfaces = append(dbInterfaces, cdbm.Interface{
 				SubnetID:   &subnetID,
 				IsPhysical: ifc.IsPhysical,
 				Status:     cdbm.InterfaceStatusPending,
@@ -560,7 +560,7 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 				isDeviceInfoPresent = true
 			}
 
-			dbifcs = append(dbifcs, cdbm.Interface{
+			dbInterfaces = append(dbInterfaces, cdbm.Interface{
 				VpcPrefixID:       &vpcPrefixUUID,
 				Device:            ifc.Device,
 				DeviceInstance:    ifc.DeviceInstance,
@@ -571,7 +571,7 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 		}
 	}
 
-	logger.Info().Int("uniqueSubnetCount", len(subnets)).Int("uniqueVpcPrefixCount", len(vpcPrefixes)).
+	logger.Info().Int("uniqueSubnetCount", len(subnetIDMap)).Int("uniqueVpcPrefixCount", len(vpcPrefixIDMap)).
 		Msg("validated all Subnets and VPC Prefixes (shared across all instances)")
 
 	// Validate DPU Extension Service Deployments (shared across all instances)
@@ -1003,7 +1003,7 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 		}
 
 		// Validate DPU interfaces against capabilities
-		err = model.ValidateMultiEthernetDeviceInterfaces(itDpuCaps, dbifcs)
+		err = model.ValidateMultiEthernetDeviceInterfaces(itDpuCaps, dbInterfaces)
 		if err != nil {
 			logger.Error().Err(err).Msg("DPU interfaces validation failed")
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest,
@@ -1254,9 +1254,9 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 	}
 
 	// --- Build and batch create Interfaces ---
-	ifcInputs := make([]cdbm.InterfaceCreateInput, 0, len(updatedInstances)*len(dbifcs))
+	ifcInputs := make([]cdbm.InterfaceCreateInput, 0, len(updatedInstances)*len(dbInterfaces))
 	for _, inst := range updatedInstances {
-		for _, dbifc := range dbifcs {
+		for _, dbifc := range dbInterfaces {
 			ifcInputs = append(ifcInputs, cdbm.InterfaceCreateInput{
 				InstanceID:        inst.ID,
 				SubnetID:          dbifc.SubnetID,
@@ -1412,11 +1412,11 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 		instCopy := inst // Make a copy to avoid loop variable capture
 		createdInstancesData[i] = instanceData{
 			instance:            &instCopy,
-			ifcs:                make([]cdbm.Interface, 0, len(dbifcs)),
+			ifcs:                make([]cdbm.Interface, 0, len(dbInterfaces)),
 			ibifcs:              make([]cdbm.InfiniBandInterface, 0, len(dbibic)),
 			nvlifcs:             make([]cdbm.NVLinkInterface, 0, len(dbnvlic)),
 			desds:               make([]cdbm.DpuExtensionServiceDeployment, 0, len(dpuServiceIDs)),
-			interfaceConfigs:    make([]*cwssaws.InstanceInterfaceConfig, 0, len(dbifcs)),
+			interfaceConfigs:    make([]*cwssaws.InstanceInterfaceConfig, 0, len(dbInterfaces)),
 			ibInterfaceConfigs:  make([]*cwssaws.InstanceIBInterfaceConfig, 0, len(dbibic)),
 			nvlInterfaceConfigs: make([]*cwssaws.InstanceNVLinkGpuConfig, 0, len(dbnvlic)),
 			desdConfigs:         make([]*cwssaws.InstanceDpuExtensionServiceConfig, 0, len(dpuServiceIDs)),
@@ -1440,11 +1440,11 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 		}
 		if ifc.SubnetID != nil {
 			interfaceConfig.NetworkSegmentId = &cwssaws.NetworkSegmentId{
-				Value: subnets[*ifc.SubnetID].ControllerNetworkSegmentID.String(),
+				Value: subnetIDMap[*ifc.SubnetID].ControllerNetworkSegmentID.String(),
 			}
 			interfaceConfig.NetworkDetails = &cwssaws.InstanceInterfaceConfig_SegmentId{
 				SegmentId: &cwssaws.NetworkSegmentId{
-					Value: subnets[*ifc.SubnetID].ControllerNetworkSegmentID.String(),
+					Value: subnetIDMap[*ifc.SubnetID].ControllerNetworkSegmentID.String(),
 				},
 			}
 		}
