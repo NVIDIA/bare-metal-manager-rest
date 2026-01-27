@@ -29,16 +29,16 @@ func init() {
 			handlePanic(terr, "failed to begin transaction")
 		}
 
-		// Add labels column to InfiniBandPartition table
+		// Add labels column to infiniband_partition table
 		_, err := tx.NewAddColumn().Model((*model.InfiniBandPartition)(nil)).IfNotExists().ColumnExpr("labels JSONB NOT NULL DEFAULT ('{}')").Exec(ctx)
 		handleError(tx, err)
 
-		// Drop if the existing infiniband_partition_gin_idx exists
-		_, err = tx.Exec("DROP INDEX IF EXISTS infiniband_partition_gin_idx")
+		// Drop if the existing infiniband_partition_tsv_idx exists
+		_, err = tx.Exec("DROP INDEX IF EXISTS infiniband_partition_tsv_idx")
 		handleError(tx, err)
 
-		// Recreate the GIN index with labels included for text search
-		_, err = tx.Exec("CREATE INDEX infiniband_partition_gin_idx ON public.infiniband_partition USING GIN (name gin_trgm_ops, description gin_trgm_ops, partition_key gin_trgm_ops, partition_name gin_trgm_ops, status gin_trgm_ops, labels gin_trgm_ops)")
+		// Add tsv index which includes labels for infiniband_partition table
+		_, err = tx.Exec("CREATE INDEX infiniband_partition_tsv_idx ON infiniband_partition USING gin(to_tsvector('english', name || ' ' || description || ' ' || partition_key || ' ' || partition_name || ' ' || status || ' ' || labels::text))")
 		handleError(tx, err)
 
 		terr = tx.Commit()
