@@ -22,9 +22,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
-	"github.com/rs/zerolog/log"
 	"github.com/nvidia/carbide-rest/site-agent/pkg/conftypes"
 	"github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -131,7 +131,7 @@ func NewElektraConfig(utMode bool) *conftypes.Config {
 	// RLA config
 	flag.StringVar(&conf.RLA.Address, "rlaAddress", os.Getenv("RLA_ADDRESS"), "RLA Address")
 	if conf.RLA.Address == "" {
-		conf.RLA.Address = "rla-api.rla-system.svc.cluster.local:11080"
+		conf.RLA.Address = "rla.rla.svc.cluster.local:50051"
 	}
 	rlaSecOpt, err := strconv.Atoi(os.Getenv("RLA_SEC_OPT"))
 	if err != nil {
@@ -217,6 +217,7 @@ func NewElektraConfig(utMode bool) *conftypes.Config {
 	conf.DisableBootstrap = strings.ToLower(disableBootstrap) == "true"
 	conf.Carbide.SkipServerAuth = strings.ToLower(skipServerAuth) == "true"
 	conf.RLA.SkipServerAuth = strings.ToLower(skipRlaServerAuth) == "true"
+	conf.RLA.Enabled = strings.ToLower(os.Getenv("RLA_ENABLED")) == "true"
 
 	// Initialize the WatcherInterval to default if not defined
 	if watcherInterval == "" {

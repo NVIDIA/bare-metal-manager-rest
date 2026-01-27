@@ -91,12 +91,13 @@ type CarbideConfig struct {
 
 // RLAConfig holds configurations for connecting to RLA server
 type RLAConfig struct {
-	Address        string                      `json:"rlaAddress"`
+	Enabled        bool                          `json:"rlaEnabled"`
+	Address        string                        `json:"rlaAddress"`
 	Secure         client.RlaClientSecureOptions `json:"rlaSecureOptions"`
-	SkipServerAuth bool                        `json:"rlaSkipServerAuth"`
-	ServerCAPath   string                      `json:"rlaCertPath"`
-	ClientCertPath string                      `json:"rlaClientCertPath"`
-	ClientKeyPath  string                      `json:"rlaClientKeyPath"`
+	SkipServerAuth bool                          `json:"rlaSkipServerAuth"`
+	ServerCAPath   string                        `json:"rlaCertPath"`
+	ClientCertPath string                        `json:"rlaClientCertPath"`
+	ClientKeyPath  string                        `json:"rlaClientKeyPath"`
 }
 
 // DBConfig is the Elektra data store

@@ -45,6 +45,12 @@ func (rla *API) Init() {
 func (rla *API) Start() {
 	ManagerAccess.Data.EB.Log.Info().Msg("RLA: Starting RLA manager")
 
+	// Check if RLA is enabled via environment variable
+	if !ManagerAccess.Conf.EB.RLA.Enabled {
+		ManagerAccess.Data.EB.Log.Info().Msg("RLA: RLA is disabled, skipping gRPC client initialization")
+		return
+	}
+
 	// Create the client here
 	// Each workflow will check and reinitialize the client if needed
 	if err := rla.CreateGrpcClient(); err != nil {
