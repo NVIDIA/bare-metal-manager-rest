@@ -3677,6 +3677,103 @@ func (x *GetTasksByIDsResponse) GetTasks() []*Task {
 	return nil
 }
 
+// Version API messages
+type VersionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VersionRequest) Reset() {
+	*x = VersionRequest{}
+	mi := &file_rla_proto_msgTypes[57]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VersionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VersionRequest) ProtoMessage() {}
+
+func (x *VersionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_rla_proto_msgTypes[57]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VersionRequest.ProtoReflect.Descriptor instead.
+func (*VersionRequest) Descriptor() ([]byte, []int) {
+	return file_rla_proto_rawDescGZIP(), []int{57}
+}
+
+type BuildInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Version       string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`                      // e.g., v2025.11.19
+	BuildTime     string                 `protobuf:"bytes,2,opt,name=build_time,json=buildTime,proto3" json:"build_time,omitempty"` // e.g., 2025-01-27T10:30:00Z
+	GitCommit     string                 `protobuf:"bytes,3,opt,name=git_commit,json=gitCommit,proto3" json:"git_commit,omitempty"` // e.g., abc1234
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BuildInfo) Reset() {
+	*x = BuildInfo{}
+	mi := &file_rla_proto_msgTypes[58]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BuildInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BuildInfo) ProtoMessage() {}
+
+func (x *BuildInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_rla_proto_msgTypes[58]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BuildInfo.ProtoReflect.Descriptor instead.
+func (*BuildInfo) Descriptor() ([]byte, []int) {
+	return file_rla_proto_rawDescGZIP(), []int{58}
+}
+
+func (x *BuildInfo) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *BuildInfo) GetBuildTime() string {
+	if x != nil {
+		return x.BuildTime
+	}
+	return ""
+}
+
+func (x *BuildInfo) GetGitCommit() string {
+	if x != nil {
+		return x.GitCommit
+	}
+	return ""
+}
+
 var File_rla_proto protoreflect.FileDescriptor
 
 const file_rla_proto_rawDesc = "" +
@@ -3952,7 +4049,14 @@ const file_rla_proto_rawDesc = "" +
 	"\x14GetTasksByIDsRequest\x12#\n" +
 	"\btask_ids\x18\x01 \x03(\v2\b.v1.UUIDR\ataskIds\"7\n" +
 	"\x15GetTasksByIDsResponse\x12\x1e\n" +
-	"\x05tasks\x18\x01 \x03(\v2\b.v1.TaskR\x05tasks*D\n" +
+	"\x05tasks\x18\x01 \x03(\v2\b.v1.TaskR\x05tasks\"\x10\n" +
+	"\x0eVersionRequest\"c\n" +
+	"\tBuildInfo\x12\x18\n" +
+	"\aversion\x18\x01 \x01(\tR\aversion\x12\x1d\n" +
+	"\n" +
+	"build_time\x18\x02 \x01(\tR\tbuildTime\x12\x1d\n" +
+	"\n" +
+	"git_commit\x18\x03 \x01(\tR\tgitCommit*D\n" +
 	"\aBMCType\x12\x14\n" +
 	"\x10BMC_TYPE_UNKNOWN\x10\x00\x12\x11\n" +
 	"\rBMC_TYPE_HOST\x10\x01\x12\x10\n" +
@@ -3989,8 +4093,9 @@ const file_rla_proto_rawDesc = "" +
 	"\x11DIFF_TYPE_UNKNOWN\x10\x00\x12\x1e\n" +
 	"\x1aDIFF_TYPE_ONLY_IN_EXPECTED\x10\x01\x12\x1c\n" +
 	"\x18DIFF_TYPE_ONLY_IN_ACTUAL\x10\x02\x12\x13\n" +
-	"\x0fDIFF_TYPE_DRIFT\x10\x032\xef\f\n" +
-	"\x03RLA\x12S\n" +
+	"\x0fDIFF_TYPE_DRIFT\x10\x032\x9d\r\n" +
+	"\x03RLA\x12,\n" +
+	"\aVersion\x12\x12.v1.VersionRequest\x1a\r.v1.BuildInfo\x12S\n" +
 	"\x12CreateExpectedRack\x12\x1d.v1.CreateExpectedRackRequest\x1a\x1e.v1.CreateExpectedRackResponse\x128\n" +
 	"\tPatchRack\x12\x14.v1.PatchRackRequest\x1a\x15.v1.PatchRackResponse\x12F\n" +
 	"\x0fGetRackInfoByID\x12\x1a.v1.GetRackInfoByIDRequest\x1a\x17.v1.GetRackInfoResponse\x12N\n" +
@@ -4026,7 +4131,7 @@ func file_rla_proto_rawDescGZIP() []byte {
 }
 
 var file_rla_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
-var file_rla_proto_msgTypes = make([]protoimpl.MessageInfo, 57)
+var file_rla_proto_msgTypes = make([]protoimpl.MessageInfo, 59)
 var file_rla_proto_goTypes = []any{
 	(BMCType)(0),                            // 0: v1.BMCType
 	(ComponentType)(0),                      // 1: v1.ComponentType
@@ -4091,8 +4196,10 @@ var file_rla_proto_goTypes = []any{
 	(*ListTasksResponse)(nil),               // 60: v1.ListTasksResponse
 	(*GetTasksByIDsRequest)(nil),            // 61: v1.GetTasksByIDsRequest
 	(*GetTasksByIDsResponse)(nil),           // 62: v1.GetTasksByIDsResponse
-	(*timestamppb.Timestamp)(nil),           // 63: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),                   // 64: google.protobuf.Empty
+	(*VersionRequest)(nil),                  // 63: v1.VersionRequest
+	(*BuildInfo)(nil),                       // 64: v1.BuildInfo
+	(*timestamppb.Timestamp)(nil),           // 65: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),                   // 66: google.protobuf.Empty
 }
 var file_rla_proto_depIdxs = []int32{
 	6,  // 0: v1.DeviceInfo.id:type_name -> v1.UUID
@@ -4107,7 +4214,7 @@ var file_rla_proto_depIdxs = []int32{
 	11, // 9: v1.ActualComponent.position:type_name -> v1.RackPosition
 	10, // 10: v1.ActualComponent.bmcs:type_name -> v1.BMCInfo
 	6,  // 11: v1.ActualComponent.rack_id:type_name -> v1.UUID
-	63, // 12: v1.ActualComponent.last_seen:type_name -> google.protobuf.Timestamp
+	65, // 12: v1.ActualComponent.last_seen:type_name -> google.protobuf.Timestamp
 	7,  // 13: v1.Rack.info:type_name -> v1.DeviceInfo
 	8,  // 14: v1.Rack.location:type_name -> v1.Location
 	12, // 15: v1.Rack.components:type_name -> v1.Component
@@ -4149,8 +4256,8 @@ var file_rla_proto_depIdxs = []int32{
 	15, // 51: v1.GetRacksForNVLDomainRequest.nvl_domain_identifier:type_name -> v1.Identifier
 	14, // 52: v1.GetRacksForNVLDomainResponse.racks:type_name -> v1.Rack
 	16, // 53: v1.UpgradeFirmwareRequest.target_spec:type_name -> v1.OperationTargetSpec
-	63, // 54: v1.UpgradeFirmwareRequest.start_time:type_name -> google.protobuf.Timestamp
-	63, // 55: v1.UpgradeFirmwareRequest.end_time:type_name -> google.protobuf.Timestamp
+	65, // 54: v1.UpgradeFirmwareRequest.start_time:type_name -> google.protobuf.Timestamp
+	65, // 55: v1.UpgradeFirmwareRequest.end_time:type_name -> google.protobuf.Timestamp
 	16, // 56: v1.GetExpectedComponentsRequest.target_spec:type_name -> v1.OperationTargetSpec
 	23, // 57: v1.GetExpectedComponentsRequest.pagination:type_name -> v1.Pagination
 	12, // 58: v1.GetExpectedComponentsResponse.components:type_name -> v1.Component
@@ -4172,50 +4279,52 @@ var file_rla_proto_depIdxs = []int32{
 	25, // 74: v1.ListTasksResponse.tasks:type_name -> v1.Task
 	6,  // 75: v1.GetTasksByIDsRequest.task_ids:type_name -> v1.UUID
 	25, // 76: v1.GetTasksByIDsResponse.tasks:type_name -> v1.Task
-	26, // 77: v1.RLA.CreateExpectedRack:input_type -> v1.CreateExpectedRackRequest
-	31, // 78: v1.RLA.PatchRack:input_type -> v1.PatchRackRequest
-	28, // 79: v1.RLA.GetRackInfoByID:input_type -> v1.GetRackInfoByIDRequest
-	29, // 80: v1.RLA.GetRackInfoBySerial:input_type -> v1.GetRackInfoBySerialRequest
-	33, // 81: v1.RLA.GetComponentInfoByID:input_type -> v1.GetComponentInfoByIDRequest
-	34, // 82: v1.RLA.GetComponentInfoBySerial:input_type -> v1.GetComponentInfoBySerialRequest
-	36, // 83: v1.RLA.GetListOfRacks:input_type -> v1.GetListOfRacksRequest
-	38, // 84: v1.RLA.CreateNVLDomain:input_type -> v1.CreateNVLDomainRequest
-	40, // 85: v1.RLA.AttachRacksToNVLDomain:input_type -> v1.AttachRacksToNVLDomainRequest
-	41, // 86: v1.RLA.DetachRacksFromNVLDomain:input_type -> v1.DetachRacksFromNVLDomainRequest
-	42, // 87: v1.RLA.GetListOfNVLDomains:input_type -> v1.GetListOfNVLDomainsRequest
-	44, // 88: v1.RLA.GetRacksForNVLDomain:input_type -> v1.GetRacksForNVLDomainRequest
-	46, // 89: v1.RLA.UpgradeFirmware:input_type -> v1.UpgradeFirmwareRequest
-	47, // 90: v1.RLA.GetExpectedComponents:input_type -> v1.GetExpectedComponentsRequest
-	49, // 91: v1.RLA.GetActualComponents:input_type -> v1.GetActualComponentsRequest
-	51, // 92: v1.RLA.ValidateComponents:input_type -> v1.ValidateComponentsRequest
-	56, // 93: v1.RLA.PowerOnRack:input_type -> v1.PowerOnRackRequest
-	57, // 94: v1.RLA.PowerOffRack:input_type -> v1.PowerOffRackRequest
-	58, // 95: v1.RLA.PowerResetRack:input_type -> v1.PowerResetRackRequest
-	59, // 96: v1.RLA.ListTasks:input_type -> v1.ListTasksRequest
-	61, // 97: v1.RLA.GetTasksByIDs:input_type -> v1.GetTasksByIDsRequest
-	27, // 98: v1.RLA.CreateExpectedRack:output_type -> v1.CreateExpectedRackResponse
-	32, // 99: v1.RLA.PatchRack:output_type -> v1.PatchRackResponse
-	30, // 100: v1.RLA.GetRackInfoByID:output_type -> v1.GetRackInfoResponse
-	30, // 101: v1.RLA.GetRackInfoBySerial:output_type -> v1.GetRackInfoResponse
-	35, // 102: v1.RLA.GetComponentInfoByID:output_type -> v1.GetComponentInfoResponse
-	35, // 103: v1.RLA.GetComponentInfoBySerial:output_type -> v1.GetComponentInfoResponse
-	37, // 104: v1.RLA.GetListOfRacks:output_type -> v1.GetListOfRacksResponse
-	39, // 105: v1.RLA.CreateNVLDomain:output_type -> v1.CreateNVLDomainResponse
-	64, // 106: v1.RLA.AttachRacksToNVLDomain:output_type -> google.protobuf.Empty
-	64, // 107: v1.RLA.DetachRacksFromNVLDomain:output_type -> google.protobuf.Empty
-	43, // 108: v1.RLA.GetListOfNVLDomains:output_type -> v1.GetListOfNVLDomainsResponse
-	45, // 109: v1.RLA.GetRacksForNVLDomain:output_type -> v1.GetRacksForNVLDomainResponse
-	55, // 110: v1.RLA.UpgradeFirmware:output_type -> v1.SubmitTaskResponse
-	48, // 111: v1.RLA.GetExpectedComponents:output_type -> v1.GetExpectedComponentsResponse
-	50, // 112: v1.RLA.GetActualComponents:output_type -> v1.GetActualComponentsResponse
-	52, // 113: v1.RLA.ValidateComponents:output_type -> v1.ValidateComponentsResponse
-	55, // 114: v1.RLA.PowerOnRack:output_type -> v1.SubmitTaskResponse
-	55, // 115: v1.RLA.PowerOffRack:output_type -> v1.SubmitTaskResponse
-	55, // 116: v1.RLA.PowerResetRack:output_type -> v1.SubmitTaskResponse
-	60, // 117: v1.RLA.ListTasks:output_type -> v1.ListTasksResponse
-	62, // 118: v1.RLA.GetTasksByIDs:output_type -> v1.GetTasksByIDsResponse
-	98, // [98:119] is the sub-list for method output_type
-	77, // [77:98] is the sub-list for method input_type
+	63, // 77: v1.RLA.Version:input_type -> v1.VersionRequest
+	26, // 78: v1.RLA.CreateExpectedRack:input_type -> v1.CreateExpectedRackRequest
+	31, // 79: v1.RLA.PatchRack:input_type -> v1.PatchRackRequest
+	28, // 80: v1.RLA.GetRackInfoByID:input_type -> v1.GetRackInfoByIDRequest
+	29, // 81: v1.RLA.GetRackInfoBySerial:input_type -> v1.GetRackInfoBySerialRequest
+	33, // 82: v1.RLA.GetComponentInfoByID:input_type -> v1.GetComponentInfoByIDRequest
+	34, // 83: v1.RLA.GetComponentInfoBySerial:input_type -> v1.GetComponentInfoBySerialRequest
+	36, // 84: v1.RLA.GetListOfRacks:input_type -> v1.GetListOfRacksRequest
+	38, // 85: v1.RLA.CreateNVLDomain:input_type -> v1.CreateNVLDomainRequest
+	40, // 86: v1.RLA.AttachRacksToNVLDomain:input_type -> v1.AttachRacksToNVLDomainRequest
+	41, // 87: v1.RLA.DetachRacksFromNVLDomain:input_type -> v1.DetachRacksFromNVLDomainRequest
+	42, // 88: v1.RLA.GetListOfNVLDomains:input_type -> v1.GetListOfNVLDomainsRequest
+	44, // 89: v1.RLA.GetRacksForNVLDomain:input_type -> v1.GetRacksForNVLDomainRequest
+	46, // 90: v1.RLA.UpgradeFirmware:input_type -> v1.UpgradeFirmwareRequest
+	47, // 91: v1.RLA.GetExpectedComponents:input_type -> v1.GetExpectedComponentsRequest
+	49, // 92: v1.RLA.GetActualComponents:input_type -> v1.GetActualComponentsRequest
+	51, // 93: v1.RLA.ValidateComponents:input_type -> v1.ValidateComponentsRequest
+	56, // 94: v1.RLA.PowerOnRack:input_type -> v1.PowerOnRackRequest
+	57, // 95: v1.RLA.PowerOffRack:input_type -> v1.PowerOffRackRequest
+	58, // 96: v1.RLA.PowerResetRack:input_type -> v1.PowerResetRackRequest
+	59, // 97: v1.RLA.ListTasks:input_type -> v1.ListTasksRequest
+	61, // 98: v1.RLA.GetTasksByIDs:input_type -> v1.GetTasksByIDsRequest
+	64, // 99: v1.RLA.Version:output_type -> v1.BuildInfo
+	27, // 100: v1.RLA.CreateExpectedRack:output_type -> v1.CreateExpectedRackResponse
+	32, // 101: v1.RLA.PatchRack:output_type -> v1.PatchRackResponse
+	30, // 102: v1.RLA.GetRackInfoByID:output_type -> v1.GetRackInfoResponse
+	30, // 103: v1.RLA.GetRackInfoBySerial:output_type -> v1.GetRackInfoResponse
+	35, // 104: v1.RLA.GetComponentInfoByID:output_type -> v1.GetComponentInfoResponse
+	35, // 105: v1.RLA.GetComponentInfoBySerial:output_type -> v1.GetComponentInfoResponse
+	37, // 106: v1.RLA.GetListOfRacks:output_type -> v1.GetListOfRacksResponse
+	39, // 107: v1.RLA.CreateNVLDomain:output_type -> v1.CreateNVLDomainResponse
+	66, // 108: v1.RLA.AttachRacksToNVLDomain:output_type -> google.protobuf.Empty
+	66, // 109: v1.RLA.DetachRacksFromNVLDomain:output_type -> google.protobuf.Empty
+	43, // 110: v1.RLA.GetListOfNVLDomains:output_type -> v1.GetListOfNVLDomainsResponse
+	45, // 111: v1.RLA.GetRacksForNVLDomain:output_type -> v1.GetRacksForNVLDomainResponse
+	55, // 112: v1.RLA.UpgradeFirmware:output_type -> v1.SubmitTaskResponse
+	48, // 113: v1.RLA.GetExpectedComponents:output_type -> v1.GetExpectedComponentsResponse
+	50, // 114: v1.RLA.GetActualComponents:output_type -> v1.GetActualComponentsResponse
+	52, // 115: v1.RLA.ValidateComponents:output_type -> v1.ValidateComponentsResponse
+	55, // 116: v1.RLA.PowerOnRack:output_type -> v1.SubmitTaskResponse
+	55, // 117: v1.RLA.PowerOffRack:output_type -> v1.SubmitTaskResponse
+	55, // 118: v1.RLA.PowerResetRack:output_type -> v1.SubmitTaskResponse
+	60, // 119: v1.RLA.ListTasks:output_type -> v1.ListTasksResponse
+	62, // 120: v1.RLA.GetTasksByIDs:output_type -> v1.GetTasksByIDsResponse
+	99, // [99:121] is the sub-list for method output_type
+	77, // [77:99] is the sub-list for method input_type
 	77, // [77:77] is the sub-list for extension type_name
 	77, // [77:77] is the sub-list for extension extendee
 	0,  // [0:77] is the sub-list for field type_name
@@ -4252,7 +4361,7 @@ func file_rla_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_rla_proto_rawDesc), len(file_rla_proto_rawDesc)),
 			NumEnums:      6,
-			NumMessages:   57,
+			NumMessages:   59,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

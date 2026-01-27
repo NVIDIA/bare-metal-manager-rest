@@ -20,6 +20,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
+	RLA_Version_FullMethodName                  = "/v1.RLA/Version"
 	RLA_CreateExpectedRack_FullMethodName       = "/v1.RLA/CreateExpectedRack"
 	RLA_PatchRack_FullMethodName                = "/v1.RLA/PatchRack"
 	RLA_GetRackInfoByID_FullMethodName          = "/v1.RLA/GetRackInfoByID"
@@ -47,6 +48,8 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type RLAClient interface {
+	// What version of RLA is this service running?
+	Version(ctx context.Context, in *VersionRequest, opts ...grpc.CallOption) (*BuildInfo, error)
 	CreateExpectedRack(ctx context.Context, in *CreateExpectedRackRequest, opts ...grpc.CallOption) (*CreateExpectedRackResponse, error)
 	PatchRack(ctx context.Context, in *PatchRackRequest, opts ...grpc.CallOption) (*PatchRackResponse, error)
 	GetRackInfoByID(ctx context.Context, in *GetRackInfoByIDRequest, opts ...grpc.CallOption) (*GetRackInfoResponse, error)
@@ -79,6 +82,16 @@ type rLAClient struct {
 
 func NewRLAClient(cc grpc.ClientConnInterface) RLAClient {
 	return &rLAClient{cc}
+}
+
+func (c *rLAClient) Version(ctx context.Context, in *VersionRequest, opts ...grpc.CallOption) (*BuildInfo, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BuildInfo)
+	err := c.cc.Invoke(ctx, RLA_Version_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *rLAClient) CreateExpectedRack(ctx context.Context, in *CreateExpectedRackRequest, opts ...grpc.CallOption) (*CreateExpectedRackResponse, error) {
@@ -295,6 +308,8 @@ func (c *rLAClient) GetTasksByIDs(ctx context.Context, in *GetTasksByIDsRequest,
 // All implementations should embed UnimplementedRLAServer
 // for forward compatibility.
 type RLAServer interface {
+	// What version of RLA is this service running?
+	Version(context.Context, *VersionRequest) (*BuildInfo, error)
 	CreateExpectedRack(context.Context, *CreateExpectedRackRequest) (*CreateExpectedRackResponse, error)
 	PatchRack(context.Context, *PatchRackRequest) (*PatchRackResponse, error)
 	GetRackInfoByID(context.Context, *GetRackInfoByIDRequest) (*GetRackInfoResponse, error)
@@ -328,6 +343,9 @@ type RLAServer interface {
 // pointer dereference when methods are called.
 type UnimplementedRLAServer struct{}
 
+func (UnimplementedRLAServer) Version(context.Context, *VersionRequest) (*BuildInfo, error) {
+	return nil, status.Error(codes.Unimplemented, "method Version not implemented")
+}
 func (UnimplementedRLAServer) CreateExpectedRack(context.Context, *CreateExpectedRackRequest) (*CreateExpectedRackResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateExpectedRack not implemented")
 }
@@ -409,6 +427,24 @@ func RegisterRLAServer(s grpc.ServiceRegistrar, srv RLAServer) {
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&RLA_ServiceDesc, srv)
+}
+
+func _RLA_Version_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VersionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RLAServer).Version(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RLA_Version_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RLAServer).Version(ctx, req.(*VersionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _RLA_CreateExpectedRack_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -796,6 +832,10 @@ var RLA_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "v1.RLA",
 	HandlerType: (*RLAServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Version",
+			Handler:    _RLA_Version_Handler,
+		},
 		{
 			MethodName: "CreateExpectedRack",
 			Handler:    _RLA_CreateExpectedRack_Handler,
