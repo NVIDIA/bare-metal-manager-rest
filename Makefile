@@ -140,13 +140,25 @@ carbide-protogen:
 	cd workflow-schema && buf generate
 
 rla-proto:
-	if [ -d ${RLA_REPO_PATH} ]; then cd ${RLA_REPO_PATH} && git pull; else echo "RLA repository path expected in \"RLA_REPO_PATH\", but not found"; exit 1; fi
-	ls ${RLA_REPO_PATH}/proto/v1
-	@for file in ${RLA_REPO_PATH}/proto/v1/*.proto; do \
+	@# Support two modes: RLA_REPO_URL (auto-clone) or RLA_REPO_PATH (existing repo)
+	@if [ -n "$${RLA_REPO_URL}" ]; then \
+		echo "Using RLA_REPO_URL: cloning to local 'rla' directory..."; \
+		if [ -d "rla" ]; then cd rla && git pull; else git clone "$${RLA_REPO_URL}" rla; fi; \
+	elif [ -z "$${RLA_REPO_PATH}" ]; then \
+		echo "Error: Set RLA_REPO_PATH (existing repo) or RLA_REPO_URL (to clone)"; exit 1; \
+	elif [ ! -d "$${RLA_REPO_PATH}" ]; then \
+		echo "Error: RLA_REPO_PATH directory not found: $${RLA_REPO_PATH}"; exit 1; \
+	else \
+		cd "$${RLA_REPO_PATH}" && git pull; \
+	fi
+	@if [ -n "$${RLA_REPO_URL}" ]; then RLA_DIR=rla; else RLA_DIR="$${RLA_REPO_PATH}"; fi; \
+	ls "$${RLA_DIR}/proto/v1"; \
+	for file in "$${RLA_DIR}"/proto/v1/*.proto; do \
 		cp "$$file" "workflow-schema/rla/proto/v1/"; \
 		echo "Copied: $$file"; \
-		./workflow-schema/scripts/add-go-package-option.sh "workflow-schema/rla/proto/v1/$$(basename "$$file" .proto).proto" "github.com/nvidia/carbide-rest/workflow-schema/rla"; \
-	done
+		./workflow-schema/scripts/add-go-package-option.sh "workflow-schema/rla/proto/v1/$$(basename "$$file")" "github.com/nvidia/carbide-rest/workflow-schema/rla"; \
+	done; \
+	if [ -n "$${RLA_REPO_URL}" ]; then rm -rf rla; fi
 
 rla-protogen:
 	echo "Generating protobuf for RLA"

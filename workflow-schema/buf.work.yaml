@@ -12,4 +12,3 @@
 version: v1
 directories:
   - site-agent/workflows/v1
-  - site-agent/rla/v1
