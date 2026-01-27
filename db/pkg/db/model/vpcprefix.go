@@ -10,7 +10,6 @@
  * its affiliates is strictly prohibited.
  */
 
-
 package model
 
 import (
@@ -118,6 +117,7 @@ type VpcPrefixUpdateInput struct {
 
 // VpcPrefixFilterInput input parameters for Filter method
 type VpcPrefixFilterInput struct {
+	VpcPrefixIDs  []uuid.UUID
 	Names         []string
 	VpcIDs        []uuid.UUID
 	TenantOrgs    []string
@@ -264,6 +264,10 @@ func (vpsd VpcPrefixSQLDAO) GetAll(ctx context.Context, tx *db.Tx, filter VpcPre
 	vps := []VpcPrefix{}
 
 	query := db.GetIDB(tx, vpsd.dbSession).NewSelect().Model(&vps)
+	if filter.VpcPrefixIDs != nil {
+		query = query.Where("vp.id IN (?)", bun.In(filter.VpcPrefixIDs))
+		vpsd.tracerSpan.SetAttribute(vpDAOSpan, "vpc_prefix_ids", filter.VpcPrefixIDs)
+	}
 	if filter.Names != nil {
 		query = query.Where("vp.name IN (?)", bun.In(filter.Names))
 		vpsd.tracerSpan.SetAttribute(vpDAOSpan, "name", filter.Names)

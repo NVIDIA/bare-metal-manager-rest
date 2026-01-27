@@ -434,18 +434,15 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "The Site where Instances are being created is not in Registered state", nil)
 	}
 
-	// Load and validate subnets and VPC prefixes (per-instance, deduplicated for efficiency)
-	// Also build dbifcs for each instance
-	subnets := make(map[uuid.UUID]*cdbm.Subnet)
-	vpcPrefixes := make(map[uuid.UUID]*cdbm.VpcPrefix)
-	dbifcs := []cdbm.Interface{}
-	isDeviceInfoPresent := false
+	// Load and validate subnets and VPC prefixes (batch query for efficiency)
 	subnetDAO := cdbm.NewSubnetDAO(bcih.dbSession)
 	vpDAO := cdbm.NewVpcPrefixDAO(bcih.dbSession)
 
-	// Process shared Interfaces (same for all instances)
+	// Collect all Subnet and VPC Prefix IDs for batch query
+	subnetIDs := []uuid.UUID{}
+	vpcPrefixIDs := []uuid.UUID{}
+
 	for _, ifc := range apiRequest.Interfaces {
-		// Process Subnet IDs
 		if ifc.SubnetID != nil {
 			subnetID, err := uuid.Parse(*ifc.SubnetID)
 			if err != nil {
@@ -453,96 +450,117 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 					Msg("error parsing subnet id")
 				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid Subnet ID format", nil)
 			}
+			subnetIDs = append(subnetIDs, subnetID)
+		}
+		if ifc.VpcPrefixID != nil {
+			vpcPrefixID, err := uuid.Parse(*ifc.VpcPrefixID)
+			if err != nil {
+				logger.Warn().Err(err).Msg("error parsing vpcprefix id in instance vpcprefix request")
+				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "VPC Prefix ID specified in request data is not valid", nil)
+			}
+			vpcPrefixIDs = append(vpcPrefixIDs, vpcPrefixID)
+		}
+	}
 
-			if subnets[subnetID] == nil {
-				subnet, err := subnetDAO.GetByID(ctx, nil, subnetID, nil)
-				if err != nil {
-					if err == cdb.ErrDoesNotExist {
-						return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Could not find Subnet with ID specified in request data", nil)
-					}
-					logger.Error().Err(err).Msg("error retrieving Subnet from DB by ID")
-					return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Subnet with ID specified in request data", nil)
-				}
+	// Batch fetch Subnets from DB
+	subnetIDMap := make(map[uuid.UUID]*cdbm.Subnet)
+	if len(subnetIDs) > 0 {
+		subnets, _, err := subnetDAO.GetAll(ctx, nil, cdbm.SubnetFilterInput{SubnetIDs: subnetIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		if err != nil {
+			logger.Error().Err(err).Msg("error retrieving Subnets from DB by IDs")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Subnets from DB by IDs", nil)
+		}
+		for i := range subnets {
+			subnetIDMap[subnets[i].ID] = &subnets[i]
+		}
+	}
 
-				if subnet.TenantID != tenant.ID {
-					logger.Warn().Msg(fmt.Sprintf("Subnet: %v specified in request is not owned by Tenant", subnetID))
-					return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Subnet: %v specified in request is not owned by Tenant", subnetID), nil)
-				}
+	// Batch fetch VPC Prefixes from DB
+	vpcPrefixIDMap := make(map[uuid.UUID]*cdbm.VpcPrefix)
+	if len(vpcPrefixIDs) > 0 {
+		vpcPrefixes, _, err := vpDAO.GetAll(ctx, nil, cdbm.VpcPrefixFilterInput{VpcPrefixIDs: vpcPrefixIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		if err != nil {
+			logger.Error().Err(err).Msg("error retrieving VPC Prefixes from DB by IDs")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve VPC Prefixes from DB by IDs", nil)
+		}
+		for i := range vpcPrefixes {
+			vpcPrefixIDMap[vpcPrefixes[i].ID] = &vpcPrefixes[i]
+		}
+	}
 
-				if subnet.ControllerNetworkSegmentID == nil || subnet.Status != cdbm.SubnetStatusReady {
-					logger.Warn().Msg(fmt.Sprintf("Subnet: %v specified in request data is not in Ready state", subnetID))
-					return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Subnet: %v specified in request data is not in Ready state", subnetID), nil)
-				}
+	// Validate each Interface against fetched data and build dbInterfaces
+	dbInterfaces := []cdbm.Interface{}
+	isDeviceInfoPresent := false
 
-				if subnet.VpcID != vpc.ID {
-					logger.Warn().Msg(fmt.Sprintf("Subnet: %v specified in request does not match with VPC", subnetID))
-					return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Subnet: %v specified in request does not match with VPC", subnetID), nil)
-				}
+	for _, ifc := range apiRequest.Interfaces {
+		if ifc.SubnetID != nil {
+			subnetID := uuid.MustParse(*ifc.SubnetID)
 
-				if vpc.NetworkVirtualizationType != nil && *vpc.NetworkVirtualizationType != cdbm.VpcEthernetVirtualizer {
-					logger.Warn().Msg(fmt.Sprintf("VPC: %v specified in request must have Ethernet network virtualization type in order to create Subnet based interfaces", vpc.ID))
-					return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("VPC: %v specified in request must have Ethernet network virtualization type in order to create Subnet based interfaces", vpc.ID), nil)
-				}
-
-				subnets[subnetID] = subnet
+			subnet, ok := subnetIDMap[subnetID]
+			if !ok {
+				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Could not find Subnet with ID specified in request data", nil)
 			}
 
-			// Build dbifc for this Subnet interface
-			dbifcs = append(dbifcs, cdbm.Interface{
+			if subnet.TenantID != tenant.ID {
+				logger.Warn().Msg(fmt.Sprintf("Subnet: %v specified in request is not owned by Tenant", subnetID))
+				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Subnet: %v specified in request is not owned by Tenant", subnetID), nil)
+			}
+
+			if subnet.ControllerNetworkSegmentID == nil || subnet.Status != cdbm.SubnetStatusReady {
+				logger.Warn().Msg(fmt.Sprintf("Subnet: %v specified in request data is not in Ready state", subnetID))
+				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Subnet: %v specified in request data is not in Ready state", subnetID), nil)
+			}
+
+			if subnet.VpcID != vpc.ID {
+				logger.Warn().Msg(fmt.Sprintf("Subnet: %v specified in request does not match with VPC", subnetID))
+				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Subnet: %v specified in request does not match with VPC", subnetID), nil)
+			}
+
+			if vpc.NetworkVirtualizationType != nil && *vpc.NetworkVirtualizationType != cdbm.VpcEthernetVirtualizer {
+				logger.Warn().Msg(fmt.Sprintf("VPC: %v specified in request must have Ethernet network virtualization type in order to create Subnet based interfaces", vpc.ID))
+				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("VPC: %v specified in request must have Ethernet network virtualization type in order to create Subnet based interfaces", vpc.ID), nil)
+			}
+
+			dbInterfaces = append(dbInterfaces, cdbm.Interface{
 				SubnetID:   &subnetID,
 				IsPhysical: ifc.IsPhysical,
 				Status:     cdbm.InterfaceStatusPending,
 			})
 		}
 
-		// Process VPC Prefix IDs
 		if ifc.VpcPrefixID != nil {
-			vpcPrefixUUID, err := uuid.Parse(*ifc.VpcPrefixID)
-			if err != nil {
-				logger.Warn().Err(err).Msg("error parsing vpcprefix id in instance vpcprefix request")
-				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "VPC Prefix ID specified in request data is not valid", nil)
+			vpcPrefixUUID := uuid.MustParse(*ifc.VpcPrefixID)
+
+			vpcPrefix, ok := vpcPrefixIDMap[vpcPrefixUUID]
+			if !ok {
+				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Could not find VPC Prefix with ID specified in request data", nil)
 			}
 
-			if vpcPrefixes[vpcPrefixUUID] == nil {
-				vpcPrefix, err := vpDAO.GetByID(ctx, nil, vpcPrefixUUID, nil)
-				if err != nil {
-					if err == cdb.ErrDoesNotExist {
-						return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Could not find VPC Prefix with ID specified in request data", nil)
-					}
-					logger.Error().Err(err).Msg("error retrieving vpcprefix from DB by ID")
-					return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve VPC Prefix with ID specified in request data", nil)
-				}
-
-				if vpcPrefix.TenantID != tenant.ID {
-					logger.Warn().Msg(fmt.Sprintf("VPC Prefix: %v specified in request is not owned by Tenant", vpcPrefixUUID))
-					return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("VPC Prefix: %v specified in request is not owned by Tenant", vpcPrefixUUID), nil)
-				}
-
-				if vpcPrefix.Status != cdbm.VpcPrefixStatusReady {
-					logger.Warn().Msg(fmt.Sprintf("VPC Prefix: %v specified in request data is not in Ready state", vpcPrefixUUID))
-					return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("VPC Prefix: %v specified in request data is not in Ready state", vpcPrefixUUID), nil)
-				}
-
-				if vpcPrefix.VpcID != vpc.ID {
-					logger.Warn().Msg(fmt.Sprintf("VPC Prefix: %v specified in request does not match with VPC", vpcPrefixUUID))
-					return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("VPC Prefix: %v specified in request does not match with VPC", vpcPrefixUUID), nil)
-				}
-
-				if vpc.NetworkVirtualizationType == nil || *vpc.NetworkVirtualizationType != cdbm.VpcFNN {
-					logger.Warn().Msg(fmt.Sprintf("VPC: %v specified in request must have FNN network virtualization type in order to create VPC Prefix based interfaces", vpc.ID))
-					return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("VPC: %v specified in request must have FNN network virtualization type in order to create VPC Prefix based interfaces", vpc.ID), nil)
-				}
-
-				vpcPrefixes[vpcPrefixUUID] = vpcPrefix
+			if vpcPrefix.TenantID != tenant.ID {
+				logger.Warn().Msg(fmt.Sprintf("VPC Prefix: %v specified in request is not owned by Tenant", vpcPrefixUUID))
+				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("VPC Prefix: %v specified in request is not owned by Tenant", vpcPrefixUUID), nil)
 			}
 
-			// Check if device info is present
+			if vpcPrefix.Status != cdbm.VpcPrefixStatusReady {
+				logger.Warn().Msg(fmt.Sprintf("VPC Prefix: %v specified in request data is not in Ready state", vpcPrefixUUID))
+				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("VPC Prefix: %v specified in request data is not in Ready state", vpcPrefixUUID), nil)
+			}
+
+			if vpcPrefix.VpcID != vpc.ID {
+				logger.Warn().Msg(fmt.Sprintf("VPC Prefix: %v specified in request does not match with VPC", vpcPrefixUUID))
+				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("VPC Prefix: %v specified in request does not match with VPC", vpcPrefixUUID), nil)
+			}
+
+			if vpc.NetworkVirtualizationType == nil || *vpc.NetworkVirtualizationType != cdbm.VpcFNN {
+				logger.Warn().Msg(fmt.Sprintf("VPC: %v specified in request must have FNN network virtualization type in order to create VPC Prefix based interfaces", vpc.ID))
+				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("VPC: %v specified in request must have FNN network virtualization type in order to create VPC Prefix based interfaces", vpc.ID), nil)
+			}
+
 			if ifc.Device != nil && ifc.DeviceInstance != nil {
 				isDeviceInfoPresent = true
 			}
 
-			// Build dbifc for this VPC Prefix interface
-			dbifcs = append(dbifcs, cdbm.Interface{
+			dbInterfaces = append(dbInterfaces, cdbm.Interface{
 				VpcPrefixID:       &vpcPrefixUUID,
 				Device:            ifc.Device,
 				DeviceInstance:    ifc.DeviceInstance,
@@ -553,7 +571,7 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 		}
 	}
 
-	logger.Info().Int("uniqueSubnetCount", len(subnets)).Int("uniqueVpcPrefixCount", len(vpcPrefixes)).
+	logger.Info().Int("uniqueSubnetCount", len(subnetIDMap)).Int("uniqueVpcPrefixCount", len(vpcPrefixIDMap)).
 		Msg("validated all Subnets and VPC Prefixes (shared across all instances)")
 
 	// Validate DPU Extension Service Deployments (shared across all instances)
@@ -985,7 +1003,7 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 		}
 
 		// Validate DPU interfaces against capabilities
-		err = model.ValidateMultiEthernetDeviceInterfaces(itDpuCaps, dbifcs)
+		err = model.ValidateMultiEthernetDeviceInterfaces(itDpuCaps, dbInterfaces)
 		if err != nil {
 			logger.Error().Err(err).Msg("DPU interfaces validation failed")
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest,
@@ -1236,9 +1254,9 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 	}
 
 	// --- Build and batch create Interfaces ---
-	ifcInputs := make([]cdbm.InterfaceCreateInput, 0, len(updatedInstances)*len(dbifcs))
+	ifcInputs := make([]cdbm.InterfaceCreateInput, 0, len(updatedInstances)*len(dbInterfaces))
 	for _, inst := range updatedInstances {
-		for _, dbifc := range dbifcs {
+		for _, dbifc := range dbInterfaces {
 			ifcInputs = append(ifcInputs, cdbm.InterfaceCreateInput{
 				InstanceID:        inst.ID,
 				SubnetID:          dbifc.SubnetID,
@@ -1394,11 +1412,11 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 		instCopy := inst // Make a copy to avoid loop variable capture
 		createdInstancesData[i] = instanceData{
 			instance:            &instCopy,
-			ifcs:                make([]cdbm.Interface, 0, len(dbifcs)),
+			ifcs:                make([]cdbm.Interface, 0, len(dbInterfaces)),
 			ibifcs:              make([]cdbm.InfiniBandInterface, 0, len(dbibic)),
 			nvlifcs:             make([]cdbm.NVLinkInterface, 0, len(dbnvlic)),
 			desds:               make([]cdbm.DpuExtensionServiceDeployment, 0, len(dpuServiceIDs)),
-			interfaceConfigs:    make([]*cwssaws.InstanceInterfaceConfig, 0, len(dbifcs)),
+			interfaceConfigs:    make([]*cwssaws.InstanceInterfaceConfig, 0, len(dbInterfaces)),
 			ibInterfaceConfigs:  make([]*cwssaws.InstanceIBInterfaceConfig, 0, len(dbibic)),
 			nvlInterfaceConfigs: make([]*cwssaws.InstanceNVLinkGpuConfig, 0, len(dbnvlic)),
 			desdConfigs:         make([]*cwssaws.InstanceDpuExtensionServiceConfig, 0, len(dpuServiceIDs)),
@@ -1422,11 +1440,11 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 		}
 		if ifc.SubnetID != nil {
 			interfaceConfig.NetworkSegmentId = &cwssaws.NetworkSegmentId{
-				Value: subnets[*ifc.SubnetID].ControllerNetworkSegmentID.String(),
+				Value: subnetIDMap[*ifc.SubnetID].ControllerNetworkSegmentID.String(),
 			}
 			interfaceConfig.NetworkDetails = &cwssaws.InstanceInterfaceConfig_SegmentId{
 				SegmentId: &cwssaws.NetworkSegmentId{
-					Value: subnets[*ifc.SubnetID].ControllerNetworkSegmentID.String(),
+					Value: subnetIDMap[*ifc.SubnetID].ControllerNetworkSegmentID.String(),
 				},
 			}
 		}
