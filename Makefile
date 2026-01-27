@@ -1,6 +1,7 @@
 .PHONY: test postgres-up postgres-down ensure-postgres postgres-wait
 .PHONY: build docker-build docker-build-local
 .PHONY: test-ipam test-site-agent test-site-manager test-workflow test-db test-api test-auth test-common test-cert-manager test-site-workflow migrate carbide-mock-server-build carbide-mock-server-start carbide-mock-server-stop
+.PHONY: pre-commit-install pre-commit-run pre-commit-update
 
 # Build configuration
 BUILD_DIR := build/binaries
@@ -298,3 +299,23 @@ setup-site-agent:
 # Verify the local deployment (health checks)
 kind-verify:
 	./scripts/verify-local.sh
+
+# =============================================================================
+# Pre-commit Hooks (TruffleHog Secret Detection)
+# =============================================================================
+
+# Install pre-commit hooks
+pre-commit-install:
+	@command -v pre-commit >/dev/null 2>&1 || { echo "Installing pre-commit..."; pip install pre-commit; }
+	@command -v trufflehog >/dev/null 2>&1 || { echo "Installing trufflehog..."; brew install trufflehog || go install github.com/trufflesecurity/trufflehog/v3@latest; }
+	pre-commit install
+	pre-commit install --hook-type pre-push
+	@echo "Pre-commit hooks installed successfully!"
+
+# Run pre-commit on all files
+pre-commit-run:
+	pre-commit run --all-files
+
+# Update pre-commit hooks to latest versions
+pre-commit-update:
+	pre-commit autoupdate
