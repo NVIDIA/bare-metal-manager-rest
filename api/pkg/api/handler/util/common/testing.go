@@ -659,6 +659,18 @@ func TestBuildDpuExtensionService(t *testing.T, dbSession *cdb.Session, name str
 	return des
 }
 
+func TestBuildDpuExtensionServiceUpdateActiveVersions(t *testing.T, dbSession *cdb.Session, dpuExtensionService *cdbm.DpuExtensionService, versions []string) *cdbm.DpuExtensionService {
+	desDAO := cdbm.NewDpuExtensionServiceDAO(dbSession)
+
+	des, err := desDAO.Update(context.Background(), nil, cdbm.DpuExtensionServiceUpdateInput{
+		DpuExtensionServiceID: dpuExtensionService.ID,
+		ActiveVersions:        versions,
+	})
+	assert.Nil(t, err)
+
+	return des
+}
+
 func TestBuildDpuExtensionServiceDeployment(t *testing.T, dbSession *cdb.Session, dpuExtensionService *cdbm.DpuExtensionService, instanceID uuid.UUID, version string, status string, user *cdbm.User) *cdbm.DpuExtensionServiceDeployment {
 	desdDAO := cdbm.NewDpuExtensionServiceDeploymentDAO(dbSession)
 

@@ -1398,7 +1398,17 @@ func (ddesvh DeleteDpuExtensionServiceVersionHandler) Handle(c echo.Context) err
 
 	// Verify version exists
 	if dpuExtensionService.Version == nil || *dpuExtensionService.Version != versionID {
-		return cerr.NewAPIErrorResponse(c, http.StatusNotFound, fmt.Sprintf("Version %s not found for DPU Extension Service", versionID), nil)
+		// Verify if version is in active versions list
+		versionFound := false
+		for _, version := range dpuExtensionService.ActiveVersions {
+			if version == versionID {
+				versionFound = true
+				break
+			}
+		}
+		if !versionFound {
+			return cerr.NewAPIErrorResponse(c, http.StatusNotFound, fmt.Sprintf("Version: %s not found for DPU Extension Service: %s", versionID, dpuExtensionServiceID.String()), nil)
+		}
 	}
 
 	// Check if this version is currently deployed
