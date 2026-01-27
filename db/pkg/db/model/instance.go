@@ -551,7 +551,10 @@ func (isd InstanceSQLDAO) setQueryWithFilter(filter InstanceFilterInput, query *
 	}
 
 	if filter.Statuses != nil {
-		query = query.Where("i.status IN (?)", bun.In(filter.Statuses))
+		query = query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.Where("i.status IN (?)", bun.In(filter.Statuses)).
+				WhereOr("i.power_status IN (?)", bun.In(filter.Statuses))
+		})
 		if instanceDAOSpan != nil {
 			isd.tracerSpan.SetAttribute(instanceDAOSpan, "statuses", filter.Statuses)
 		}

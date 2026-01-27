@@ -599,22 +599,22 @@ func TestGetAllInstanceTypeHandler_Handle(t *testing.T) {
 
 	// Build Instance
 	tn1inss := []cdbm.Instance{}
-	ins1 := testInstanceBuildInstance(t, dbSession, "test-instance-1", al1.ID, alc1.ID, tn1.ID, ip.ID, st.ID, &its[0].ID, vpc1.ID, cdb.GetStrPtr(ms[0].ID), &os1.ID, nil, cdbm.InstanceStatusReady)
+	ins1 := testInstanceBuildInstance(t, dbSession, "test-instance-1", al1.ID, alc1.ID, tn1.ID, ip.ID, st.ID, &its[0].ID, vpc1.ID, cdb.GetStrPtr(ms[0].ID), &os1.ID, nil, cdbm.InstanceStatusReady, nil)
 	tn1inss = append(tn1inss, *ins1)
-	ins2 := testInstanceBuildInstance(t, dbSession, "test-instance-2", al2.ID, alc2.ID, tn1.ID, ip.ID, st.ID, &its[0].ID, vpc1.ID, cdb.GetStrPtr(ms[0].ID), &os1.ID, nil, cdbm.InstanceStatusReady)
+	ins2 := testInstanceBuildInstance(t, dbSession, "test-instance-2", al2.ID, alc2.ID, tn1.ID, ip.ID, st.ID, &its[0].ID, vpc1.ID, cdb.GetStrPtr(ms[0].ID), &os1.ID, nil, cdbm.InstanceStatusReady, nil)
 	tn1inss = append(tn1inss, *ins2)
 
 	// This instance is not associated with an instance type
 	// But has tenant reference
 	// Case of Targeted Instance
-	targetedInstance := testInstanceBuildInstance(t, dbSession, "test-instance-2", al2.ID, alc2.ID, tn1.ID, ip.ID, st.ID, nil, vpc1.ID, cdb.GetStrPtr(ms[0].ID), &os1.ID, nil, cdbm.InstanceStatusReady)
+	targetedInstance := testInstanceBuildInstance(t, dbSession, "test-instance-2", al2.ID, alc2.ID, tn1.ID, ip.ID, st.ID, nil, vpc1.ID, cdb.GetStrPtr(ms[0].ID), &os1.ID, nil, cdbm.InstanceStatusReady, nil)
 	assert.NotNil(t, targetedInstance)
 
 	os2 := testInstanceBuildOperatingSystem(t, dbSession, "test-operating-system-1", tn2, cdbm.OperatingSystemTypeImage, false, nil, false, cdbm.OperatingSystemStatusReady, tnu2)
 	vpc2 := testInstanceBuildVPC(t, dbSession, "test-vpc-1", ip, tn2, st, cdb.GetUUIDPtr(uuid.New()), nil, cdb.GetStrPtr(cdbm.VpcEthernetVirtualizer), nil, cdbm.VpcStatusReady, tnu2)
 
 	tn2inss := []cdbm.Instance{}
-	ins3 := testInstanceBuildInstance(t, dbSession, "test-instance-3", al3.ID, alc3.ID, tn2.ID, ip.ID, st.ID, &its[0].ID, vpc2.ID, cdb.GetStrPtr(ms[0].ID), &os2.ID, nil, cdbm.InstanceStatusReady)
+	ins3 := testInstanceBuildInstance(t, dbSession, "test-instance-3", al3.ID, alc3.ID, tn2.ID, ip.ID, st.ID, &its[0].ID, vpc2.ID, cdb.GetStrPtr(ms[0].ID), &os2.ID, nil, cdbm.InstanceStatusReady, nil)
 	tn2inss = append(tn2inss, *ins3)
 
 	e := echo.New()
