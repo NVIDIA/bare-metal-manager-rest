@@ -140,14 +140,13 @@ carbide-protogen:
 	cd workflow-schema && buf generate
 
 rla-proto:
-	if [ -d "rla" ]; then cd rla && git pull; else echo "RLA repository expected in carbide-rest/rla, but not found"; exit 1; fi
-	ls rla/proto/v1
-	@for file in rla/proto/v1/*.proto; do \
+	if [ -d ${RLA_REPO_PATH} ]; then cd ${RLA_REPO_PATH} && git pull; else echo "RLA repository path expected in \"RLA_REPO_PATH\", but not found"; exit 1; fi
+	ls ${RLA_REPO_PATH}/proto/v1
+	@for file in ${RLA_REPO_PATH}/proto/v1/*.proto; do \
 		cp "$$file" "workflow-schema/rla/proto/v1/"; \
 		echo "Copied: $$file"; \
-		./workflow-schema/scripts/add-go-package-option.sh "workflow-schema/$$file" "github.com/nvidia/carbide-rest/workflow-schema/rla"; \
+		./workflow-schema/scripts/add-go-package-option.sh "workflow-schema/rla/proto/v1/$$(basename "$$file" .proto).proto" "github.com/nvidia/carbide-rest/workflow-schema/rla"; \
 	done
-	rm -rf rla
 
 rla-protogen:
 	echo "Generating protobuf for RLA"
