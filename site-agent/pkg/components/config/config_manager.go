@@ -32,9 +32,11 @@ const (
 	DefaultCarbideClientCertPath = "/etc/carbide/tls.crt"
 	DefaultCarbideClientKeyPath  = "/etc/carbide/tls.key"
 
-	DefaultRLAClientCAPath   = "/etc/rla/ca.crt"
-	DefaultRLAClientCertPath = "/etc/rla/tls.crt"
-	DefaultRLAClientKeyPath  = "/etc/rla/tls.key"
+	// RLA uses the same SPIFFE trust domain (forge.local) and vault-forge-issuer as Carbide,
+	// so we can reuse the Carbide certificates for mTLS with RLA.
+	DefaultRLAClientCAPath   = "/etc/carbide/ca.crt"
+	DefaultRLAClientCertPath = "/etc/carbide/tls.crt"
+	DefaultRLAClientKeyPath  = "/etc/carbide/tls.key"
 )
 
 // Fill the datastructure to intialize the database
