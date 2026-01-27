@@ -66,7 +66,7 @@ type RlaClientConfig struct {
 	// The address of the server <host>:<port>
 	Address string
 	// Secure flag
-	Secure SecureOptions
+	Secure RlaClientSecureOptions
 	// Skip Server Auth
 	SkipServerAuth bool
 	// The TLS certificate for the server
@@ -79,7 +79,7 @@ type RlaClientConfig struct {
 	ClientMetrics Metrics
 }
 
-// NewCarbideClient creates a new CarbideClient
+// NewRlaClient creates a new RlaClient
 func NewRlaClient(config *RlaClientConfig) (client *RlaClient, err error) {
 	// Validate the config
 	if config.Address == "" {
@@ -95,7 +95,7 @@ func NewRlaClient(config *RlaClientConfig) (client *RlaClient, err error) {
 		// connect with plain TCP
 		log.Debug().Msg("RlaClient: insecure gRPC")
 		client.dialOpts = append(client.dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	case ServerTLS:
+	case RlaServerTLS:
 		log.Debug().Msg("RlaClient: server TLS")
 		// Validate the config contains server ca path
 		if config.ServerCAPath == "" {
@@ -132,7 +132,7 @@ func NewRlaClient(config *RlaClientConfig) (client *RlaClient, err error) {
 			// Append the dial option
 			client.dialOpts = append(client.dialOpts, grpc.WithTransportCredentials(creds))
 		}
-	case MutualTLS:
+	case RlaMutualTLS:
 		// Mutual TLS
 		// connect with mutual TLS
 		log.Debug().Msg("RlaClient: mutual TLS")
@@ -219,8 +219,8 @@ type RlaClient struct {
 	conn *grpc.ClientConn
 	// gRPC dial options
 	dialOpts []grpc.DialOption
-	// carbide client interface
-	rla rlav1.ForgeClient
+	// rla client interface
+	rla rlav1.RLAClient
 }
 
 // Close gracefully shuts down the client's gRPC connection.
@@ -232,24 +232,14 @@ func (cc *RlaClient) Close() error {
 	return nil
 }
 
-// Carbide client getter
-func (client *RlaClient) Rla() rlav1.ForgeClient {
+// Rla client getter
+func (client *RlaClient) Rla() rlav1.RLAClient {
 	return client.rla
 }
 
-// Networks Getter
-func (client *RlaClient) Networks() NetworkInterface {
-	return newNetwork(client.rla)
-}
-
-// Compute Getter
-func (client *RlaClient) Compute() ComputeInterface {
-	return newCompute(client.rla)
-}
-
-// CarbideAtomicClient is an atomic wrapper around the CarbideClient
+// RlaAtomicClient is an atomic wrapper around the RlaClient
 type RlaAtomicClient struct {
-	Config  *CarbideClientConfig
+	Config  *RlaClientConfig
 	value   *atomic.Value
 	version atomic.Int64
 }
@@ -259,7 +249,7 @@ func (rac *RlaAtomicClient) Version() int64 {
 	return rac.version.Load()
 }
 
-// SwapClient atomically replaces the current CarbideClient with a new one,
+// SwapClient atomically replaces the current RlaClient with a new one,
 // returning the old client for the caller to manage.
 func (rac *RlaAtomicClient) SwapClient(newClient *RlaClient) *RlaClient {
 
@@ -280,18 +270,18 @@ func (rac *RlaAtomicClient) SwapClient(newClient *RlaClient) *RlaClient {
 	return oldClient
 }
 
-// GetClient returns the current version of Carbide client from the atomic value
+// GetClient returns the current version of Rla client from the atomic value
 func (rac *RlaAtomicClient) GetClient() *RlaClient {
 	return rac.value.Load().(*RlaClient)
 }
 
 // CheckAndReloadCerts continuously monitors the TLS certificates for changes.
-// If a change is detected, it reinitializes the CarbideClient with the new certificates to ensure secure communication.
+// If a change is detected, it reinitializes the RlaClient with the new certificates to ensure secure communication.
 func (rac *RlaAtomicClient) CheckAndReloadCerts(initialClientCertMD5, initialServerCAMD5 []byte) {
 	// Initialize contextual logger
 	logger := log.With().Str("Component", "Rla").Str("Operation", "CheckAndReloadCerts").Logger()
 
-	ticker := time.NewTicker(getCertificateCheckInterval())
+	ticker := time.NewTicker(getRlaCertificateCheckInterval())
 	defer ticker.Stop()
 
 	lastClientCertMD5, lastServerCAMD5 := initialClientCertMD5, initialServerCAMD5
@@ -379,7 +369,7 @@ func (rac *RlaAtomicClient) CheckCertificates(lastClientCertMD5, lastServerCAMD5
 	return false, lastClientCertMD5, lastServerCAMD5, nil
 }
 
-// NewCarbideAtomicClient creates a new CarbideAtomicClient
+// NewRlaAtomicClient creates a new RlaAtomicClient
 func NewRlaAtomicClient(config *RlaClientConfig) *RlaAtomicClient {
 	// Create the atomic value
 	atomicClient := &RlaAtomicClient{
