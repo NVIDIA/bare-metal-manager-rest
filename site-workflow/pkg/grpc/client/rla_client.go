@@ -11,7 +11,6 @@
 package client
 
 import (
-	"context"
 	"crypto/md5"
 	"crypto/tls"
 	"crypto/x509"
@@ -199,16 +198,7 @@ func NewRlaClient(config *RlaClientConfig) (client *RlaClient, err error) {
 	client.rla = rlav1.NewRLAClient(client.conn)
 	log.Info().Msg("RlaClient: client created")
 
-	// Check the version of the server
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Duration(5000)*time.Millisecond))
-	defer cancel()
-	_, err = client.rla.Version(ctx, &rlav1.VersionRequest{})
-	if err != nil {
-		log.Error().Err(err).Msg("RlaClient: failed to get version from server")
-		return nil, fmt.Errorf("RlaClient: failed to get version from server: %w", err)
-	}
-
-	log.Info().Msg("RlaClient: successfully connected to server")
+	log.Info().Msg("RlaClient: successfully initialized")
 
 	return client, nil
 }
