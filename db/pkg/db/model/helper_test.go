@@ -20,11 +20,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nvidia/carbide-rest/db/pkg/db"
+	"github.com/nvidia/carbide-rest/db/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun/extra/bundebug"
-	"github.com/nvidia/carbide-rest/db/pkg/db"
-	"github.com/nvidia/carbide-rest/db/pkg/util"
 
 	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
 	"go.opentelemetry.io/otel/trace"
@@ -279,7 +279,7 @@ func testBuildFabric(t *testing.T, dbSession *db.Session, id *string, org string
 	return fb
 }
 
-func testBuildInfiniBandPartition(t *testing.T, dbSession *db.Session, id *uuid.UUID, name string, description *string, org string, tenantID uuid.UUID, siteID uuid.UUID, controllerIBInfiniBandPartitionID *uuid.UUID, partitionKey *string, partitionName *string, serviceLevel *int, rateLimit *float32, mtu *int, enableSharp *bool, status *string, createdBy uuid.UUID) *InfiniBandPartition {
+func testBuildInfiniBandPartition(t *testing.T, dbSession *db.Session, id *uuid.UUID, name string, description *string, org string, tenantID uuid.UUID, siteID uuid.UUID, controllerIBInfiniBandPartitionID *uuid.UUID, partitionKey *string, partitionName *string, serviceLevel *int, rateLimit *float32, mtu *int, enableSharp *bool, labels map[string]string, status *string, createdBy uuid.UUID) *InfiniBandPartition {
 	pid := uuid.New()
 	if id != nil {
 		pid = *id
@@ -304,6 +304,7 @@ func testBuildInfiniBandPartition(t *testing.T, dbSession *db.Session, id *uuid.
 		RateLimit:               rateLimit,
 		Mtu:                     mtu,
 		EnableSharp:             enableSharp,
+		Labels:                  labels,
 		Status:                  pstatus,
 		CreatedBy:               createdBy,
 	}

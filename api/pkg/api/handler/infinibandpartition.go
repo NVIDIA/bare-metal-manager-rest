@@ -218,6 +218,12 @@ func (cibph CreateInfiniBandPartitionHandler) Handle(c echo.Context) error {
 		})
 	}
 
+	// Labels support
+	var labels map[string]string
+	if apiRequest.Labels != nil {
+		labels = apiRequest.Labels
+	}
+
 	// start a db tx
 	tx, err := cdb.BeginTx(ctx, cibph.dbSession, &sql.TxOptions{})
 	if err != nil {
@@ -238,6 +244,7 @@ func (cibph CreateInfiniBandPartitionHandler) Handle(c echo.Context) error {
 			TenantOrg:   org,
 			SiteID:      site.ID,
 			TenantID:    orgTenant.ID,
+			Labels:      labels,
 			Status:      cdbm.InfiniBandPartitionStatusPending,
 			CreatedBy:   dbUser.ID,
 		},
@@ -280,6 +287,32 @@ func (cibph CreateInfiniBandPartitionHandler) Handle(c echo.Context) error {
 		TaskQueue:                queue.SiteTaskQueue,
 		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
 	}
+
+	// Vpc metadata info
+	metadata := &cwssaws.Metadata{
+		Name:        ibp.Name,
+		Description: "",
+	}
+
+	if ibp.Description != nil {
+		metadata.Description = *ibp.Description
+	}
+
+	// Prepare labels for site controller
+	if len(ibp.Labels) > 0 {
+		var labels []*cwssaws.Label
+		for key, value := range ibp.Labels {
+			curVal := value
+			localLable := &cwssaws.Label{
+				Key:   key,
+				Value: &curVal,
+			}
+			labels = append(labels, localLable)
+		}
+		metadata.Labels = labels
+	}
+
+	createIBPRequest.Config.Metadata = metadata
 
 	logger.Info().Msg("triggering InfiniBand Partition create workflow")
 
