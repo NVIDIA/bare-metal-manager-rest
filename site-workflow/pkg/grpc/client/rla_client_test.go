@@ -1,0 +1,171 @@
+// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+//
+// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+// property and proprietary rights in and to this material, related
+// documentation and any modifications thereto. Any use, reproduction,
+// disclosure or distribution of this material and related documentation
+// without an express license agreement from NVIDIA CORPORATION or
+// its affiliates is strictly prohibited.
+
+package client
+
+import (
+	"crypto/md5"
+	"os"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestRlaAtomicClient_GetInitialCertMD5(t *testing.T) {
+	// Generate files for MD5 hash testing
+	clientCertPath := "/tmp/rla_tls.crt"
+	serverCAPath := "/tmp/rla_ca.crt"
+
+	// Write the files to disk
+	err := os.WriteFile(clientCertPath, []byte("new test cert file"), 0644)
+	assert.NoError(t, err)
+
+	err = os.WriteFile(serverCAPath, []byte("new test ca file"), 0644)
+	assert.NoError(t, err)
+
+	// Get the MD5 hashes of the files
+	clientCertBytes, err := os.ReadFile(clientCertPath)
+	assert.NoError(t, err)
+	clientCertMD5Hash := md5.Sum(clientCertBytes)
+	clientCertMD5 := clientCertMD5Hash[:]
+
+	serverCABytes, err := os.ReadFile(serverCAPath)
+	assert.NoError(t, err)
+	serverCAMD5Hash := md5.Sum(serverCABytes)
+	serverCAMD5 := serverCAMD5Hash[:]
+
+	type fields struct {
+		Config *RlaClientConfig
+	}
+	tests := []struct {
+		name              string
+		fields            fields
+		wantClientCertMD5 []byte
+		wantServerCAMD5   []byte
+		wantErr           bool
+	}{
+		{
+			name: "test that we can get the initial cert md5s",
+			fields: fields{
+				Config: &RlaClientConfig{
+					ClientCertPath: clientCertPath,
+					ServerCAPath:   serverCAPath,
+				},
+			},
+			wantClientCertMD5: clientCertMD5,
+			wantServerCAMD5:   serverCAMD5,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rac := &RlaAtomicClient{
+				Config: tt.fields.Config,
+			}
+			gotClientCertMD5, gotServerCAMD5, err := rac.GetInitialCertMD5()
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			} else {
+				assert.NoError(t, err)
+			}
+			assert.Equal(t, tt.wantClientCertMD5, gotClientCertMD5)
+			assert.Equal(t, tt.wantServerCAMD5, gotServerCAMD5)
+		})
+	}
+}
+
+func TestRlaAtomicClient_CheckCertificates(t *testing.T) {
+	// Generate files for MD5 hash testing
+	clientCertPath := "/tmp/rla_tls.crt"
+	serverCAPath := "/tmp/rla_ca.crt"
+
+	// Write the files to disk
+	err := os.WriteFile(clientCertPath, []byte("new test cert file"), 0644)
+	assert.NoError(t, err)
+
+	err = os.WriteFile(serverCAPath, []byte("new test ca file"), 0644)
+	assert.NoError(t, err)
+
+	// Get the MD5 hashes of the files
+	clientCertBytes, err := os.ReadFile(clientCertPath)
+	assert.NoError(t, err)
+	clientCertMD5Hash := md5.Sum(clientCertBytes)
+	newClientCertMD5 := clientCertMD5Hash[:]
+
+	serverCABytes, err := os.ReadFile(serverCAPath)
+	assert.NoError(t, err)
+	serverCAMD5Hash := md5.Sum(serverCABytes)
+	newServerCAMD5 := serverCAMD5Hash[:]
+
+	val := md5.Sum([]byte("old test cert file"))
+	lastClientCertMD5 := val[:]
+
+	val = md5.Sum([]byte("old test ca file"))
+	lastServerCAMD5 := val[:]
+
+	type fields struct {
+		Config *RlaClientConfig
+	}
+	type args struct {
+		lastClientCertMD5 []byte
+		lastServerCAMD5   []byte
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    bool
+		wantErr bool
+	}{
+		{
+			name: "test that check certificates returns true when the certificates have changed",
+			fields: fields{
+				Config: &RlaClientConfig{
+					ClientCertPath: clientCertPath,
+					ServerCAPath:   serverCAPath,
+				},
+			},
+			args: args{
+				lastClientCertMD5: lastClientCertMD5,
+				lastServerCAMD5:   lastServerCAMD5,
+			},
+			want: true,
+		},
+		{
+			name: "test that check certificates returns false when the certificates have not changed",
+			fields: fields{
+				Config: &RlaClientConfig{
+					ClientCertPath: clientCertPath,
+					ServerCAPath:   serverCAPath,
+				},
+			},
+			args: args{
+				lastClientCertMD5: newClientCertMD5,
+				lastServerCAMD5:   newServerCAMD5,
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rac := &RlaAtomicClient{
+				Config: tt.fields.Config,
+			}
+			got, _, _, err := rac.CheckCertificates(tt.args.lastClientCertMD5, tt.args.lastServerCAMD5)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			} else {
+				assert.NoError(t, err)
+			}
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
