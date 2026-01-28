@@ -86,4 +86,4 @@ spec:
                 path: encryption-key
         - name: temporal-tls-certs
           secret:
-            secretName: workflow-temporal-client-tls
+            secretName: temporal-client-certs

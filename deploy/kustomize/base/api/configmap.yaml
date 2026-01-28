@@ -41,7 +41,7 @@ data:
     temporal:
       host: temporal-frontend
       port: 7233
-      serverName: temporal-frontend
+      serverName: server.temporal.nvidia.com
       namespace: cloud
       queue: cloud
       tls:
@@ -49,7 +49,7 @@ data:
         certPath: /var/secrets/temporal/certs/tls.crt
         keyPath: /var/secrets/temporal/certs/tls.key
         caPath: /var/secrets/temporal/certs/ca.crt
-        disableHostVerification: true
+        disableHostVerification: false
       encryptionKeyPath: /var/secrets/temporal/encryption-key
 
     auth:

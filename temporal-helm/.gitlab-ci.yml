@@ -1,0 +1,110 @@
+variables:
+  NEED_HELM: "yes"
+
+include:
+  - project: 'nvmetal/gitlab-templates'
+    ref: main
+    file:
+      - defaults.gitlab-ci.yml
+
+build:
+  stage: build
+  needs:
+    - job: prepare-ci
+      artifacts: true
+  image:
+    name: $TOOLS_IMAGE_REPO
+  tags:
+    - x86_64
+  script:
+    - echo 'Skipping Build'
+  rules:
+    - when: never
+
+lint:
+  stage: lint
+  image:
+    name: $TOOLS_IMAGE_REPO
+  needs:
+    - job: prepare-ci
+      artifacts: true
+  tags:
+    - x86_64
+  script:
+    - helm repo add elastic https://helm.elastic.co
+    - helm repo update
+    - helm dependency build temporal/
+    - helm lint temporal/
+
+build-push-helm:
+  stage: publish
+  image:
+    name: $TOOLS_IMAGE_REPO
+  variables:
+    VAULT_NAMESPACE: ngc-forge
+    NAME_SPACE: temporal
+    HELM_NAME: temporal
+  id_tokens:
+    VAULT_JWT_TOKEN:
+      aud: $VAULT_ADDR
+  before_script:
+    - set -euo pipefail
+    - export VAULT_JWT_ROLE=$VAULT_JWT_ROLE_FORGE
+    - export VAULT_JWT_PATH=$VAULT_JWT_PATH_FORGE
+    - export VAULT_TOKEN="$(vault write -field=token $VAULT_JWT_PATH role=$VAULT_JWT_ROLE jwt=$VAULT_JWT_TOKEN)"
+  script:
+    - helm template temporal/ --namespace $NAME_SPACE --create-namespace > k8s-template.yaml
+    - export CHART_VERSION=$(helm show chart temporal | awk '/^version/ {print $2}')
+    - if [ "$CHART_VERSION" != $CI_COMMIT_TAG ]; then echo "Chart version in Chart.yaml does not match tag"; exit 1; fi
+    - export HELM_FILE_NAME=temporal-$CHART_VERSION
+    - helm package -u temporal/
+    - export NVCR_PASS=$(vault kv get -field nvcr secrets/forge/tokens)
+    - helm repo add --force-update ngc https://helm.ngc.nvidia.com/nvidian/nvforge --username=\$oauthtoken --password=$NVCR_PASS
+    - helm repo add --force-update stgngc https://helm.ngc.nvidia.com/nvidian/nvforge-devel --username=\$oauthtoken --password=$NVCR_PASS
+    - helm plugin install https://github.com/chartmuseum/helm-push
+    - helm cm-push -f $HELM_FILE_NAME.tgz ngc
+    - helm cm-push -f $HELM_FILE_NAME.tgz stgngc
+  needs:
+    - job: prepare-ci
+      artifacts: true
+  tags:
+    - x86_64
+  rules:
+    - if: $CI_COMMIT_TAG && $NEED_HELM == "yes"
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths:
+      - k8s-template.yaml
+
+license-checks:
+  rules:
+    - when: never
+
+build-container:
+  rules:
+    - when: never
+
+build-push-kustomize:
+  rules:
+    - when: never
+
+container-scan:
+  rules:
+    - when: never
+
+pulse-open-source:
+  rules:
+    - when: never
+
+checkmarx-scan-csv:
+  rules:
+    - when: never
+
+checkov-scan:
+  rules:
+    - if: $CI_COMMIT_TAG && $NEED_HELM == "yes"
+
+notify-security-report:
+  rules:
+    - if: $CI_COMMIT_TAG && $NEED_HELM == "yes"

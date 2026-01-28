@@ -101,4 +101,4 @@ spec:
           emptyDir: {}
         - name: temporal-tls-source
           secret:
-            secretName: workflow-temporal-client-tls
+            secretName: temporal-client-certs

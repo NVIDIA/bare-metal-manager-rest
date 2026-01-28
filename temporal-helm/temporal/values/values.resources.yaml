@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# Based on Temporal Helm Charts (MIT License)
+# Original Copyright (c) 2020 Temporal Technologies Inc. / Uber Technologies, Inc.
+# See THIRD-PARTY-LICENSES for full license text.
+
+server:
+  frontend:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+
+  history:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+
+  matching:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+
+  worker:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
