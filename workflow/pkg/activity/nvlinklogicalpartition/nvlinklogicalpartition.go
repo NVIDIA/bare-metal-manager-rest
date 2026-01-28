@@ -123,12 +123,12 @@ func (mnlp ManageNVLinkLogicalPartition) UpdateNVLinkLogicalPartitionsInDB(ctx c
 			isMissingOnSite = cdb.GetBoolPtr(false)
 		}
 
-		if controllerNvllp.Config != nil {
-			if controllerNvllp.Config.Metadata != nil && controllerNvllp.Config.Metadata.Name != nvllp.Name {
+		if controllerNvllp.Config != nil && controllerNvllp.Config.Metadata != nil {
+			if controllerNvllp.Config.Metadata.Name != nvllp.Name {
 				name = cdb.GetStrPtr(controllerNvllp.Config.Metadata.Name)
 			}
 
-			if controllerNvllp.Config.Metadata.Description != *nvllp.Description && nvllp.Description != nil {
+			if nvllp.Description == nil || (nvllp.Description != nil && controllerNvllp.Config.Metadata.Description != *nvllp.Description) {
 				description = cdb.GetStrPtr(controllerNvllp.Config.Metadata.Description)
 			}
 		}

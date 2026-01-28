@@ -288,11 +288,11 @@ func TestBuildInfiniBandPartition(t *testing.T, dbSession *cdb.Session, name str
 }
 
 // TestBuildNVLinkLogicalPartition builds and returns an NVLinkLogicalPartition
-func TestBuildNVLinkLogicalPartition(t *testing.T, dbSession *cdb.Session, name string, site *cdbm.Site, tenant *cdbm.Tenant, status string, isMissingOnSite bool) *cdbm.NVLinkLogicalPartition {
+func TestBuildNVLinkLogicalPartition(t *testing.T, dbSession *cdb.Session, name string, description *string, site *cdbm.Site, tenant *cdbm.Tenant, status string, isMissingOnSite bool) *cdbm.NVLinkLogicalPartition {
 	nvllp := &cdbm.NVLinkLogicalPartition{
 		ID:              uuid.New(),
 		Name:            name,
-		Description:     cdb.GetStrPtr("Test NVLinkLogicalPartition"),
+		Description:     description,
 		Org:             tenant.Org,
 		SiteID:          site.ID,
 		TenantID:        tenant.ID,

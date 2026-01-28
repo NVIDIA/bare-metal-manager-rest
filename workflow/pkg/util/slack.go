@@ -76,6 +76,7 @@ func (sc SlackClient) sendHttpRequest(slackRequest SlackMessage) error {
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("non-200 response returned from Slack: %d", resp.StatusCode)
 	}
