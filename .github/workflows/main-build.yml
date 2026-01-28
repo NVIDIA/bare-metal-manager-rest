@@ -67,7 +67,7 @@ jobs:
         with:
           fetch-depth: 0  # Full history for secret scanning
       - name: Run TruffleHog Scan
-        uses: NVIDIA/dsx-github-actions/.github/actions/trufflehog-scan@55d1e0af17fb4431edaca19fbd5c78fecd29d18a
+        uses: NVIDIA/dsx-github-actions/.github/actions/trufflehog-scan@f435aa6bf125fe6f9e5ac438f8cef75f90e29a2b
         with:
           extra-args: '--results=verified,unknown --only-verified'
           post-pr-comment: 'true'
@@ -89,7 +89,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run Trivy Scan
-        uses: NVIDIA/dsx-github-actions/.github/actions/trivy-scan@55d1e0af17fb4431edaca19fbd5c78fecd29d18a
+        uses: NVIDIA/dsx-github-actions/.github/actions/trivy-scan@f435aa6bf125fe6f9e5ac438f8cef75f90e29a2b
         with:
           scan-type: 'fs'
           scan-ref: '.'
