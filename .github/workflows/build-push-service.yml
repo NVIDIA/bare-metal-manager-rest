@@ -137,8 +137,8 @@ jobs:
         if: inputs.is_main_branch == 'true' && inputs.push_enabled == true
         run: |
           mkdir -p artifacts
-          docker pull --platform linux/amd64 ${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.branch_sha_tag }}
-          docker create --name temp-container --platform linux/amd64 ${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.branch_sha_tag }}
+          docker pull --platform linux/amd64 ${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.semantic_version }}-${{ inputs.short_sha }}
+          docker create --name temp-container --platform linux/amd64 ${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.semantic_version }}-${{ inputs.short_sha }}
           docker cp temp-container:${{ inputs.binary_path }} artifacts/${{ inputs.binary_name }}-amd64
           docker rm temp-container
           chmod +x artifacts/${{ inputs.binary_name }}-amd64
@@ -146,8 +146,8 @@ jobs:
       - name: Extract arm64 binary from image
         if: inputs.is_main_branch == 'true' && inputs.push_enabled == true
         run: |
-          docker pull --platform linux/arm64 ${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.branch_sha_tag }}
-          docker create --name temp-container-arm --platform linux/arm64 ${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.branch_sha_tag }}
+          docker pull --platform linux/arm64 ${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.semantic_version }}-${{ inputs.short_sha }}
+          docker create --name temp-container-arm --platform linux/arm64 ${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.semantic_version }}-${{ inputs.short_sha }}
           docker cp temp-container-arm:${{ inputs.binary_path }} artifacts/${{ inputs.binary_name }}-arm64
           docker rm temp-container-arm
           chmod +x artifacts/${{ inputs.binary_name }}-arm64
@@ -155,7 +155,7 @@ jobs:
       - name: Export Docker image
         if: inputs.is_main_branch == 'true' && inputs.push_enabled == true
         run: |
-          docker save ${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.branch_sha_tag }} | gzip > artifacts/${{ inputs.service_name }}-${{ inputs.branch_sha_tag }}.tar.gz
+          docker save ${{ inputs.target_registry }}/${{ inputs.service_name }}:${{ inputs.semantic_version }}-${{ inputs.short_sha }} | gzip > artifacts/${{ inputs.service_name }}-${{ inputs.semantic_version }}-${{ inputs.short_sha }}.tar.gz
 
       # Upload amd64 binary artifacts
       - name: Upload binary artifact with semantic version
