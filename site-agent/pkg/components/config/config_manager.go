@@ -95,6 +95,7 @@ func NewElektraConfig(utMode bool) *conftypes.Config {
 	newDBConfig(&conf.DB)
 	log.Info().Msgf("db srv:%v port:%v", conf.DB.Server, conf.DB.Port)
 
+	// Carbide config
 	flag.StringVar(&conf.Carbide.Address, "carbideAddress", os.Getenv("CARBIDE_ADDRESS"), "Carbide Address")
 	if conf.Carbide.Address == "" {
 		conf.Carbide.Address = "carbide-api.forge-system.svc.cluster.local:11079"
@@ -164,6 +165,7 @@ func NewElektraConfig(utMode bool) *conftypes.Config {
 	log.Info().Msg("RLA client Cert:" + conf.RLA.ClientCertPath)
 	log.Info().Msg("RLA client Key:" + conf.RLA.ClientKeyPath)
 
+	// General config
 	flag.StringVar(&conf.MetricsPort, "metricsPort", os.Getenv("METRICS_PORT"), "Metrics port number")
 	flag.StringVar(&conf.Temporal.Host, "temporalHost", os.Getenv("TEMPORAL_HOST"), "Temporal hostname/IP")
 	flag.StringVar(&conf.Temporal.Port, "temporalPort", os.Getenv("TEMPORAL_PORT"), "Temporal port")
