@@ -288,7 +288,7 @@ func (cibph CreateInfiniBandPartitionHandler) Handle(c echo.Context) error {
 		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
 	}
 
-	// Vpc metadata info
+	// InfiniBand Partition metadata info
 	metadata := &cwssaws.Metadata{
 		Name:        ibp.Name,
 		Description: "",

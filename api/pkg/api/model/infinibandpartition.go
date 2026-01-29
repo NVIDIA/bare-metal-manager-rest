@@ -14,7 +14,6 @@ package model
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
@@ -26,8 +25,6 @@ import (
 var (
 	// ErrValidationInfiniBandPartitionAssociation is the error when no associations are specified in the security group
 	ErrValidationInfiniBandPartitionAssociation = errors.New("at least one security group association is required")
-	// InfiniBandPartitionMaxLabelCount is the maximum number of Labels allowed per InfiniBandPartition
-	InfiniBandPartitionMaxLabelCount = 10
 )
 
 // APIInfiniBandPartitionCreateRequest is the data structure to capture instance request to create a new InfiniBandPartition
@@ -60,16 +57,16 @@ func (ibpcr APIInfiniBandPartitionCreateRequest) Validate() error {
 
 	// Labels validation
 	if ibpcr.Labels != nil {
-		if len(ibpcr.Labels) > InfiniBandPartitionMaxLabelCount {
+		if len(ibpcr.Labels) > util.LabelCountMax {
 			return validation.Errors{
-				"labels": fmt.Errorf("up to %v key/value pairs can be specified in labels", InfiniBandPartitionMaxLabelCount),
+				"labels": util.ErrValidationLabelCount,
 			}
 		}
 
 		for key, value := range ibpcr.Labels {
 			if key == "" {
 				return validation.Errors{
-					"labels": errors.New("one or more labels do not have a key specified"),
+					"labels": util.ErrValidationLabelKeyEmpty,
 				}
 			}
 
@@ -81,7 +78,7 @@ func (ibpcr APIInfiniBandPartitionCreateRequest) Validate() error {
 
 			if err != nil {
 				return validation.Errors{
-					"labels": errors.New(validationErrorMapKeyLabelStringLength),
+					"labels": util.ErrValidationLabelKeyLength,
 				}
 			}
 
@@ -94,7 +91,7 @@ func (ibpcr APIInfiniBandPartitionCreateRequest) Validate() error {
 
 			if err != nil {
 				return validation.Errors{
-					"labels": errors.New(validationErrorMapValueLabelStringLength),
+					"labels": util.ErrValidationLabelValueLength,
 				}
 			}
 		}
@@ -109,8 +106,6 @@ type APIInfiniBandPartitionUpdateRequest struct {
 	Name *string `json:"name"`
 	// Description is the description of the InfiniBand Partition
 	Description *string `json:"description"`
-	// Labels is a key value objects
-	Labels map[string]string `json:"labels"`
 }
 
 // Validate ensure the values passed in request are acceptable
@@ -124,48 +119,6 @@ func (ibpur APIInfiniBandPartitionUpdateRequest) Validate() error {
 
 	if err != nil {
 		return err
-	}
-
-	// Labels validation
-	if ibpur.Labels != nil {
-		if len(ibpur.Labels) > InfiniBandPartitionMaxLabelCount {
-			return validation.Errors{
-				"labels": fmt.Errorf("up to %v key/value pairs can be specified in labels", InfiniBandPartitionMaxLabelCount),
-			}
-		}
-
-		for key, value := range ibpur.Labels {
-			if key == "" {
-				return validation.Errors{
-					"labels": errors.New("one or more labels do not have a key specified"),
-				}
-			}
-
-			// Key validation
-			err = validation.Validate(key,
-				validation.Match(util.NotAllWhitespaceRegexp).Error("label key consists only of whitespace"),
-				validation.Length(1, 255).Error(validationErrorMapKeyLabelStringLength),
-			)
-
-			if err != nil {
-				return validation.Errors{
-					"labels": errors.New(validationErrorMapKeyLabelStringLength),
-				}
-			}
-
-			// Value validation
-			err = validation.Validate(value,
-				validation.When(value != "",
-					validation.Length(0, 255).Error(validationErrorMapValueLabelStringLength),
-				),
-			)
-
-			if err != nil {
-				return validation.Errors{
-					"labels": errors.New(validationErrorMapValueLabelStringLength),
-				}
-			}
-		}
 	}
 
 	return err
