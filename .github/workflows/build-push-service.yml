@@ -215,7 +215,7 @@ jobs:
           display-name: ${{ inputs.service_name }}-image
           description: ${{ inputs.service_name }} image
           version: ${{ inputs.semantic_version }}-${{ inputs.short_sha }}
-          path: artifacts/${{ inputs.service_name }}-${{ inputs.branch_sha_tag }}.tar.gz
+          path: artifacts/${{ inputs.service_name }}-${{ inputs.semantic_version }}-${{ inputs.short_sha }}.tar.gz
           ngc-path: ${{ inputs.ngc_path }}
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
@@ -227,6 +227,6 @@ jobs:
           display-name: ${{ inputs.service_name }}-image
           description: ${{ inputs.service_name }} image
           version: latest
-          path: artifacts/${{ inputs.service_name }}-${{ inputs.branch_sha_tag }}.tar.gz
+          path: artifacts/${{ inputs.service_name }}-${{ inputs.semantic_version }}-${{ inputs.short_sha }}.tar.gz
           ngc-path: ${{ inputs.ngc_path }}
           ngc-key: ${{ secrets.NVCR_TOKEN }}
