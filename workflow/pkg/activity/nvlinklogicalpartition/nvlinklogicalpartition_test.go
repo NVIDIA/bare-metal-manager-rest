@@ -73,6 +73,8 @@ func testNVLinkLogicalPartitionSetupSchema(t *testing.T, dbSession *cdb.Session)
 	assert.Nil(t, err)
 	// create Tenant table
 	err = dbSession.DB.ResetModel(context.Background(), (*cdbm.Tenant)(nil))
+	// create TenantSite table
+	err = dbSession.DB.ResetModel(context.Background(), (*cdbm.TenantSite)(nil))
 	assert.Nil(t, err)
 	// create NVLinkLogicalPartition table
 	err = dbSession.DB.ResetModel(context.Background(), (*cdbm.NVLinkLogicalPartition)(nil))
@@ -109,73 +111,73 @@ func TestManageNVLinkLogicalPartition_UpdateNVLinkLogicalPartitionsInDB(t *testi
 	ts1 := cwu.TestBuildTenantSiteAssociation(t, dbSession, tnOrg, tn.ID, st1.ID, tn.ID)
 	assert.NotNil(t, ts1)
 
-	nvllp1 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", st1, tn, cdbm.NVLinkLogicalPartitionStatusPending, false)
+	nvllp1 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", cdb.GetStrPtr("Test description"), st1, tn, cdbm.NVLinkLogicalPartitionStatusPending, false)
 	assert.NotNil(t, nvllp1)
 
 	// Set updated earlier than the inventory receipt interval (with buffer to exceed threshold)
 	_, err := dbSession.DB.Exec("UPDATE nvlink_logical_partition SET updated = ? WHERE id = ?", time.Now().Add(-time.Duration(cwu.InventoryReceiptInterval)*2), nvllp1.ID.String())
 	assert.NoError(t, err)
 
-	nvllp2 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-2", st1, tn, cdbm.NVLinkLogicalPartitionStatusProvisioning, false)
+	nvllp2 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-2", nil, st1, tn, cdbm.NVLinkLogicalPartitionStatusProvisioning, false)
 	assert.NotNil(t, nvllp2)
 
 	// Set created earlier than the inventory receipt interval (with buffer to exceed threshold)
 	_, err = dbSession.DB.Exec("UPDATE nvlink_logical_partition SET updated = ? WHERE id = ?", time.Now().Add(-time.Duration(cwu.InventoryReceiptInterval)*2), nvllp2.ID.String())
 	assert.NoError(t, err)
 
-	nvllp3 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-3", st1, tn, cdbm.NVLinkLogicalPartitionStatusDeleting, false)
+	nvllp3 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-3", nil, st1, tn, cdbm.NVLinkLogicalPartitionStatusDeleting, false)
 	assert.NotNil(t, nvllp3)
 
 	// Set created earlier than the inventory receipt interval (with buffer to exceed threshold)
 	_, err = dbSession.DB.Exec("UPDATE nvlink_logical_partition SET updated = ? WHERE id = ?", time.Now().Add(-time.Duration(cwu.InventoryReceiptInterval)*2), nvllp3.ID.String())
 	assert.NoError(t, err)
 
-	nvllp4 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-4", st1, tn, cdbm.NVLinkLogicalPartitionStatusDeleting, false)
+	nvllp4 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-4", nil, st1, tn, cdbm.NVLinkLogicalPartitionStatusDeleting, false)
 	assert.NotNil(t, nvllp4)
 
 	// Set created earlier than the inventory receipt interval (with buffer to exceed threshold)
 	_, err = dbSession.DB.Exec("UPDATE nvlink_logical_partition SET updated = ? WHERE id = ?", time.Now().Add(-time.Duration(cwu.InventoryReceiptInterval)*2), nvllp4.ID.String())
 	assert.NoError(t, err)
 
-	nvllp5 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-5", st1, tn, cdbm.NVLinkLogicalPartitionStatusDeleting, false)
+	nvllp5 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-5", nil, st1, tn, cdbm.NVLinkLogicalPartitionStatusDeleting, false)
 	assert.NotNil(t, nvllp5)
 
 	// Set created earlier than the inventory receipt interval (with buffer to exceed threshold)
 	_, err = dbSession.DB.Exec("UPDATE nvlink_logical_partition SET updated = ? WHERE id = ?", time.Now().Add(-time.Duration(cwu.InventoryReceiptInterval)*2), nvllp5.ID.String())
 	assert.NoError(t, err)
 
-	nvllp6 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-6", st1, tn, cdbm.NVLinkLogicalPartitionStatusDeleting, false)
+	nvllp6 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-6", nil, st1, tn, cdbm.NVLinkLogicalPartitionStatusDeleting, false)
 	assert.NotNil(t, nvllp6)
 
 	// Set created earlier than the inventory receipt interval (with buffer to exceed threshold)
 	_, err = dbSession.DB.Exec("UPDATE nvlink_logical_partition SET updated = ? WHERE id = ?", time.Now().Add(-time.Duration(cwu.InventoryReceiptInterval)*2), nvllp6.ID.String())
 	assert.NoError(t, err)
 
-	nvllp7 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-7", st1, tn, cdbm.NVLinkLogicalPartitionStatusReady, false)
+	nvllp7 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-7", nil, st1, tn, cdbm.NVLinkLogicalPartitionStatusReady, false)
 	assert.NotNil(t, nvllp7)
 
 	// Set created and updated earlier than the inventory receipt interval (with buffer to exceed threshold)
 	_, err = dbSession.DB.Exec("UPDATE nvlink_logical_partition SET created = ?, updated = ? WHERE id = ?", time.Now().Add(-time.Duration(cwu.InventoryReceiptInterval)*2), time.Now().Add(-time.Duration(cwu.InventoryReceiptInterval)*2), nvllp7.ID.String())
 	assert.NoError(t, err)
 
-	nvllp8 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-8", st1, tn, cdbm.NVLinkLogicalPartitionStatusError, true)
+	nvllp8 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-8", nil, st1, tn, cdbm.NVLinkLogicalPartitionStatusError, true)
 	assert.NotNil(t, nvllp8)
 
-	nvllp9 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-9", st1, tn, cdbm.NVLinkLogicalPartitionStatusProvisioning, false)
+	nvllp9 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-9", nil, st1, tn, cdbm.NVLinkLogicalPartitionStatusProvisioning, false)
 	assert.NotNil(t, nvllp9)
 
 	// Set created earlier than the inventory receipt interval (with buffer to exceed threshold)
 	_, err = dbSession.DB.Exec("UPDATE nvlink_logical_partition SET updated = ? WHERE id = ?", time.Now().Add(-time.Duration(cwu.InventoryReceiptInterval)*2), nvllp9.ID.String())
 	assert.NoError(t, err)
 
-	nvllp10 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-10", st1, tn, cdbm.NVLinkLogicalPartitionStatusDeleting, false)
+	nvllp10 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-10", nil, st1, tn, cdbm.NVLinkLogicalPartitionStatusDeleting, false)
 	assert.NotNil(t, nvllp10)
 
 	// Set created earlier than the inventory receipt interval (with buffer to exceed threshold)
 	_, err = dbSession.DB.Exec("UPDATE nvlink_logical_partition SET updated = ? WHERE id = ?", time.Now().Add(-time.Duration(cwu.InventoryReceiptInterval)*2), nvllp10.ID.String())
 	assert.NoError(t, err)
 
-	nvllp11 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-11", st1, tn, cdbm.NVLinkLogicalPartitionStatusReady, false)
+	nvllp11 := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-11", nil, st1, tn, cdbm.NVLinkLogicalPartitionStatusReady, false)
 	assert.NotNil(t, nvllp11)
 
 	// Set created and updated earlier than the inventory receipt interval (with buffer to exceed threshold)
@@ -187,7 +189,7 @@ func TestManageNVLinkLogicalPartition_UpdateNVLinkLogicalPartitionsInDB(t *testi
 	pagedIbps := []*cdbm.NVLinkLogicalPartition{}
 	pagedInvIds := []string{}
 	for i := 0; i < 38; i++ {
-		nvllp := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, fmt.Sprintf("test-vpc-paged-%d", i), st2, tn, cdbm.NVLinkLogicalPartitionStatusReady, false)
+		nvllp := cwu.TestBuildNVLinkLogicalPartition(t, dbSession, fmt.Sprintf("test-vpc-paged-%d", i), nil, st2, tn, cdbm.NVLinkLogicalPartitionStatusReady, false)
 		// Update created and updated timestamps to be earlier than inventory processing interval (with buffer to exceed threshold)
 		_, err = dbSession.DB.Exec("UPDATE nvlink_logical_partition SET created = ?, updated = ? WHERE id = ?", time.Now().Add(-time.Duration(cwu.InventoryReceiptInterval)*3), time.Now().Add(-time.Duration(cwu.InventoryReceiptInterval)*3), nvllp.ID.String())
 		assert.NoError(t, err)
@@ -230,7 +232,7 @@ func TestManageNVLinkLogicalPartition_UpdateNVLinkLogicalPartitionsInDB(t *testi
 		name                           string
 		fields                         fields
 		args                           args
-		updatedNVLinkLogicalPartition  *cdbm.NVLinkLogicalPartition
+		updatedNVLinkLogicalPartitions []*cdbm.NVLinkLogicalPartition
 		readyNVLinkLogicalPartitions   []*cdbm.NVLinkLogicalPartition
 		deletedNVLinkLogicalPartitions []*cdbm.NVLinkLogicalPartition
 		missingNVLinkLogicalPartitions []*cdbm.NVLinkLogicalPartition
@@ -270,7 +272,8 @@ func TestManageNVLinkLogicalPartition_UpdateNVLinkLogicalPartitionsInDB(t *testi
 							Id: &cwssaws.NVLinkLogicalPartitionId{Value: nvllp1.ID.String()},
 							Config: &cwssaws.NVLinkLogicalPartitionConfig{
 								Metadata: &cwssaws.Metadata{
-									Name: nvllp1.ID.String(),
+									Name:        nvllp1.ID.String(),
+									Description: "Test description updated",
 								},
 							},
 							Status: &cwssaws.NVLinkLogicalPartitionStatus{
@@ -289,8 +292,12 @@ func TestManageNVLinkLogicalPartition_UpdateNVLinkLogicalPartitionsInDB(t *testi
 							Id: &cwssaws.NVLinkLogicalPartitionId{Value: nvllp3.ID.String()},
 							Config: &cwssaws.NVLinkLogicalPartitionConfig{
 								Metadata: &cwssaws.Metadata{
-									Name: nvllp3.ID.String(),
+									Name:        nvllp3.ID.String(),
+									Description: "Test description updated",
 								},
+							},
+							Status: &cwssaws.NVLinkLogicalPartitionStatus{
+								State: cwssaws.TenantState_PROVISIONING,
 							},
 						},
 						{
@@ -329,7 +336,7 @@ func TestManageNVLinkLogicalPartition_UpdateNVLinkLogicalPartitionsInDB(t *testi
 					},
 				},
 			},
-			updatedNVLinkLogicalPartition:  nvllp1,
+			updatedNVLinkLogicalPartitions: []*cdbm.NVLinkLogicalPartition{nvllp1, nvllp3},
 			deletedNVLinkLogicalPartitions: []*cdbm.NVLinkLogicalPartition{nvllp5, nvllp6},
 			missingNVLinkLogicalPartitions: []*cdbm.NVLinkLogicalPartition{nvllp7, nvllp11},
 			restoredNVLinkLogicalPartition: nvllp8,
@@ -429,9 +436,10 @@ func TestManageNVLinkLogicalPartition_UpdateNVLinkLogicalPartitionsInDB(t *testi
 
 			nvllpDAO := cdbm.NewNVLinkLogicalPartitionDAO(dbSession)
 			// Check that NVLinkLogicalPartition status was updated in DB for NVLinkLogicalPartition1
-			if tt.updatedNVLinkLogicalPartition != nil {
-				updatedNVLinkLogicalPartition, _ := nvllpDAO.GetByID(ctx, nil, tt.updatedNVLinkLogicalPartition.ID, nil)
-				assert.Equal(t, cdbm.NVLinkLogicalPartitionStatusProvisioning, updatedNVLinkLogicalPartition.Status)
+			for _, nvllp := range tt.updatedNVLinkLogicalPartitions {
+				unvllp, _ := nvllpDAO.GetByID(ctx, nil, nvllp.ID, nil)
+				assert.Equal(t, cdbm.NVLinkLogicalPartitionStatusProvisioning, unvllp.Status)
+				assert.Equal(t, tt.args.nvLinkLogicalPartitionInventory.Partitions[0].Config.Metadata.Description, *unvllp.Description)
 			}
 
 			for _, nvllp := range tt.readyNVLinkLogicalPartitions {

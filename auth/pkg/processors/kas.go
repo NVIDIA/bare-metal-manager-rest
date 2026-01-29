@@ -18,7 +18,6 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
-	"github.com/rs/zerolog"
 	"github.com/nvidia/carbide-rest/auth/pkg/config"
 	"github.com/nvidia/carbide-rest/auth/pkg/core/claim"
 	commonConfig "github.com/nvidia/carbide-rest/common/pkg/config"
@@ -27,13 +26,15 @@ import (
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
 	cwfuwf "github.com/nvidia/carbide-rest/workflow/pkg/workflow/user"
+	"github.com/rs/zerolog"
 	temporalClient "go.temporal.io/sdk/client"
 )
 
-const (
-	// MaxUserDataStalePeriod specifies the length of time between user data refresh
-	MaxUserDataStalePeriod = time.Minute
-)
+// MaxUserDataStalePeriod specifies the length of time between user data refresh
+const MaxUserDataStalePeriod = time.Minute
+
+// Ensure KASProcessor implements config.TokenProcessor interface
+var _ config.TokenProcessor = (*KASProcessor)(nil)
 
 // KASProcessor processes KAS JWT tokens
 type KASProcessor struct {
@@ -41,9 +42,6 @@ type KASProcessor struct {
 	tc        temporalClient.Client
 	encCfg    *commonConfig.PayloadEncryptionConfig
 }
-
-// Ensure KASProcessor implements config.TokenProcessor interface
-var _ config.TokenProcessor = (*KASProcessor)(nil)
 
 // HandleToken processes KAS JWT tokens
 func (h *KASProcessor) ProcessToken(c echo.Context, tokenStr string, jwksCfg *config.JwksConfig, logger zerolog.Logger) (*cdbm.User, *util.APIError) {
@@ -119,6 +117,9 @@ func (h *KASProcessor) ProcessToken(c echo.Context, tokenStr string, jwksCfg *co
 		}
 
 	}
+
+	// KAS tokens are user tokens, not service account tokens
+	config.SetIsServiceAccountInContext(c, false)
 
 	// Set user in context
 	c.Set("user", dbUser)

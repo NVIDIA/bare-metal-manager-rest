@@ -19,7 +19,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: ":github: *carbide-rest* - ${{ github.event.pull_request.title }} by ${{ github.event.pull_request.user.login }}"
+                  text: ":github: *carbide-rest* - ${{ github.event.pull_request.title }} by *${{ github.event.pull_request.user.login }}*"
               - type: section
                 text:
                   type: mrkdwn

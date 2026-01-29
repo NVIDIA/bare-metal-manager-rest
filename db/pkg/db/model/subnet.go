@@ -10,7 +10,6 @@
  * its affiliates is strictly prohibited.
  */
 
-
 package model
 
 import (
@@ -171,6 +170,7 @@ type SubnetClearInput struct {
 
 // SubnetFilterInput input parameters for GetAll method
 type SubnetFilterInput struct {
+	SubnetIDs    []uuid.UUID
 	Names        []string
 	SiteIDs      []uuid.UUID
 	VpcIDs       []uuid.UUID
@@ -375,6 +375,10 @@ func (ssd SubnetSQLDAO) GetAll(ctx context.Context, tx *db.Tx, filter SubnetFilt
 	ss := []Subnet{}
 
 	query := db.GetIDB(tx, ssd.dbSession).NewSelect().Model(&ss)
+	if filter.SubnetIDs != nil {
+		query = query.Where("su.id IN (?)", bun.In(filter.SubnetIDs))
+		ssd.tracerSpan.SetAttribute(sbDAOSpan, "subnet_ids", filter.SubnetIDs)
+	}
 	if filter.Names != nil {
 		query = query.Where("su.name IN (?)", bun.In(filter.Names))
 		ssd.tracerSpan.SetAttribute(sbDAOSpan, "name", filter.Names)

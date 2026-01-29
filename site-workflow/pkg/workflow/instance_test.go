@@ -67,9 +67,9 @@ func (s *UpdateInstanceTestSuite) Test_UpdateInstance_Success() {
 				Variant: &cwssaws.OperatingSystem_Ipxe{
 					Ipxe: &cwssaws.IpxeOperatingSystem{
 						IpxeScript: ipxeScript,
-						UserData:   &userData,
 					},
 				},
+				UserData: &userData,
 			},
 		},
 	}
@@ -110,9 +110,9 @@ func (s *UpdateInstanceTestSuite) Test_UpdateInstance_Failure() {
 				Variant: &cwssaws.OperatingSystem_Ipxe{
 					Ipxe: &cwssaws.IpxeOperatingSystem{
 						IpxeScript: ipxeScript,
-						UserData:   &userData,
 					},
 				},
+				UserData: &userData,
 			},
 		},
 	}
@@ -174,9 +174,9 @@ func (s *CreateInstanceV2TestSuite) Test_CreateInstanceV2_Success() {
 				Variant: &cwssaws.OperatingSystem_Ipxe{
 					Ipxe: &cwssaws.IpxeOperatingSystem{
 						IpxeScript: ipxeScript,
-						UserData:   &userData,
 					},
 				},
+				UserData: &userData,
 			},
 		},
 	}
@@ -217,9 +217,9 @@ func (s *CreateInstanceV2TestSuite) Test_CreateInstanceV2_Failure() {
 				Variant: &cwssaws.OperatingSystem_Ipxe{
 					Ipxe: &cwssaws.IpxeOperatingSystem{
 						IpxeScript: ipxeScript,
-						UserData:   &userData,
 					},
 				},
+				UserData: &userData,
 			},
 		},
 	}
@@ -287,9 +287,9 @@ func (s *CreateInstancesTestSuite) Test_CreateInstances_Success() {
 						Variant: &cwssaws.OperatingSystem_Ipxe{
 							Ipxe: &cwssaws.IpxeOperatingSystem{
 								IpxeScript: ipxeScript,
-								UserData:   &userData,
 							},
 						},
+						UserData: &userData,
 					},
 				},
 			},
@@ -311,9 +311,9 @@ func (s *CreateInstancesTestSuite) Test_CreateInstances_Success() {
 						Variant: &cwssaws.OperatingSystem_Ipxe{
 							Ipxe: &cwssaws.IpxeOperatingSystem{
 								IpxeScript: ipxeScript,
-								UserData:   &userData,
 							},
 						},
+						UserData: &userData,
 					},
 				},
 			},
@@ -360,9 +360,9 @@ func (s *CreateInstancesTestSuite) Test_CreateInstances_Failure() {
 						Variant: &cwssaws.OperatingSystem_Ipxe{
 							Ipxe: &cwssaws.IpxeOperatingSystem{
 								IpxeScript: ipxeScript,
-								UserData:   &userData,
 							},
 						},
+						UserData: &userData,
 					},
 				},
 			},

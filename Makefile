@@ -1,6 +1,7 @@
 .PHONY: test postgres-up postgres-down ensure-postgres postgres-wait
 .PHONY: build docker-build docker-build-local
 .PHONY: test-ipam test-site-agent test-site-manager test-workflow test-db test-api test-auth test-common test-cert-manager test-site-workflow migrate carbide-mock-server-build carbide-mock-server-start carbide-mock-server-stop
+.PHONY: pre-commit-install pre-commit-run pre-commit-update
 
 # Build configuration
 BUILD_DIR := build/binaries
@@ -124,25 +125,44 @@ docker-build:
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) -f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-db .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) -f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-cert-manager .
 
-proto:
-	if [ -d "carbide-core" ]; then rm -rf carbide-core; fi
-	git clone ssh://git@github.com/nvidia/carbide-core.git
+carbide-proto:
+	if [ -d "carbide-core" ]; then cd carbide-core && git pull; else git clone ssh://git@github.com/nvidia/carbide-core.git; fi
 	ls carbide-core/rpc/proto
 	@for file in carbide-core/rpc/proto/*.proto; do \
 		cp "$$file" "workflow-schema/site-agent/workflows/v1/$$(basename "$$file" .proto)_carbide.proto"; \
 		echo "Copied: $$file"; \
-		./workflow-schema/scripts/add-go-package-option.sh "workflow-schema/site-agent/workflows/v1/$$(basename "$$file" .proto)_carbide.proto"; \
+		./workflow-schema/scripts/add-go-package-option.sh "workflow-schema/site-agent/workflows/v1/$$(basename "$$file" .proto)_carbide.proto" "github.com/nvidia/carbide-rest/workflow-schema/proto"; \
 	done
 	rm -rf carbide-core
 
-protogen:
-	cd workflow-schema
-	# Lint is disabled for now
-	# echo "Checking validity of proto files"
-	# buf lint
-	echo "Generating go proto files now"
-	buf generate
-	cd ..
+carbide-protogen:
+	echo "Generating protobuf for Carbide"
+	cd workflow-schema && buf generate
+
+rla-proto:
+	@# Support two modes: RLA_REPO_URL (auto-clone) or RLA_REPO_PATH (existing repo)
+	@if [ -n "$${RLA_REPO_URL}" ]; then \
+		echo "Using RLA_REPO_URL: cloning to local 'rla' directory..."; \
+		if [ -d "rla" ]; then cd rla && git pull; else git clone "$${RLA_REPO_URL}" rla; fi; \
+	elif [ -z "$${RLA_REPO_PATH}" ]; then \
+		echo "Error: Set RLA_REPO_PATH (existing repo) or RLA_REPO_URL (to clone)"; exit 1; \
+	elif [ ! -d "$${RLA_REPO_PATH}" ]; then \
+		echo "Error: RLA_REPO_PATH directory not found: $${RLA_REPO_PATH}"; exit 1; \
+	else \
+		cd "$${RLA_REPO_PATH}" && git pull; \
+	fi
+	@if [ -n "$${RLA_REPO_URL}" ]; then RLA_DIR=rla; else RLA_DIR="$${RLA_REPO_PATH}"; fi; \
+	ls "$${RLA_DIR}/proto/v1"; \
+	for file in "$${RLA_DIR}"/proto/v1/*.proto; do \
+		cp "$$file" "workflow-schema/rla/proto/v1/"; \
+		echo "Copied: $$file"; \
+		./workflow-schema/scripts/add-go-package-option.sh "workflow-schema/rla/proto/v1/$$(basename "$$file")" "github.com/nvidia/carbide-rest/workflow-schema/rla"; \
+	done; \
+	if [ -n "$${RLA_REPO_URL}" ]; then rm -rf rla; fi
+
+rla-protogen:
+	echo "Generating protobuf for RLA"
+	cd workflow-schema/rla && buf generate
 
 # =============================================================================
 # Kind Local Deployment Targets
@@ -332,3 +352,23 @@ setup-site-agent:
 # Verify the local deployment (health checks)
 kind-verify:
 	./scripts/verify-local.sh
+
+# =============================================================================
+# Pre-commit Hooks (TruffleHog Secret Detection)
+# =============================================================================
+
+# Install pre-commit hooks
+pre-commit-install:
+	@command -v pre-commit >/dev/null 2>&1 || { echo "Installing pre-commit..."; pip install pre-commit; }
+	@command -v trufflehog >/dev/null 2>&1 || { echo "Installing trufflehog..."; brew install trufflehog || go install github.com/trufflesecurity/trufflehog/v3@latest; }
+	pre-commit install
+	pre-commit install --hook-type pre-push
+	@echo "Pre-commit hooks installed successfully!"
+
+# Run pre-commit on all files
+pre-commit-run:
+	pre-commit run --all-files
+
+# Update pre-commit hooks to latest versions
+pre-commit-update:
+	pre-commit autoupdate

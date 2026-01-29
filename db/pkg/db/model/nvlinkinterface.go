@@ -170,6 +170,8 @@ type NVLinkInterfaceDAO interface {
 	//
 	Update(ctx context.Context, tx *db.Tx, input NVLinkInterfaceUpdateInput) (*NVLinkInterface, error)
 	//
+	UpdateMultiple(ctx context.Context, tx *db.Tx, inputs []NVLinkInterfaceUpdateInput) ([]NVLinkInterface, error)
+	//
 	Clear(ctx context.Context, tx *db.Tx, input NVLinkInterfaceClearInput) (*NVLinkInterface, error)
 	//
 	Delete(ctx context.Context, tx *db.Tx, id uuid.UUID) error
@@ -306,60 +308,127 @@ func (nvlisd NVLinkInterfaceSQLDAO) Create(ctx context.Context, tx *db.Tx, input
 
 // Update updates an existing NVLinkInterface from the given parameters
 func (nvlisd NVLinkInterfaceSQLDAO) Update(ctx context.Context, tx *db.Tx, input NVLinkInterfaceUpdateInput) (*NVLinkInterface, error) {
-	// Create a child span and set the attributes for current request
-	ctx, NVLinkInterfaceDAOSpan := nvlisd.tracerSpan.CreateChildInCurrentContext(ctx, "NVLinkInterfaceDAO.Update")
-	if NVLinkInterfaceDAOSpan != nil {
-		defer NVLinkInterfaceDAOSpan.End()
+	results, err := nvlisd.UpdateMultiple(ctx, tx, []NVLinkInterfaceUpdateInput{input})
+	if err != nil {
+		return nil, err
+	}
+	return &results[0], nil
+}
 
-		nvlisd.tracerSpan.SetAttribute(NVLinkInterfaceDAOSpan, "id", input.NVLinkInterfaceID)
-	}
-
-	nvli := &NVLinkInterface{
-		ID: input.NVLinkInterfaceID,
-	}
-
-	updatedFields := []string{}
-
-	if input.NVLinkDomainID != nil {
-		nvli.NVLinkDomainID = input.NVLinkDomainID
-		updatedFields = append(updatedFields, "nvlink_domain_id")
-		nvlisd.tracerSpan.SetAttribute(NVLinkInterfaceDAOSpan, "nvlink_domain_id", *input.NVLinkDomainID)
-	}
-	if input.Device != nil {
-		nvli.Device = input.Device
-		updatedFields = append(updatedFields, "device")
-		nvlisd.tracerSpan.SetAttribute(NVLinkInterfaceDAOSpan, "device", *input.Device)
-	}
-	if input.DeviceInstance != nil {
-		nvli.DeviceInstance = *input.DeviceInstance
-		updatedFields = append(updatedFields, "device_instance")
-		nvlisd.tracerSpan.SetAttribute(NVLinkInterfaceDAOSpan, "device_instance", *input.DeviceInstance)
-	}
-	if input.GpuGUID != nil {
-		nvli.GpuGUID = input.GpuGUID
-		updatedFields = append(updatedFields, "gpu_guid")
-		nvlisd.tracerSpan.SetAttribute(NVLinkInterfaceDAOSpan, "gpu_guid", *input.GpuGUID)
-	}
-	if input.Status != nil {
-		nvli.Status = *input.Status
-		updatedFields = append(updatedFields, "status")
-		nvlisd.tracerSpan.SetAttribute(NVLinkInterfaceDAOSpan, "status", *input.Status)
+// UpdateMultiple updates multiple NVLinkInterfaces in a single batch operation.
+// Since there are 2 operations (UPDATE, SELECT), this method should be called within a transaction.
+func (nvlisd NVLinkInterfaceSQLDAO) UpdateMultiple(ctx context.Context, tx *db.Tx, inputs []NVLinkInterfaceUpdateInput) ([]NVLinkInterface, error) {
+	if len(inputs) > db.MaxBatchItems {
+		return nil, fmt.Errorf("batch size %d exceeds maximum allowed %d", len(inputs), db.MaxBatchItems)
 	}
 
-	if len(updatedFields) > 0 {
-		updatedFields = append(updatedFields, "updated")
+	ctx, nvlIfcDAOSpan := nvlisd.tracerSpan.CreateChildInCurrentContext(ctx, "NVLinkInterfaceDAO.UpdateMultiple")
+	if nvlIfcDAOSpan != nil {
+		defer nvlIfcDAOSpan.End()
+		nvlisd.tracerSpan.SetAttribute(nvlIfcDAOSpan, "batch_size", len(inputs))
+	}
 
-		_, err := db.GetIDB(tx, nvlisd.dbSession).NewUpdate().Model(nvli).Column(updatedFields...).Where("id = ?", nvli.ID).Exec(ctx)
-		if err != nil {
-			return nil, err
+	if len(inputs) == 0 {
+		return []NVLinkInterface{}, nil
+	}
+
+	nvlIfcs := make([]*NVLinkInterface, 0, len(inputs))
+	ids := make([]uuid.UUID, 0, len(inputs))
+	columnsSet := make(map[string]bool)
+
+	traceItems := len(inputs)
+	if traceItems > db.MaxBatchItemsToTrace {
+		traceItems = db.MaxBatchItemsToTrace
+		if nvlIfcDAOSpan != nil {
+			nvlisd.tracerSpan.SetAttribute(nvlIfcDAOSpan, "items_truncated", "true")
 		}
 	}
-	nnvli, err := nvlisd.GetByID(ctx, tx, nvli.ID, nil)
+
+	for idx, input := range inputs {
+		nvli := &NVLinkInterface{
+			ID: input.NVLinkInterfaceID,
+		}
+		columns := []string{}
+		addTrace := nvlIfcDAOSpan != nil && idx < traceItems
+		prefix := fmt.Sprintf("items.%d.", idx)
+
+		if input.NVLinkDomainID != nil {
+			nvli.NVLinkDomainID = input.NVLinkDomainID
+			columns = append(columns, "nvlink_domain_id")
+			if addTrace {
+				nvlisd.tracerSpan.SetAttribute(nvlIfcDAOSpan, prefix+"nvlink_domain_id", input.NVLinkDomainID.String())
+			}
+		}
+		if input.Device != nil {
+			nvli.Device = input.Device
+			columns = append(columns, "device")
+			if addTrace {
+				nvlisd.tracerSpan.SetAttribute(nvlIfcDAOSpan, prefix+"device", *input.Device)
+			}
+		}
+		if input.DeviceInstance != nil {
+			nvli.DeviceInstance = *input.DeviceInstance
+			columns = append(columns, "device_instance")
+			if addTrace {
+				nvlisd.tracerSpan.SetAttribute(nvlIfcDAOSpan, prefix+"device_instance", *input.DeviceInstance)
+			}
+		}
+		if input.GpuGUID != nil {
+			nvli.GpuGUID = input.GpuGUID
+			columns = append(columns, "gpu_guid")
+			if addTrace {
+				nvlisd.tracerSpan.SetAttribute(nvlIfcDAOSpan, prefix+"gpu_guid", *input.GpuGUID)
+			}
+		}
+		if input.Status != nil {
+			nvli.Status = *input.Status
+			columns = append(columns, "status")
+			if addTrace {
+				nvlisd.tracerSpan.SetAttribute(nvlIfcDAOSpan, prefix+"status", *input.Status)
+			}
+		}
+
+		nvlIfcs = append(nvlIfcs, nvli)
+		ids = append(ids, input.NVLinkInterfaceID)
+		for _, col := range columns {
+			columnsSet[col] = true
+		}
+	}
+
+	columns := make([]string, 0, len(columnsSet)+1)
+	for col := range columnsSet {
+		columns = append(columns, col)
+	}
+	columns = append(columns, "updated")
+
+	_, err := db.GetIDB(tx, nvlisd.dbSession).NewUpdate().
+		Model(&nvlIfcs).
+		Column(columns...).
+		Bulk().
+		Exec(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return nnvli, nil
+	var result []NVLinkInterface
+	err = db.GetIDB(tx, nvlisd.dbSession).NewSelect().Model(&result).Where("nvli.id IN (?)", bun.In(ids)).Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(result) != len(ids) {
+		return nil, fmt.Errorf("unexpected result count: got %d, expected %d", len(result), len(ids))
+	}
+	idToIndex := make(map[uuid.UUID]int, len(ids))
+	for i, id := range ids {
+		idToIndex[id] = i
+	}
+	sorted := make([]NVLinkInterface, len(result))
+	for _, item := range result {
+		sorted[idToIndex[item.ID]] = item
+	}
+
+	return sorted, nil
 }
 
 // Clear clears NVLinkInterface attributes based on provided arguments

@@ -44,9 +44,14 @@ on:
         required: true
         type: string
       is_main_branch:
-        description: "Whether to push 'latest' and version tags (only on main) - pass 'true' or 'false' as string"
+        description: "Whether to push 'latest' and version-short-sha tags (only on main) - pass 'true' or 'false' as string"
         required: false
         default: "false"
+        type: string
+      release_tag:
+        description: "Release tag for the build"
+        required: false
+        default: ""
         type: string
     secrets:
       NVCR_USERNAME:
@@ -87,6 +92,7 @@ jobs:
       target_registry: ${{ inputs.target_registry }}
       push_enabled: ${{ inputs.push_enabled }}
       is_main_branch: ${{ inputs.is_main_branch }}
+      release_tag: ${{ inputs.release_tag }}
     secrets: inherit
 
   # Build and push carbide-rest-db
@@ -105,6 +111,7 @@ jobs:
       target_registry: ${{ inputs.target_registry }}
       push_enabled: ${{ inputs.push_enabled }}
       is_main_branch: ${{ inputs.is_main_branch }}
+      release_tag: ${{ inputs.release_tag }}
     secrets: inherit
 
   # Build and push carbide-rest-site-manager
@@ -123,6 +130,7 @@ jobs:
       target_registry: ${{ inputs.target_registry }}
       push_enabled: ${{ inputs.push_enabled }}
       is_main_branch: ${{ inputs.is_main_branch }}
+      release_tag: ${{ inputs.release_tag }}
     secrets: inherit
 
   # Build and push carbide-rest-workflow
@@ -141,6 +149,7 @@ jobs:
       target_registry: ${{ inputs.target_registry }}
       push_enabled: ${{ inputs.push_enabled }}
       is_main_branch: ${{ inputs.is_main_branch }}
+      release_tag: ${{ inputs.release_tag }}
     secrets: inherit
 
   # Build and push carbide-rest-site-agent
@@ -159,6 +168,7 @@ jobs:
       target_registry: ${{ inputs.target_registry }}
       push_enabled: ${{ inputs.push_enabled }}
       is_main_branch: ${{ inputs.is_main_branch }}
+      release_tag: ${{ inputs.release_tag }}
     secrets: inherit
 
   # Build and push carbide-rest-cert-manager
@@ -177,6 +187,7 @@ jobs:
       target_registry: ${{ inputs.target_registry }}
       push_enabled: ${{ inputs.push_enabled }}
       is_main_branch: ${{ inputs.is_main_branch }}
+      release_tag: ${{ inputs.release_tag }}
     secrets: inherit
 
   # Build summary
@@ -221,6 +232,11 @@ jobs:
             echo "**Main branch additional tags:**" >> $GITHUB_STEP_SUMMARY
             echo "- \`${{ inputs.semantic_version }}\`" >> $GITHUB_STEP_SUMMARY
             echo "- \`latest\`" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "${{ inputs.release_tag }}" != "" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Release tag additional tags:**" >> $GITHUB_STEP_SUMMARY
+            echo "- \`${{ inputs.release_tag }}\`" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Images Built" >> $GITHUB_STEP_SUMMARY

@@ -16,10 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 	"github.com/nvidia/carbide-rest/db/pkg/db"
 	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
@@ -27,6 +23,10 @@ import (
 	sc "github.com/nvidia/carbide-rest/workflow/pkg/client/site"
 	"github.com/nvidia/carbide-rest/workflow/pkg/queue"
 	cwu "github.com/nvidia/carbide-rest/workflow/pkg/util"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/google/uuid"
@@ -1166,7 +1166,7 @@ func TestManageInstance_UpdateInstancesInDB(t *testing.T) {
 
 	partition1 := util.TestBuildInfiniBandPartition(t, dbSession, "test-partition-1", site, tenant, cdb.GetUUIDPtr(uuid.New()), cdbm.InfiniBandPartitionStatusProvisioning, false)
 
-	nvllPartition1 := util.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvlinklpartition-1", site, tenant, cdbm.NVLinkLogicalPartitionStatusReady, false)
+	nvllPartition1 := util.TestBuildNVLinkLogicalPartition(t, dbSession, "test-nvlinklpartition-1", nil, site, tenant, cdbm.NVLinkLogicalPartitionStatusReady, false)
 	assert.NotNil(t, nvllPartition1)
 
 	machine1 := util.TestBuildMachine(t, dbSession, ip.ID, site.ID, nil, cdb.GetBoolPtr(true), cdbm.MachineStatusReady)

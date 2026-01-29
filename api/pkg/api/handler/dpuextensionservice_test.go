@@ -24,9 +24,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
 	"github.com/nvidia/carbide-rest/api/pkg/api/model"
 	"github.com/nvidia/carbide-rest/api/pkg/api/pagination"
@@ -35,6 +32,9 @@ import (
 	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
 	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	temporalClient "go.temporal.io/sdk/client"
 	tmocks "go.temporal.io/sdk/mocks"
 
@@ -1168,6 +1168,12 @@ func TestDeleteDpuExtensionServiceVersionHandler_Handle(t *testing.T) {
 	desd := common.TestBuildDpuExtensionServiceDeployment(t, dbSession, des2, i1.ID, "v2", cdbm.DpuExtensionServiceDeploymentStatusRunning, tnu1)
 	assert.NotNil(t, desd)
 
+	versions := des1.ActiveVersions
+	versions = append(versions, "V1-T1761856992374053")
+	versions = append(versions, "V1-T1761856992374054")
+	des1 = common.TestBuildDpuExtensionServiceUpdateActiveVersions(t, dbSession, des1, versions)
+	assert.NotNil(t, des1)
+
 	cfg := common.GetTestConfig()
 
 	// OTEL Spanner configuration
@@ -1255,6 +1261,15 @@ func TestDeleteDpuExtensionServiceVersionHandler_Handle(t *testing.T) {
 			reqOrgName:            tnOrg,
 			dpuExtensionServiceID: des1.ID.String(),
 			versionID:             "v1",
+			user:                  tnu1,
+			expectedErr:           false,
+			expectedStatus:        http.StatusAccepted,
+		},
+		{
+			name:                  "success deleting DPU Extension Service version in active versions list",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des1.ID.String(),
+			versionID:             "V1-T1761856992374053",
 			user:                  tnu1,
 			expectedErr:           false,
 			expectedStatus:        http.StatusAccepted,
