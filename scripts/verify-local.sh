@@ -16,8 +16,8 @@ set -e
 API_URL="http://localhost:8388"
 KEYCLOAK_URL="http://localhost:8080"
 TEMPORAL_URL="http://localhost:8233"
-VAULT_URL="http://localhost:8200"
 ADMINER_URL="http://localhost:8081"
+NAMESPACE="${NAMESPACE:-carbide}"
 
 pass() { echo "[OK] $1"; }
 fail() { echo "[FAIL] $1"; exit 1; }
@@ -82,10 +82,11 @@ else
   warn "not accessible"
 fi
 
-# Vault health
-echo -n "Vault... "
-if curl -sf "$VAULT_URL/v1/sys/health" 2>/dev/null | jq -e '.initialized == true and .sealed == false' > /dev/null 2>&1; then
-  pass "initialized"
+# Native cert-manager service
+echo -n "Native cert manager... "
+CERT_MANAGER_READY=$(kubectl -n "$NAMESPACE" get deployment carbide-rest-cert-manager -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "")
+if [ -n "$CERT_MANAGER_READY" ] && [ "$CERT_MANAGER_READY" -ge 1 ] 2>/dev/null; then
+  pass "ready"
 else
   warn "not ready"
 fi

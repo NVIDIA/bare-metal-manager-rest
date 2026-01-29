@@ -44,16 +44,16 @@ echo "Step 1: Checking Temporal pods..."
 echo ""
 
 run_test "Frontend pod running" \
-    "kubectl -n $NAMESPACE get pods -l app=temporal,component=frontend -o jsonpath='{.items[0].status.phase}' | grep -q Running"
+    "kubectl -n $NAMESPACE get pods -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=frontend -o jsonpath='{.items[0].status.phase}' | grep -q Running"
 
 run_test "History pod running" \
-    "kubectl -n $NAMESPACE get pods -l app=temporal,component=history -o jsonpath='{.items[0].status.phase}' | grep -q Running"
+    "kubectl -n $NAMESPACE get pods -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=history -o jsonpath='{.items[0].status.phase}' | grep -q Running"
 
 run_test "Matching pod running" \
-    "kubectl -n $NAMESPACE get pods -l app=temporal,component=matching -o jsonpath='{.items[0].status.phase}' | grep -q Running"
+    "kubectl -n $NAMESPACE get pods -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=matching -o jsonpath='{.items[0].status.phase}' | grep -q Running"
 
 run_test "Worker pod running" \
-    "kubectl -n $NAMESPACE get pods -l app=temporal,component=worker -o jsonpath='{.items[0].status.phase}' | grep -q Running"
+    "kubectl -n $NAMESPACE get pods -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=worker -o jsonpath='{.items[0].status.phase}' | grep -q Running"
 
 echo ""
 
@@ -61,20 +61,20 @@ echo ""
 echo "Step 2: Checking TLS certificates..."
 echo ""
 
-run_test "temporal-frontend-tls secret exists" \
-    "kubectl -n $NAMESPACE get secret temporal-frontend-tls"
+run_test "server-interservice-certs secret exists" \
+    "kubectl -n $NAMESPACE get secret server-interservice-certs"
 
-run_test "temporal-history-tls secret exists" \
-    "kubectl -n $NAMESPACE get secret temporal-history-tls"
+run_test "server-cloud-certs secret exists" \
+    "kubectl -n $NAMESPACE get secret server-cloud-certs"
 
-run_test "temporal-matching-tls secret exists" \
-    "kubectl -n $NAMESPACE get secret temporal-matching-tls"
+run_test "server-site-certs secret exists" \
+    "kubectl -n $NAMESPACE get secret server-site-certs"
 
-run_test "temporal-worker-tls secret exists" \
-    "kubectl -n $NAMESPACE get secret temporal-worker-tls"
+run_test "temporal-client-certs secret exists" \
+    "kubectl -n $NAMESPACE get secret temporal-client-certs"
 
-run_test "workflow-temporal-client-tls secret exists" \
-    "kubectl -n $NAMESPACE get secret workflow-temporal-client-tls"
+run_test "temporal-client-certs contains client cert" \
+    "kubectl -n $NAMESPACE get secret temporal-client-certs -o jsonpath='{.data.tls\\.crt}' | base64 -d | openssl x509 -noout > /dev/null"
 
 echo ""
 
@@ -93,11 +93,11 @@ verify_issuer() {
     echo "$issuer" | grep -qi "$expected_issuer"
 }
 
-run_test "temporal-frontend-tls issued by CA" \
-    "verify_issuer temporal-frontend-tls"
+run_test "server-interservice-certs issued by CA" \
+    "verify_issuer server-interservice-certs"
 
-run_test "workflow-temporal-client-tls issued by CA" \
-    "verify_issuer workflow-temporal-client-tls"
+run_test "temporal-client-certs issued by CA" \
+    "verify_issuer temporal-client-certs"
 
 echo ""
 
@@ -105,17 +105,17 @@ echo ""
 echo "Step 4: Checking cert-manager Certificate status..."
 echo ""
 
-run_test "temporal-frontend-tls Certificate Ready" \
-    "kubectl -n $NAMESPACE get certificate temporal-frontend-tls -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -q True"
+run_test "server-interservice-cert Certificate Ready" \
+    "kubectl -n $NAMESPACE get certificate server-interservice-cert -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -q True"
 
-run_test "temporal-history-tls Certificate Ready" \
-    "kubectl -n $NAMESPACE get certificate temporal-history-tls -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -q True"
+run_test "server-cloud-cert Certificate Ready" \
+    "kubectl -n $NAMESPACE get certificate server-cloud-cert -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -q True"
 
-run_test "temporal-matching-tls Certificate Ready" \
-    "kubectl -n $NAMESPACE get certificate temporal-matching-tls -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -q True"
+run_test "server-site-cert Certificate Ready" \
+    "kubectl -n $NAMESPACE get certificate server-site-cert -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -q True"
 
-run_test "temporal-worker-tls Certificate Ready" \
-    "kubectl -n $NAMESPACE get certificate temporal-worker-tls -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -q True"
+run_test "temporal-client-cert Certificate Ready" \
+    "kubectl -n $NAMESPACE get certificate temporal-client-cert -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -q True"
 
 echo ""
 
@@ -123,7 +123,7 @@ echo ""
 echo "Step 5: Checking Temporal logs for TLS configuration..."
 echo ""
 
-frontend_pod=$(kubectl -n $NAMESPACE get pods -l app=temporal,component=frontend -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+frontend_pod=$(kubectl -n $NAMESPACE get pods -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=frontend -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
 if [ -n "$frontend_pod" ]; then
     run_test "Frontend loading TLS certificates" \
@@ -144,7 +144,7 @@ echo ""
 echo "Step 6: Checking worker SDK client connection..."
 echo ""
 
-worker_pod=$(kubectl -n $NAMESPACE get pods -l app=temporal,component=worker -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+worker_pod=$(kubectl -n $NAMESPACE get pods -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=worker -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
 if [ -n "$worker_pod" ]; then
     run_test "Worker started successfully" \
@@ -166,13 +166,13 @@ run_test "temporal-frontend service exists" \
     "kubectl -n $NAMESPACE get service temporal-frontend"
 
 run_test "temporal-history service exists" \
-    "kubectl -n $NAMESPACE get service temporal-history"
+    "kubectl -n $NAMESPACE get service temporal-history-headless"
 
 run_test "temporal-matching service exists" \
-    "kubectl -n $NAMESPACE get service temporal-matching"
+    "kubectl -n $NAMESPACE get service temporal-matching-headless"
 
 run_test "temporal-worker service exists" \
-    "kubectl -n $NAMESPACE get service temporal-worker"
+    "kubectl -n $NAMESPACE get service temporal-worker-headless"
 
 echo ""
 

@@ -9,7 +9,7 @@
 set -e
 
 NAMESPACE="${NAMESPACE:-carbide}"
-TIMEOUT="${TIMEOUT:-120}"
+TIMEOUT="${TIMEOUT:-300}"
 
 echo "=========================================="
 echo "Temporal Certificate Rotation Test"
@@ -25,22 +25,22 @@ get_cert_serial() {
 
 # Function to check if Temporal frontend is healthy
 check_temporal_health() {
-    kubectl -n "$NAMESPACE" get pods -l app=temporal,component=frontend -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"
+    kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=frontend -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"
 }
 
 # Step 1: Record current certificate serial numbers
 echo "Step 1: Recording current certificate serial numbers..."
 echo ""
 
-FRONTEND_SERIAL_BEFORE=$(get_cert_serial "temporal-frontend-tls")
-HISTORY_SERIAL_BEFORE=$(get_cert_serial "temporal-history-tls")
-MATCHING_SERIAL_BEFORE=$(get_cert_serial "temporal-matching-tls")
-WORKER_SERIAL_BEFORE=$(get_cert_serial "temporal-worker-tls")
+INTERSERVICE_SERIAL_BEFORE=$(get_cert_serial "server-interservice-certs")
+CLOUD_SERIAL_BEFORE=$(get_cert_serial "server-cloud-certs")
+SITE_SERIAL_BEFORE=$(get_cert_serial "server-site-certs")
+CLIENT_SERIAL_BEFORE=$(get_cert_serial "temporal-client-certs")
 
-echo "  temporal-frontend-tls: $FRONTEND_SERIAL_BEFORE"
-echo "  temporal-history-tls:  $HISTORY_SERIAL_BEFORE"
-echo "  temporal-matching-tls: $MATCHING_SERIAL_BEFORE"
-echo "  temporal-worker-tls:   $WORKER_SERIAL_BEFORE"
+echo "  server-interservice-certs: $INTERSERVICE_SERIAL_BEFORE"
+echo "  server-cloud-certs:        $CLOUD_SERIAL_BEFORE"
+echo "  server-site-certs:         $SITE_SERIAL_BEFORE"
+echo "  temporal-client-certs:     $CLIENT_SERIAL_BEFORE"
 echo ""
 
 # Step 2: Verify Temporal is healthy before rotation
@@ -55,23 +55,23 @@ echo ""
 
 # Step 3: Delete certificate secrets to trigger rotation
 echo "Step 3: Deleting certificate secrets to trigger rotation..."
-kubectl -n "$NAMESPACE" delete secret temporal-frontend-tls --ignore-not-found
-kubectl -n "$NAMESPACE" delete secret temporal-history-tls --ignore-not-found
-kubectl -n "$NAMESPACE" delete secret temporal-matching-tls --ignore-not-found
-kubectl -n "$NAMESPACE" delete secret temporal-worker-tls --ignore-not-found
+kubectl -n "$NAMESPACE" delete secret server-interservice-certs --ignore-not-found
+kubectl -n "$NAMESPACE" delete secret server-cloud-certs --ignore-not-found
+kubectl -n "$NAMESPACE" delete secret server-site-certs --ignore-not-found
+kubectl -n "$NAMESPACE" delete secret temporal-client-certs --ignore-not-found
 echo "  Secrets deleted"
 echo ""
 
 # Step 4: Wait for cert-manager to reissue certificates
 echo "Step 4: Waiting for cert-manager to reissue certificates..."
-echo "  Waiting for temporal-frontend-tls..."
-kubectl -n "$NAMESPACE" wait --for=condition=Ready certificate/temporal-frontend-tls --timeout="${TIMEOUT}s"
-echo "  Waiting for temporal-history-tls..."
-kubectl -n "$NAMESPACE" wait --for=condition=Ready certificate/temporal-history-tls --timeout="${TIMEOUT}s"
-echo "  Waiting for temporal-matching-tls..."
-kubectl -n "$NAMESPACE" wait --for=condition=Ready certificate/temporal-matching-tls --timeout="${TIMEOUT}s"
-echo "  Waiting for temporal-worker-tls..."
-kubectl -n "$NAMESPACE" wait --for=condition=Ready certificate/temporal-worker-tls --timeout="${TIMEOUT}s"
+echo "  Waiting for server-interservice-cert..."
+kubectl -n "$NAMESPACE" wait --for=condition=Ready certificate/server-interservice-cert --timeout="${TIMEOUT}s"
+echo "  Waiting for server-cloud-cert..."
+kubectl -n "$NAMESPACE" wait --for=condition=Ready certificate/server-cloud-cert --timeout="${TIMEOUT}s"
+echo "  Waiting for server-site-cert..."
+kubectl -n "$NAMESPACE" wait --for=condition=Ready certificate/server-site-cert --timeout="${TIMEOUT}s"
+echo "  Waiting for temporal-client-cert..."
+kubectl -n "$NAMESPACE" wait --for=condition=Ready certificate/temporal-client-cert --timeout="${TIMEOUT}s"
 echo "  All certificates reissued"
 echo ""
 
@@ -79,45 +79,45 @@ echo ""
 echo "Step 5: Verifying new certificate serial numbers..."
 echo ""
 
-FRONTEND_SERIAL_AFTER=$(get_cert_serial "temporal-frontend-tls")
-HISTORY_SERIAL_AFTER=$(get_cert_serial "temporal-history-tls")
-MATCHING_SERIAL_AFTER=$(get_cert_serial "temporal-matching-tls")
-WORKER_SERIAL_AFTER=$(get_cert_serial "temporal-worker-tls")
+INTERSERVICE_SERIAL_AFTER=$(get_cert_serial "server-interservice-certs")
+CLOUD_SERIAL_AFTER=$(get_cert_serial "server-cloud-certs")
+SITE_SERIAL_AFTER=$(get_cert_serial "server-site-certs")
+CLIENT_SERIAL_AFTER=$(get_cert_serial "temporal-client-certs")
 
-echo "  temporal-frontend-tls: $FRONTEND_SERIAL_AFTER"
-echo "  temporal-history-tls:  $HISTORY_SERIAL_AFTER"
-echo "  temporal-matching-tls: $MATCHING_SERIAL_AFTER"
-echo "  temporal-worker-tls:   $WORKER_SERIAL_AFTER"
+echo "  server-interservice-certs: $INTERSERVICE_SERIAL_AFTER"
+echo "  server-cloud-certs:        $CLOUD_SERIAL_AFTER"
+echo "  server-site-certs:         $SITE_SERIAL_AFTER"
+echo "  temporal-client-certs:     $CLIENT_SERIAL_AFTER"
 echo ""
 
 ROTATION_SUCCESS=true
 
-if [ "$FRONTEND_SERIAL_BEFORE" = "$FRONTEND_SERIAL_AFTER" ]; then
-    echo "  ERROR: temporal-frontend-tls was not rotated"
+if [ "$INTERSERVICE_SERIAL_BEFORE" = "$INTERSERVICE_SERIAL_AFTER" ]; then
+    echo "  ERROR: server-interservice-certs was not rotated"
     ROTATION_SUCCESS=false
 else
-    echo "  temporal-frontend-tls: ROTATED"
+    echo "  server-interservice-certs: ROTATED"
 fi
 
-if [ "$HISTORY_SERIAL_BEFORE" = "$HISTORY_SERIAL_AFTER" ]; then
-    echo "  ERROR: temporal-history-tls was not rotated"
+if [ "$CLOUD_SERIAL_BEFORE" = "$CLOUD_SERIAL_AFTER" ]; then
+    echo "  ERROR: server-cloud-certs was not rotated"
     ROTATION_SUCCESS=false
 else
-    echo "  temporal-history-tls: ROTATED"
+    echo "  server-cloud-certs: ROTATED"
 fi
 
-if [ "$MATCHING_SERIAL_BEFORE" = "$MATCHING_SERIAL_AFTER" ]; then
-    echo "  ERROR: temporal-matching-tls was not rotated"
+if [ "$SITE_SERIAL_BEFORE" = "$SITE_SERIAL_AFTER" ]; then
+    echo "  ERROR: server-site-certs was not rotated"
     ROTATION_SUCCESS=false
 else
-    echo "  temporal-matching-tls: ROTATED"
+    echo "  server-site-certs: ROTATED"
 fi
 
-if [ "$WORKER_SERIAL_BEFORE" = "$WORKER_SERIAL_AFTER" ]; then
-    echo "  ERROR: temporal-worker-tls was not rotated"
+if [ "$CLIENT_SERIAL_BEFORE" = "$CLIENT_SERIAL_AFTER" ]; then
+    echo "  ERROR: temporal-client-certs was not rotated"
     ROTATION_SUCCESS=false
 else
-    echo "  temporal-worker-tls: ROTATED"
+    echo "  temporal-client-certs: ROTATED"
 fi
 echo ""
 
@@ -157,16 +157,16 @@ if [ "$ROTATION_SUCCESS" = true ]; then
     echo "SUCCESS: All certificates were rotated and Temporal is healthy"
     echo ""
     echo "Before rotation:"
-    echo "  frontend: $FRONTEND_SERIAL_BEFORE"
-    echo "  history:  $HISTORY_SERIAL_BEFORE"
-    echo "  matching: $MATCHING_SERIAL_BEFORE"
-    echo "  worker:   $WORKER_SERIAL_BEFORE"
+    echo "  interservice: $INTERSERVICE_SERIAL_BEFORE"
+    echo "  cloud:        $CLOUD_SERIAL_BEFORE"
+    echo "  site:         $SITE_SERIAL_BEFORE"
+    echo "  client:       $CLIENT_SERIAL_BEFORE"
     echo ""
     echo "After rotation:"
-    echo "  frontend: $FRONTEND_SERIAL_AFTER"
-    echo "  history:  $HISTORY_SERIAL_AFTER"
-    echo "  matching: $MATCHING_SERIAL_AFTER"
-    echo "  worker:   $WORKER_SERIAL_AFTER"
+    echo "  interservice: $INTERSERVICE_SERIAL_AFTER"
+    echo "  cloud:        $CLOUD_SERIAL_AFTER"
+    echo "  site:         $SITE_SERIAL_AFTER"
+    echo "  client:       $CLIENT_SERIAL_AFTER"
     exit 0
 else
     echo "FAILURE: Some certificates were not rotated"

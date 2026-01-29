@@ -85,16 +85,17 @@ CM_TLS_PF_PID=$!
 kubectl -n $NAMESPACE port-forward svc/carbide-rest-site-manager 18100:8100 > /dev/null 2>&1 &
 SM_PF_PID=$!
 
-# Wait for port-forwards
-for i in {1..15}; do
-    if curl -s http://localhost:18001/healthz > /dev/null 2>&1; then
-        break
-    fi
-    if [[ $i -eq 15 ]]; then
-        echo "Port-forward failed"
-        exit 1
-    fi
-done
+# Wait for port-forwards (HTTP and HTTPS)
+if ! curl -s --retry 30 --retry-all-errors --retry-delay 1 --retry-max-time 30 \
+    http://localhost:18001/healthz > /dev/null 2>&1; then
+    echo "Port-forward failed"
+    exit 1
+fi
+if ! curl -sk --retry 30 --retry-all-errors --retry-delay 1 --retry-max-time 30 \
+    https://localhost:18000/healthz > /dev/null 2>&1; then
+    echo "Port-forward failed"
+    exit 1
+fi
 
 echo ""
 echo "=========================================="
@@ -323,7 +324,7 @@ echo ""
 echo "--- Test 16-18: Core Pods Running ---"
 echo "Checks: Temporal, Workflow, and Database pods are all running"
 
-TEMPORAL_PHASE=$(kubectl -n $NAMESPACE get pod -l app=temporal -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "")
+TEMPORAL_PHASE=$(kubectl -n $NAMESPACE get pod -l app.kubernetes.io/name=temporal -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "")
 if [[ "$TEMPORAL_PHASE" == "Running" ]]; then
     pass "Temporal pod is running"
 else
@@ -432,7 +433,7 @@ echo ""
 echo "--- Test 25: PKI API Issues Certificate ---"
 echo "Checks: POST to /v1/pki/cloud-cert returns a certificate and private key"
 echo "        This is the API that services call to get their certs"
-ISSUE_RESP=$(curl -sfk -X POST https://localhost:18000/v1/pki/cloud-cert \
+ISSUE_RESP=$(curl -sk -X POST https://localhost:18000/v1/pki/cloud-cert \
     -H "Content-Type: application/json" \
     -d '{"name":"test-service","app":"e2e-test","ttl":24}' 2>/dev/null || echo "")
 if echo "$ISSUE_RESP" | jq -e '.certificate' > /dev/null 2>&1; then
@@ -529,16 +530,11 @@ fi
 echo ""
 echo "--- Test 30: cert-manager.io Issues Certificate ---"
 echo "Checks: cert-manager.io controller processed the request and issued a cert"
-for i in {1..15}; do
-    CERT_STATUS=$(kubectl -n $NAMESPACE get certificate e2e-test-cert -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "")
-    if [[ "$CERT_STATUS" == "True" ]]; then
-        break
-    fi
-done
-if [[ "$CERT_STATUS" == "True" ]]; then
+if kubectl -n $NAMESPACE wait --for=condition=Ready certificate/e2e-test-cert --timeout=120s > /dev/null 2>&1; then
     pass "cert-manager.io issued certificate successfully"
 else
-    fail "cert-manager.io certificate not ready after 30s (status: $CERT_STATUS)"
+    CERT_STATUS=$(kubectl -n $NAMESPACE get certificate e2e-test-cert -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "")
+    fail "cert-manager.io certificate not ready after 120s (status: $CERT_STATUS)"
 fi
 
 echo ""
