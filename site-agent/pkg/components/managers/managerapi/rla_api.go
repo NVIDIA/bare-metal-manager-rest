@@ -29,6 +29,7 @@ type RLAInterface interface {
 	UpdateGrpcClientState(err error)
 	CreateGrpcClientActivity(ctx context.Context, ResourceID string) (client *client.RlaClient, err error)
 	RegisterGrpc()
+	RegisterSubscriber() error
 	GetState() []string
 	GetGrpcClientVersion() int64
 	RLAExpansion
