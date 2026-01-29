@@ -55,7 +55,7 @@ type APINVLinkInterface struct {
 	// Instance is the summary of the Instance
 	Instance *APIInstanceSummary `json:"instance,omitempty"`
 	// NVLinkLogicalPartitionID is the ID of the associated NVLinkLogicalPartition
-	NVLinkLogicalPartitionID string `json:"nvLinklogicalPartitionId"`
+	NVLinkLogicalPartitionID string `json:"nvLinkLogicalPartitionId"`
 	// NVLinkLogicalPartition is the summary of the NVLinkLogicalPartition
 	NVLinkLogicalPartition *APINVLinkLogicalPartitionSummary `json:"nvLinkLogicalPartition,omitempty"`
 	// NVLinkDomainID is the id of the physical NVLink domain that the interface is attached to

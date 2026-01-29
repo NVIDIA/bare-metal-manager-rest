@@ -13083,7 +13083,7 @@ components:
       examples:
         - id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
           instanceId: 64d2028c-ae87-4069-a624-66089d957ef9
-          nvLinklogicalPartitionId: 05ef7e84-1d4e-4e4d-980d-38589479a0fe
+          nvLinkLogicalPartitionId: 05ef7e84-1d4e-4e4d-980d-38589479a0fe
           nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
           deviceInstance: 0
           gpuGuid: 4fe82bc6-1e30-4dfd-8839-996596209883
@@ -13099,7 +13099,7 @@ components:
         instanceId:
           type: string
           format: uuid
-        nvLinklogicalPartitionId:
+        nvLinkLogicalPartitionId:
           type: string
           format: uuid
           description: ID of the NVLink Logical Partition associated with this interface
@@ -13137,13 +13137,13 @@ components:
       title: NVLinkInterfaceCreateRequest
       type: object
       examples:
-        - nvLinklogicalPartitionId: 505e07bc-86bf-489a-807d-92dc8b80e6ff
+        - nvLinkLogicalPartitionId: 505e07bc-86bf-489a-807d-92dc8b80e6ff
           deviceInstance: 0
-        - nvLinklogicalPartitionId: 4f4decba-7d7f-46b9-9e5f-e5d71c2e0666
+        - nvLinkLogicalPartitionId: 4f4decba-7d7f-46b9-9e5f-e5d71c2e0666
           deviceInstance: 1
       description: Request data to create an NVLink Interface for an Instance by associating it with an NVLink Logical Partition
       properties:
-        nvLinklogicalPartitionId:
+        nvLinkLogicalPartitionId:
           type: string
           format: uuid
           description: ID of the NVLink Logical Partition the Interface should attach to
