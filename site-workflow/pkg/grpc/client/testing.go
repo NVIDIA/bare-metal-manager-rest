@@ -19,10 +19,12 @@ import (
 
 	"github.com/gogo/status"
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/mock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	rlav1 "github.com/nvidia/carbide-rest/workflow-schema/rla/protobuf/v1"
 	wflows "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
@@ -1249,4 +1251,200 @@ func NewMockCarbideClient() *CarbideClient {
 	return &CarbideClient{
 		carbide: &MockForgeClient{},
 	}
+}
+
+// MockRLAClient is a mock implementation of RLA gRPC protobuf Client
+type MockRLAClient struct {
+	mock.Mock
+}
+
+func (c *MockRLAClient) Version(ctx context.Context, in *rlav1.VersionRequest, opts ...grpc.CallOption) (*rlav1.BuildInfo, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*rlav1.BuildInfo), args.Error(1)
+}
+
+func (c *MockRLAClient) CreateExpectedRack(ctx context.Context, in *rlav1.CreateExpectedRackRequest, opts ...grpc.CallOption) (*rlav1.CreateExpectedRackResponse, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*rlav1.CreateExpectedRackResponse), args.Error(1)
+}
+
+func (c *MockRLAClient) PatchRack(ctx context.Context, in *rlav1.PatchRackRequest, opts ...grpc.CallOption) (*rlav1.PatchRackResponse, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*rlav1.PatchRackResponse), args.Error(1)
+}
+
+func (c *MockRLAClient) GetRackInfoByID(ctx context.Context, in *rlav1.GetRackInfoByIDRequest, opts ...grpc.CallOption) (*rlav1.GetRackInfoResponse, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*rlav1.GetRackInfoResponse), args.Error(1)
+}
+
+func (c *MockRLAClient) GetRackInfoBySerial(ctx context.Context, in *rlav1.GetRackInfoBySerialRequest, opts ...grpc.CallOption) (*rlav1.GetRackInfoResponse, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*rlav1.GetRackInfoResponse), args.Error(1)
+}
+
+func (c *MockRLAClient) GetComponentInfoByID(ctx context.Context, in *rlav1.GetComponentInfoByIDRequest, opts ...grpc.CallOption) (*rlav1.GetComponentInfoResponse, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*rlav1.GetComponentInfoResponse), args.Error(1)
+}
+
+func (c *MockRLAClient) GetComponentInfoBySerial(ctx context.Context, in *rlav1.GetComponentInfoBySerialRequest, opts ...grpc.CallOption) (*rlav1.GetComponentInfoResponse, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*rlav1.GetComponentInfoResponse), args.Error(1)
+}
+
+func (c *MockRLAClient) GetListOfRacks(ctx context.Context, in *rlav1.GetListOfRacksRequest, opts ...grpc.CallOption) (*rlav1.GetListOfRacksResponse, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*rlav1.GetListOfRacksResponse), args.Error(1)
+}
+
+func (c *MockRLAClient) CreateNVLDomain(ctx context.Context, in *rlav1.CreateNVLDomainRequest, opts ...grpc.CallOption) (*rlav1.CreateNVLDomainResponse, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*rlav1.CreateNVLDomainResponse), args.Error(1)
+}
+
+func (c *MockRLAClient) AttachRacksToNVLDomain(ctx context.Context, in *rlav1.AttachRacksToNVLDomainRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*emptypb.Empty), args.Error(1)
+}
+
+func (c *MockRLAClient) DetachRacksFromNVLDomain(ctx context.Context, in *rlav1.DetachRacksFromNVLDomainRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*emptypb.Empty), args.Error(1)
+}
+
+func (c *MockRLAClient) GetListOfNVLDomains(ctx context.Context, in *rlav1.GetListOfNVLDomainsRequest, opts ...grpc.CallOption) (*rlav1.GetListOfNVLDomainsResponse, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*rlav1.GetListOfNVLDomainsResponse), args.Error(1)
+}
+
+func (c *MockRLAClient) GetRacksForNVLDomain(ctx context.Context, in *rlav1.GetRacksForNVLDomainRequest, opts ...grpc.CallOption) (*rlav1.GetRacksForNVLDomainResponse, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*rlav1.GetRacksForNVLDomainResponse), args.Error(1)
+}
+
+func (c *MockRLAClient) UpgradeFirmware(ctx context.Context, in *rlav1.UpgradeFirmwareRequest, opts ...grpc.CallOption) (*rlav1.SubmitTaskResponse, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*rlav1.SubmitTaskResponse), args.Error(1)
+}
+
+func (c *MockRLAClient) GetExpectedComponents(ctx context.Context, in *rlav1.GetExpectedComponentsRequest, opts ...grpc.CallOption) (*rlav1.GetExpectedComponentsResponse, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*rlav1.GetExpectedComponentsResponse), args.Error(1)
+}
+
+func (c *MockRLAClient) GetActualComponents(ctx context.Context, in *rlav1.GetActualComponentsRequest, opts ...grpc.CallOption) (*rlav1.GetActualComponentsResponse, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*rlav1.GetActualComponentsResponse), args.Error(1)
+}
+
+func (c *MockRLAClient) ValidateComponents(ctx context.Context, in *rlav1.ValidateComponentsRequest, opts ...grpc.CallOption) (*rlav1.ValidateComponentsResponse, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*rlav1.ValidateComponentsResponse), args.Error(1)
+}
+
+func (c *MockRLAClient) PowerOnRack(ctx context.Context, in *rlav1.PowerOnRackRequest, opts ...grpc.CallOption) (*rlav1.SubmitTaskResponse, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*rlav1.SubmitTaskResponse), args.Error(1)
+}
+
+func (c *MockRLAClient) PowerOffRack(ctx context.Context, in *rlav1.PowerOffRackRequest, opts ...grpc.CallOption) (*rlav1.SubmitTaskResponse, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*rlav1.SubmitTaskResponse), args.Error(1)
+}
+
+func (c *MockRLAClient) PowerResetRack(ctx context.Context, in *rlav1.PowerResetRackRequest, opts ...grpc.CallOption) (*rlav1.SubmitTaskResponse, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*rlav1.SubmitTaskResponse), args.Error(1)
+}
+
+func (c *MockRLAClient) ListTasks(ctx context.Context, in *rlav1.ListTasksRequest, opts ...grpc.CallOption) (*rlav1.ListTasksResponse, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*rlav1.ListTasksResponse), args.Error(1)
+}
+
+func (c *MockRLAClient) GetTasksByIDs(ctx context.Context, in *rlav1.GetTasksByIDsRequest, opts ...grpc.CallOption) (*rlav1.GetTasksByIDsResponse, error) {
+	args := c.Called(ctx, in)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*rlav1.GetTasksByIDsResponse), args.Error(1)
+}
+
+// NewMockRlaClient creates a new mock RlaClient that can be used with RlaAtomicClient.SwapClient
+func NewMockRlaClient() *RlaClient {
+	return &RlaClient{
+		rla: &MockRLAClient{},
+	}
+}
+
+// GetMockRla returns the underlying MockRLAClient from a RlaClient for setting up test expectations
+func GetMockRla(client *RlaClient) *MockRLAClient {
+	if mockClient, ok := client.rla.(*MockRLAClient); ok {
+		return mockClient
+	}
+	return nil
 }
