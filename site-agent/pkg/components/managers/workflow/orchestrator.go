@@ -274,7 +274,9 @@ func workflowOrchestrator() error {
 	ManagerAccess.API.NVLinkLogicalPartition.RegisterPublisher()
 
 	// RLA Rack workflows (only registered if RLA is enabled)
-	ManagerAccess.API.RLA.RegisterSubscriber()
+	if ManagerAccess.API.RLA != nil {
+		ManagerAccess.API.RLA.RegisterSubscriber()
+	}
 
 	// Start listening to the Task Queue
 	log.Info().Msg("Workflow: Starting Temporal worker")
