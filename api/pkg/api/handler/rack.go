@@ -17,11 +17,8 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"time"
 
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/attribute"
 	tClient "go.temporal.io/sdk/client"
 
@@ -34,6 +31,7 @@ import (
 	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
 	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
 	rlav1 "github.com/nvidia/carbide-rest/workflow-schema/rla/protobuf/v1"
+	"github.com/nvidia/carbide-rest/workflow/pkg/queue"
 )
 
 // ~~~~~ Get Rack Handler ~~~~~ //
@@ -72,26 +70,12 @@ func NewGetRackHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.Client
 // @Success 200 {object} model.APIRack
 // @Router /v2/org/{org}/forge/rack/{id} [get]
 func (grh GetRackHandler) Handle(c echo.Context) error {
-	ctx := c.Request().Context()
-	org := c.Param("orgName")
-
-	logger := log.With().Str("Model", "Rack").Str("Handler", "Get").Str("Org", org).Logger()
-	logger.Info().Msg("started API handler")
-
-	// Create tracer span
-	newctx, handlerSpan := grh.tracerSpan.CreateChildInContext(ctx, "GetRackHandler", logger)
+	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "Get", c, grh.tracerSpan)
 	if handlerSpan != nil {
-		ctx = newctx
 		defer handlerSpan.End()
-		grh.tracerSpan.SetAttribute(handlerSpan, attribute.String("org", org), logger)
 	}
 
-	// Get user and validate org membership
-	dbUser, logger, err := common.GetUserAndEnrichLogger(c, logger, grh.tracerSpan, handlerSpan)
-	if err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
-	}
-
+	// Validate org membership
 	ok, err := auth.ValidateOrgMembership(dbUser, org)
 	if !ok {
 		if err != nil {
@@ -104,21 +88,29 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 	rackStrID := c.Param("id")
 	grh.tracerSpan.SetAttribute(handlerSpan, attribute.String("rack_id", rackStrID), logger)
 
-	// Validate rack ID is a valid UUID
-	_, err = uuid.Parse(rackStrID)
-	if err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid Rack ID in URL", nil)
-	}
-
 	// Get site ID from query param (required)
 	siteStrID := c.QueryParam("siteId")
 	if siteStrID == "" {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
 	}
 
-	siteID, err := uuid.Parse(siteStrID)
+	// Check that infrastructureProvider exists in org
+	ip, err := common.GetInfrastructureProviderForOrg(ctx, nil, grh.dbSession, org)
 	if err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid siteId in query", nil)
+		logger.Warn().Err(err).Msg("error getting infrastructure provider for org")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
+	}
+
+	// Validate the site
+	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, grh.dbSession)
+	if err != nil {
+		logger.Warn().Err(err).Str("Site ID", siteStrID).Msg("error getting site from request")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Error retrieving Site in request", nil)
+	}
+
+	// Verify site's infrastructure provider matches org's infrastructure provider
+	if site.InfrastructureProviderID != ip.ID {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
 	// Check withComponents query param
@@ -128,7 +120,7 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 	}
 
 	// Get the temporal client for the site
-	stc, err := grh.scp.GetClientByID(siteID)
+	stc, err := grh.scp.GetClientByID(site.ID)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to retrieve Temporal client for Site")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
@@ -142,16 +134,17 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 
 	// Execute workflow
 	workflowOptions := tClient.StartWorkflowOptions{
-		ID:        fmt.Sprintf("GetRackByID-%s-%d", rackStrID, time.Now().UnixNano()),
-		TaskQueue: siteID.String(),
+		ID:                       fmt.Sprintf("GetRack-%s", rackStrID),
+		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		TaskQueue:                queue.SiteTaskQueue,
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
 	defer cancel()
 
-	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "GetRackByID", rlaRequest)
+	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "GetRack", rlaRequest)
 	if err != nil {
-		logger.Error().Err(err).Msg("failed to execute GetRackByID workflow")
+		logger.Error().Err(err).Msg("failed to execute GetRack workflow")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get rack from RLA", nil)
 	}
 
@@ -159,7 +152,7 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 	var rlaResponse rlav1.GetRackInfoResponse
 	err = we.Get(ctx, &rlaResponse)
 	if err != nil {
-		logger.Error().Err(err).Msg("failed to get result from GetRackByID workflow")
+		logger.Error().Err(err).Msg("failed to get result from GetRack workflow")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get rack from RLA", nil)
 	}
 
@@ -203,29 +196,15 @@ func NewGetAllRackHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.Cli
 // @Param org path string true "Name of NGC organization"
 // @Param siteId query string true "ID of the Site"
 // @Param withComponents query boolean false "Include rack components in response"
-// @Success 200 {object} model.APIRackListResponse
+// @Success 200 {array} model.APIRack
 // @Router /v2/org/{org}/forge/rack [get]
 func (garh GetAllRackHandler) Handle(c echo.Context) error {
-	ctx := c.Request().Context()
-	org := c.Param("orgName")
-
-	logger := log.With().Str("Model", "Rack").Str("Handler", "GetAll").Str("Org", org).Logger()
-	logger.Info().Msg("started API handler")
-
-	// Create tracer span
-	newctx, handlerSpan := garh.tracerSpan.CreateChildInContext(ctx, "GetAllRackHandler", logger)
+	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "GetAll", c, garh.tracerSpan)
 	if handlerSpan != nil {
-		ctx = newctx
 		defer handlerSpan.End()
-		garh.tracerSpan.SetAttribute(handlerSpan, attribute.String("org", org), logger)
 	}
 
-	// Get user and validate org membership
-	dbUser, logger, err := common.GetUserAndEnrichLogger(c, logger, garh.tracerSpan, handlerSpan)
-	if err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
-	}
-
+	// Validate org membership
 	ok, err := auth.ValidateOrgMembership(dbUser, org)
 	if !ok {
 		if err != nil {
@@ -240,9 +219,23 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
 	}
 
-	siteID, err := uuid.Parse(siteStrID)
+	// Check that infrastructureProvider exists in org
+	ip, err := common.GetInfrastructureProviderForOrg(ctx, nil, garh.dbSession, org)
 	if err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid siteId in query", nil)
+		logger.Warn().Err(err).Msg("error getting infrastructure provider for org")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
+	}
+
+	// Validate the site
+	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, garh.dbSession)
+	if err != nil {
+		logger.Warn().Err(err).Str("Site ID", siteStrID).Msg("error getting site from request")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Error retrieving Site in request", nil)
+	}
+
+	// Verify site's infrastructure provider matches org's infrastructure provider
+	if site.InfrastructureProviderID != ip.ID {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
 	// Check withComponents query param
@@ -252,7 +245,7 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 	}
 
 	// Get the temporal client for the site
-	stc, err := garh.scp.GetClientByID(siteID)
+	stc, err := garh.scp.GetClientByID(site.ID)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to retrieve Temporal client for Site")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
@@ -265,16 +258,17 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 
 	// Execute workflow
 	workflowOptions := tClient.StartWorkflowOptions{
-		ID:        fmt.Sprintf("GetListOfRacks-%d", time.Now().UnixNano()),
-		TaskQueue: siteID.String(),
+		ID:                       "GetRacks",
+		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		TaskQueue:                queue.SiteTaskQueue,
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
 	defer cancel()
 
-	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "GetListOfRacks", rlaRequest)
+	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "GetRacks", rlaRequest)
 	if err != nil {
-		logger.Error().Err(err).Msg("failed to execute GetListOfRacks workflow")
+		logger.Error().Err(err).Msg("failed to execute GetRacks workflow")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get racks from RLA", nil)
 	}
 
@@ -282,14 +276,14 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 	var rlaResponse rlav1.GetListOfRacksResponse
 	err = we.Get(ctx, &rlaResponse)
 	if err != nil {
-		logger.Error().Err(err).Msg("failed to get result from GetListOfRacks workflow")
+		logger.Error().Err(err).Msg("failed to get result from GetRacks workflow")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get racks from RLA", nil)
 	}
 
 	// Convert to API model
-	apiResponse := model.NewAPIRackListResponse(&rlaResponse, withComponents)
+	apiRacks := model.NewAPIRacks(&rlaResponse, withComponents)
 
-	logger.Info().Int32("total", apiResponse.Total).Msg("finishing API handler")
+	logger.Info().Int("count", len(apiRacks)).Msg("finishing API handler")
 
-	return c.JSON(http.StatusOK, apiResponse)
+	return c.JSON(http.StatusOK, apiRacks)
 }

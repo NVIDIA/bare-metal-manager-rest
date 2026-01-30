@@ -200,19 +200,17 @@ func TestNewAPIRack(t *testing.T) {
 	}
 }
 
-func TestNewAPIRackListResponse(t *testing.T) {
+func TestNewAPIRacks(t *testing.T) {
 	tests := []struct {
 		name           string
 		resp           *rlav1.GetListOfRacksResponse
 		withComponents bool
-		wantTotal      int32
 		wantRackCount  int
 	}{
 		{
 			name:           "nil response returns empty list",
 			resp:           nil,
 			withComponents: false,
-			wantTotal:      0,
 			wantRackCount:  0,
 		},
 		{
@@ -235,7 +233,6 @@ func TestNewAPIRackListResponse(t *testing.T) {
 				Total: 2,
 			},
 			withComponents: false,
-			wantTotal:      2,
 			wantRackCount:  2,
 		},
 		{
@@ -245,18 +242,16 @@ func TestNewAPIRackListResponse(t *testing.T) {
 				Total: 0,
 			},
 			withComponents: false,
-			wantTotal:      0,
 			wantRackCount:  0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := NewAPIRackListResponse(tt.resp, tt.withComponents)
+			got := NewAPIRacks(tt.resp, tt.withComponents)
 
 			assert.NotNil(t, got)
-			assert.Equal(t, tt.wantTotal, got.Total)
-			assert.Equal(t, tt.wantRackCount, len(got.Racks))
+			assert.Equal(t, tt.wantRackCount, len(got))
 		})
 	}
 }

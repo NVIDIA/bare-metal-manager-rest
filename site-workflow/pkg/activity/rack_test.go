@@ -21,7 +21,7 @@ import (
 	cClient "github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
 )
 
-func TestManageRack_GetRackByID(t *testing.T) {
+func TestManageRack_GetRack(t *testing.T) {
 	tests := []struct {
 		name        string
 		request     *rlav1.GetRackInfoByIDRequest
@@ -107,7 +107,7 @@ func TestManageRack_GetRackByID(t *testing.T) {
 
 			// Execute activity
 			ctx := context.Background()
-			result, err := manageRack.GetRackByID(ctx, tt.request)
+			result, err := manageRack.GetRack(ctx, tt.request)
 
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -124,7 +124,7 @@ func TestManageRack_GetRackByID(t *testing.T) {
 	}
 }
 
-func TestManageRack_GetListOfRacks(t *testing.T) {
+func TestManageRack_GetRacks(t *testing.T) {
 	tests := []struct {
 		name        string
 		request     *rlav1.GetListOfRacksRequest
@@ -198,7 +198,7 @@ func TestManageRack_GetListOfRacks(t *testing.T) {
 
 			// Execute activity
 			ctx := context.Background()
-			result, err := manageRack.GetListOfRacks(ctx, tt.request)
+			result, err := manageRack.GetRacks(ctx, tt.request)
 
 			if tt.wantErr {
 				assert.Error(t, err)

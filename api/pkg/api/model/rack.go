@@ -19,39 +19,33 @@ import (
 // APIRack is the API representation of a Rack from RLA
 type APIRack struct {
 	ID           string              `json:"id"`
-	Name         string              `json:"name,omitempty"`
-	Manufacturer string              `json:"manufacturer,omitempty"`
-	Model        string              `json:"model,omitempty"`
-	SerialNumber string              `json:"serialNumber,omitempty"`
-	Description  string              `json:"description,omitempty"`
+	Name         string              `json:"name"`
+	Manufacturer string              `json:"manufacturer"`
+	Model        string              `json:"model"`
+	SerialNumber string              `json:"serialNumber"`
+	Description  string              `json:"description"`
 	Location     *APIRackLocation    `json:"location,omitempty"`
 	Components   []*APIRackComponent `json:"components,omitempty"`
 }
 
 // APIRackLocation represents the location of a rack
 type APIRackLocation struct {
-	Region     string `json:"region,omitempty"`
-	Datacenter string `json:"datacenter,omitempty"`
-	Room       string `json:"room,omitempty"`
-	Position   string `json:"position,omitempty"`
+	Region     string `json:"region"`
+	Datacenter string `json:"datacenter"`
+	Room       string `json:"room"`
+	Position   string `json:"position"`
 }
 
 // APIRackComponent represents a component within a rack
 type APIRackComponent struct {
-	ID              string `json:"id,omitempty"`
-	ComponentID     string `json:"componentId,omitempty"`
-	Type            string `json:"type,omitempty"`
-	Name            string `json:"name,omitempty"`
-	SerialNumber    string `json:"serialNumber,omitempty"`
-	Manufacturer    string `json:"manufacturer,omitempty"`
-	FirmwareVersion string `json:"firmwareVersion,omitempty"`
-	Position        int32  `json:"position,omitempty"`
-}
-
-// APIRackListResponse is the response for listing racks
-type APIRackListResponse struct {
-	Racks []*APIRack `json:"racks"`
-	Total int32      `json:"total"`
+	ID              string `json:"id"`
+	ComponentID     string `json:"componentId"`
+	Type            string `json:"type"`
+	Name            string `json:"name"`
+	SerialNumber    string `json:"serialNumber"`
+	Manufacturer    string `json:"manufacturer"`
+	FirmwareVersion string `json:"firmwareVersion"`
+	Position        int32  `json:"position"`
 }
 
 // NewAPIRack creates an APIRack from the RLA protobuf Rack
@@ -123,13 +117,10 @@ func NewAPIRack(rack *rlav1.Rack, withComponents bool) *APIRack {
 	return apiRack
 }
 
-// NewAPIRackListResponse creates an APIRackListResponse from the RLA protobuf response
-func NewAPIRackListResponse(resp *rlav1.GetListOfRacksResponse, withComponents bool) *APIRackListResponse {
+// NewAPIRacks creates a slice of APIRack from the RLA protobuf response
+func NewAPIRacks(resp *rlav1.GetListOfRacksResponse, withComponents bool) []*APIRack {
 	if resp == nil {
-		return &APIRackListResponse{
-			Racks: []*APIRack{},
-			Total: 0,
-		}
+		return []*APIRack{}
 	}
 
 	racks := make([]*APIRack, 0, len(resp.GetRacks()))
@@ -137,8 +128,5 @@ func NewAPIRackListResponse(resp *rlav1.GetListOfRacksResponse, withComponents b
 		racks = append(racks, NewAPIRack(rack, withComponents))
 	}
 
-	return &APIRackListResponse{
-		Racks: racks,
-		Total: resp.GetTotal(),
-	}
+	return racks
 }

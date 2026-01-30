@@ -30,23 +30,23 @@ func (api *API) RegisterSubscriber() error {
 
 	/// Register workflows
 
-	// GetRackByID
-	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterWorkflow(sww.GetRackByID)
-	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered GetRackByID workflow")
+	// GetRack
+	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterWorkflow(sww.GetRack)
+	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered GetRack workflow")
 
-	// GetListOfRacks
-	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterWorkflow(sww.GetListOfRacks)
-	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered GetListOfRacks workflow")
+	// GetRacks
+	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterWorkflow(sww.GetRacks)
+	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered GetRacks workflow")
 
 	/// Register activities
 
-	// GetRackByID activity
-	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterActivity(rackManager.GetRackByID)
-	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered GetRackByID activity")
+	// GetRack activity
+	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterActivity(rackManager.GetRack)
+	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered GetRack activity")
 
-	// GetListOfRacks activity
-	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterActivity(rackManager.GetListOfRacks)
-	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered GetListOfRacks activity")
+	// GetRacks activity
+	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterActivity(rackManager.GetRacks)
+	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered GetRacks activity")
 
 	return nil
 }

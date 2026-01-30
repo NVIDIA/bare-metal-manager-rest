@@ -15,17 +15,17 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	rlav1 "github.com/nvidia/carbide-rest/workflow-schema/rla/protobuf/v1"
 	"github.com/nvidia/carbide-rest/site-workflow/pkg/activity"
+	rlav1 "github.com/nvidia/carbide-rest/workflow-schema/rla/protobuf/v1"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
 
-// GetRackByID is a workflow to get a rack by its UUID from RLA
-func GetRackByID(ctx workflow.Context, request *rlav1.GetRackInfoByIDRequest) (*rlav1.GetRackInfoResponse, error) {
-	logger := log.With().Str("Workflow", "Rack").Str("Action", "GetByID").Logger()
+// GetRack is a workflow to get a rack by its UUID from RLA
+func GetRack(ctx workflow.Context, request *rlav1.GetRackInfoByIDRequest) (*rlav1.GetRackInfoResponse, error) {
+	logger := log.With().Str("Workflow", "Rack").Str("Action", "Get").Logger()
 	if request != nil && request.Id != nil {
-		logger = log.With().Str("Workflow", "Rack").Str("Action", "GetByID").Str("RackID", request.Id.Id).Logger()
+		logger = log.With().Str("Workflow", "Rack").Str("Action", "Get").Str("RackID", request.Id.Id).Logger()
 	}
 
 	logger.Info().Msg("starting workflow")
@@ -49,9 +49,9 @@ func GetRackByID(ctx workflow.Context, request *rlav1.GetRackInfoByIDRequest) (*
 	var rackManager activity.ManageRack
 	var response rlav1.GetRackInfoResponse
 
-	err := workflow.ExecuteActivity(ctx, rackManager.GetRackByID, request).Get(ctx, &response)
+	err := workflow.ExecuteActivity(ctx, rackManager.GetRack, request).Get(ctx, &response)
 	if err != nil {
-		logger.Error().Err(err).Str("Activity", "GetRackByID").Msg("Failed to execute activity from workflow")
+		logger.Error().Err(err).Str("Activity", "GetRack").Msg("Failed to execute activity from workflow")
 		return nil, err
 	}
 
@@ -60,9 +60,9 @@ func GetRackByID(ctx workflow.Context, request *rlav1.GetRackInfoByIDRequest) (*
 	return &response, nil
 }
 
-// GetListOfRacks is a workflow to get a list of racks from RLA with optional filters
-func GetListOfRacks(ctx workflow.Context, request *rlav1.GetListOfRacksRequest) (*rlav1.GetListOfRacksResponse, error) {
-	logger := log.With().Str("Workflow", "Rack").Str("Action", "GetList").Logger()
+// GetRacks is a workflow to get a list of racks from RLA with optional filters
+func GetRacks(ctx workflow.Context, request *rlav1.GetListOfRacksRequest) (*rlav1.GetListOfRacksResponse, error) {
+	logger := log.With().Str("Workflow", "Rack").Str("Action", "GetAll").Logger()
 
 	logger.Info().Msg("starting workflow")
 
@@ -85,9 +85,9 @@ func GetListOfRacks(ctx workflow.Context, request *rlav1.GetListOfRacksRequest) 
 	var rackManager activity.ManageRack
 	var response rlav1.GetListOfRacksResponse
 
-	err := workflow.ExecuteActivity(ctx, rackManager.GetListOfRacks, request).Get(ctx, &response)
+	err := workflow.ExecuteActivity(ctx, rackManager.GetRacks, request).Get(ctx, &response)
 	if err != nil {
-		logger.Error().Err(err).Str("Activity", "GetListOfRacks").Msg("Failed to execute activity from workflow")
+		logger.Error().Err(err).Str("Activity", "GetRacks").Msg("Failed to execute activity from workflow")
 		return nil, err
 	}
 

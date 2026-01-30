@@ -34,9 +34,9 @@ func NewManageRack(rlaClient *cClient.RlaAtomicClient) ManageRack {
 	}
 }
 
-// GetRackByID retrieves a rack by its UUID from RLA
-func (mr *ManageRack) GetRackByID(ctx context.Context, request *rlav1.GetRackInfoByIDRequest) (*rlav1.GetRackInfoResponse, error) {
-	logger := log.With().Str("Activity", "GetRackByID").Logger()
+// GetRack retrieves a rack by its UUID from RLA
+func (mr *ManageRack) GetRack(ctx context.Context, request *rlav1.GetRackInfoByIDRequest) (*rlav1.GetRackInfoResponse, error) {
+	logger := log.With().Str("Activity", "GetRack").Logger()
 	logger.Info().Msg("Starting activity")
 
 	var err error
@@ -68,9 +68,9 @@ func (mr *ManageRack) GetRackByID(ctx context.Context, request *rlav1.GetRackInf
 	return response, nil
 }
 
-// GetListOfRacks retrieves a list of racks from RLA with optional filters
-func (mr *ManageRack) GetListOfRacks(ctx context.Context, request *rlav1.GetListOfRacksRequest) (*rlav1.GetListOfRacksResponse, error) {
-	logger := log.With().Str("Activity", "GetListOfRacks").Logger()
+// GetRacks retrieves a list of racks from RLA with optional filters
+func (mr *ManageRack) GetRacks(ctx context.Context, request *rlav1.GetListOfRacksRequest) (*rlav1.GetListOfRacksResponse, error) {
+	logger := log.With().Str("Activity", "GetRacks").Logger()
 	logger.Info().Msg("Starting activity")
 
 	// Request can be nil or empty for getting all racks
