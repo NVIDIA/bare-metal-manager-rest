@@ -42,7 +42,6 @@ spec:
               drop:
                 - ALL
           args:
-            - --use-native-pki
             - --ca-common-name=Carbide Local Dev CA
             - --ca-organization=NVIDIA
             - --ca-cert-file=/vault/secrets/vault-root-ca-certificate/certificate
