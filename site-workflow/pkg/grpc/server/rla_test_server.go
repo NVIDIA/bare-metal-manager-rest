@@ -37,10 +37,11 @@ var (
 // RlaServerImpl implements interface RLAServer
 type RlaServerImpl struct {
 	rlav1.UnimplementedRLAServer
-	racks      map[string]*rlav1.Rack
-	components map[string]*rlav1.Component
-	nvlDomains map[string]*rlav1.NVLDomain
-	tasks      map[string]*rlav1.Task
+	racks           map[string]*rlav1.Rack
+	components      map[string]*rlav1.Component
+	nvlDomains      map[string]*rlav1.NVLDomain
+	tasks           map[string]*rlav1.Task
+	rackToDomainMap map[string]string // Maps rack ID to domain ID
 }
 
 var rlaLogger = log.With().Str("Component", "Mock RLA gRPC Server").Logger()
@@ -69,7 +70,7 @@ func (r *RlaServerImpl) CreateExpectedRack(ctx context.Context, req *rlav1.Creat
 		Info: &rlav1.DeviceInfo{
 			Id: &rlav1.UUID{Id: rackID},
 		},
-		Location:  req.Rack.Location,
+		Location:   req.Rack.Location,
 		Components: req.Rack.Components,
 	}
 
@@ -298,6 +299,44 @@ func (r *RlaServerImpl) AttachRacksToNVLDomain(ctx context.Context, req *rlav1.A
 	if req == nil || req.NvlDomainIdentifier == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
 	}
+
+	domainID := ""
+	if req.NvlDomainIdentifier.Id != nil {
+		domainID = req.NvlDomainIdentifier.Id.Id
+	} else if req.NvlDomainIdentifier.Name != "" {
+		// Find domain by name
+		for id, domain := range r.nvlDomains {
+			if domain.Identifier != nil && domain.Identifier.Name == req.NvlDomainIdentifier.Name {
+				domainID = id
+				break
+			}
+		}
+	}
+
+	if domainID == "" {
+		return nil, status.Errorf(codes.NotFound, "NVL Domain not found")
+	}
+
+	// Attach racks to domain
+	for _, rackIdentifier := range req.RackIdentifiers {
+		rackID := ""
+		if rackIdentifier.Id != nil {
+			rackID = rackIdentifier.Id.Id
+		} else if rackIdentifier.Name != "" {
+			// Find rack by name
+			for id, rack := range r.racks {
+				if rack.Info != nil && rack.Info.Name == rackIdentifier.Name {
+					rackID = id
+					break
+				}
+			}
+		}
+
+		if rackID != "" {
+			r.rackToDomainMap[rackID] = domainID
+		}
+	}
+
 	return &emptypb.Empty{}, nil
 }
 
@@ -306,6 +345,27 @@ func (r *RlaServerImpl) DetachRacksFromNVLDomain(ctx context.Context, req *rlav1
 	if req == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
 	}
+
+	// Detach racks from domain
+	for _, rackIdentifier := range req.RackIdentifiers {
+		rackID := ""
+		if rackIdentifier.Id != nil {
+			rackID = rackIdentifier.Id.Id
+		} else if rackIdentifier.Name != "" {
+			// Find rack by name
+			for id, rack := range r.racks {
+				if rack.Info != nil && rack.Info.Name == rackIdentifier.Name {
+					rackID = id
+					break
+				}
+			}
+		}
+
+		if rackID != "" {
+			delete(r.rackToDomainMap, rackID)
+		}
+	}
+
 	return &emptypb.Empty{}, nil
 }
 
@@ -332,9 +392,35 @@ func (r *RlaServerImpl) GetRacksForNVLDomain(ctx context.Context, req *rlav1.Get
 		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
 	}
 
-	// Return empty list for now
+	domainID := ""
+	if req.NvlDomainIdentifier.Id != nil {
+		domainID = req.NvlDomainIdentifier.Id.Id
+	} else if req.NvlDomainIdentifier.Name != "" {
+		// Find domain by name
+		for id, domain := range r.nvlDomains {
+			if domain.Identifier != nil && domain.Identifier.Name == req.NvlDomainIdentifier.Name {
+				domainID = id
+				break
+			}
+		}
+	}
+
+	if domainID == "" {
+		return nil, status.Errorf(codes.NotFound, "NVL Domain not found")
+	}
+
+	// Find all racks attached to this domain
+	var racks []*rlav1.Rack
+	for rackID, attachedDomainID := range r.rackToDomainMap {
+		if attachedDomainID == domainID {
+			if rack, ok := r.racks[rackID]; ok {
+				racks = append(racks, rack)
+			}
+		}
+	}
+
 	return &rlav1.GetRacksForNVLDomainResponse{
-		Racks: []*rlav1.Rack{},
+		Racks: racks,
 	}, nil
 }
 
@@ -346,11 +432,11 @@ func (r *RlaServerImpl) UpgradeFirmware(ctx context.Context, req *rlav1.UpgradeF
 
 	taskID := uuid.NewString()
 	task := &rlav1.Task{
-		Id:          &rlav1.UUID{Id: taskID},
-		Operation:   "UpgradeFirmware",
-		Status:      rlav1.TaskStatus_TASK_STATUS_PENDING,
+		Id:           &rlav1.UUID{Id: taskID},
+		Operation:    "UpgradeFirmware",
+		Status:       rlav1.TaskStatus_TASK_STATUS_PENDING,
 		ExecutorType: rlav1.TaskExecutorType_TASK_EXECUTOR_TYPE_TEMPORAL,
-		Message:     "Firmware upgrade task created",
+		Message:      "Firmware upgrade task created",
 	}
 	r.tasks[taskID] = task
 
@@ -413,14 +499,97 @@ func (r *RlaServerImpl) ValidateComponents(ctx context.Context, req *rlav1.Valid
 		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
 	}
 
-	// Return empty validation result for now
+	// Get expected components
+	expectedResp, err := r.GetExpectedComponents(ctx, &rlav1.GetExpectedComponentsRequest{
+		TargetSpec: req.TargetSpec,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Get actual components
+	actualResp, err := r.GetActualComponents(ctx, &rlav1.GetActualComponentsRequest{
+		TargetSpec: req.TargetSpec,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Build maps for comparison
+	expectedMap := make(map[string]*rlav1.Component)
+	for _, comp := range expectedResp.Components {
+		if comp.ComponentId != "" {
+			expectedMap[comp.ComponentId] = comp
+		}
+	}
+
+	actualMap := make(map[string]*rlav1.ActualComponent)
+	for _, comp := range actualResp.Components {
+		if comp.ComponentId != "" {
+			actualMap[comp.ComponentId] = comp
+		}
+	}
+
+	var diffs []*rlav1.ComponentDiff
+	onlyInExpectedCount := 0
+	onlyInActualCount := 0
+	driftCount := 0
+	matchCount := 0
+
+	// Find components only in expected
+	for compID, expectedComp := range expectedMap {
+		if _, exists := actualMap[compID]; !exists {
+			diffs = append(diffs, &rlav1.ComponentDiff{
+				Type:        rlav1.DiffType_DIFF_TYPE_ONLY_IN_EXPECTED,
+				ComponentId: compID,
+				Expected:    expectedComp,
+			})
+			onlyInExpectedCount++
+		}
+	}
+
+	// Find components only in actual
+	for compID, actualComp := range actualMap {
+		if _, exists := expectedMap[compID]; !exists {
+			diffs = append(diffs, &rlav1.ComponentDiff{
+				Type:        rlav1.DiffType_DIFF_TYPE_ONLY_IN_ACTUAL,
+				ComponentId: compID,
+				Actual:      actualComp,
+			})
+			onlyInActualCount++
+		}
+	}
+
+	// Find components in both (check for drift)
+	for compID, expectedComp := range expectedMap {
+		if actualComp, exists := actualMap[compID]; exists {
+			// Simple comparison: check if firmware version differs
+			if expectedComp.FirmwareVersion != actualComp.FirmwareVersion {
+				var fieldDiffs []*rlav1.FieldDiff
+				fieldDiffs = append(fieldDiffs, &rlav1.FieldDiff{
+					FieldName:     "firmware_version",
+					ExpectedValue: expectedComp.FirmwareVersion,
+					ActualValue:   actualComp.FirmwareVersion,
+				})
+				diffs = append(diffs, &rlav1.ComponentDiff{
+					Type:        rlav1.DiffType_DIFF_TYPE_DRIFT,
+					ComponentId: compID,
+					FieldDiffs:  fieldDiffs,
+				})
+				driftCount++
+			} else {
+				matchCount++
+			}
+		}
+	}
+
 	return &rlav1.ValidateComponentsResponse{
-		Diffs:              []*rlav1.ComponentDiff{},
-		TotalDiffs:          0,
-		OnlyInExpectedCount: 0,
-		OnlyInActualCount:   0,
-		DriftCount:          0,
-		MatchCount:          int32(len(r.components)),
+		Diffs:               diffs,
+		TotalDiffs:          int32(len(diffs)),
+		OnlyInExpectedCount: int32(onlyInExpectedCount),
+		OnlyInActualCount:   int32(onlyInActualCount),
+		DriftCount:          int32(driftCount),
+		MatchCount:          int32(matchCount),
 	}, nil
 }
 
@@ -432,11 +601,11 @@ func (r *RlaServerImpl) PowerOnRack(ctx context.Context, req *rlav1.PowerOnRackR
 
 	taskID := uuid.NewString()
 	task := &rlav1.Task{
-		Id:          &rlav1.UUID{Id: taskID},
-		Operation:   "PowerOnRack",
-		Status:      rlav1.TaskStatus_TASK_STATUS_PENDING,
+		Id:           &rlav1.UUID{Id: taskID},
+		Operation:    "PowerOnRack",
+		Status:       rlav1.TaskStatus_TASK_STATUS_PENDING,
 		ExecutorType: rlav1.TaskExecutorType_TASK_EXECUTOR_TYPE_TEMPORAL,
-		Message:     "Power on task created",
+		Message:      "Power on task created",
 	}
 	r.tasks[taskID] = task
 
@@ -453,11 +622,11 @@ func (r *RlaServerImpl) PowerOffRack(ctx context.Context, req *rlav1.PowerOffRac
 
 	taskID := uuid.NewString()
 	task := &rlav1.Task{
-		Id:          &rlav1.UUID{Id: taskID},
-		Operation:   "PowerOffRack",
-		Status:      rlav1.TaskStatus_TASK_STATUS_PENDING,
+		Id:           &rlav1.UUID{Id: taskID},
+		Operation:    "PowerOffRack",
+		Status:       rlav1.TaskStatus_TASK_STATUS_PENDING,
 		ExecutorType: rlav1.TaskExecutorType_TASK_EXECUTOR_TYPE_TEMPORAL,
-		Message:     "Power off task created",
+		Message:      "Power off task created",
 	}
 	r.tasks[taskID] = task
 
@@ -474,11 +643,11 @@ func (r *RlaServerImpl) PowerResetRack(ctx context.Context, req *rlav1.PowerRese
 
 	taskID := uuid.NewString()
 	task := &rlav1.Task{
-		Id:          &rlav1.UUID{Id: taskID},
-		Operation:   "PowerResetRack",
-		Status:      rlav1.TaskStatus_TASK_STATUS_PENDING,
+		Id:           &rlav1.UUID{Id: taskID},
+		Operation:    "PowerResetRack",
+		Status:       rlav1.TaskStatus_TASK_STATUS_PENDING,
 		ExecutorType: rlav1.TaskExecutorType_TASK_EXECUTOR_TYPE_TEMPORAL,
-		Message:     "Power reset task created",
+		Message:      "Power reset task created",
 	}
 	r.tasks[taskID] = task
 
@@ -538,10 +707,11 @@ func RlaTest(secs int) {
 	s := grpc.NewServer()
 	reflection.Register(s)
 	rlav1.RegisterRLAServer(s, &RlaServerImpl{
-		racks:      make(map[string]*rlav1.Rack),
-		components: make(map[string]*rlav1.Component),
-		nvlDomains: make(map[string]*rlav1.NVLDomain),
-		tasks:      make(map[string]*rlav1.Task),
+		racks:           make(map[string]*rlav1.Rack),
+		components:      make(map[string]*rlav1.Component),
+		nvlDomains:      make(map[string]*rlav1.NVLDomain),
+		tasks:           make(map[string]*rlav1.Task),
+		rackToDomainMap: make(map[string]string),
 	})
 
 	if secs != 0 {
