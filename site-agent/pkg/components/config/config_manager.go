@@ -98,7 +98,7 @@ func NewElektraConfig(utMode bool) *conftypes.Config {
 	// Carbide config
 	flag.StringVar(&conf.Carbide.Address, "carbideAddress", os.Getenv("CARBIDE_ADDRESS"), "Carbide Address")
 	if conf.Carbide.Address == "" {
-		conf.Carbide.Address = "carbide-api.forge-system.svc.cluster.local:11079"
+		conf.Carbide.Address = "carbide-api.forge-system.svc.cluster.local:1079"
 	}
 	cSecOpt, err := strconv.Atoi(os.Getenv("CARBIDE_SEC_OPT"))
 	if err != nil {
