@@ -68,7 +68,7 @@ func NewGetRackHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.Client
 // @Param siteId query string true "ID of the Site"
 // @Param withComponents query boolean false "Include rack components in response"
 // @Success 200 {object} model.APIRack
-// @Router /v2/org/{org}/forge/rack/{id} [get]
+// @Router /v2/org/{org}/carbide/rack/{id} [get]
 func (grh GetRackHandler) Handle(c echo.Context) error {
 	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "Get", c, grh.tracerSpan)
 	if handlerSpan != nil {
@@ -197,7 +197,7 @@ func NewGetAllRackHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.Cli
 // @Param siteId query string true "ID of the Site"
 // @Param withComponents query boolean false "Include rack components in response"
 // @Success 200 {array} model.APIRack
-// @Router /v2/org/{org}/forge/rack [get]
+// @Router /v2/org/{org}/carbide/rack [get]
 func (garh GetAllRackHandler) Handle(c echo.Context) error {
 	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "GetAll", c, garh.tracerSpan)
 	if handlerSpan != nil {
