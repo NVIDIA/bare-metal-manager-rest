@@ -66,7 +66,7 @@ func NewGetRackHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.Client
 // @Param org path string true "Name of NGC organization"
 // @Param id path string true "ID of Rack"
 // @Param siteId query string true "ID of the Site"
-// @Param withComponents query boolean false "Include rack components in response"
+// @Param includeComponents query boolean false "Include rack components in response"
 // @Success 200 {object} model.APIRack
 // @Router /v2/org/{org}/carbide/rack/{id} [get]
 func (grh GetRackHandler) Handle(c echo.Context) error {
@@ -113,10 +113,10 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
-	// Check withComponents query param
-	withComponents := false
-	if wc := c.QueryParam("withComponents"); wc != "" {
-		withComponents, _ = strconv.ParseBool(wc)
+	// Check includeComponents query param (API uses includeComponents, RLA uses WithComponents)
+	includeComponents := false
+	if ic := c.QueryParam("includeComponents"); ic != "" {
+		includeComponents, _ = strconv.ParseBool(ic)
 	}
 
 	// Get the temporal client for the site
@@ -129,7 +129,7 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 	// Build RLA request
 	rlaRequest := &rlav1.GetRackInfoByIDRequest{
 		Id:             &rlav1.UUID{Id: rackStrID},
-		WithComponents: withComponents,
+		WithComponents: includeComponents,
 	}
 
 	// Execute workflow
@@ -157,7 +157,7 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 	}
 
 	// Convert to API model
-	apiRack := model.NewAPIRack(rlaResponse.GetRack(), withComponents)
+	apiRack := model.NewAPIRack(rlaResponse.GetRack(), includeComponents)
 
 	logger.Info().Msg("finishing API handler")
 
@@ -195,7 +195,7 @@ func NewGetAllRackHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.Cli
 // @Security ApiKeyAuth
 // @Param org path string true "Name of NGC organization"
 // @Param siteId query string true "ID of the Site"
-// @Param withComponents query boolean false "Include rack components in response"
+// @Param includeComponents query boolean false "Include rack components in response"
 // @Success 200 {array} model.APIRack
 // @Router /v2/org/{org}/carbide/rack [get]
 func (garh GetAllRackHandler) Handle(c echo.Context) error {
@@ -238,10 +238,10 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
-	// Check withComponents query param
-	withComponents := false
-	if wc := c.QueryParam("withComponents"); wc != "" {
-		withComponents, _ = strconv.ParseBool(wc)
+	// Check includeComponents query param (API uses includeComponents, RLA uses WithComponents)
+	includeComponents := false
+	if ic := c.QueryParam("includeComponents"); ic != "" {
+		includeComponents, _ = strconv.ParseBool(ic)
 	}
 
 	// Get the temporal client for the site
@@ -253,7 +253,7 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 
 	// Build RLA request
 	rlaRequest := &rlav1.GetListOfRacksRequest{
-		WithComponents: withComponents,
+		WithComponents: includeComponents,
 	}
 
 	// Execute workflow
@@ -281,7 +281,7 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 	}
 
 	// Convert to API model
-	apiRacks := model.NewAPIRacks(&rlaResponse, withComponents)
+	apiRacks := model.NewAPIRacks(&rlaResponse, includeComponents)
 
 	logger.Info().Int("count", len(apiRacks)).Msg("finishing API handler")
 
