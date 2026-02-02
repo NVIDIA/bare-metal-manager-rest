@@ -8,6 +8,9 @@ import "google/protobuf/timestamp.proto";
 option go_package = "github.com/nvidia/carbide-rest/workflow-schema/rla";
 
 service RLA {
+    // What version of RLA is this service running?
+    rpc Version(VersionRequest) returns (BuildInfo);
+
     rpc CreateExpectedRack(CreateExpectedRackRequest) returns (CreateExpectedRackResponse);
     rpc PatchRack(PatchRackRequest) returns (PatchRackResponse);
     rpc GetRackInfoByID(GetRackInfoByIDRequest) returns (GetRackInfoResponse);
@@ -182,7 +185,7 @@ message ComponentTargets {
 // RackTarget identifies a rack and optionally filters by component types
 message RackTarget {
     oneof identifier {
-        string id = 1;      // Rack UUID
+        UUID id = 1;        // Rack UUID
         string name = 2;    // Rack name
     }
     // Optional: component types to include. Empty = ALL components in rack
@@ -192,7 +195,7 @@ message RackTarget {
 // ComponentTarget identifies a specific component
 message ComponentTarget {
     oneof identifier {
-        string uuid = 1;           // RLA internal UUID
+        UUID id = 1;           // Component UUID
         ExternalRef external = 2;  // External system reference
     }
 }
@@ -432,4 +435,13 @@ message GetTasksByIDsRequest {
 
 message GetTasksByIDsResponse {
     repeated Task tasks = 1;
+}
+
+// Version API messages
+message VersionRequest {}
+
+message BuildInfo {
+    string version = 1;      // e.g., v2025.11.19
+    string build_time = 2;   // e.g., 2025-01-27T10:30:00Z
+    string git_commit = 3;   // e.g., abc1234
 }

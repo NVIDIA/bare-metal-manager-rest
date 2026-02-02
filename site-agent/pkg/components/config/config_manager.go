@@ -22,15 +22,21 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
-	"github.com/rs/zerolog/log"
 	"github.com/nvidia/carbide-rest/site-agent/pkg/conftypes"
 	"github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
+	"github.com/rs/zerolog/log"
 )
 
 const (
 	DefaultCarbideClientCAPath   = "/etc/carbide/ca.crt"
 	DefaultCarbideClientCertPath = "/etc/carbide/tls.crt"
 	DefaultCarbideClientKeyPath  = "/etc/carbide/tls.key"
+
+	// RLA uses the same SPIFFE trust domain (forge.local) and vault-forge-issuer as Carbide,
+	// so we can reuse the Carbide certificates for mTLS with RLA.
+	DefaultRLAClientCAPath   = "/etc/carbide/ca.crt"
+	DefaultRLAClientCertPath = "/etc/carbide/tls.crt"
+	DefaultRLAClientKeyPath  = "/etc/carbide/tls.key"
 )
 
 // Fill the datastructure to intialize the database
@@ -81,6 +87,7 @@ func NewElektraConfig(utMode bool) *conftypes.Config {
 	var watcherInterval string
 	var podName string
 	var skipServerAuth string
+	var rlaEnabled string
 
 	// Determine environment in which app is running.
 	conf.RunningIn = determineEnvironment()
@@ -89,9 +96,10 @@ func NewElektraConfig(utMode bool) *conftypes.Config {
 	newDBConfig(&conf.DB)
 	log.Info().Msgf("db srv:%v port:%v", conf.DB.Server, conf.DB.Port)
 
+	// Carbide config
 	flag.StringVar(&conf.Carbide.Address, "carbideAddress", os.Getenv("CARBIDE_ADDRESS"), "Carbide Address")
 	if conf.Carbide.Address == "" {
-		conf.Carbide.Address = "carbide-api.forge-system.svc.cluster.local:11079"
+		conf.Carbide.Address = "carbide-api.forge-system.svc.cluster.local:1079"
 	}
 	cSecOpt, err := strconv.Atoi(os.Getenv("CARBIDE_SEC_OPT"))
 	if err != nil {
@@ -124,6 +132,41 @@ func NewElektraConfig(utMode bool) *conftypes.Config {
 	log.Info().Msg("client Cert:" + conf.Carbide.ClientCertPath)
 	log.Info().Msg("client Key:" + conf.Carbide.ClientKeyPath)
 
+	// RLA config
+	flag.StringVar(&conf.RLA.Address, "rlaAddress", os.Getenv("RLA_ADDRESS"), "RLA Address")
+	if conf.RLA.Address == "" {
+		conf.RLA.Address = "rla.rla.svc.cluster.local:50051"
+	}
+	rlaSecOpt, err := strconv.Atoi(os.Getenv("RLA_SEC_OPT"))
+	if err != nil {
+		log.Info().Msg(err.Error())
+		rlaSecOpt = int(client.RlaServerTLS)
+	}
+	if rlaSecOpt < int(client.RlaInsecureGrpc) || rlaSecOpt > int(client.RlaMutualTLS) {
+		rlaSecOpt = int(client.RlaServerTLS)
+	}
+	rlaOpt := 0
+	flag.IntVar(&rlaOpt, "rlaSecureOptions", rlaSecOpt, "RLA security option")
+	conf.RLA.Secure = client.RlaClientSecureOptions(rlaOpt)
+	flag.StringVar(&conf.RLA.ServerCAPath, "rlaCertPath", os.Getenv("RLA_CA_CERT_PATH"), "RLA CA Cert Path")
+	if conf.RLA.ServerCAPath == "" {
+		conf.RLA.ServerCAPath = DefaultRLAClientCAPath
+	}
+	flag.StringVar(&conf.RLA.ClientCertPath, "rlaClientCertPath", os.Getenv("RLA_CLIENT_CERT_PATH"), "RLA client Cert Path")
+	if conf.RLA.ClientCertPath == "" {
+		conf.RLA.ClientCertPath = DefaultRLAClientCertPath
+	}
+	flag.StringVar(&conf.RLA.ClientKeyPath, "rlaClientKeyPath", os.Getenv("RLA_CLIENT_KEY_PATH"), "RLA client Key Path")
+	if conf.RLA.ClientKeyPath == "" {
+		conf.RLA.ClientKeyPath = DefaultRLAClientKeyPath
+	}
+
+	log.Info().Msg("RLA Address:" + conf.RLA.Address)
+	log.Info().Msg("RLA CA Path:" + conf.RLA.ServerCAPath)
+	log.Info().Msg("RLA client Cert:" + conf.RLA.ClientCertPath)
+	log.Info().Msg("RLA client Key:" + conf.RLA.ClientKeyPath)
+
+	// General config
 	flag.StringVar(&conf.MetricsPort, "metricsPort", os.Getenv("METRICS_PORT"), "Metrics port number")
 	flag.StringVar(&conf.Temporal.Host, "temporalHost", os.Getenv("TEMPORAL_HOST"), "Temporal hostname/IP")
 	flag.StringVar(&conf.Temporal.Port, "temporalPort", os.Getenv("TEMPORAL_PORT"), "Temporal port")
@@ -139,6 +182,10 @@ func NewElektraConfig(utMode bool) *conftypes.Config {
 	flag.StringVar(&conf.CloudVersion, "cloudVersion", os.Getenv("CLOUD_WORKFLOW_VERSION"), "Cloud Workflow Proto version")
 	flag.StringVar(&conf.SiteVersion, "siteVersion", os.Getenv("SITE_WORKFLOW_VERSION"), "Site Workflow Proto version")
 	flag.StringVar(&skipServerAuth, "carbideSkipServerAuth", os.Getenv("SKIP_GRPC_SERVER_AUTH"), "Skip gRPC server auth in TLS")
+
+	var skipRlaServerAuth string
+	flag.StringVar(&skipRlaServerAuth, "rlaSkipServerAuth", os.Getenv("SKIP_RLA_GRPC_SERVER_AUTH"), "Skip RLA gRPC server auth in TLS")
+	flag.StringVar(&rlaEnabled, "rlaEnabled", os.Getenv("RLA_ENABLED"), "Enable RLA")
 
 	if conf.MetricsPort == "" {
 		log.Fatal().Msg("error loading config, invalid metrics port")
@@ -175,6 +222,8 @@ func NewElektraConfig(utMode bool) *conftypes.Config {
 	conf.EnableTLS = strings.ToLower(enableTLS) == "true"
 	conf.DisableBootstrap = strings.ToLower(disableBootstrap) == "true"
 	conf.Carbide.SkipServerAuth = strings.ToLower(skipServerAuth) == "true"
+	conf.RLA.SkipServerAuth = strings.ToLower(skipRlaServerAuth) == "true"
+	conf.RLA.Enabled = strings.ToLower(rlaEnabled) == "true"
 
 	// Initialize the WatcherInterval to default if not defined
 	if watcherInterval == "" {

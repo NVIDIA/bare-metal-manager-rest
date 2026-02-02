@@ -89,6 +89,17 @@ type CarbideConfig struct {
 	ClientKeyPath  string               `json:"carbideClientKeyPath"`
 }
 
+// RLAConfig holds configurations for connecting to RLA server
+type RLAConfig struct {
+	Enabled        bool                          `json:"rlaEnabled"`
+	Address        string                        `json:"rlaAddress"`
+	Secure         client.RlaClientSecureOptions `json:"rlaSecureOptions"`
+	SkipServerAuth bool                          `json:"rlaSkipServerAuth"`
+	ServerCAPath   string                        `json:"rlaCertPath"`
+	ClientCertPath string                        `json:"rlaClientCertPath"`
+	ClientKeyPath  string                        `json:"rlaClientKeyPath"`
+}
+
 // DBConfig is the Elektra data store
 type DBConfig struct {
 	Server     string `json:"server"`
@@ -103,6 +114,7 @@ type DBConfig struct {
 type Config struct {
 	Temporal         TemporalConfig
 	Carbide          CarbideConfig
+	RLA              RLAConfig
 	DB               DBConfig
 	IsMasterPod      bool          `json:"isMasterPod"`
 	EnableDebug      bool          `json:"enableDebug"`
@@ -135,6 +147,7 @@ func NewConfType() *Config {
 	return &Config{
 		Temporal: TemporalConfig{},
 		Carbide:  CarbideConfig{},
+		RLA:      RLAConfig{},
 		DB:       DBConfig{},
 	}
 }

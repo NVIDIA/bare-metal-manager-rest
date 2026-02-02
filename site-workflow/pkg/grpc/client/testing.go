@@ -24,6 +24,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	wflows "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	rlav1 "github.com/nvidia/carbide-rest/workflow-schema/rla/protobuf/v1"
 )
 
 var runes = []rune("abcdefghijklmnopqrstuvwxyz0123456789")
@@ -1248,5 +1249,175 @@ func (c *MockForgeClient) NVLinkLogicalPartitionsForTenant(ctx context.Context, 
 func NewMockCarbideClient() *CarbideClient {
 	return &CarbideClient{
 		carbide: &MockForgeClient{},
+	}
+}
+
+// MockRLAClient is a mock implementation of RLA gRPC protobuf Client
+type MockRLAClient struct {
+	rlav1.RLAClient
+}
+
+/* Version mock methods */
+func (c *MockRLAClient) Version(ctx context.Context, in *rlav1.VersionRequest, opts ...grpc.CallOption) (*rlav1.BuildInfo, error) {
+	return &rlav1.BuildInfo{
+		Version:   "1.0.0",
+		BuildTime: time.Now().Format(time.RFC3339),
+		GitCommit: "test-commit",
+	}, nil
+}
+
+/* Rack mock methods */
+func (c *MockRLAClient) CreateExpectedRack(ctx context.Context, in *rlav1.CreateExpectedRackRequest, opts ...grpc.CallOption) (*rlav1.CreateExpectedRackResponse, error) {
+	return &rlav1.CreateExpectedRackResponse{
+		Id: &rlav1.UUID{Id: uuid.NewString()},
+	}, nil
+}
+
+func (c *MockRLAClient) PatchRack(ctx context.Context, in *rlav1.PatchRackRequest, opts ...grpc.CallOption) (*rlav1.PatchRackResponse, error) {
+	return &rlav1.PatchRackResponse{
+		Report: "Rack patched successfully",
+	}, nil
+}
+
+func (c *MockRLAClient) GetRackInfoByID(ctx context.Context, in *rlav1.GetRackInfoByIDRequest, opts ...grpc.CallOption) (*rlav1.GetRackInfoResponse, error) {
+	return &rlav1.GetRackInfoResponse{
+		Rack: &rlav1.Rack{
+			Info: &rlav1.DeviceInfo{
+				Id: &rlav1.UUID{Id: uuid.NewString()},
+			},
+		},
+	}, nil
+}
+
+func (c *MockRLAClient) GetRackInfoBySerial(ctx context.Context, in *rlav1.GetRackInfoBySerialRequest, opts ...grpc.CallOption) (*rlav1.GetRackInfoResponse, error) {
+	return &rlav1.GetRackInfoResponse{
+		Rack: &rlav1.Rack{
+			Info: &rlav1.DeviceInfo{
+				Id: &rlav1.UUID{Id: uuid.NewString()},
+			},
+		},
+	}, nil
+}
+
+func (c *MockRLAClient) GetComponentInfoByID(ctx context.Context, in *rlav1.GetComponentInfoByIDRequest, opts ...grpc.CallOption) (*rlav1.GetComponentInfoResponse, error) {
+	return &rlav1.GetComponentInfoResponse{
+		Component: &rlav1.Component{
+			Info: &rlav1.DeviceInfo{
+				Id: &rlav1.UUID{Id: uuid.NewString()},
+			},
+		},
+	}, nil
+}
+
+func (c *MockRLAClient) GetComponentInfoBySerial(ctx context.Context, in *rlav1.GetComponentInfoBySerialRequest, opts ...grpc.CallOption) (*rlav1.GetComponentInfoResponse, error) {
+	return &rlav1.GetComponentInfoResponse{
+		Component: &rlav1.Component{
+			Info: &rlav1.DeviceInfo{
+				Id: &rlav1.UUID{Id: uuid.NewString()},
+			},
+		},
+	}, nil
+}
+
+func (c *MockRLAClient) GetListOfRacks(ctx context.Context, in *rlav1.GetListOfRacksRequest, opts ...grpc.CallOption) (*rlav1.GetListOfRacksResponse, error) {
+	return &rlav1.GetListOfRacksResponse{
+		Racks: []*rlav1.Rack{},
+		Total: 0,
+	}, nil
+}
+
+func (c *MockRLAClient) CreateNVLDomain(ctx context.Context, in *rlav1.CreateNVLDomainRequest, opts ...grpc.CallOption) (*rlav1.CreateNVLDomainResponse, error) {
+	return &rlav1.CreateNVLDomainResponse{
+		Id: &rlav1.UUID{Id: uuid.NewString()},
+	}, nil
+}
+
+func (c *MockRLAClient) AttachRacksToNVLDomain(ctx context.Context, in *rlav1.AttachRacksToNVLDomainRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
+}
+
+func (c *MockRLAClient) DetachRacksFromNVLDomain(ctx context.Context, in *rlav1.DetachRacksFromNVLDomainRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
+}
+
+func (c *MockRLAClient) GetListOfNVLDomains(ctx context.Context, in *rlav1.GetListOfNVLDomainsRequest, opts ...grpc.CallOption) (*rlav1.GetListOfNVLDomainsResponse, error) {
+	return &rlav1.GetListOfNVLDomainsResponse{
+		NvlDomains: []*rlav1.NVLDomain{},
+		Total:      0,
+	}, nil
+}
+
+func (c *MockRLAClient) GetRacksForNVLDomain(ctx context.Context, in *rlav1.GetRacksForNVLDomainRequest, opts ...grpc.CallOption) (*rlav1.GetRacksForNVLDomainResponse, error) {
+	return &rlav1.GetRacksForNVLDomainResponse{
+		Racks: []*rlav1.Rack{},
+	}, nil
+}
+
+func (c *MockRLAClient) UpgradeFirmware(ctx context.Context, in *rlav1.UpgradeFirmwareRequest, opts ...grpc.CallOption) (*rlav1.SubmitTaskResponse, error) {
+	return &rlav1.SubmitTaskResponse{
+		TaskIds: []*rlav1.UUID{{Id: uuid.NewString()}},
+	}, nil
+}
+
+func (c *MockRLAClient) GetExpectedComponents(ctx context.Context, in *rlav1.GetExpectedComponentsRequest, opts ...grpc.CallOption) (*rlav1.GetExpectedComponentsResponse, error) {
+	return &rlav1.GetExpectedComponentsResponse{
+		Components: []*rlav1.Component{},
+		Total:      0,
+	}, nil
+}
+
+func (c *MockRLAClient) GetActualComponents(ctx context.Context, in *rlav1.GetActualComponentsRequest, opts ...grpc.CallOption) (*rlav1.GetActualComponentsResponse, error) {
+	return &rlav1.GetActualComponentsResponse{
+		Components: []*rlav1.ActualComponent{},
+		Total:      0,
+	}, nil
+}
+
+func (c *MockRLAClient) ValidateComponents(ctx context.Context, in *rlav1.ValidateComponentsRequest, opts ...grpc.CallOption) (*rlav1.ValidateComponentsResponse, error) {
+	return &rlav1.ValidateComponentsResponse{
+		Diffs:              []*rlav1.ComponentDiff{},
+		TotalDiffs:          0,
+		OnlyInExpectedCount: 0,
+		OnlyInActualCount:   0,
+		DriftCount:          0,
+		MatchCount:          0,
+	}, nil
+}
+
+func (c *MockRLAClient) PowerOnRack(ctx context.Context, in *rlav1.PowerOnRackRequest, opts ...grpc.CallOption) (*rlav1.SubmitTaskResponse, error) {
+	return &rlav1.SubmitTaskResponse{
+		TaskIds: []*rlav1.UUID{{Id: uuid.NewString()}},
+	}, nil
+}
+
+func (c *MockRLAClient) PowerOffRack(ctx context.Context, in *rlav1.PowerOffRackRequest, opts ...grpc.CallOption) (*rlav1.SubmitTaskResponse, error) {
+	return &rlav1.SubmitTaskResponse{
+		TaskIds: []*rlav1.UUID{{Id: uuid.NewString()}},
+	}, nil
+}
+
+func (c *MockRLAClient) PowerResetRack(ctx context.Context, in *rlav1.PowerResetRackRequest, opts ...grpc.CallOption) (*rlav1.SubmitTaskResponse, error) {
+	return &rlav1.SubmitTaskResponse{
+		TaskIds: []*rlav1.UUID{{Id: uuid.NewString()}},
+	}, nil
+}
+
+func (c *MockRLAClient) ListTasks(ctx context.Context, in *rlav1.ListTasksRequest, opts ...grpc.CallOption) (*rlav1.ListTasksResponse, error) {
+	return &rlav1.ListTasksResponse{
+		Tasks: []*rlav1.Task{},
+		Total: 0,
+	}, nil
+}
+
+func (c *MockRLAClient) GetTasksByIDs(ctx context.Context, in *rlav1.GetTasksByIDsRequest, opts ...grpc.CallOption) (*rlav1.GetTasksByIDsResponse, error) {
+	return &rlav1.GetTasksByIDsResponse{
+		Tasks: []*rlav1.Task{},
+	}, nil
+}
+
+// NewMockRlaClient creates a new mock RlaClient
+func NewMockRlaClient() *RlaClient {
+	return &RlaClient{
+		rla: &MockRLAClient{},
 	}
 }
