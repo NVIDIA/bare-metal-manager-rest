@@ -3412,13 +3412,13 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 	instnvlifc1 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp1.ID, cdb.GetStrPtr("NVIDIA GB200"), 0, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, instnvlifc1)
 
-	instnvlifc2 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp2.ID, cdb.GetStrPtr("NVIDIA GB200"), 1, cdbm.NVLinkInterfaceStatusReady)
+	instnvlifc2 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp1.ID, cdb.GetStrPtr("NVIDIA GB200"), 1, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, instnvlifc2)
 
-	instnvlifc3 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp2.ID, cdb.GetStrPtr("NVIDIA GB200"), 2, cdbm.NVLinkInterfaceStatusReady)
+	instnvlifc3 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp1.ID, cdb.GetStrPtr("NVIDIA GB200"), 2, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, instnvlifc3)
 
-	instnvlifc4 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp2.ID, cdb.GetStrPtr("NVIDIA GB200"), 3, cdbm.NVLinkInterfaceStatusReady)
+	instnvlifc4 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp1.ID, cdb.GetStrPtr("NVIDIA GB200"), 3, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, instnvlifc4)
 
 	// Fixtures for NSG-specific testing
@@ -4629,6 +4629,53 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 				ethInterfacesToDelete: []cdbm.Interface{
 					*instifc1,
 					*instifc2,
+				},
+			},
+			wantErr:                     false,
+			verifySiteControllerRequest: true,
+			verifyChildSpanner:          true,
+		},
+		{
+			name: "test Instance update API endpoint failure with update existing NVLink interfaces with same NVLink Logical Partition ID",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				scp:       scp,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIInstanceUpdateRequest{
+					IpxeScript: os2.IpxeScript,
+					NVLinkInterfaces: []model.APINVLinkInterfaceCreateOrUpdateRequest{
+						{
+							NVLinkLogicalPartitionID: nvllp1.ID.String(),
+							DeviceInstance:           0,
+						},
+						{
+							NVLinkLogicalPartitionID: nvllp1.ID.String(),
+							DeviceInstance:           1,
+						},
+						{
+							NVLinkLogicalPartitionID: nvllp1.ID.String(),
+							DeviceInstance:           2,
+						},
+						{
+							NVLinkLogicalPartitionID: nvllp1.ID.String(),
+							DeviceInstance:           3,
+						},
+					},
+				},
+				reqInstance:              inst13.ID.String(),
+				reqOrg:                   tnOrg1,
+				reqUser:                  tnu1,
+				respCode:                 http.StatusBadRequest,
+				respMessage:              cdb.GetStrPtr(fmt.Sprintf("NVLink Logical Partition: %v specified in request is already present for the Instance", nvllp1.ID.String())),
+				respNoOfNVLinkInterfaces: cdb.GetIntPtr(4),
+				nvlinkInterfacesToDelete: []cdbm.NVLinkInterface{
+					*instnvlifc1,
+					*instnvlifc2,
+					*instnvlifc3,
+					*instnvlifc4,
 				},
 			},
 			wantErr:                     false,

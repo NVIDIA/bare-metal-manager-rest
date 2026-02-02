@@ -2436,12 +2436,18 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 		}
 	}
 
+	existingNvllpIDMap := make(map[uuid.UUID]bool)
 	if len(apiRequest.NVLinkInterfaces) > 0 {
 		nvlIfcDAO := cdbm.NewNVLinkInterfaceDAO(uih.dbSession)
 		nvlIfcs, _, err := nvlIfcDAO.GetAll(ctx, nil, cdbm.NVLinkInterfaceFilterInput{InstanceIDs: []uuid.UUID{instance.ID}}, cdbp.PageInput{}, nil)
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving NVLink Interfaces from DB for Instance")
 			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve NVLink Interfaces for Instance", nil)
+		}
+
+		// Existing NVLink Logical Partition IDs
+		for _, nvlIfc := range nvlIfcs {
+			existingNvllpIDMap[nvlIfc.NVLinkLogicalPartitionID] = true
 		}
 
 		// Discard if VPC has default NVLink Logical Partition specified and NVLink Interfaces are exists
@@ -2458,6 +2464,13 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 			logger.Warn().Err(err).Msg("error parsing NVLink Logical Partition id in instance NVLink Interface request")
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("NVLink Logical Partition ID: %v specified in request data is not valid", nvlifc.NVLinkLogicalPartitionID), nil)
 		}
+
+		// Discard if NVLink Logical Partition is already present for the Instance
+		if _, ok := existingNvllpIDMap[nvllpID]; ok {
+			logger.Warn().Msg(fmt.Sprintf("NVLink Logical Partition: %v specified in request is already present for the Instance", nvllpID))
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("NVLink Logical Partition: %v specified in request is already present for the Instance", nvllpID), nil)
+		}
+
 		nvllpIDs = append(nvllpIDs, nvllpID)
 	}
 
