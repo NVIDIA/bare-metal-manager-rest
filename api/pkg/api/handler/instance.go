@@ -1005,13 +1005,18 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 	// Get GPU Capabilities with NVLink device type
 	var nvlCaps []cdbm.MachineCapability
 	var nvlCapCount int
+	// Try Instance Type first if available
 	if instanceTypeID != nil {
 		nvlCaps, nvlCapCount, err = mcDAO.GetAll(ctx, nil, nil, []uuid.UUID{*instanceTypeID}, cdb.GetStrPtr(cdbm.MachineCapabilityTypeGPU), nil, nil, nil, nil, nil, cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeNVLink), nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving GPU Machine Capabilities from DB for Instance Type")
 			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve GPU Capabilities for Instance Type, DB error", nil)
 		}
-	} else {
+	}
+
+	// Fall back to Machine if no capabilities found from Instance Type, or if no Instance Type provided
+	// Also executed when Machine is selected from unallocated machines or provided in request
+	if nvlCapCount == 0 && machine != nil {
 		nvlCaps, nvlCapCount, err = mcDAO.GetAll(ctx, nil, []string{machine.ID}, nil, cdb.GetStrPtr(cdbm.MachineCapabilityTypeGPU), nil, nil, nil, nil, nil, cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeNVLink), nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving GPU Machine Capabilities from DB for Machine")
@@ -2422,21 +2427,25 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 		}
 	}
 
-	// Validate NVLink interfaces if Instance Type has GPU Capability
+	// Validate NVLink interfaces if Instance Type has NVLink (GPU) Capability
 	if len(dbnvlic) > 0 {
 		var nvlCapCount int
 		var nvlCaps []cdbm.MachineCapability
 		if instance.InstanceTypeID != nil {
-			nvlCaps, nvlCapCount, err = mcDAO.GetAll(ctx, nil, nil, []uuid.UUID{*instance.InstanceTypeID}, cdb.GetStrPtr(cdbm.MachineCapabilityTypeGPU), nil, nil, nil, nil, nil, nil, nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+			// Try to get GPU capabilities from Instance Type first
+			nvlCaps, nvlCapCount, err = mcDAO.GetAll(ctx, nil, nil, []uuid.UUID{*instance.InstanceTypeID}, cdb.GetStrPtr(cdbm.MachineCapabilityTypeGPU), nil, nil, nil, nil, nil, cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeNVLink), nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
 			if err != nil {
-				logger.Error().Err(err).Msg("error retrieving Machine Capabilities from DB for Instance Type")
-				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Machine Capabilities for Instance Type", nil)
+				logger.Error().Err(err).Msg("error retrieving GPU Machine Capabilities from DB for Instance Type")
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve GPU Capabilities for Instance Type", nil)
 			}
-		} else {
-			nvlCaps, nvlCapCount, err = mcDAO.GetAll(ctx, nil, []string{*instance.MachineID}, nil, cdb.GetStrPtr(cdbm.MachineCapabilityTypeGPU), nil, nil, nil, nil, nil, nil, nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+		}
+
+		// If no GPU capabilities found and Machine ID is provided, get capabilities from Machine
+		if nvlCapCount == 0 && instance.MachineID != nil {
+			nvlCaps, nvlCapCount, err = mcDAO.GetAll(ctx, nil, []string{*instance.MachineID}, nil, cdb.GetStrPtr(cdbm.MachineCapabilityTypeGPU), nil, nil, nil, nil, nil, cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeNVLink), nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
 			if err != nil {
-				logger.Error().Err(err).Msg("error retrieving Machine Capabilities from DB for Instance's Machine")
-				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Machine Capabilities for Instance's Machine", nil)
+				logger.Error().Err(err).Msg("error retrieving GPU Machine Capabilities from DB for Instance's Machine")
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve GPU Capabilities for Instance's Machine", nil)
 			}
 		}
 

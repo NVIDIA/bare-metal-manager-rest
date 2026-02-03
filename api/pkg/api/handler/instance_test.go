@@ -708,16 +708,16 @@ func TestCreateInstanceHandler_Handle(t *testing.T) {
 	istbyid := testInstanceBuildInstanceType(t, dbSession, ip, "test-instance-type-byid", st1, cdbm.InstanceStatusReady)
 	assert.NotNil(t, istbyid)
 
-	// Add capability to machine
-	common.TestBuildMachineCapability(t, dbSession, cdb.GetStrPtr(istbyid.ID.String()), nil, cdbm.MachineCapabilityTypeGPU, "NVIDIA GB200", nil, nil, cdb.GetStrPtr("NVIDIA"), cdb.GetIntPtr(4), cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeNVLink), nil)
-	assert.NotNil(t, mcNvlType)
-
 	albyid := testInstanceSiteBuildAllocation(t, dbSession, st1, tn1, "test-allocation-byid", ipu)
 	assert.NotNil(t, albyid)
 	alcbyid := testInstanceSiteBuildAllocationContraints(t, dbSession, albyid, cdbm.AllocationResourceTypeInstanceType, istbyid.ID, cdbm.AllocationConstraintTypeReserved, 10, ipu)
 	assert.NotNil(t, alcbyid)
 	mcbyid := testInstanceBuildMachine(t, dbSession, ip.ID, st1.ID, cdb.GetBoolPtr(false), nil)
 	assert.NotNil(t, mcbyid)
+
+	// Add capability to machine
+	common.TestBuildMachineCapability(t, dbSession, &mcbyid.ID, nil, cdbm.MachineCapabilityTypeGPU, "NVIDIA GB200", nil, nil, cdb.GetStrPtr("NVIDIA"), cdb.GetIntPtr(4), cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeNVLink), nil)
+
 	mcinstbyid := testInstanceBuildMachineInstanceType(t, dbSession, mcbyid, istbyid)
 	assert.NotNil(t, mcinstbyid)
 
@@ -1562,6 +1562,24 @@ func TestCreateInstanceHandler_Handle(t *testing.T) {
 					Interfaces: []model.APIInterfaceCreateOrUpdateRequest{
 						{
 							SubnetID: cdb.GetStrPtr(subnet2.ID.String()),
+						},
+					},
+					NVLinkInterfaces: []model.APINVLinkInterfaceCreateOrUpdateRequest{
+						{
+							NVLinkLogicalPartitionID: nvllp1.ID.String(),
+							DeviceInstance:           0,
+						},
+						{
+							NVLinkLogicalPartitionID: nvllp1.ID.String(),
+							DeviceInstance:           1,
+						},
+						{
+							NVLinkLogicalPartitionID: nvllp1.ID.String(),
+							DeviceInstance:           2,
+						},
+						{
+							NVLinkLogicalPartitionID: nvllp1.ID.String(),
+							DeviceInstance:           3,
 						},
 					},
 					PhoneHomeEnabled: cdb.GetBoolPtr(false),
@@ -3382,9 +3400,8 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 
 	inst13 := testInstanceBuildInstance(t, dbSession, "test-instance-nvlink-update", al3.ID, alc3.ID, tn1.ID, ip.ID, st3.ID, &ist4.ID, vpc4.ID, cdb.GetStrPtr(mc5.ID), &os2.ID, nil, cdbm.InstanceStatusReady)
 
-	// Add NVLink GPU capability to Instance Type
-	mcNvlType := common.TestBuildMachineCapability(t, dbSession, nil, &ist4.ID, cdbm.MachineCapabilityTypeGPU, "NVIDIA GB200", nil, nil, cdb.GetStrPtr("NVIDIA"), cdb.GetIntPtr(4), cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeNVLink), nil)
-	assert.NotNil(t, mcNvlType)
+	// Add NVLink GPU capability to Machine
+	common.TestBuildMachineCapability(t, dbSession, &mc5.ID, nil, cdbm.MachineCapabilityTypeGPU, "NVIDIA GB200", nil, nil, cdb.GetStrPtr("NVIDIA"), cdb.GetIntPtr(4), cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeNVLink), nil)
 
 	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", tnOrg1, st3, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 	assert.NotNil(t, nvllp1)
