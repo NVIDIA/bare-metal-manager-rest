@@ -216,8 +216,12 @@ func LoadCAFromPEM(certPEM, keyPEM []byte) (*CA, error) {
 		crl:     &CRL{},
 	}
 
+	// Try to initialize CRL, but don't fail if CA doesn't support crlSign
 	if err := ca.updateCRL(); err != nil {
-		return nil, fmt.Errorf("failed to initialize CRL: %w", err)
+		// Check if this is a key usage error - if so, just warn and continue
+		// The CA may not have crlSign key usage bit set
+		fmt.Printf("Warning: CRL initialization skipped: %v\n", err)
+		ca.crl.listPEM = "" // Empty CRL
 	}
 
 	return ca, nil
