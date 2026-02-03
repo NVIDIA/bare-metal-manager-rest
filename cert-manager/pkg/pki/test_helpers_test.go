@@ -10,9 +10,6 @@
 
 package pki
 
-// Test helpers for PKI tests - these functions generate CAs for testing only.
-// Production code should use LoadCA to load an existing CA from files.
-
 import (
 	"crypto/ecdsa"
 	"crypto/rand"
@@ -33,7 +30,6 @@ type CAOptions struct {
 }
 
 // NewCA creates a new Certificate Authority for testing.
-// Production code should use LoadCA instead.
 func NewCA(opts CAOptions) (*CA, error) {
 	if opts.TTL == 0 {
 		opts.TTL = DefaultCATTL

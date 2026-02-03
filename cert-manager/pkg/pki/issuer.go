@@ -10,18 +10,6 @@
 
 package pki
 
-// Native Go PKI Certificate Issuer
-//
-// This replaces the embedded Vault dependency for certificate generation.
-// The issuer loads a CA from files, matching how Vault loaded its CA from secrets.
-//
-// CA Loading Order:
-//   1. Primary path: --ca-cert-file / --ca-key-file (default: /vault/secrets/...)
-//   2. Alternate path: --alt-ca-cert-file / --alt-ca-key-file (default: /etc/pki/ca/...)
-//   3. Error if no CA found
-//
-// The CA must be provided via K8s secrets. There is no fallback to self-signed.
-
 import (
 	"context"
 	"fmt"
@@ -41,17 +29,13 @@ type NativeCertificateIssuerOptions struct {
 	CertificateTTL string
 	CACommonName   string
 	CAOrganization string
-	// CACertFile and CAKeyFile are the primary paths (vault-style paths)
-	CACertFile string
-	CAKeyFile  string
-	// AltCACertFile and AltCAKeyFile are alternate paths for easier migration
-	AltCACertFile string
-	AltCAKeyFile  string
+	CACertFile     string
+	CAKeyFile      string
+	AltCACertFile  string
+	AltCAKeyFile   string
 }
 
-// NewNativeCertificateIssuer creates a new native Go certificate issuer
-// Tries to load CA from primary paths first, then alternate paths.
-// Returns an error if no CA is found - there is no fallback.
+// NewNativeCertificateIssuer creates a new native Go certificate issuer.
 func NewNativeCertificateIssuer(opts NativeCertificateIssuerOptions) (types.CertificateIssuer, error) {
 	var ca *CA
 	var err error

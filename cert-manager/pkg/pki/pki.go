@@ -8,7 +8,7 @@
 // without an express license agreement from NVIDIA CORPORATION or
 // its affiliates is strictly prohibited.
 
-// Package pki provides native Go PKI functionality to replace Vault dependency
+// Package pki provides certificate authority and PKI operations
 package pki
 
 import (
@@ -36,7 +36,7 @@ const (
 // CA represents a Certificate Authority
 type CA struct {
 	cert    *x509.Certificate
-	key     crypto.Signer // Supports RSA, ECDSA, and other key types
+	key     crypto.Signer
 	certPEM string
 	mu      sync.RWMutex
 	crl     *CRL
@@ -145,7 +145,6 @@ func (ca *CA) updateCRL() error {
 }
 
 // LoadCA loads a Certificate Authority from PEM-encoded certificate and key files.
-// This matches how Vault loaded the CA from mounted secrets.
 func LoadCA(certFile, keyFile string) (*CA, error) {
 	certPEM, err := os.ReadFile(certFile)
 	if err != nil {
@@ -216,12 +215,9 @@ func LoadCAFromPEM(certPEM, keyPEM []byte) (*CA, error) {
 		crl:     &CRL{},
 	}
 
-	// Try to initialize CRL, but don't fail if CA doesn't support crlSign
 	if err := ca.updateCRL(); err != nil {
-		// Check if this is a key usage error - if so, just warn and continue
-		// The CA may not have crlSign key usage bit set
-		fmt.Printf("Warning: CRL initialization skipped: %v\n", err)
-		ca.crl.listPEM = "" // Empty CRL
+		// CRL not supported by this CA
+		ca.crl.listPEM = ""
 	}
 
 	return ca, nil
