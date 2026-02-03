@@ -14,6 +14,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -26,7 +27,6 @@ import (
 	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
 	"github.com/nvidia/carbide-rest/api/pkg/api/model"
 	sc "github.com/nvidia/carbide-rest/api/pkg/client/site"
-	auth "github.com/nvidia/carbide-rest/auth/pkg/authorization"
 	cerr "github.com/nvidia/carbide-rest/common/pkg/util"
 	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
 	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
@@ -75,13 +75,16 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 		defer handlerSpan.End()
 	}
 
-	// Validate org membership
-	ok, err := auth.ValidateOrgMembership(dbUser, org)
-	if !ok {
-		if err != nil {
-			logger.Error().Err(err).Msg("error validating org membership for User in request")
-		}
-		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	// Is DB user missing?
+	if dbUser == nil {
+		logger.Error().Msg("invalid User object found in request context")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// ensure our user is a provider or privileged tenant for the org
+	infrastructureProvider, tenant, apiError := common.IsProviderOrTenant(ctx, logger, grh.dbSession, org, dbUser, false, true)
+	if apiError != nil {
+		return cerr.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
 	}
 
 	// Get rack ID from URL param
@@ -94,23 +97,24 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
 	}
 
-	// Check that infrastructureProvider exists in org
-	ip, err := common.GetInfrastructureProviderForOrg(ctx, nil, grh.dbSession, org)
-	if err != nil {
-		logger.Warn().Err(err).Msg("error getting infrastructure provider for org")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
-	}
-
 	// Validate the site
 	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, grh.dbSession)
 	if err != nil {
-		logger.Warn().Err(err).Str("Site ID", siteStrID).Msg("error getting site from request")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Error retrieving Site in request", nil)
+		if errors.Is(err, cdb.ErrDoesNotExist) {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
+		}
+		logger.Error().Err(err).Msg("error retrieving Site from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site specified in request due to DB error", nil)
 	}
 
-	// Verify site's infrastructure provider matches org's infrastructure provider
-	if site.InfrastructureProviderID != ip.ID {
-		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
+	// Validate Provider/Tenant Site access
+	hasAccess, apiError := ValidateProviderOrTenantSiteAccess(ctx, logger, grh.dbSession, site, infrastructureProvider, tenant)
+	if apiError != nil {
+		return cerr.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
+	}
+
+	if !hasAccess {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Current org is not associated with the Site specified in query", nil)
 	}
 
 	// Check includeComponents query param (API uses includeComponents, RLA uses WithComponents)
@@ -145,7 +149,7 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "GetRack", rlaRequest)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to execute GetRack workflow")
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get rack from RLA", nil)
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get Rack details", nil)
 	}
 
 	// Get workflow result
@@ -153,7 +157,7 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 	err = we.Get(ctx, &rlaResponse)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to get result from GetRack workflow")
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get rack from RLA", nil)
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get Rack details", nil)
 	}
 
 	// Convert to API model
@@ -204,38 +208,46 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 		defer handlerSpan.End()
 	}
 
-	// Validate org membership
-	ok, err := auth.ValidateOrgMembership(dbUser, org)
-	if !ok {
-		if err != nil {
-			logger.Error().Err(err).Msg("error validating org membership for User in request")
-		}
-		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	// Is DB user missing?
+	if dbUser == nil {
+		logger.Error().Msg("invalid User object found in request context")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// ensure our user is a provider or privileged tenant for the org
+	infrastructureProvider, tenant, apiError := common.IsProviderOrTenant(ctx, logger, garh.dbSession, org, dbUser, false, true)
+	if apiError != nil {
+		return cerr.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
 	}
 
 	// Get site ID from query param (required)
 	siteStrID := c.QueryParam("siteId")
 	if siteStrID == "" {
+		if tenant != nil {
+			// Tenants must specify a Site ID
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site ID must be specified in query when retrieving Racks as a Tenant", nil)
+		}
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
-	}
-
-	// Check that infrastructureProvider exists in org
-	ip, err := common.GetInfrastructureProviderForOrg(ctx, nil, garh.dbSession, org)
-	if err != nil {
-		logger.Warn().Err(err).Msg("error getting infrastructure provider for org")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
 	}
 
 	// Validate the site
 	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, garh.dbSession)
 	if err != nil {
-		logger.Warn().Err(err).Str("Site ID", siteStrID).Msg("error getting site from request")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Error retrieving Site in request", nil)
+		if errors.Is(err, cdb.ErrDoesNotExist) {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
+		}
+		logger.Error().Err(err).Msg("error retrieving Site from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site specified in request due to DB error", nil)
 	}
 
-	// Verify site's infrastructure provider matches org's infrastructure provider
-	if site.InfrastructureProviderID != ip.ID {
-		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
+	// Validate Provider/Tenant Site access
+	hasAccess, apiError := ValidateProviderOrTenantSiteAccess(ctx, logger, garh.dbSession, site, infrastructureProvider, tenant)
+	if apiError != nil {
+		return cerr.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
+	}
+
+	if !hasAccess {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Current org is not associated with the Site specified in query", nil)
 	}
 
 	// Check includeComponents query param (API uses includeComponents, RLA uses WithComponents)
@@ -269,7 +281,7 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "GetRacks", rlaRequest)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to execute GetRacks workflow")
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get racks from RLA", nil)
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get Racks", nil)
 	}
 
 	// Get workflow result
@@ -277,11 +289,14 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 	err = we.Get(ctx, &rlaResponse)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to get result from GetRacks workflow")
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get racks from RLA", nil)
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get Racks", nil)
 	}
 
 	// Convert to API model
-	apiRacks := model.NewAPIRacks(&rlaResponse, includeComponents)
+	apiRacks := make([]*model.APIRack, 0, len(rlaResponse.GetRacks()))
+	for _, rack := range rlaResponse.GetRacks() {
+		apiRacks = append(apiRacks, model.NewAPIRack(rack, includeComponents))
+	}
 
 	logger.Info().Int("count", len(apiRacks)).Msg("finishing API handler")
 

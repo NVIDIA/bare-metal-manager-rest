@@ -36,6 +36,17 @@ type APIRackLocation struct {
 	Position   string `json:"position"`
 }
 
+// FromProto converts a proto Location to an APIRackLocation
+func (arl *APIRackLocation) FromProto(protoLocation *rlav1.Location) {
+	if protoLocation == nil {
+		return
+	}
+	arl.Region = protoLocation.GetRegion()
+	arl.Datacenter = protoLocation.GetDatacenter()
+	arl.Room = protoLocation.GetRoom()
+	arl.Position = protoLocation.GetPosition()
+}
+
 // APIRackComponent represents a component within a rack
 type APIRackComponent struct {
 	ID              string `json:"id"`
@@ -46,6 +57,32 @@ type APIRackComponent struct {
 	Manufacturer    string `json:"manufacturer"`
 	FirmwareVersion string `json:"firmwareVersion"`
 	Position        int32  `json:"position"`
+}
+
+// FromProto converts a proto Component to an APIRackComponent
+func (arc *APIRackComponent) FromProto(protoComponent *rlav1.Component) {
+	if protoComponent == nil {
+		return
+	}
+	arc.Type = protoComponent.GetType().String()
+	arc.FirmwareVersion = protoComponent.GetFirmwareVersion()
+	arc.ComponentID = protoComponent.GetComponentId()
+
+	// Get component info
+	if protoComponent.GetInfo() != nil {
+		compInfo := protoComponent.GetInfo()
+		if compInfo.GetId() != nil {
+			arc.ID = compInfo.GetId().GetId()
+		}
+		arc.Name = compInfo.GetName()
+		arc.SerialNumber = compInfo.GetSerialNumber()
+		arc.Manufacturer = compInfo.GetManufacturer()
+	}
+
+	// Get position
+	if protoComponent.GetPosition() != nil {
+		arc.Position = protoComponent.GetPosition().GetSlotId()
+	}
 }
 
 // NewAPIRack creates an APIRack from the RLA protobuf Rack
@@ -75,58 +112,19 @@ func NewAPIRack(rack *rlav1.Rack, withComponents bool) *APIRack {
 
 	// Get location
 	if rack.GetLocation() != nil {
-		loc := rack.GetLocation()
-		apiRack.Location = &APIRackLocation{
-			Region:     loc.GetRegion(),
-			Datacenter: loc.GetDatacenter(),
-			Room:       loc.GetRoom(),
-			Position:   loc.GetPosition(),
-		}
+		apiRack.Location = &APIRackLocation{}
+		apiRack.Location.FromProto(rack.GetLocation())
 	}
 
 	// Get components
 	if withComponents && len(rack.GetComponents()) > 0 {
 		apiRack.Components = make([]*APIRackComponent, 0, len(rack.GetComponents()))
 		for _, comp := range rack.GetComponents() {
-			apiComp := &APIRackComponent{
-				Type:            comp.GetType().String(),
-				FirmwareVersion: comp.GetFirmwareVersion(),
-				ComponentID:     comp.GetComponentId(),
-			}
-
-			// Get component info
-			if comp.GetInfo() != nil {
-				compInfo := comp.GetInfo()
-				if compInfo.GetId() != nil {
-					apiComp.ID = compInfo.GetId().GetId()
-				}
-				apiComp.Name = compInfo.GetName()
-				apiComp.SerialNumber = compInfo.GetSerialNumber()
-				apiComp.Manufacturer = compInfo.GetManufacturer()
-			}
-
-			// Get position
-			if comp.GetPosition() != nil {
-				apiComp.Position = comp.GetPosition().GetSlotId()
-			}
-
+			apiComp := &APIRackComponent{}
+			apiComp.FromProto(comp)
 			apiRack.Components = append(apiRack.Components, apiComp)
 		}
 	}
 
 	return apiRack
-}
-
-// NewAPIRacks creates a slice of APIRack from the RLA protobuf response
-func NewAPIRacks(resp *rlav1.GetListOfRacksResponse, withComponents bool) []*APIRack {
-	if resp == nil {
-		return []*APIRack{}
-	}
-
-	racks := make([]*APIRack, 0, len(resp.GetRacks()))
-	for _, rack := range resp.GetRacks() {
-		racks = append(racks, NewAPIRack(rack, withComponents))
-	}
-
-	return racks
 }

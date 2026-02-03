@@ -274,8 +274,12 @@ func workflowOrchestrator() error {
 	ManagerAccess.API.NVLinkLogicalPartition.RegisterPublisher()
 
 	// RLA Rack workflows (only registered if RLA is enabled)
-	if ManagerAccess.API.RLA != nil {
-		ManagerAccess.API.RLA.RegisterSubscriber()
+	if ManagerAccess.Conf.EB.RLA.Enabled {
+		if ManagerAccess.API.RLA != nil {
+			ManagerAccess.API.RLA.RegisterSubscriber()
+		} else {
+			log.Error().Msg("RLA: RLA is enabled in config but RLA manager is not initialized")
+		}
 	}
 
 	// Start listening to the Task Queue
