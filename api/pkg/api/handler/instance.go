@@ -1951,7 +1951,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 	instanceDAO := cdbm.NewInstanceDAO(uih.dbSession)
 
 	// Check that Instance exists
-	instance, err := instanceDAO.GetByID(ctx, nil, instanceID, []string{cdbm.SiteRelationName, cdbm.TenantRelationName, cdbm.VpcRelationName})
+	instance, err := instanceDAO.GetByID(ctx, nil, instanceID, []string{cdbm.SiteRelationName, cdbm.TenantRelationName, cdbm.VpcRelationName, cdbm.MachineRelationName})
 	if err != nil {
 		logger.Warn().Err(err).Msg("error retrieving Instance DB entity")
 		return cerr.NewAPIErrorResponse(c, http.StatusNotFound, "Could not retrieve Instance to update", nil)
@@ -1972,9 +1972,15 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve VPC details for Instance", nil)
 	}
 
+	if instance.Machine == nil {
+		logger.Error().Msg("error retrieving Machine as included relation for Instance")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Machine details for Instance", nil)
+	}
+
 	tenant := instance.Tenant
 	site := instance.Site
 	vpc := instance.Vpc
+	machine := instance.Machine
 
 	// Confirm that the Instance's org matches the org sent in the request
 	if tenant.Org != org {
@@ -2211,7 +2217,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Machine Capabilities for Instance Type", nil)
 			}
 		} else {
-			itDpuCaps, itDpuCapCount, err = mcDAO.GetAll(ctx, nil, []string{*instance.MachineID}, nil, cdb.GetStrPtr(cdbm.MachineCapabilityTypeNetwork), nil, nil, nil, nil, nil, cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeDPU), nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+			itDpuCaps, itDpuCapCount, err = mcDAO.GetAll(ctx, nil, []string{machine.ID}, nil, cdb.GetStrPtr(cdbm.MachineCapabilityTypeNetwork), nil, nil, nil, nil, nil, cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeDPU), nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
 			if err != nil {
 				logger.Error().Err(err).Msg("error retrieving Machine Capabilities from DB for Instance Type")
 				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Machine Capabilities for Instance Type", nil)
@@ -2277,6 +2283,94 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 		if ibp.ControllerIBPartitionID == nil || ibp.Status != cdbm.InfiniBandPartitionStatusReady {
 			logger.Warn().Msg(fmt.Sprintf("InfiniBandPartition: %v specified in request data is not in Ready state", ibpID))
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Partition: %v specified in request data is not in Ready state", ibpID), nil)
+		}
+	}
+
+	// Get InfiniBand Capabilities
+	if len(apiRequest.InfiniBandInterfaces) > 0 {
+		var ibCapCount int
+		var itIbCaps []cdbm.MachineCapability
+
+		if instance.InstanceTypeID != nil {
+			itIbCaps, ibCapCount, err = mcDAO.GetAll(ctx, nil, nil, []uuid.UUID{*instance.InstanceTypeID}, cdb.GetStrPtr(cdbm.MachineCapabilityTypeInfiniBand), nil, nil, nil, nil, nil, nil, nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+			if err != nil {
+				logger.Error().Err(err).Msg("error retrieving Machine Capabilities from DB for Instance Type")
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Machine Capabilities for Instance Type", nil)
+			}
+		}
+
+		if ibCapCount == 0 {
+			itIbCaps, ibCapCount, err = mcDAO.GetAll(ctx, nil, []string{machine.ID}, nil, cdb.GetStrPtr(cdbm.MachineCapabilityTypeInfiniBand), nil, nil, nil, nil, nil, nil, nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+			if err != nil {
+				logger.Error().Err(err).Msg("error retrieving Machine Capabilities from DB for Instance Type")
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Machine Capabilities for Instance Type", nil)
+			}
+		}
+
+		if ibCapCount == 0 {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "InfiniBand Interfaces cannot be specified if Instance Type or Machine doesn't have InfiniBand Capabilities", nil)
+		}
+
+		// Validate InfiniBand Interfaces if Instance Type has InfiniBand Capability
+		err = apiRequest.ValidateInfiniBandInterfaces(itIbCaps)
+		if err != nil {
+			logger.Error().Msgf("InfiniBand interfaces validation failed: %s", err)
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate InfiniBand Interfaces specified in request", err)
+		}
+	}
+
+	// Collect all DPU Extension Service IDs for batch query
+	desIDs := []uuid.UUID{}
+	for _, adesdr := range apiRequest.DpuExtensionServiceDeployments {
+		desID, err := uuid.Parse(adesdr.DpuExtensionServiceID)
+		if err != nil {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Invalid DPU Extension Service ID: %s specified in request", adesdr.DpuExtensionServiceID), nil)
+		}
+		desIDs = append(desIDs, desID)
+	}
+
+	// Batch fetch DPU Extension Services from DB
+	desDAO := cdbm.NewDpuExtensionServiceDAO(uih.dbSession)
+	desIDMap := make(map[uuid.UUID]*cdbm.DpuExtensionService)
+	if len(desIDs) > 0 {
+		dess, _, err := desDAO.GetAll(ctx, nil, cdbm.DpuExtensionServiceFilterInput{DpuExtensionServiceIDs: desIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		if err != nil {
+			logger.Error().Err(err).Msg("error retrieving DPU Extension Services from DB by IDs")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve DPU Extension Services from DB by IDs", nil)
+		}
+		for i := range dess {
+			desIDMap[dess[i].ID] = &dess[i]
+		}
+	}
+
+	// Validate each DPU Extension Service
+	for _, adesdr := range apiRequest.DpuExtensionServiceDeployments {
+		desID := uuid.MustParse(adesdr.DpuExtensionServiceID)
+
+		des, ok := desIDMap[desID]
+		if !ok {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Could not find DPU Extension Service with ID: %s", desID), nil)
+		}
+
+		if des.TenantID != tenant.ID {
+			logger.Warn().Str("Tenant ID", tenant.ID.String()).Str("DPU Extension Service ID", desID.String()).Msg("DPU Extension Service does not belong to current Tenant")
+			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("DPU Extension Service: %s does not belong to current Tenant", desID.String()), nil)
+		}
+
+		if des.SiteID != site.ID {
+			logger.Warn().Str("Site ID", site.ID.String()).Str("DPU Extension Service ID", desID.String()).Msg("DPU Extension Service does not belong to Site")
+			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("DPU Extension Service: %s does not belong to Site where Instance is being created", desID.String()), nil)
+		}
+
+		versionFound := false
+		for _, version := range des.ActiveVersions {
+			if version == adesdr.Version {
+				versionFound = true
+				break
+			}
+		}
+		if !versionFound {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Version: %s was not found for DPU Extension Service: %s", adesdr.Version, desID.String()), nil)
 		}
 	}
 
@@ -2348,89 +2442,11 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 		dbnvlic = append(dbnvlic, cdbm.NVLinkInterface{NVLinkLogicalPartitionID: nvllp.ID, DeviceInstance: nvlifc.DeviceInstance})
 	}
 
-	// Get InfiniBand Capabilities
-	var itIbCaps []cdbm.MachineCapability
-
-	if instance.InstanceTypeID != nil {
-		itIbCaps, _, err = mcDAO.GetAll(ctx, nil, nil, []uuid.UUID{*instance.InstanceTypeID}, cdb.GetStrPtr(cdbm.MachineCapabilityTypeInfiniBand), nil, nil, nil, nil, nil, nil, nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
-		if err != nil {
-			logger.Error().Err(err).Msg("error retrieving Machine Capabilities from DB for Instance Type")
-			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Machine Capabilities for Instance Type", nil)
-		}
-	} else {
-		itIbCaps, _, err = mcDAO.GetAll(ctx, nil, []string{*instance.MachineID}, nil, cdb.GetStrPtr(cdbm.MachineCapabilityTypeInfiniBand), nil, nil, nil, nil, nil, nil, nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
-		if err != nil {
-			logger.Error().Err(err).Msg("error retrieving Machine Capabilities from DB for Instance Type")
-			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Machine Capabilities for Instance Type", nil)
-		}
-	}
-
-	// Validate InfiniBand Interfaces if Instance Type has InfiniBand Capability
-	err = apiRequest.ValidateInfiniBandInterfaces(itIbCaps)
-	if err != nil {
-		logger.Error().Msgf("InfiniBand interfaces validation failed: %s", err)
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate InfiniBand Interfaces specified in request", err)
-	}
-
-	// Collect all DPU Extension Service IDs for batch query
-	desIDs := []uuid.UUID{}
-	for _, adesdr := range apiRequest.DpuExtensionServiceDeployments {
-		desID, err := uuid.Parse(adesdr.DpuExtensionServiceID)
-		if err != nil {
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Invalid DPU Extension Service ID: %s specified in request", adesdr.DpuExtensionServiceID), nil)
-		}
-		desIDs = append(desIDs, desID)
-	}
-
-	// Batch fetch DPU Extension Services from DB
-	desDAO := cdbm.NewDpuExtensionServiceDAO(uih.dbSession)
-	desIDMap := make(map[uuid.UUID]*cdbm.DpuExtensionService)
-	if len(desIDs) > 0 {
-		dess, _, err := desDAO.GetAll(ctx, nil, cdbm.DpuExtensionServiceFilterInput{DpuExtensionServiceIDs: desIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
-		if err != nil {
-			logger.Error().Err(err).Msg("error retrieving DPU Extension Services from DB by IDs")
-			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve DPU Extension Services from DB by IDs", nil)
-		}
-		for i := range dess {
-			desIDMap[dess[i].ID] = &dess[i]
-		}
-	}
-
-	// Validate each DPU Extension Service
-	for _, adesdr := range apiRequest.DpuExtensionServiceDeployments {
-		desID := uuid.MustParse(adesdr.DpuExtensionServiceID)
-
-		des, ok := desIDMap[desID]
-		if !ok {
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Could not find DPU Extension Service with ID: %s", desID), nil)
-		}
-
-		if des.TenantID != tenant.ID {
-			logger.Warn().Str("Tenant ID", tenant.ID.String()).Str("DPU Extension Service ID", desID.String()).Msg("DPU Extension Service does not belong to current Tenant")
-			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("DPU Extension Service: %s does not belong to current Tenant", desID.String()), nil)
-		}
-
-		if des.SiteID != site.ID {
-			logger.Warn().Str("Site ID", site.ID.String()).Str("DPU Extension Service ID", desID.String()).Msg("DPU Extension Service does not belong to Site")
-			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("DPU Extension Service: %s does not belong to Site where Instance is being created", desID.String()), nil)
-		}
-
-		versionFound := false
-		for _, version := range des.ActiveVersions {
-			if version == adesdr.Version {
-				versionFound = true
-				break
-			}
-		}
-		if !versionFound {
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Version: %s was not found for DPU Extension Service: %s", adesdr.Version, desID.String()), nil)
-		}
-	}
-
 	// Validate NVLink interfaces if Instance Type has NVLink (GPU) Capability
-	if len(dbnvlic) > 0 {
+	if len(apiRequest.NVLinkInterfaces) > 0 {
 		var nvlCapCount int
 		var nvlCaps []cdbm.MachineCapability
+
 		if instance.InstanceTypeID != nil {
 			// Try to get GPU capabilities from Instance Type first
 			nvlCaps, nvlCapCount, err = mcDAO.GetAll(ctx, nil, nil, []uuid.UUID{*instance.InstanceTypeID}, cdb.GetStrPtr(cdbm.MachineCapabilityTypeGPU), nil, nil, nil, nil, nil, cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeNVLink), nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
@@ -2440,9 +2456,9 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 			}
 		}
 
-		// If no GPU capabilities found and Machine ID is provided, get capabilities from Machine
-		if nvlCapCount == 0 && instance.MachineID != nil {
-			nvlCaps, nvlCapCount, err = mcDAO.GetAll(ctx, nil, []string{*instance.MachineID}, nil, cdb.GetStrPtr(cdbm.MachineCapabilityTypeGPU), nil, nil, nil, nil, nil, cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeNVLink), nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+		// If Instance was not created using Instance Type, or Instance Type does not have NVLink  Capability, get capabilities from Machine
+		if nvlCapCount == 0 {
+			nvlCaps, nvlCapCount, err = mcDAO.GetAll(ctx, nil, []string{machine.ID}, nil, cdb.GetStrPtr(cdbm.MachineCapabilityTypeGPU), nil, nil, nil, nil, nil, cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeNVLink), nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
 			if err != nil {
 				logger.Error().Err(err).Msg("error retrieving GPU Machine Capabilities from DB for Instance's Machine")
 				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve GPU Capabilities for Instance's Machine", nil)
@@ -2450,7 +2466,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 		}
 
 		if nvlCapCount == 0 {
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "NVLink interfaces cannot be specified if Instance Type doesn't have GPU Capabilities", nil)
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "NVLink interfaces cannot be specified if Instance Type or Machine doesn't have NVLink GPU Capabilities", nil)
 		}
 
 		// Validate NVLink interfaces if Instance Type has GPU Capability
