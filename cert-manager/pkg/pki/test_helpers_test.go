@@ -14,6 +14,7 @@ package pki
 // Production code should use LoadCA to load an existing CA from files.
 
 import (
+	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -107,9 +108,25 @@ func NewCA(opts CAOptions) (*CA, error) {
 func (ca *CA) GetCAKeyPEM() string {
 	ca.mu.RLock()
 	defer ca.mu.RUnlock()
-	keyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(ca.key),
-	})
+
+	var keyPEM []byte
+	switch k := ca.key.(type) {
+	case *rsa.PrivateKey:
+		keyPEM = pem.EncodeToMemory(&pem.Block{
+			Type:  "RSA PRIVATE KEY",
+			Bytes: x509.MarshalPKCS1PrivateKey(k),
+		})
+	case *ecdsa.PrivateKey:
+		derBytes, err := x509.MarshalECPrivateKey(k)
+		if err != nil {
+			return ""
+		}
+		keyPEM = pem.EncodeToMemory(&pem.Block{
+			Type:  "EC PRIVATE KEY",
+			Bytes: derBytes,
+		})
+	default:
+		return ""
+	}
 	return string(keyPEM)
 }

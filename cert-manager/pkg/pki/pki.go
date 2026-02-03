@@ -12,6 +12,8 @@
 package pki
 
 import (
+	"crypto"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -34,7 +36,7 @@ const (
 // CA represents a Certificate Authority
 type CA struct {
 	cert    *x509.Certificate
-	key     *rsa.PrivateKey
+	key     crypto.Signer // Supports RSA, ECDSA, and other key types
 	certPEM string
 	mu      sync.RWMutex
 	crl     *CRL
@@ -96,7 +98,7 @@ func (ca *CA) IssueCertificate(commonName string, ttlHours int) (certPEM, keyPEM
 	}
 
 	// Sign the certificate with CA
-	certDER, err := x509.CreateCertificate(rand.Reader, template, ca.cert, &key.PublicKey, ca.key)
+	certDER, err := x509.CreateCertificate(rand.Reader, template, ca.cert, key.Public(), ca.key)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create certificate: %w", err)
 	}
@@ -181,19 +183,24 @@ func LoadCAFromPEM(certPEM, keyPEM []byte) (*CA, error) {
 		return nil, fmt.Errorf("failed to decode CA private key PEM")
 	}
 
-	var key *rsa.PrivateKey
+	var key crypto.Signer
 	switch keyBlock.Type {
 	case "RSA PRIVATE KEY":
 		key, err = x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
+	case "EC PRIVATE KEY":
+		key, err = x509.ParseECPrivateKey(keyBlock.Bytes)
 	case "PRIVATE KEY":
 		parsedKey, parseErr := x509.ParsePKCS8PrivateKey(keyBlock.Bytes)
 		if parseErr != nil {
 			return nil, fmt.Errorf("failed to parse PKCS8 private key: %w", parseErr)
 		}
-		var ok bool
-		key, ok = parsedKey.(*rsa.PrivateKey)
-		if !ok {
-			return nil, fmt.Errorf("private key is not RSA")
+		switch k := parsedKey.(type) {
+		case *rsa.PrivateKey:
+			key = k
+		case *ecdsa.PrivateKey:
+			key = k
+		default:
+			return nil, fmt.Errorf("unsupported private key type in PKCS8: %T", parsedKey)
 		}
 	default:
 		return nil, fmt.Errorf("unsupported private key type: %s", keyBlock.Type)
