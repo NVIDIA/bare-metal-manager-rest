@@ -1,0 +1,420 @@
+#!/bin/bash
+
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+
+set -e
+
+NAMESPACE="${NAMESPACE:-carbide}"
+VAULT_ADDR="${VAULT_ADDR:-http://localhost:8200}"
+VAULT_TOKEN="${VAULT_TOKEN:-root}"
+API_URL="${API_URL:-http://localhost:8388}"
+KEYCLOAK_URL="${KEYCLOAK_URL:-http://localhost:8080}"
+ORG="${ORG:-test-org}"
+
+usage() {
+    echo "Usage: $0 <command>"
+    echo ""
+    echo "Commands:"
+    echo "  pki         Setup PKI secrets and CA"
+    echo "  site-agent  Setup site-agent with a real site"
+    echo "  all         Run both pki and site-agent setup"
+    echo "  verify      Verify local deployment health"
+    exit 1
+}
+
+# ============================================================================
+# PKI Setup Functions
+# ============================================================================
+
+generate_ca() {
+    echo "Generating CA certificate..."
+    
+    CA_DIR=$(mktemp -d)
+    trap "rm -rf $CA_DIR" RETURN
+    
+    cat > "$CA_DIR/ca.cnf" << 'EOFCNF'
+[req]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_ca
+prompt = no
+
+[req_distinguished_name]
+C = US
+ST = CA
+L = Local
+O = Carbide Dev
+OU = Dev
+CN = carbide-local-ca
+
+[v3_ca]
+basicConstraints = critical,CA:TRUE
+keyUsage = critical,keyCertSign,cRLSign,digitalSignature
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always,issuer:always
+EOFCNF
+
+    openssl req -x509 -sha256 -nodes -newkey rsa:4096 \
+        -keyout "$CA_DIR/ca.key" \
+        -out "$CA_DIR/ca.crt" \
+        -days 3650 \
+        -config "$CA_DIR/ca.cnf" \
+        -extensions v3_ca
+    
+    kubectl create secret generic vault-root-ca-certificate \
+        --from-file=certificate="$CA_DIR/ca.crt" \
+        -n "$NAMESPACE" \
+        --dry-run=client -o yaml | kubectl apply -f -
+    
+    kubectl create secret generic vault-root-ca-private-key \
+        --from-file=privatekey="$CA_DIR/ca.key" \
+        -n "$NAMESPACE" \
+        --dry-run=client -o yaml | kubectl apply -f -
+    
+    VAULT_INIT_RESPONSE='{"root_token":"root","keys":["aabbccdd"],"keys_base64":["aabbccdd"]}'
+    kubectl create secret generic vault-token \
+        --from-literal=vault-token="$VAULT_INIT_RESPONSE" \
+        --from-literal=certmgr-token="root" \
+        -n "$NAMESPACE" \
+        --dry-run=client -o yaml | kubectl apply -f -
+    
+    echo "CA secrets created"
+}
+
+configure_vault_pki() {
+    echo "Configuring Vault PKI..."
+    
+    if ! curl -sf "$VAULT_ADDR/v1/sys/health" > /dev/null 2>&1; then
+        echo "Vault not accessible, skipping"
+        return 0
+    fi
+    
+    curl -sf -X POST \
+        -H "X-Vault-Token: $VAULT_TOKEN" \
+        "$VAULT_ADDR/v1/sys/mounts/pki" \
+        -d '{"type":"pki"}' 2>/dev/null || true
+    
+    curl -sf -X POST \
+        -H "X-Vault-Token: $VAULT_TOKEN" \
+        "$VAULT_ADDR/v1/sys/mounts/pki/tune" \
+        -d '{"max_lease_ttl":"87600h"}'
+    
+    curl -sf -X POST \
+        -H "X-Vault-Token: $VAULT_TOKEN" \
+        "$VAULT_ADDR/v1/pki/root/generate/internal" \
+        -d '{"common_name":"Carbide Local Dev CA","issuer_name":"root-2024","ttl":"87600h"}' > /dev/null 2>&1 || true
+    
+    curl -sf -X POST \
+        -H "X-Vault-Token: $VAULT_TOKEN" \
+        "$VAULT_ADDR/v1/pki/config/urls" \
+        -d '{"issuing_certificates":["http://vault:8200/v1/pki/ca"],"crl_distribution_points":["http://vault:8200/v1/pki/crl"]}'
+    
+    curl -sf -X POST \
+        -H "X-Vault-Token: $VAULT_TOKEN" \
+        "$VAULT_ADDR/v1/pki/roles/cloud-cert" \
+        -d '{"allowed_domains":"carbide.local,localhost,carbide,svc.cluster.local,carbide.svc.cluster.local,carbide-rest-cert-manager,carbide-rest-site-manager","allow_subdomains":true,"allow_any_name":true,"max_ttl":"720h"}'
+    
+    echo "Vault PKI configured"
+}
+
+create_service_certs() {
+    echo "Creating service TLS certificates..."
+    
+    CERT_DIR=$(mktemp -d)
+    
+    CA_CERT=$(kubectl get secret vault-root-ca-certificate -n "$NAMESPACE" -o jsonpath='{.data.certificate}' | base64 -d 2>/dev/null || echo "")
+    CA_KEY=$(kubectl get secret vault-root-ca-private-key -n "$NAMESPACE" -o jsonpath='{.data.privatekey}' | base64 -d 2>/dev/null || echo "")
+    
+    if [ -z "$CA_CERT" ] || [ -z "$CA_KEY" ]; then
+        echo "Warning: Could not retrieve CA certificate"
+        rm -rf "$CERT_DIR"
+        return 0
+    fi
+    
+    echo "$CA_CERT" > "$CERT_DIR/ca.crt"
+    echo "$CA_KEY" > "$CERT_DIR/ca.key"
+    
+    # Site-agent certs
+    openssl genrsa -out "$CERT_DIR/tls.key" 2048 2>/dev/null
+    openssl req -new -key "$CERT_DIR/tls.key" -out "$CERT_DIR/tls.csr" \
+        -subj "/C=US/ST=CA/L=Local/O=Carbide Dev/CN=carbide-rest-site-agent" 2>/dev/null
+    openssl x509 -req -in "$CERT_DIR/tls.csr" -CA "$CERT_DIR/ca.crt" -CAkey "$CERT_DIR/ca.key" \
+        -CAcreateserial -out "$CERT_DIR/tls.crt" -days 365 2>/dev/null
+    
+    kubectl create secret generic carbide-tls-certs \
+        --from-file=ca.crt="$CERT_DIR/ca.crt" \
+        --from-file=tls.crt="$CERT_DIR/tls.crt" \
+        --from-file=tls.key="$CERT_DIR/tls.key" \
+        -n "$NAMESPACE" \
+        --dry-run=client -o yaml | kubectl apply -f -
+    
+    kubectl create secret generic site-registration \
+        --from-literal=site-uuid="00000000-0000-4000-8000-000000000001" \
+        --from-literal=otp="local-dev-otp-token" \
+        --from-literal=creds-url="http://carbide-rest-site-manager:8100/v1/site/credentials" \
+        --from-literal=cacert="$CA_CERT" \
+        -n "$NAMESPACE" \
+        --dry-run=client -o yaml | kubectl apply -f -
+    
+    # Site-manager certs
+    cat > "$CERT_DIR/san.cnf" << EOF
+[req]
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+C = US
+ST = CA
+L = Local
+O = Carbide Dev
+CN = carbide-rest-site-manager
+
+[v3_req]
+basicConstraints = CA:FALSE
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = carbide-rest-site-manager
+DNS.2 = carbide-rest-site-manager.carbide
+DNS.3 = carbide-rest-site-manager.carbide.svc.cluster.local
+DNS.4 = localhost
+EOF
+
+    openssl genrsa -out "$CERT_DIR/sm-tls.key" 2048 2>/dev/null
+    openssl req -new -key "$CERT_DIR/sm-tls.key" -out "$CERT_DIR/sm-tls.csr" \
+        -config "$CERT_DIR/san.cnf" 2>/dev/null
+    openssl x509 -req -in "$CERT_DIR/sm-tls.csr" -CA "$CERT_DIR/ca.crt" -CAkey "$CERT_DIR/ca.key" \
+        -CAcreateserial -out "$CERT_DIR/sm-tls.crt" -days 365 \
+        -extensions v3_req -extfile "$CERT_DIR/san.cnf" 2>/dev/null
+    
+    kubectl create secret tls site-manager-tls \
+        --cert="$CERT_DIR/sm-tls.crt" \
+        --key="$CERT_DIR/sm-tls.key" \
+        -n "$NAMESPACE" \
+        --dry-run=client -o yaml | kubectl apply -f -
+    
+    echo "Service certificates created"
+    rm -rf "$CERT_DIR"
+}
+
+setup_pki() {
+    echo "Setting up local PKI..."
+    kubectl get ns "$NAMESPACE" > /dev/null 2>&1 || kubectl create ns "$NAMESPACE"
+    generate_ca
+    configure_vault_pki
+    create_service_certs
+    echo "PKI setup complete."
+}
+
+# ============================================================================
+# Site-Agent Setup Functions
+# ============================================================================
+
+wait_for_services() {
+    echo "Waiting for API..."
+    for i in {1..60}; do
+        if curl -sf "$API_URL/healthz" > /dev/null 2>&1; then
+            break
+        fi
+        if [ $i -eq 60 ]; then
+            echo "ERROR: API not ready"
+            exit 1
+        fi
+    done
+
+    echo "Waiting for Keycloak..."
+    for i in {1..30}; do
+        if curl -sf "$KEYCLOAK_URL/realms/carbide-dev" > /dev/null 2>&1; then
+            break
+        fi
+        if [ $i -eq 30 ]; then
+            echo "ERROR: Keycloak not ready"
+            exit 1
+        fi
+    done
+
+    echo "Waiting for site-manager..."
+    if ! kubectl -n $NAMESPACE wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=180s; then
+        echo "ERROR: Site-manager not ready"
+        kubectl -n $NAMESPACE get pods -l app=carbide-rest-site-manager
+        exit 1
+    fi
+}
+
+get_token() {
+    TOKEN=$(curl -sf -X POST "$KEYCLOAK_URL/realms/carbide-dev/protocol/openid-connect/token" \
+        -H "Content-Type: application/x-www-form-urlencoded" \
+        -d "client_id=carbide-api" \
+        -d "client_secret=carbide-local-secret" \
+        -d "grant_type=password" \
+        -d "username=admin@example.com" \
+        -d "password=adminpassword" | jq -r .access_token)
+    
+    if [ -z "$TOKEN" ] || [ "$TOKEN" == "null" ]; then
+        echo "ERROR: Failed to acquire token"
+        exit 1
+    fi
+    echo "$TOKEN"
+}
+
+create_site() {
+    local token=$1
+    
+    curl -sf "$API_URL/v2/org/$ORG/carbide/tenant/current" \
+        -H "Authorization: Bearer $token" > /dev/null 2>&1 || true
+
+    PROVIDER_RESP=$(curl -sf "$API_URL/v2/org/$ORG/carbide/infrastructure-provider/current" \
+        -H "Authorization: Bearer $token" 2>/dev/null || echo "{}")
+    
+    PROVIDER_ID=$(echo "$PROVIDER_RESP" | jq -r '.id // empty')
+    if [ -z "$PROVIDER_ID" ]; then
+        PROVIDER_RESP=$(curl -sf -X POST "$API_URL/v2/org/$ORG/carbide/infrastructure-provider" \
+            -H "Authorization: Bearer $token" \
+            -H "Content-Type: application/json" \
+            -d '{"name": "Local Dev Provider", "description": "Local development infrastructure provider"}')
+        PROVIDER_ID=$(echo "$PROVIDER_RESP" | jq -r '.id')
+    fi
+
+    EXISTING_SITE=$(curl -sf "$API_URL/v2/org/$ORG/carbide/site?infrastructureProviderId=$PROVIDER_ID" \
+        -H "Authorization: Bearer $token" | jq -r '.[] | select(.name == "local-dev-site") | .id' 2>/dev/null || echo "")
+
+    if [ -n "$EXISTING_SITE" ] && [ "$EXISTING_SITE" != "null" ]; then
+        echo "$EXISTING_SITE"
+        return
+    fi
+
+    for attempt in 1 2 3; do
+        SITE_RESP=$(curl -s -X POST "$API_URL/v2/org/$ORG/carbide/site?infrastructureProviderId=$PROVIDER_ID" \
+            -H "Authorization: Bearer $token" \
+            -H "Content-Type: application/json" \
+            -d '{
+                "name": "local-dev-site",
+                "description": "Local development site",
+                "location": {"address": "Local Development", "city": "Santa Clara", "state": "CA", "country": "USA", "postalCode": "95054"},
+                "contact": {"name": "Dev Team", "email": "dev@example.com", "phone": "555-0100"}
+            }')
+        
+        SITE_ID=$(echo "$SITE_RESP" | jq -r '.id // empty')
+        if [ -n "$SITE_ID" ] && [ "$SITE_ID" != "null" ]; then
+            echo "$SITE_ID"
+            return
+        fi
+        
+        if [ $attempt -lt 3 ]; then
+            echo "Site creation attempt $attempt failed, retrying..." >&2
+            read -t 5 < /dev/null || true
+        fi
+    done
+    
+    echo "ERROR: Failed to create site" >&2
+    exit 1
+}
+
+configure_site_agent() {
+    local site_id=$1
+    
+    kubectl -n $NAMESPACE run temporal-ns-create-$site_id --rm -it --restart=Never \
+        --image=temporalio/admin-tools:1.26.2 \
+        --overrides='{"spec":{"containers":[{"name":"temporal-ns-create","image":"temporalio/admin-tools:1.26.2","command":["temporal","operator","namespace","create","'"$site_id"'","--address","temporal-frontend:7233","--tls","--tls-disable-host-verification","--tls-ca-path","/etc/temporal/certs/ca.crt"],"volumeMounts":[{"name":"tls-certs","mountPath":"/etc/temporal/certs","readOnly":true}]}],"volumes":[{"name":"tls-certs","secret":{"secretName":"workflow-temporal-client-tls"}}]}}' \
+        2>/dev/null || true
+
+    kubectl -n $NAMESPACE get configmap carbide-rest-site-agent-config -o yaml | \
+        sed "s/CLUSTER_ID: .*/CLUSTER_ID: \"$site_id\"/" | \
+        sed "s/TEMPORAL_SUBSCRIBE_NAMESPACE: .*/TEMPORAL_SUBSCRIBE_NAMESPACE: \"$site_id\"/" | \
+        sed "s/TEMPORAL_SUBSCRIBE_QUEUE: .*/TEMPORAL_SUBSCRIBE_QUEUE: \"$site_id\"/" | \
+        kubectl apply -f -
+
+    kubectl -n $NAMESPACE get secret site-registration -o yaml 2>/dev/null | \
+        sed "s/site-uuid: .*/site-uuid: $(echo -n $site_id | base64)/" | \
+        kubectl apply -f - 2>/dev/null || \
+        kubectl -n $NAMESPACE create secret generic site-registration \
+            --from-literal=site-uuid="$site_id" \
+            --from-literal=otp="local-dev-otp" \
+            --from-literal=creds-url="http://carbide-rest-site-manager:8100/v1/site/credentials" \
+            --from-literal=cacert=""
+
+    kubectl -n $NAMESPACE rollout restart deployment/carbide-rest-site-agent
+    kubectl -n $NAMESPACE rollout status deployment/carbide-rest-site-agent --timeout=120s
+}
+
+setup_site_agent() {
+    echo "Setting up site-agent..."
+    wait_for_services
+    
+    echo "Acquiring token..."
+    TOKEN=$(get_token)
+    
+    echo "Creating site..."
+    SITE_ID=$(create_site "$TOKEN")
+    echo "Site ID: $SITE_ID"
+    
+    echo "Configuring site-agent..."
+    configure_site_agent "$SITE_ID"
+    
+    kubectl -n $NAMESPACE get pods -l app=carbide-rest-site-agent
+    echo "Site-agent setup complete."
+}
+
+# ============================================================================
+# Verify Functions
+# ============================================================================
+
+verify() {
+    echo "Verifying local deployment..."
+    
+    echo -n "API health... "
+    if curl -sf "$API_URL/healthz" 2>/dev/null | jq -e '.is_healthy == true' > /dev/null 2>&1; then
+        echo "[OK]"
+    else
+        echo "[FAIL]"
+    fi
+
+    echo -n "Keycloak realm... "
+    if curl -sf "$KEYCLOAK_URL/realms/carbide-dev" 2>/dev/null | jq -e '.realm == "carbide-dev"' > /dev/null 2>&1; then
+        echo "[OK]"
+    else
+        echo "[FAIL]"
+    fi
+
+    echo -n "Cert manager... "
+    if kubectl -n "$NAMESPACE" get deployment carbide-rest-cert-manager -o jsonpath='{.status.readyReplicas}' 2>/dev/null | grep -q "[1-9]"; then
+        echo "[OK]"
+    else
+        echo "[WARN]"
+    fi
+
+    echo ""
+    kubectl -n $NAMESPACE get pods 2>/dev/null || echo "Could not get pod status"
+}
+
+# ============================================================================
+# Main
+# ============================================================================
+
+case "${1:-}" in
+    pki)
+        setup_pki
+        ;;
+    site-agent)
+        setup_site_agent
+        ;;
+    all)
+        setup_pki
+        setup_site_agent
+        ;;
+    verify)
+        verify
+        ;;
+    *)
+        usage
+        ;;
+esac

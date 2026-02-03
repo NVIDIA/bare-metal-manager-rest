@@ -297,7 +297,7 @@ kind-reset:
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	@echo "Setting up PKI secrets for cert-manager..."
-	NAMESPACE=carbide ./scripts/setup-local-pki.sh
+	NAMESPACE=carbide ./scripts/setup-local.sh pki
 	kubectl apply -k $(KUSTOMIZE_OVERLAY)
 	kubectl -n carbide wait --for=condition=ready pod -l app=postgres --timeout=120s
 	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=180s
@@ -342,7 +342,7 @@ kind-reset:
 	-kubectl -n carbide wait --for=condition=ready pod -l app=site-worker --timeout=120s
 	@echo "Waiting for Site Manager..."
 	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=180s
-	./scripts/setup-local-site-agent.sh
+	./scripts/setup-local.sh site-agent
 	@echo ""
 	@echo "================================================================================"
 	@echo "Deployment complete!"
@@ -370,11 +370,19 @@ kind-reset:
 
 # Setup site-agent with a real site created via the API
 setup-site-agent:
-	./scripts/setup-local-site-agent.sh
+	./scripts/setup-local.sh site-agent
 
 # Verify the local deployment (health checks)
 kind-verify:
-	./scripts/verify-local.sh
+	./scripts/setup-local.sh verify
+
+# Run PKI E2E tests
+test-pki:
+	./scripts/test-pki.sh
+
+# Run Temporal mTLS and rotation tests
+test-temporal-e2e:
+	./scripts/test-temporal.sh all
 
 # =============================================================================
 # Pre-commit Hooks (TruffleHog Secret Detection)
