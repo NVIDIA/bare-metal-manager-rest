@@ -10,7 +10,6 @@
  * its affiliates is strictly prohibited.
  */
 
-
 package model
 
 import (
@@ -69,27 +68,28 @@ var (
 type InfiniBandPartition struct {
 	bun.BaseModel `bun:"table:infiniband_partition,alias:ibp"`
 
-	ID                      uuid.UUID  `bun:"type:uuid,pk"`
-	Name                    string     `bun:"name,notnull"`
-	Description             *string    `bun:"description"`
-	Org                     string     `bun:"org,notnull"`
-	SiteID                  uuid.UUID  `bun:"site_id,type:uuid,notnull"`
-	Site                    *Site      `bun:"rel:belongs-to,join:site_id=id"`
-	TenantID                uuid.UUID  `bun:"tenant_id,type:uuid,notnull"`
-	Tenant                  *Tenant    `bun:"rel:belongs-to,join:tenant_id=id"`
-	ControllerIBPartitionID *uuid.UUID `bun:"controller_ib_partition_id,type:uuid"`
-	PartitionKey            *string    `bun:"partition_key"`
-	PartitionName           *string    `bun:"partition_name"`
-	ServiceLevel            *int       `bun:"service_level"`
-	RateLimit               *float32   `bun:"rate_limit"`
-	Mtu                     *int       `bun:"mtu"`
-	EnableSharp             *bool      `bun:"enable_sharp"`
-	Status                  string     `bun:"status,notnull"`
-	IsMissingOnSite         bool       `bun:"is_missing_on_site,notnull"`
-	Created                 time.Time  `bun:"created,nullzero,notnull,default:current_timestamp"`
-	Updated                 time.Time  `bun:"updated,nullzero,notnull,default:current_timestamp"`
-	Deleted                 *time.Time `bun:"deleted,soft_delete"`
-	CreatedBy               uuid.UUID  `bun:"type:uuid,notnull"`
+	ID                      uuid.UUID         `bun:"type:uuid,pk"`
+	Name                    string            `bun:"name,notnull"`
+	Description             *string           `bun:"description"`
+	Org                     string            `bun:"org,notnull"`
+	SiteID                  uuid.UUID         `bun:"site_id,type:uuid,notnull"`
+	Site                    *Site             `bun:"rel:belongs-to,join:site_id=id"`
+	TenantID                uuid.UUID         `bun:"tenant_id,type:uuid,notnull"`
+	Tenant                  *Tenant           `bun:"rel:belongs-to,join:tenant_id=id"`
+	ControllerIBPartitionID *uuid.UUID        `bun:"controller_ib_partition_id,type:uuid"`
+	PartitionKey            *string           `bun:"partition_key"`
+	PartitionName           *string           `bun:"partition_name"`
+	ServiceLevel            *int              `bun:"service_level"`
+	RateLimit               *float32          `bun:"rate_limit"`
+	Mtu                     *int              `bun:"mtu"`
+	EnableSharp             *bool             `bun:"enable_sharp"`
+	Labels                  map[string]string `bun:"labels,type:jsonb"`
+	Status                  string            `bun:"status,notnull"`
+	IsMissingOnSite         bool              `bun:"is_missing_on_site,notnull"`
+	Created                 time.Time         `bun:"created,nullzero,notnull,default:current_timestamp"`
+	Updated                 time.Time         `bun:"updated,nullzero,notnull,default:current_timestamp"`
+	Deleted                 *time.Time        `bun:"deleted,soft_delete"`
+	CreatedBy               uuid.UUID         `bun:"type:uuid,notnull"`
 }
 
 // InfiniBandPartitionCreateInput input parameters for Create method
@@ -107,6 +107,7 @@ type InfiniBandPartitionCreateInput struct {
 	RateLimit               *float32
 	Mtu                     *int
 	EnableSharp             *bool
+	Labels                  map[string]string
 	Status                  string
 	CreatedBy               uuid.UUID
 }
@@ -123,6 +124,7 @@ type InfiniBandPartitionUpdateInput struct {
 	RateLimit               *float32
 	Mtu                     *int
 	EnableSharp             *bool
+	Labels                  map[string]string
 	Status                  *string
 	IsMissingOnSite         *bool
 }
@@ -138,6 +140,7 @@ type InfiniBandPartitionClearInput struct {
 	RateLimit               bool
 	Mtu                     bool
 	EnableSharp             bool
+	Labels                  bool
 }
 
 // InfiniBandPartitionFilterInput input parameters for Filter method
@@ -284,12 +287,13 @@ func (ibpsd InfiniBandPartitionSQLDAO) GetAll(ctx context.Context, tx *db.Tx, fi
 		normalizedTokens := db.GetStrPtr(db.GetStringToTsQuery(*filter.SearchQuery))
 		query = query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
 			return q.
-				Where("to_tsvector('english', (coalesce(ibp.name, ' ') || ' ' || coalesce(ibp.description, ' ') || ' ' || coalesce(ibp.partition_key, ' ') || ' ' || coalesce(ibp.partition_name, ' ') || ' ' || coalesce(ibp.status, ' '))) @@ to_tsquery('english', ?)", *normalizedTokens).
+				Where("to_tsvector('english', (coalesce(ibp.name, ' ') || ' ' || coalesce(ibp.description, ' ') || ' ' || coalesce(ibp.partition_key, ' ') || ' ' || coalesce(ibp.partition_name, ' ') || ' ' || coalesce(ibp.status, ' ') || ' ' || coalesce(ibp.labels::text, ' '))) @@ to_tsquery('english', ?)", *normalizedTokens).
 				WhereOr("ibp.name ILIKE ?", "%"+*filter.SearchQuery+"%").
 				WhereOr("ibp.description ILIKE ?", "%"+*filter.SearchQuery+"%").
 				WhereOr("ibp.partition_key ILIKE ?", "%"+*filter.SearchQuery+"%").
 				WhereOr("ibp.partition_name ILIKE ?", "%"+*filter.SearchQuery+"%").
-				WhereOr("ibp.status ILIKE ?", "%"+*filter.SearchQuery+"%")
+				WhereOr("ibp.status ILIKE ?", "%"+*filter.SearchQuery+"%").
+				WhereOr("ibp.labels::text ILIKE ?", "%"+*filter.SearchQuery+"%")
 		})
 		ibpsd.tracerSpan.SetAttribute(InfiniBandPartitionDAOSpan, "search_query", *filter.SearchQuery)
 	}
@@ -346,6 +350,7 @@ func (ibpsd InfiniBandPartitionSQLDAO) Create(ctx context.Context, tx *db.Tx, in
 		RateLimit:               input.RateLimit,
 		Mtu:                     input.Mtu,
 		EnableSharp:             input.EnableSharp,
+		Labels:                  input.Labels,
 		Status:                  input.Status,
 		IsMissingOnSite:         false,
 		CreatedBy:               input.CreatedBy,
@@ -425,6 +430,11 @@ func (ibpsd InfiniBandPartitionSQLDAO) Update(ctx context.Context, tx *db.Tx, in
 		updatedFields = append(updatedFields, "enable_sharp")
 		ibpsd.tracerSpan.SetAttribute(InfiniBandPartitionDAOSpan, "enable_sharp", *input.EnableSharp)
 	}
+	if input.Labels != nil {
+		ibp.Labels = input.Labels
+		updatedFields = append(updatedFields, "labels")
+		ibpsd.tracerSpan.SetAttribute(InfiniBandPartitionDAOSpan, "labels", input.Labels)
+	}
 	if input.Status != nil {
 		ibp.Status = *input.Status
 		updatedFields = append(updatedFields, "status")
@@ -500,6 +510,10 @@ func (ibpsd InfiniBandPartitionSQLDAO) Clear(ctx context.Context, tx *db.Tx, inp
 	if input.EnableSharp {
 		ibp.EnableSharp = nil
 		updatedFields = append(updatedFields, "enable_sharp")
+	}
+	if input.Labels {
+		ibp.Labels = nil
+		updatedFields = append(updatedFields, "labels")
 	}
 
 	if len(updatedFields) > 0 {
