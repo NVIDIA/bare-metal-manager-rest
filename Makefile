@@ -315,6 +315,8 @@ kind-reset:
 	kubectl -n carbide create secret generic postgres-auth --from-literal=password=temporal || true
 	@echo "Granting temporal user CREATEDB permission..."
 	kubectl -n carbide exec -it postgres-0 -- psql -U postgres -c "ALTER USER temporal CREATEDB; ALTER DATABASE temporal OWNER TO temporal; ALTER DATABASE temporal_visibility OWNER TO temporal;" || true
+	@echo "Updating Helm chart dependencies..."
+	helm dependency update temporal-helm/temporal/
 	@echo "Installing Temporal via Helm chart..."
 	helm upgrade --install temporal ./temporal-helm/temporal \
 		--namespace carbide \
