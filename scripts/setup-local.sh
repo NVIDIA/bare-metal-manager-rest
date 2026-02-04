@@ -68,6 +68,14 @@ EOFCNF
         -config "$CA_DIR/ca.cnf" \
         -extensions v3_ca
     
+    # Create combined TLS secret (matches AWS dev setup)
+    kubectl create secret tls ca-signing-secret \
+        --cert="$CA_DIR/ca.crt" \
+        --key="$CA_DIR/ca.key" \
+        -n "$NAMESPACE" \
+        --dry-run=client -o yaml | kubectl apply -f -
+    
+    # Also create separate secrets for backward compatibility with existing deployments
     kubectl create secret generic vault-root-ca-certificate \
         --from-file=certificate="$CA_DIR/ca.crt" \
         -n "$NAMESPACE" \
@@ -85,7 +93,7 @@ EOFCNF
         -n "$NAMESPACE" \
         --dry-run=client -o yaml | kubectl apply -f -
     
-    echo "CA secrets created"
+    echo "CA secrets created (combined ca-signing-secret + legacy separate secrets)"
 }
 
 configure_vault_pki() {
@@ -243,7 +251,7 @@ wait_for_services() {
     done
 
     echo "Waiting for site-manager..."
-    if ! kubectl -n $NAMESPACE wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=180s; then
+    if ! kubectl -n $NAMESPACE wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=360s; then
         echo "ERROR: Site-manager not ready"
         kubectl -n $NAMESPACE get pods -l app=carbide-rest-site-manager
         exit 1
@@ -343,7 +351,7 @@ configure_site_agent() {
             --from-literal=cacert=""
 
     kubectl -n $NAMESPACE rollout restart deployment/carbide-rest-site-agent
-    kubectl -n $NAMESPACE rollout status deployment/carbide-rest-site-agent --timeout=120s
+    kubectl -n $NAMESPACE rollout status deployment/carbide-rest-site-agent --timeout=240s
 }
 
 setup_site_agent() {

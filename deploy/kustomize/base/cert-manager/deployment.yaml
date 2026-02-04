@@ -44,8 +44,8 @@ spec:
           args:
             - --ca-common-name=Carbide Local Dev CA
             - --ca-organization=NVIDIA
-            - --ca-cert-file=/vault/secrets/vault-root-ca-certificate/certificate
-            - --ca-key-file=/vault/secrets/vault-root-ca-private-key/privatekey
+            - --ca-cert-file=/etc/pki/ca/tls.crt
+            - --ca-key-file=/etc/pki/ca/tls.key
             - --tls-port=8000
             - --insecure-port=8001
             - --ca-base-dns=carbide.local
@@ -56,11 +56,8 @@ spec:
             - containerPort: 8001
               name: http
           volumeMounts:
-            - name: vault-root-ca-certificate
-              mountPath: /vault/secrets/vault-root-ca-certificate
-              readOnly: true
-            - name: vault-root-ca-private-key
-              mountPath: /vault/secrets/vault-root-ca-private-key
+            - name: ca-signing-secret
+              mountPath: /etc/pki/ca
               readOnly: true
             - name: tmp
               mountPath: /tmp
@@ -91,11 +88,8 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 15
       volumes:
-        - name: vault-root-ca-certificate
+        - name: ca-signing-secret
           secret:
-            secretName: vault-root-ca-certificate
-        - name: vault-root-ca-private-key
-          secret:
-            secretName: vault-root-ca-private-key
+            secretName: ca-signing-secret
         - name: tmp
           emptyDir: {}

@@ -279,9 +279,9 @@ kind-reset:
 	@echo "Installing cert-manager.io..."
 	kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
 	@echo "Waiting for cert-manager deployments..."
-	kubectl -n cert-manager rollout status deployment/cert-manager --timeout=120s
-	kubectl -n cert-manager rollout status deployment/cert-manager-webhook --timeout=120s
-	kubectl -n cert-manager rollout status deployment/cert-manager-cainjector --timeout=120s
+	kubectl -n cert-manager rollout status deployment/cert-manager --timeout=240s
+	kubectl -n cert-manager rollout status deployment/cert-manager-webhook --timeout=240s
+	kubectl -n cert-manager rollout status deployment/cert-manager-cainjector --timeout=240s
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-api:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-api .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-workflow:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-workflow .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-site-manager:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-manager .
@@ -299,15 +299,15 @@ kind-reset:
 	@echo "Setting up PKI secrets for cert-manager..."
 	NAMESPACE=carbide ./scripts/setup-local.sh pki
 	kubectl apply -k $(KUSTOMIZE_OVERLAY)
-	kubectl -n carbide wait --for=condition=ready pod -l app=postgres --timeout=120s
-	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=180s
+	kubectl -n carbide wait --for=condition=ready pod -l app=postgres --timeout=240s
+	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=360s
 	@echo "Configuring cert-manager.io ClusterIssuer..."
 	kubectl apply -k deploy/kustomize/base/cert-manager-io/
 	@echo "Waiting for Temporal certificates to be issued..."
-	kubectl -n carbide wait --for=condition=Ready certificate/server-interservice-cert --timeout=120s || true
-	kubectl -n carbide wait --for=condition=Ready certificate/server-cloud-cert --timeout=120s || true
-	kubectl -n carbide wait --for=condition=Ready certificate/server-site-cert --timeout=120s || true
-	kubectl -n carbide wait --for=condition=Ready certificate/temporal-client-cert --timeout=120s || true
+	kubectl -n carbide wait --for=condition=Ready certificate/server-interservice-cert --timeout=240s || true
+	kubectl -n carbide wait --for=condition=Ready certificate/server-cloud-cert --timeout=240s || true
+	kubectl -n carbide wait --for=condition=Ready certificate/server-site-cert --timeout=240s || true
+	kubectl -n carbide wait --for=condition=Ready certificate/temporal-client-cert --timeout=240s || true
 	@echo "Creating postgres-auth secret for Temporal Helm chart..."
 	kubectl -n carbide create secret generic postgres-auth --from-literal=password=temporal || true
 	@echo "Granting temporal user CREATEDB permission..."
@@ -316,12 +316,12 @@ kind-reset:
 	helm upgrade --install temporal ./temporal-helm/temporal \
 		--namespace carbide \
 		--values ./temporal-helm/temporal/values-kind.yaml \
-		--wait --timeout 8m || true
+		--wait --timeout 16m || true
 	@echo "Waiting for Temporal services..."
-	kubectl -n carbide wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=frontend --timeout=180s || true
-	kubectl -n carbide wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=history --timeout=180s || true
-	kubectl -n carbide wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=matching --timeout=180s || true
-	kubectl -n carbide wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=worker --timeout=180s || true
+	kubectl -n carbide wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=frontend --timeout=360s || true
+	kubectl -n carbide wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=history --timeout=360s || true
+	kubectl -n carbide wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=matching --timeout=360s || true
+	kubectl -n carbide wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=worker --timeout=360s || true
 	@echo "Creating Temporal namespaces with TLS..."
 	kubectl -n carbide exec deploy/temporal-admintools -- temporal operator namespace create cloud --address temporal-frontend:7233 \
 		--tls-cert-path /var/secrets/temporal/certs/server-interservice/tls.crt \
@@ -334,14 +334,14 @@ kind-reset:
 		--tls-ca-path /var/secrets/temporal/certs/server-interservice/ca.crt \
 		--tls-server-name interservice.server.temporal.nvidia.com || true
 	@echo "Temporal Helm deployment ready"
-	kubectl -n carbide wait --for=condition=ready pod -l app=keycloak --timeout=180s
-	kubectl -n carbide wait --for=condition=complete job/db-migrations --timeout=120s
-	-kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-api --timeout=120s
+	kubectl -n carbide wait --for=condition=ready pod -l app=keycloak --timeout=360s
+	kubectl -n carbide wait --for=condition=complete job/db-migrations --timeout=240s
+	-kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-api --timeout=240s
 	@echo "Waiting for workflow workers..."
-	-kubectl -n carbide wait --for=condition=ready pod -l app=cloud-worker --timeout=120s
-	-kubectl -n carbide wait --for=condition=ready pod -l app=site-worker --timeout=120s
+	-kubectl -n carbide wait --for=condition=ready pod -l app=cloud-worker --timeout=240s
+	-kubectl -n carbide wait --for=condition=ready pod -l app=site-worker --timeout=240s
 	@echo "Waiting for Site Manager..."
-	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=180s
+	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=360s
 	./scripts/setup-local.sh site-agent
 	@echo ""
 	@echo "================================================================================"

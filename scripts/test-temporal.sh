@@ -5,7 +5,7 @@
 set -e
 
 NAMESPACE="${NAMESPACE:-carbide}"
-TIMEOUT="${TIMEOUT:-300}"
+TIMEOUT="${TIMEOUT:-600}"
 
 usage() {
     echo "Usage: $0 <command>"
