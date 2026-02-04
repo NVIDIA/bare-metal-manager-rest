@@ -552,7 +552,7 @@ echo "--- Test 32: cert-manager.io Certificate Chain ---"
 echo "Checks: The cert issued by cert-manager.io is signed by our CA"
 E2E_FULL_CERT=$(kubectl -n $NAMESPACE get secret e2e-test-cert-secret -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
 if [[ -n "$E2E_FULL_CERT" ]] && [[ -n "$CA_PEM" ]]; then
-    CM_CA=$(kubectl -n cert-manager get secret carbide-ca-secret -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+    CM_CA=$(kubectl -n cert-manager get secret ca-signing-secret -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
     if [[ -n "$CM_CA" ]]; then
         echo "$CM_CA" > /tmp/e2e-cm-ca.pem
         echo "$E2E_FULL_CERT" > /tmp/e2e-cm-cert.pem
@@ -683,7 +683,7 @@ echo "--- Test 40: Verify Reissued Certificate Chain ---"
 echo "Checks: The reissued cert is still signed by our CA"
 if [[ "$REISSUED" == "true" ]]; then
     REISSUED_CERT=$(kubectl -n $NAMESPACE get secret rotation-test-secret -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
-    CM_CA=$(kubectl -n cert-manager get secret carbide-ca-secret -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+    CM_CA=$(kubectl -n cert-manager get secret ca-signing-secret -o jsonpath='{.data.tls\.crt}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
     if [[ -n "$REISSUED_CERT" ]] && [[ -n "$CM_CA" ]]; then
         echo "$CM_CA" > /tmp/rotation-ca.pem
         echo "$REISSUED_CERT" > /tmp/rotation-cert.pem

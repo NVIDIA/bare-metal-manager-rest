@@ -8,10 +8,9 @@
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
 
-# cert-manager.io configuration with Vault issuer
+# cert-manager.io CA ClusterIssuer configuration
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - vault-token-secret.yaml
   - cluster-issuer.yaml

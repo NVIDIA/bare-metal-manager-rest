@@ -198,6 +198,9 @@ KIND_CLUSTER_NAME := carbide-local
 KUSTOMIZE_OVERLAY := deploy/kustomize/overlays/local
 LOCAL_DOCKERFILE_DIR := docker/local
 
+# Recommended colima configuration for full stack with Temporal:
+#   colima start --cpu 8 --memory 8 --disk 100
+
 # Build images using local Dockerfiles (public base images for local dev)
 docker-build-local:
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-api:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-api .

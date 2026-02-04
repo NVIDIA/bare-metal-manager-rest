@@ -68,32 +68,21 @@ EOFCNF
         -config "$CA_DIR/ca.cnf" \
         -extensions v3_ca
     
-    # Create combined TLS secret (matches AWS dev setup)
+    # Create CA secret in carbide namespace for credsmgr
     kubectl create secret tls ca-signing-secret \
         --cert="$CA_DIR/ca.crt" \
         --key="$CA_DIR/ca.key" \
         -n "$NAMESPACE" \
         --dry-run=client -o yaml | kubectl apply -f -
     
-    # Also create separate secrets for backward compatibility with existing deployments
-    kubectl create secret generic vault-root-ca-certificate \
-        --from-file=certificate="$CA_DIR/ca.crt" \
-        -n "$NAMESPACE" \
+    # Create CA secret in cert-manager namespace for ClusterIssuer
+    kubectl create secret tls ca-signing-secret \
+        --cert="$CA_DIR/ca.crt" \
+        --key="$CA_DIR/ca.key" \
+        -n cert-manager \
         --dry-run=client -o yaml | kubectl apply -f -
     
-    kubectl create secret generic vault-root-ca-private-key \
-        --from-file=privatekey="$CA_DIR/ca.key" \
-        -n "$NAMESPACE" \
-        --dry-run=client -o yaml | kubectl apply -f -
-    
-    VAULT_INIT_RESPONSE='{"root_token":"root","keys":["aabbccdd"],"keys_base64":["aabbccdd"]}'
-    kubectl create secret generic vault-token \
-        --from-literal=vault-token="$VAULT_INIT_RESPONSE" \
-        --from-literal=certmgr-token="root" \
-        -n "$NAMESPACE" \
-        --dry-run=client -o yaml | kubectl apply -f -
-    
-    echo "CA secrets created (combined ca-signing-secret + legacy separate secrets)"
+    echo "CA secret created in both namespaces"
 }
 
 configure_vault_pki() {
@@ -137,8 +126,8 @@ create_service_certs() {
     
     CERT_DIR=$(mktemp -d)
     
-    CA_CERT=$(kubectl get secret vault-root-ca-certificate -n "$NAMESPACE" -o jsonpath='{.data.certificate}' | base64 -d 2>/dev/null || echo "")
-    CA_KEY=$(kubectl get secret vault-root-ca-private-key -n "$NAMESPACE" -o jsonpath='{.data.privatekey}' | base64 -d 2>/dev/null || echo "")
+    CA_CERT=$(kubectl get secret ca-signing-secret -n "$NAMESPACE" -o jsonpath='{.data.tls\.crt}' | base64 -d 2>/dev/null || echo "")
+    CA_KEY=$(kubectl get secret ca-signing-secret -n "$NAMESPACE" -o jsonpath='{.data.tls\.key}' | base64 -d 2>/dev/null || echo "")
     
     if [ -z "$CA_CERT" ] || [ -z "$CA_KEY" ]; then
         echo "Warning: Could not retrieve CA certificate"
