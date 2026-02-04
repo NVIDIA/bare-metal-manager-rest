@@ -16,10 +16,10 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	wflows "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/carbide"
 	"github.com/nvidia/carbide-rest/site-agent/pkg/components/utils"
+	wflows "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/otel"
 )
 

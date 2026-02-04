@@ -1281,6 +1281,16 @@ func (c *MockRLAClient) PatchRack(ctx context.Context, in *rlav1.PatchRackReques
 }
 
 func (c *MockRLAClient) GetRackInfoByID(ctx context.Context, in *rlav1.GetRackInfoByIDRequest, opts ...grpc.CallOption) (*rlav1.GetRackInfoResponse, error) {
+	// Check for error injection via context
+	if err, ok := ctx.Value("wantError").(error); ok {
+		return nil, err
+	}
+
+	// Check for custom response via context
+	if resp, ok := ctx.Value("wantResponse").(*rlav1.GetRackInfoResponse); ok {
+		return resp, nil
+	}
+
 	out := &rlav1.GetRackInfoResponse{
 		Rack: &rlav1.Rack{
 			Info: &rlav1.DeviceInfo{
@@ -1303,6 +1313,16 @@ func (c *MockRLAClient) GetRackInfoBySerial(ctx context.Context, in *rlav1.GetRa
 }
 
 func (c *MockRLAClient) GetListOfRacks(ctx context.Context, in *rlav1.GetListOfRacksRequest, opts ...grpc.CallOption) (*rlav1.GetListOfRacksResponse, error) {
+	// Check for error injection via context
+	if err, ok := ctx.Value("wantError").(error); ok {
+		return nil, err
+	}
+
+	// Check for custom response via context
+	if resp, ok := ctx.Value("wantResponse").(*rlav1.GetListOfRacksResponse); ok {
+		return resp, nil
+	}
+
 	out := &rlav1.GetListOfRacksResponse{
 		Racks: []*rlav1.Rack{},
 	}
@@ -1330,17 +1350,9 @@ func (c *MockRLAClient) GetComponentInfoBySerial(ctx context.Context, in *rlav1.
 	return out, nil
 }
 
-func (c *MockRLAClient) GetExpectedComponents(ctx context.Context, in *rlav1.GetExpectedComponentsRequest, opts ...grpc.CallOption) (*rlav1.GetExpectedComponentsResponse, error) {
-	out := &rlav1.GetExpectedComponentsResponse{
+func (c *MockRLAClient) GetComponents(ctx context.Context, in *rlav1.GetComponentsRequest, opts ...grpc.CallOption) (*rlav1.GetComponentsResponse, error) {
+	out := &rlav1.GetComponentsResponse{
 		Components: []*rlav1.Component{},
-		Total:      0,
-	}
-	return out, nil
-}
-
-func (c *MockRLAClient) GetActualComponents(ctx context.Context, in *rlav1.GetActualComponentsRequest, opts ...grpc.CallOption) (*rlav1.GetActualComponentsResponse, error) {
-	out := &rlav1.GetActualComponentsResponse{
-		Components: []*rlav1.ActualComponent{},
 		Total:      0,
 	}
 	return out, nil

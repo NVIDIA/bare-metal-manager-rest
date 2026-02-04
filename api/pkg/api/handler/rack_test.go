@@ -1,0 +1,428 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ *
+ * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+ * property and proprietary rights in and to this material, related
+ * documentation and any modifications thereto. Any use, reproduction,
+ * disclosure or distribution of this material and related documentation
+ * without an express license agreement from NVIDIA CORPORATION or
+ * its affiliates is strictly prohibited.
+ */
+
+package handler
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
+	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
+	"github.com/nvidia/carbide-rest/api/pkg/api/model"
+	"github.com/nvidia/carbide-rest/api/pkg/api/pagination"
+	"github.com/nvidia/carbide-rest/common/pkg/otelecho"
+	sc "github.com/nvidia/carbide-rest/api/pkg/client/site"
+	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
+	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
+	rlav1 "github.com/nvidia/carbide-rest/workflow-schema/rla/protobuf/v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun/extra/bundebug"
+	oteltrace "go.opentelemetry.io/otel/trace"
+	tmocks "go.temporal.io/sdk/mocks"
+)
+
+func testRackInitDB(t *testing.T) *cdb.Session {
+	dbSession := cdbu.GetTestDBSession(t, false)
+	dbSession.DB.AddQueryHook(bundebug.NewQueryHook(
+		bundebug.WithEnabled(false),
+		bundebug.FromEnv("BUNDEBUG"),
+	))
+
+	ctx := context.Background()
+
+	// Reset required tables in dependency order
+	err := dbSession.DB.ResetModel(ctx, (*cdbm.User)(nil))
+	assert.Nil(t, err)
+	err = dbSession.DB.ResetModel(ctx, (*cdbm.InfrastructureProvider)(nil))
+	assert.Nil(t, err)
+	err = dbSession.DB.ResetModel(ctx, (*cdbm.Tenant)(nil))
+	assert.Nil(t, err)
+	err = dbSession.DB.ResetModel(ctx, (*cdbm.Site)(nil))
+	assert.Nil(t, err)
+	err = dbSession.DB.ResetModel(ctx, (*cdbm.TenantSite)(nil))
+	assert.Nil(t, err)
+	err = dbSession.DB.ResetModel(ctx, (*cdbm.TenantAccount)(nil))
+	assert.Nil(t, err)
+
+	return dbSession
+}
+
+func testRackSetupTestData(t *testing.T, dbSession *cdb.Session, org string) (*cdbm.InfrastructureProvider, *cdbm.Site, *cdbm.Tenant) {
+	ctx := context.Background()
+
+	// Create infrastructure provider
+	ip := &cdbm.InfrastructureProvider{
+		ID:   uuid.New(),
+		Name: "test-provider",
+		Org:  org,
+	}
+	_, err := dbSession.DB.NewInsert().Model(ip).Exec(ctx)
+	assert.Nil(t, err)
+
+	// Create site
+	site := &cdbm.Site{
+		ID:                       uuid.New(),
+		Name:                     "test-site",
+		Org:                      org,
+		InfrastructureProviderID: ip.ID,
+		Status:                   cdbm.SiteStatusRegistered,
+	}
+	_, err = dbSession.DB.NewInsert().Model(site).Exec(ctx)
+	assert.Nil(t, err)
+
+	// Create tenant with TargetedInstanceCreation enabled (privileged tenant)
+	tenant := &cdbm.Tenant{
+		ID:   uuid.New(),
+		Org:  org,
+		Config: &cdbm.TenantConfig{
+			TargetedInstanceCreation: true,
+		},
+		CreatedBy: uuid.New(),
+	}
+	_, err = dbSession.DB.NewInsert().Model(tenant).Exec(ctx)
+	assert.Nil(t, err)
+
+	// Create tenant account for privileged tenant
+	ta := &cdbm.TenantAccount{
+		ID:                       uuid.New(),
+		TenantID:                 &tenant.ID,
+		InfrastructureProviderID: ip.ID,
+	}
+	_, err = dbSession.DB.NewInsert().Model(ta).Exec(ctx)
+	assert.Nil(t, err)
+
+	return ip, site, tenant
+}
+
+func testRackBuildUser(t *testing.T, dbSession *cdb.Session, starfleetID string, org string, roles []string) *cdbm.User {
+	uDAO := cdbm.NewUserDAO(dbSession)
+
+	OrgData := cdbm.OrgData{}
+	OrgData[org] = cdbm.Org{
+		ID:          123,
+		Name:        org,
+		DisplayName: org,
+		OrgType:     "ENTERPRISE",
+		Roles:       roles,
+	}
+	u, err := uDAO.Create(
+		context.Background(),
+		nil,
+		cdbm.UserCreateInput{
+			AuxiliaryID: nil,
+			StarfleetID: &starfleetID,
+			Email:       cdb.GetStrPtr("test@test.com"),
+			FirstName:   cdb.GetStrPtr("Test"),
+			LastName:    cdb.GetStrPtr("User"),
+			OrgData:     OrgData,
+		},
+	)
+	assert.Nil(t, err)
+
+	return u
+}
+
+func TestGetAllRackHandler_Handle(t *testing.T) {
+	// Setup
+	e := echo.New()
+	dbSession := testRackInitDB(t)
+	defer dbSession.Close()
+
+	cfg := common.GetTestConfig()
+	tcfg, _ := cfg.GetTemporalConfig()
+	scp := sc.NewClientPool(tcfg)
+
+	org := "test-org"
+	_, site, _ := testRackSetupTestData(t, dbSession, org)
+
+	// Create provider user
+	providerUser := testRackBuildUser(t, dbSession, "provider-user", org, []string{"FORGE_PROVIDER_ADMIN"})
+
+	// Create privileged tenant user
+	tenantUser := testRackBuildUser(t, dbSession, "tenant-user", org, []string{"FORGE_TENANT_ADMIN"})
+
+	handler := NewGetAllRackHandler(dbSession, nil, scp, cfg)
+
+	// Helper to create mock RLA response
+	createMockRLAResponse := func(racks []*rlav1.Rack, total int32) *rlav1.GetListOfRacksResponse {
+		return &rlav1.GetListOfRacksResponse{
+			Racks: racks,
+			Total: total,
+		}
+	}
+
+	// Helper to create mock rack
+	createMockRack := func(id, name, manufacturer, model string) *rlav1.Rack {
+		rackID := &rlav1.UUID{Id: id}
+		modelPtr := model
+		return &rlav1.Rack{
+			Info: &rlav1.DeviceInfo{
+				Id:           rackID,
+				Name:         name,
+				Manufacturer: manufacturer,
+				Model:        &modelPtr,
+			},
+		}
+	}
+
+	// Create test racks
+	testRacks := []*rlav1.Rack{
+		createMockRack("rack-1", "Rack-001", "NVIDIA", "NVL72"),
+		createMockRack("rack-2", "Rack-002", "NVIDIA", "NVL72"),
+		createMockRack("rack-3", "Rack-003", "Dell", "PowerEdge"),
+		createMockRack("rack-4", "Rack-004", "NVIDIA", "NVL36"),
+		createMockRack("rack-5", "Rack-005", "Dell", "PowerEdge"),
+	}
+
+	tracer := oteltrace.NewNoopTracerProvider().Tracer("test")
+	ctx := context.Background()
+
+	tests := []struct {
+		name           string
+		reqOrg         string
+		user           *cdbm.User
+		queryParams    map[string]string
+		mockResponse   *rlav1.GetListOfRacksResponse
+		expectedStatus int
+		expectedCount  int
+		expectedTotal  *int
+		wantErr        bool
+	}{
+		{
+			name:   "success - get all racks",
+			reqOrg: org,
+			user:   providerUser,
+			queryParams: map[string]string{
+				"siteId": site.ID.String(),
+			},
+			mockResponse:   createMockRLAResponse(testRacks, int32(len(testRacks))),
+			expectedStatus: http.StatusOK,
+			expectedCount:  len(testRacks),
+			expectedTotal:  cdb.GetIntPtr(len(testRacks)),
+			wantErr:        false,
+		},
+		{
+			name:   "success - filter by name",
+			reqOrg: org,
+			user:   providerUser,
+			queryParams: map[string]string{
+				"siteId": site.ID.String(),
+				"name":   "Rack-001",
+			},
+			mockResponse:   createMockRLAResponse([]*rlav1.Rack{testRacks[0]}, 1),
+			expectedStatus: http.StatusOK,
+			expectedCount:  1,
+			expectedTotal:  cdb.GetIntPtr(1),
+			wantErr:        false,
+		},
+		{
+			name:   "success - filter by manufacturer",
+			reqOrg: org,
+			user:   providerUser,
+			queryParams: map[string]string{
+				"siteId":      site.ID.String(),
+				"manufacturer": "Dell",
+			},
+			mockResponse:   createMockRLAResponse([]*rlav1.Rack{testRacks[2], testRacks[4]}, 2),
+			expectedStatus: http.StatusOK,
+			expectedCount:  2,
+			expectedTotal:  cdb.GetIntPtr(2),
+			wantErr:        false,
+		},
+		{
+			name:   "success - filter by model",
+			reqOrg: org,
+			user:   providerUser,
+			queryParams: map[string]string{
+				"siteId": site.ID.String(),
+				"model":  "NVL72",
+			},
+			mockResponse:   createMockRLAResponse([]*rlav1.Rack{testRacks[0], testRacks[1]}, 2),
+			expectedStatus: http.StatusOK,
+			expectedCount:  2,
+			expectedTotal:  cdb.GetIntPtr(2),
+			wantErr:        false,
+		},
+		{
+			name:   "success - pagination",
+			reqOrg: org,
+			user:   providerUser,
+			queryParams: map[string]string{
+				"siteId":    site.ID.String(),
+				"pageNumber": "1",
+				"pageSize":   "2",
+			},
+			mockResponse:   createMockRLAResponse([]*rlav1.Rack{testRacks[0], testRacks[1]}, int32(len(testRacks))),
+			expectedStatus: http.StatusOK,
+			expectedCount:  2,
+			expectedTotal:  cdb.GetIntPtr(len(testRacks)),
+			wantErr:        false,
+		},
+		{
+			name:   "success - orderBy name ASC",
+			reqOrg: org,
+			user:   providerUser,
+			queryParams: map[string]string{
+				"siteId":  site.ID.String(),
+				"orderBy": "NAME_ASC",
+			},
+			mockResponse:   createMockRLAResponse(testRacks, int32(len(testRacks))),
+			expectedStatus: http.StatusOK,
+			expectedCount:  len(testRacks),
+			expectedTotal:  cdb.GetIntPtr(len(testRacks)),
+			wantErr:        false,
+		},
+		{
+			name:   "success - orderBy manufacturer DESC",
+			reqOrg: org,
+			user:   providerUser,
+			queryParams: map[string]string{
+				"siteId":  site.ID.String(),
+				"orderBy": "MANUFACTURER_DESC",
+			},
+			mockResponse:   createMockRLAResponse(testRacks, int32(len(testRacks))),
+			expectedStatus: http.StatusOK,
+			expectedCount:  len(testRacks),
+			expectedTotal:  cdb.GetIntPtr(len(testRacks)),
+			wantErr:        false,
+		},
+		{
+			name:   "success - privileged tenant access",
+			reqOrg: org,
+			user:   tenantUser,
+			queryParams: map[string]string{
+				"siteId": site.ID.String(),
+			},
+			mockResponse:   createMockRLAResponse(testRacks, int32(len(testRacks))),
+			expectedStatus: http.StatusOK,
+			expectedCount:  len(testRacks),
+			expectedTotal:  cdb.GetIntPtr(len(testRacks)),
+			wantErr:        false,
+		},
+		{
+			name:   "failure - missing siteId for tenant",
+			reqOrg: org,
+			user:   tenantUser,
+			queryParams: map[string]string{},
+			expectedStatus: http.StatusBadRequest,
+			wantErr:        true,
+		},
+		{
+			name:   "failure - invalid orderBy",
+			reqOrg: org,
+			user:   providerUser,
+			queryParams: map[string]string{
+				"siteId":  site.ID.String(),
+				"orderBy": "INVALID_FIELD_ASC",
+			},
+			expectedStatus: http.StatusBadRequest,
+			wantErr:        true,
+		},
+		{
+			name:   "failure - invalid pagination (negative pageNumber)",
+			reqOrg: org,
+			user:   providerUser,
+			queryParams: map[string]string{
+				"siteId":    site.ID.String(),
+				"pageNumber": "-1",
+			},
+			mockResponse:   nil, // No mock response needed for error case
+			expectedStatus: http.StatusBadRequest,
+			wantErr:        true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup mock Temporal client
+			mockTemporalClient := &tmocks.Client{}
+			mockWorkflowRun := &tmocks.WorkflowRun{}
+			mockWorkflowRun.On("GetID").Return("test-workflow-id")
+			// Always set up Get mock, even for error cases, as handler may still call it
+			if tt.mockResponse != nil {
+				mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+					resp := args.Get(1).(*rlav1.GetListOfRacksResponse)
+					resp.Racks = tt.mockResponse.Racks
+					resp.Total = tt.mockResponse.Total
+				}).Return(nil)
+			} else {
+				// For error cases, set up a mock that returns empty response
+				mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+					resp := args.Get(1).(*rlav1.GetListOfRacksResponse)
+					resp.Racks = []*rlav1.Rack{}
+					resp.Total = 0
+				}).Return(nil)
+			}
+			mockTemporalClient.Mock.On("ExecuteWorkflow", mock.Anything, mock.Anything, "GetRacks", mock.Anything).Return(mockWorkflowRun, nil)
+			scp.IDClientMap[site.ID.String()] = mockTemporalClient
+
+			// Build query string
+			q := url.Values{}
+			for k, v := range tt.queryParams {
+				q.Set(k, v)
+			}
+			path := fmt.Sprintf("/v2/org/%s/carbide/rack?%s", tt.reqOrg, q.Encode())
+
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+
+			ec := e.NewContext(req, rec)
+			ec.SetParamNames("orgName")
+			ec.SetParamValues(tt.reqOrg)
+			ec.Set("user", tt.user)
+
+			ctx = context.WithValue(ctx, otelecho.TracerKey, tracer)
+			ec.SetRequest(ec.Request().WithContext(ctx))
+
+			err := handler.Handle(ec)
+			// In Echo, c.JSON() returns nil on success, so err can be nil even when returning error response
+			// Check status code instead of err for error cases
+			if tt.expectedStatus != rec.Code {
+				t.Errorf("GetAllRackHandler.Handle() status = %v, want %v, response: %v, err: %v", rec.Code, tt.expectedStatus, rec.Body.String(), err)
+			}
+
+			require.Equal(t, tt.expectedStatus, rec.Code)
+			if tt.expectedStatus != http.StatusOK {
+				return
+			}
+
+			// Verify response
+			var apiRacks []*model.APIRack
+			err = json.Unmarshal(rec.Body.Bytes(), &apiRacks)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expectedCount, len(apiRacks))
+
+			// Verify pagination header
+			ph := rec.Header().Get(pagination.ResponseHeaderName)
+			assert.NotEmpty(t, ph)
+
+			pr := &pagination.PageResponse{}
+			err = json.Unmarshal([]byte(ph), pr)
+			assert.NoError(t, err)
+
+			if tt.expectedTotal != nil {
+				assert.Equal(t, *tt.expectedTotal, pr.Total)
+			}
+		})
+	}
+}

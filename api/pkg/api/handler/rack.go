@@ -14,10 +14,12 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/otel/attribute"
@@ -26,6 +28,7 @@ import (
 	"github.com/nvidia/carbide-rest/api/internal/config"
 	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
 	"github.com/nvidia/carbide-rest/api/pkg/api/model"
+	"github.com/nvidia/carbide-rest/api/pkg/api/pagination"
 	sc "github.com/nvidia/carbide-rest/api/pkg/client/site"
 	cerr "github.com/nvidia/carbide-rest/common/pkg/util"
 	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
@@ -200,6 +203,12 @@ func NewGetAllRackHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.Cli
 // @Param org path string true "Name of NGC organization"
 // @Param siteId query string true "ID of the Site"
 // @Param includeComponents query boolean false "Include rack components in response"
+// @Param name query string false "Filter by rack name"
+// @Param manufacturer query string false "Filter by manufacturer"
+// @Param model query string false "Filter by model"
+// @Param pageNumber query integer false "Page number of results returned"
+// @Param pageSize query integer false "Number of results per page"
+// @Param orderBy query string false "Order by field (NAME_ASC, NAME_DESC, MANUFACTURER_ASC, MANUFACTURER_DESC, MODEL_ASC, MODEL_DESC)"
 // @Success 200 {array} model.APIRack
 // @Router /v2/org/{org}/carbide/rack [get]
 func (garh GetAllRackHandler) Handle(c echo.Context) error {
@@ -250,10 +259,111 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Current org is not associated with the Site specified in query", nil)
 	}
 
+	// Validate pagination request
+	pageRequest := pagination.PageRequest{}
+	err = c.Bind(&pageRequest)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error binding pagination request data into API model")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request pagination data", nil)
+	}
+
+	// Define valid order by fields for Rack
+	rackOrderByFields := []string{"name", "manufacturer", "model"}
+
+	// Validate pagination attributes
+	err = pageRequest.Validate(rackOrderByFields)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error validating pagination request data")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate pagination request data", err)
+	}
+
 	// Check includeComponents query param (API uses includeComponents, RLA uses WithComponents)
 	includeComponents := false
 	if ic := c.QueryParam("includeComponents"); ic != "" {
 		includeComponents, _ = strconv.ParseBool(ic)
+	}
+
+	// Build filters from query params
+	var filters []*rlav1.Filter
+	qParams := c.QueryParams()
+
+	// Filter by name
+	if name := qParams.Get("name"); name != "" {
+		filters = append(filters, &rlav1.Filter{
+			Field: &rlav1.Filter_RackField{
+				RackField: rlav1.RackFilterField_RACK_FILTER_FIELD_NAME,
+			},
+			QueryInfo: &rlav1.StringQueryInfo{
+				Patterns:   []string{name},
+				IsWildcard: false,
+				UseOr:      false,
+			},
+		})
+	}
+
+	// Filter by manufacturer
+	if manufacturer := qParams.Get("manufacturer"); manufacturer != "" {
+		filters = append(filters, &rlav1.Filter{
+			Field: &rlav1.Filter_RackField{
+				RackField: rlav1.RackFilterField_RACK_FILTER_FIELD_MANUFACTURER,
+			},
+			QueryInfo: &rlav1.StringQueryInfo{
+				Patterns:   []string{manufacturer},
+				IsWildcard: false,
+				UseOr:      false,
+			},
+		})
+	}
+
+	// Filter by model
+	if model := qParams.Get("model"); model != "" {
+		filters = append(filters, &rlav1.Filter{
+			Field: &rlav1.Filter_RackField{
+				RackField: rlav1.RackFilterField_RACK_FILTER_FIELD_MODEL,
+			},
+			QueryInfo: &rlav1.StringQueryInfo{
+				Patterns:   []string{model},
+				IsWildcard: false,
+				UseOr:      false,
+			},
+		})
+	}
+
+	// Build OrderBy from pagination
+	var orderBy *rlav1.OrderBy
+	if pageRequest.OrderBy != nil {
+		var rackField rlav1.RackOrderByField
+		switch pageRequest.OrderBy.Field {
+		case "name":
+			rackField = rlav1.RackOrderByField_RACK_ORDER_BY_FIELD_NAME
+		case "manufacturer":
+			rackField = rlav1.RackOrderByField_RACK_ORDER_BY_FIELD_MANUFACTURER
+		case "model":
+			rackField = rlav1.RackOrderByField_RACK_ORDER_BY_FIELD_MODEL
+		default:
+			rackField = rlav1.RackOrderByField_RACK_ORDER_BY_FIELD_UNSPECIFIED
+		}
+
+		direction := "ASC"
+		if strings.ToUpper(pageRequest.OrderBy.Order) == "DESC" {
+			direction = "DESC"
+		}
+
+		orderBy = &rlav1.OrderBy{
+			Field: &rlav1.OrderBy_RackField{
+				RackField: rackField,
+			},
+			Direction: direction,
+		}
+	}
+
+	// Build Pagination
+	var paginationProto *rlav1.Pagination
+	if pageRequest.Offset != nil && pageRequest.Limit != nil {
+		paginationProto = &rlav1.Pagination{
+			Offset: int32(*pageRequest.Offset),
+			Limit:  int32(*pageRequest.Limit),
+		}
 	}
 
 	// Get the temporal client for the site
@@ -265,7 +375,10 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 
 	// Build RLA request
 	rlaRequest := &rlav1.GetListOfRacksRequest{
+		Filters:        filters,
 		WithComponents: includeComponents,
+		Pagination:     paginationProto,
+		OrderBy:        orderBy,
 	}
 
 	// Execute workflow
@@ -298,7 +411,25 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 		apiRacks = append(apiRacks, model.NewAPIRack(rack, includeComponents))
 	}
 
-	logger.Info().Int("count", len(apiRacks)).Msg("finishing API handler")
+	// Create pagination response header
+	total := int(rlaResponse.GetTotal())
+	pageNumber := 1
+	pageSize := pagination.MaxPageSize
+	if pageRequest.PageNumber != nil {
+		pageNumber = *pageRequest.PageNumber
+	}
+	if pageRequest.PageSize != nil {
+		pageSize = *pageRequest.PageSize
+	}
+	pageResponse := pagination.NewPageResponse(pageNumber, pageSize, total, pageRequest.OrderByStr)
+	pageHeader, err := json.Marshal(pageResponse)
+	if err != nil {
+		logger.Error().Err(err).Msg("error marshaling pagination response")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create pagination response", nil)
+	}
+	c.Response().Header().Set(pagination.ResponseHeaderName, string(pageHeader))
+
+	logger.Info().Int("count", len(apiRacks)).Int("total", total).Msg("finishing API handler")
 
 	return c.JSON(http.StatusOK, apiRacks)
 }

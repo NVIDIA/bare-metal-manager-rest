@@ -98,8 +98,14 @@ func TestManageRack_GetRack(t *testing.T) {
 			// Create ManageRack instance
 			manageRack := NewManageRack(rlaAtomicClient)
 
-			// Execute activity
+			// Execute activity with context injection
 			ctx := context.Background()
+			if tt.mockErr != nil {
+				ctx = context.WithValue(ctx, "wantError", tt.mockErr)
+			}
+			if tt.mockResp != nil {
+				ctx = context.WithValue(ctx, "wantResponse", tt.mockResp)
+			}
 			result, err := manageRack.GetRack(ctx, tt.request)
 
 			if tt.wantErr {
@@ -185,8 +191,14 @@ func TestManageRack_GetRacks(t *testing.T) {
 			// Create ManageRack instance
 			manageRack := NewManageRack(rlaAtomicClient)
 
-			// Execute activity
+			// Execute activity with context injection
 			ctx := context.Background()
+			if tt.mockErr != nil {
+				ctx = context.WithValue(ctx, "wantError", tt.mockErr)
+			}
+			if tt.mockResp != nil {
+				ctx = context.WithValue(ctx, "wantResponse", tt.mockResp)
+			}
 			result, err := manageRack.GetRacks(ctx, tt.request)
 
 			if tt.wantErr {
@@ -199,9 +211,14 @@ func TestManageRack_GetRacks(t *testing.T) {
 
 			assert.NoError(t, err)
 			assert.NotNil(t, result)
-			// Mock returns empty list by default
-			assert.Equal(t, int32(0), result.GetTotal())
-			assert.Equal(t, 0, len(result.GetRacks()))
+			if tt.mockResp != nil {
+				assert.Equal(t, tt.mockResp.GetTotal(), result.GetTotal())
+				assert.Equal(t, len(tt.mockResp.GetRacks()), len(result.GetRacks()))
+			} else {
+				// Mock returns empty list by default
+				assert.Equal(t, int32(0), result.GetTotal())
+				assert.Equal(t, 0, len(result.GetRacks()))
+			}
 		})
 	}
 }

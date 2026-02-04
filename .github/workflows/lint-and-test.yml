@@ -124,7 +124,6 @@ jobs:
       DB_HOST: localhost
       DB_PORT: 5432
       CGO_ENABLED: 1
-      RLA_ENABLED: "false"
 
     steps:
       - name: Checkout code

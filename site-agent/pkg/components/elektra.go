@@ -56,7 +56,7 @@ func NewElektraAPI(superElektra *elektratypes.Elektra, utMode bool) (*Elektra, e
 	// Load configuration
 	if superElektra != nil {
 		// Configuration
-		zlog.Info().Msg("Elektra: Initializing Config Manager")
+		zlog.Info().Msg("Elektra: Loading configuration")
 		superElektra.Conf = config.NewElektraConfig(utMode)
 		eb.manager, err = managers.NewInstance(superElektra)
 		zlog.Info().Interface("config", superElektra.Conf).Msg("Elektra: Config Manager initialized")
