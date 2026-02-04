@@ -2268,28 +2268,30 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 	// Validate DPU Interfaces if Instance Type has Network Capability with DPU device type
 	if isDeviceInfoPresent {
 		// Get Network Capabilities with DPU device type
-		var itDpuCaps []cdbm.MachineCapability
-		var itDpuCapCount int
+		var dpuNetworkCaps []cdbm.MachineCapability
+		var dpuNetworkCapCount int
 		if instance.InstanceTypeID != nil {
-			itDpuCaps, itDpuCapCount, err = mcDAO.GetAll(ctx, nil, nil, []uuid.UUID{*instance.InstanceTypeID}, cdb.GetStrPtr(cdbm.MachineCapabilityTypeNetwork), nil, nil, nil, nil, nil, cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeDPU), nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+			dpuNetworkCaps, dpuNetworkCapCount, err = mcDAO.GetAll(ctx, nil, nil, []uuid.UUID{*instance.InstanceTypeID}, cdb.GetStrPtr(cdbm.MachineCapabilityTypeNetwork), nil, nil, nil, nil, nil, cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeDPU), nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
 			if err != nil {
 				logger.Error().Err(err).Msg("error retrieving Machine Capabilities from DB for Instance Type")
-				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Machine Capabilities for Instance Type", nil)
-			}
-		} else {
-			itDpuCaps, itDpuCapCount, err = mcDAO.GetAll(ctx, nil, []string{machine.ID}, nil, cdb.GetStrPtr(cdbm.MachineCapabilityTypeNetwork), nil, nil, nil, nil, nil, cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeDPU), nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
-			if err != nil {
-				logger.Error().Err(err).Msg("error retrieving Machine Capabilities from DB for Instance Type")
-				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Machine Capabilities for Instance Type", nil)
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve DPU aware Network Capabilities for Instance Type", nil)
 			}
 		}
 
-		if itDpuCapCount == 0 {
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Device and Device Instance cannot be specified if Instance Type doesn't have Network Capability with DPU device type", nil)
+		if dpuNetworkCapCount == 0 {
+			dpuNetworkCaps, dpuNetworkCapCount, err = mcDAO.GetAll(ctx, nil, []string{machine.ID}, nil, cdb.GetStrPtr(cdbm.MachineCapabilityTypeNetwork), nil, nil, nil, nil, nil, cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeDPU), nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+			if err != nil {
+				logger.Error().Err(err).Msg("error retrieving DPU aware Network Capabilities from DB for Machine")
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve DPU aware Network Capabilities for Machine", nil)
+			}
+		}
+
+		if dpuNetworkCapCount == 0 {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Device and Device Instance cannot be specified if Instance Type or Machine doesn't have Network Capability with DPU device type", nil)
 		}
 
 		// Validate DPU Interfaces if Instance Type DPU capability is present and matches with the request
-		err = apiRequest.ValidateMultiEthernetDeviceInterfaces(itDpuCaps, dbInterfaces)
+		err = apiRequest.ValidateMultiEthernetDeviceInterfaces(dpuNetworkCaps, dbInterfaces)
 		if err != nil {
 			logger.Error().Msgf("Failed to validate configuration for one or more multi-Ethernet device Interfaces: %s", err)
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate configuration for one or more multi-Ethernet device Interfaces", err)
@@ -2327,43 +2329,43 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 
 		ibp, ok := ibpIDMap[ibpID]
 		if !ok {
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Could find Partition with ID: %v specified in request data", ibic.InfiniBandPartitionID), nil)
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Could not find InfiniBand Partition with ID: %v specified in request data", ibic.InfiniBandPartitionID), nil)
 		}
 
 		if ibp.SiteID != site.ID {
 			logger.Warn().Msg(fmt.Sprintf("InfiniBandPartition: %v specified in request does not match with Instance Site", ibpID))
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Partition: %v specified in request does not match with Instance Site", ibpID), nil)
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("InfiniBand Partition: %v specified in request does not match with Instance Site", ibpID), nil)
 		}
 
 		if ibp.TenantID != tenant.ID {
 			logger.Warn().Msg(fmt.Sprintf("InfiniBandPartition: %v specified in request is not owned by Tenant", ibpID))
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Partition: %v specified in request is not owned by Tenant", ibpID), nil)
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("InfiniBand Partition: %v specified in request is not owned by Tenant", ibpID), nil)
 		}
 
 		if ibp.ControllerIBPartitionID == nil || ibp.Status != cdbm.InfiniBandPartitionStatusReady {
 			logger.Warn().Msg(fmt.Sprintf("InfiniBandPartition: %v specified in request data is not in Ready state", ibpID))
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Partition: %v specified in request data is not in Ready state", ibpID), nil)
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("InfiniBand Partition: %v specified in request data is not in Ready state", ibpID), nil)
 		}
 	}
 
 	// Get InfiniBand Capabilities
 	if len(apiRequest.InfiniBandInterfaces) > 0 {
 		var ibCapCount int
-		var itIbCaps []cdbm.MachineCapability
+		var ibCaps []cdbm.MachineCapability
 
 		if instance.InstanceTypeID != nil {
-			itIbCaps, ibCapCount, err = mcDAO.GetAll(ctx, nil, nil, []uuid.UUID{*instance.InstanceTypeID}, cdb.GetStrPtr(cdbm.MachineCapabilityTypeInfiniBand), nil, nil, nil, nil, nil, nil, nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+			ibCaps, ibCapCount, err = mcDAO.GetAll(ctx, nil, nil, []uuid.UUID{*instance.InstanceTypeID}, cdb.GetStrPtr(cdbm.MachineCapabilityTypeInfiniBand), nil, nil, nil, nil, nil, nil, nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
 			if err != nil {
-				logger.Error().Err(err).Msg("error retrieving Machine Capabilities from DB for Instance Type")
-				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Machine Capabilities for Instance Type", nil)
+				logger.Error().Err(err).Msg("error retrieving InfiniBand Capabilities from DB for Instance Type")
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve InfiniBand Capabilities for Instance Type", nil)
 			}
 		}
 
 		if ibCapCount == 0 {
-			itIbCaps, ibCapCount, err = mcDAO.GetAll(ctx, nil, []string{machine.ID}, nil, cdb.GetStrPtr(cdbm.MachineCapabilityTypeInfiniBand), nil, nil, nil, nil, nil, nil, nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+			ibCaps, ibCapCount, err = mcDAO.GetAll(ctx, nil, []string{machine.ID}, nil, cdb.GetStrPtr(cdbm.MachineCapabilityTypeInfiniBand), nil, nil, nil, nil, nil, nil, nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
 			if err != nil {
-				logger.Error().Err(err).Msg("error retrieving Machine Capabilities from DB for Instance Type")
-				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Machine Capabilities for Instance Type", nil)
+				logger.Error().Err(err).Msg("error retrieving InfiniBand Capabilities from DB for Machine")
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve InfiniBand Capabilities for Machine", nil)
 			}
 		}
 
@@ -2372,10 +2374,10 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 		}
 
 		// Validate InfiniBand Interfaces if Instance Type has InfiniBand Capability
-		err = apiRequest.ValidateInfiniBandInterfaces(itIbCaps)
+		err = apiRequest.ValidateInfiniBandInterfaces(ibCaps)
 		if err != nil {
-			logger.Error().Msgf("InfiniBand interfaces validation failed: %s", err)
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate InfiniBand Interfaces specified in request", err)
+			logger.Error().Err(err).Msg("Failed to validate InfiniBand interfaces in request data")
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate InfiniBand Interfaces specified in request data", err)
 		}
 	}
 
