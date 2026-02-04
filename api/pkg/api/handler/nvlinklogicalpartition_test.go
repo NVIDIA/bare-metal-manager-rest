@@ -33,6 +33,7 @@ import (
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
 	swe "github.com/nvidia/carbide-rest/site-workflow/pkg/error"
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -366,7 +367,19 @@ func TestNVLinkLogicalPartitionHandler_Create(t *testing.T) {
 				// validate response fields
 				assert.Equal(t, len(rsp.StatusHistory), 1)
 				assert.Equal(t, rsp.Name, tc.reqBodyModel.Name)
+				if tc.reqBodyModel.Description != nil {
+					assert.Equal(t, *tc.reqBodyModel.Description, *rsp.Description)
+				}
 				assert.Equal(t, rsp.Status, cdbm.NVLinkLogicalPartitionStatusPending)
+
+				if len(tsc.Calls) > 0 {
+					req := tsc.Calls[0].Arguments[3].(*cwssaws.NVLinkLogicalPartitionCreationRequest)
+					assert.Equal(t, req.Config.Metadata.Name, tc.reqBodyModel.Name)
+					if tc.reqBodyModel.Description != nil {
+						assert.Equal(t, *tc.reqBodyModel.Description, req.Config.Metadata.Description)
+					}
+					assert.Equal(t, req.Config.TenantOrganizationId, tc.reqOrgName)
+				}
 			}
 			if tc.verifyChildSpanner {
 				span := oteltrace.SpanFromContext(ec.Request().Context())
@@ -666,6 +679,21 @@ func TestNVLinkLogicalPartitionHandler_Update(t *testing.T) {
 				if tc.reqBodyModel.Name != nil {
 					assert.Equal(t, *tc.reqBodyModel.Name, rsp.Name)
 				}
+				if tc.reqBodyModel.Description != nil {
+					assert.Equal(t, *tc.reqBodyModel.Description, *rsp.Description)
+				}
+
+				if len(tsc.Calls) > 0 && (tc.reqBodyModel.Description != nil || tc.reqBodyModel.Name != nil) {
+					req := tsc.Calls[0].Arguments[3].(*cwssaws.NVLinkLogicalPartitionUpdateRequest)
+					if tc.reqBodyModel.Name != nil {
+						assert.Equal(t, *tc.reqBodyModel.Name, req.Config.Metadata.Name)
+					}
+					if tc.reqBodyModel.Description != nil {
+						assert.Equal(t, *tc.reqBodyModel.Description, req.Config.Metadata.Description)
+					}
+					assert.Equal(t, req.Config.TenantOrganizationId, tc.reqOrgName)
+				}
+
 			}
 			if tc.verifyChildSpanner {
 				span := oteltrace.SpanFromContext(ec.Request().Context())

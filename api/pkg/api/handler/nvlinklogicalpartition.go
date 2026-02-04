@@ -274,6 +274,11 @@ func (cibph CreateNVLinkLogicalPartitionHandler) Handle(c echo.Context) error {
 		},
 	}
 
+	// Include description if it is present
+	if nvllp.Description != nil {
+		createRequest.Config.Metadata.Description = *nvllp.Description
+	}
+
 	workflowOptions := temporalClient.StartWorkflowOptions{
 		ID:                       "nvlink-logical-partition-create-" + nvllp.ID.String(),
 		TaskQueue:                queue.SiteTaskQueue,
@@ -1084,7 +1089,13 @@ func (uibph UpdateNVLinkLogicalPartitionHandler) Handle(c echo.Context) error {
 			Metadata: &cwssaws.Metadata{
 				Name: unvllp.Name,
 			},
+			TenantOrganizationId: orgTenant.Org,
 		},
+	}
+
+	// Include description if it is present
+	if apiRequest.Description != nil {
+		updateRequest.Config.Metadata.Description = *unvllp.Description
 	}
 
 	workflowOptions := temporalClient.StartWorkflowOptions{
