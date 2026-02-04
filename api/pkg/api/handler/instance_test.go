@@ -2052,7 +2052,7 @@ func TestCreateInstanceHandler_Handle(t *testing.T) {
 				reqOrg:      tnOrg,
 				reqUser:     tnu1,
 				respCode:    http.StatusBadRequest,
-				respMessage: "InfiniBand Interfaces cannot be specified if Instance Type doesn't have InfiniBand Capability",
+				respMessage: "InfiniBand Interfaces cannot be specified if Instance Type or Machine doesn't have InfiniBand Capability",
 			},
 			wantErr: false,
 		},
@@ -4993,7 +4993,7 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 						}
 
 						// Verify the InfiniBand Interfaces are in the Site Controller request
-						if tt.args.reqData.InfiniBandInterfaces != nil && len(tt.args.reqData.InfiniBandInterfaces) > 0 {
+						if len(tt.args.reqData.InfiniBandInterfaces) > 0 {
 							assert.Equal(t, len(siteReq.Config.Infiniband.IbInterfaces), len(tt.args.reqData.InfiniBandInterfaces))
 
 							// Make sure order to should be same as the request received
@@ -5003,7 +5003,7 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 						}
 
 						// Verify the NVLink Interfaces are in the Site Controller request
-						if tt.args.reqData.NVLinkInterfaces != nil && len(tt.args.reqData.NVLinkInterfaces) > 0 {
+						if len(tt.args.reqData.NVLinkInterfaces) > 0 {
 							assert.Equal(t, len(siteReq.Config.Nvlink.GpuConfigs), len(tt.args.reqData.NVLinkInterfaces))
 
 							// Make sure order to should be same as the request received

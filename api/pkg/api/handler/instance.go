@@ -923,6 +923,8 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 	mcDAO := cdbm.NewMachineCapabilityDAO(cih.dbSession)
 
 	// Fetch InfiniBand Capabilities from Instance Type or Machine and validate InfiniBand Interfaces
+	var dbibic []cdbm.InfiniBandInterface
+
 	if len(apiRequest.InfiniBandInterfaces) > 0 {
 		var ibCapCount int
 		var ibCaps []cdbm.MachineCapability
@@ -945,7 +947,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 		}
 
 		if ibCapCount == 0 {
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "InfiniBand Interfaces cannot be specified if Instance Type or Machine doesn't have InfiniBand Capabilities", nil)
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "InfiniBand Interfaces cannot be specified if Instance Type or Machine doesn't have InfiniBand Capability", nil)
 		}
 
 		// Validate InfiniBand Interfaces if Instance Type has InfiniBand Capability
@@ -981,8 +983,6 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 				ibpIDMap[ibps[i].ID.String()] = &ibps[i]
 			}
 		}
-
-		var dbibic []cdbm.InfiniBandInterface
 
 		for _, ibic := range apiRequest.InfiniBandInterfaces {
 			// Validate Instance infiniband interface information to create DB records later
@@ -1032,7 +1032,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 		}
 
 		if dpuNetworkCapCount == 0 {
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Device and Device Instance cannot be specified if Instance Type doesn't have Network Capabilities with DPU device type", nil)
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Device and Device Instance cannot be specified if Instance Type doesn't have Network Capability with DPU device type", nil)
 		}
 
 		// Validate DPU Interfaces if Instance Type DPU capability is present and matches with the request
@@ -1094,7 +1094,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 
 	if len(apiRequest.NVLinkInterfaces) > 0 {
 		if nvlCapCount == 0 {
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "NVLink Interfaces cannot be specified if Instance Type doesn't have NVLink GPU Capabilities", nil)
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "NVLink Interfaces cannot be specified if Instance Type doesn't have NVLink GPU Capability", nil)
 		}
 
 		// Validate NVLink interfaces if Instance Type has GPU Capability
@@ -1288,6 +1288,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 	// Create the instance infiniband interface record in the db from info gathered earlier IF instance type was used
 	ibifcs := []cdbm.InfiniBandInterface{}
 	ibifcDAO := cdbm.NewInfiniBandInterfaceDAO(cih.dbSession)
+
 	for _, ibifc := range dbibic {
 		retibifc, serr := ibifcDAO.Create(
 			ctx,
@@ -2284,7 +2285,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 		}
 
 		if itDpuCapCount == 0 {
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Device and Device Instance cannot be specified if Instance Type doesn't have Network Capabilities with DPU device type", nil)
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Device and Device Instance cannot be specified if Instance Type doesn't have Network Capability with DPU device type", nil)
 		}
 
 		// Validate DPU Interfaces if Instance Type DPU capability is present and matches with the request
@@ -2367,7 +2368,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 		}
 
 		if ibCapCount == 0 {
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "InfiniBand Interfaces cannot be specified if Instance Type or Machine doesn't have InfiniBand Capabilities", nil)
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "InfiniBand Interfaces cannot be specified if Instance Type or Machine doesn't have InfiniBand Capability", nil)
 		}
 
 		// Validate InfiniBand Interfaces if Instance Type has InfiniBand Capability
@@ -2525,7 +2526,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 		}
 
 		if nvlCapCount == 0 {
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "NVLink interfaces cannot be specified if Instance Type or Machine doesn't have NVLink GPU Capabilities", nil)
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "NVLink interfaces cannot be specified if Instance Type or Machine doesn't have NVLink GPU Capability", nil)
 		}
 
 		// Validate NVLink interfaces if Instance Type has GPU Capability
@@ -3210,19 +3211,19 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 	txCommitted = true
 
 	// If existing Interfaces were updated, add them to the response
-	if existingIfcs != nil && len(existingIfcs) > 0 {
+	if len(existingIfcs) > 0 {
 		// Add the existing Interfaces to the response
 		newdbIfcs = append(newdbIfcs, existingIfcs...)
 	}
 
 	// If existing InfiniBand Interfaces were updated, add them to the response
-	if existingIbIfcs != nil && len(existingIbIfcs) > 0 {
+	if len(existingIbIfcs) > 0 {
 		// Add the existing InfiniBand Interfaces to the response
 		newIbIfcs = append(newIbIfcs, existingIbIfcs...)
 	}
 
 	// If existing NVLink Interfaces were updated, add them to the response
-	if existingNvlIfcs != nil && len(existingNvlIfcs) > 0 {
+	if len(existingNvlIfcs) > 0 {
 		// Add the existing NVLink Interfaces to the response
 		newNvlIfcs = append(newNvlIfcs, existingNvlIfcs...)
 	}
