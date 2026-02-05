@@ -4669,7 +4669,7 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 				reqOrg:      tnOrg1,
 				reqUser:     tnu1,
 				respCode:    http.StatusBadRequest,
-				respMessage: cdb.GetStrPtr(fmt.Sprintf("NVLink Logical Partition: %v specified in request is already present for the Instance", nvllp1.ID.String())),
+				respMessage: cdb.GetStrPtr(fmt.Sprintf("NVLink Interfaces of this Instance are already connected to NVLink Logical Partition: %v", nvllp1.ID.String())),
 			},
 			wantErr:                     false,
 			verifySiteControllerRequest: true,

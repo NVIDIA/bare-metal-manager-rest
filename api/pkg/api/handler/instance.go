@@ -2467,8 +2467,8 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 
 		// Discard if NVLink Logical Partition is already present for the Instance
 		if _, ok := existingNvllpIDMap[nvllpID]; ok {
-			logger.Warn().Msg(fmt.Sprintf("NVLink Logical Partition: %v specified in request is already present for the Instance", nvllpID))
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("NVLink Logical Partition: %v specified in request is already present for the Instance", nvllpID), nil)
+			logger.Warn().Msg(fmt.Sprintf("NVLink Interfaces of this Instance are already connected to NVLink Logical Partition: %v", nvllpID))
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("NVLink Interfaces of this Instance are already connected to NVLink Logical Partition: %v", nvllpID), nil)
 		}
 
 		nvllpIDs = append(nvllpIDs, nvllpID)
