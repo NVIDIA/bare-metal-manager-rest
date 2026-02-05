@@ -28,7 +28,9 @@ resources:
   - postgres/adminer.yaml
   
   # Temporal deployed via Helm chart (see Makefile:kind-reset)
-  - temporal-helm/certificates.yaml
+  # Temporal certificates applied separately via temporal-helm kustomization
+  # Temporal client certificate (for services in carbide namespace)
+  - temporal/temporal-client-cert.yaml
   - keycloak/deployment.yaml
   - keycloak/service.yaml
   - keycloak/realm-configmap.yaml

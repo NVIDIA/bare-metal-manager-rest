@@ -324,7 +324,7 @@ echo ""
 echo "--- Test 16-18: Core Pods Running ---"
 echo "Checks: Temporal, Workflow, and Database pods are all running"
 
-TEMPORAL_PHASE=$(kubectl -n $NAMESPACE get pod -l app.kubernetes.io/name=temporal -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "")
+TEMPORAL_PHASE=$(kubectl -n temporal get pod -l app.kubernetes.io/name=temporal -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "")
 if [[ "$TEMPORAL_PHASE" == "Running" ]]; then
     pass "Temporal pod is running"
 else

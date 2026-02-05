@@ -321,7 +321,7 @@ configure_site_agent() {
     
     kubectl -n $NAMESPACE run temporal-ns-create-$site_id --rm -it --restart=Never \
         --image=temporalio/admin-tools:1.26.2 \
-        --overrides='{"spec":{"containers":[{"name":"temporal-ns-create","image":"temporalio/admin-tools:1.26.2","command":["temporal","operator","namespace","create","'"$site_id"'","--address","temporal-frontend:7233","--tls","--tls-disable-host-verification","--tls-ca-path","/etc/temporal/certs/ca.crt"],"volumeMounts":[{"name":"tls-certs","mountPath":"/etc/temporal/certs","readOnly":true}]}],"volumes":[{"name":"tls-certs","secret":{"secretName":"workflow-temporal-client-tls"}}]}}' \
+        --overrides='{"spec":{"containers":[{"name":"temporal-ns-create","image":"temporalio/admin-tools:1.26.2","command":["temporal","operator","namespace","create","'"$site_id"'","--address","temporal-frontend.temporal:7233","--tls","--tls-disable-host-verification","--tls-ca-path","/etc/temporal/certs/ca.crt"],"volumeMounts":[{"name":"tls-certs","mountPath":"/etc/temporal/certs","readOnly":true}]}],"volumes":[{"name":"tls-certs","secret":{"secretName":"workflow-temporal-client-tls"}}]}}' \
         2>/dev/null || true
 
     kubectl -n $NAMESPACE get configmap carbide-rest-site-agent-config -o yaml | \

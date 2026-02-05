@@ -321,34 +321,38 @@ kind-reset:
 	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=360s
 	@echo "Configuring cert-manager.io ClusterIssuer..."
 	kubectl apply -k deploy/kustomize/base/cert-manager-io/
+	@echo "Creating temporal namespace..."
+	kubectl create namespace temporal || true
+	@echo "Creating Temporal certificates..."
+	kubectl apply -k deploy/kustomize/base/temporal-helm/
 	@echo "Waiting for Temporal certificates to be issued..."
-	kubectl -n carbide wait --for=condition=Ready certificate/server-interservice-cert --timeout=240s || true
-	kubectl -n carbide wait --for=condition=Ready certificate/server-cloud-cert --timeout=240s || true
-	kubectl -n carbide wait --for=condition=Ready certificate/server-site-cert --timeout=240s || true
+	kubectl -n temporal wait --for=condition=Ready certificate/server-interservice-cert --timeout=240s || true
+	kubectl -n temporal wait --for=condition=Ready certificate/server-cloud-cert --timeout=240s || true
+	kubectl -n temporal wait --for=condition=Ready certificate/server-site-cert --timeout=240s || true
 	kubectl -n carbide wait --for=condition=Ready certificate/temporal-client-cert --timeout=240s || true
 	@echo "Creating postgres-auth secret for Temporal Helm chart..."
-	kubectl -n carbide create secret generic postgres-auth --from-literal=password=temporal || true
+	kubectl -n temporal create secret generic postgres-auth --from-literal=password=temporal || true
 	@echo "Granting temporal user CREATEDB permission..."
 	kubectl -n carbide exec -it postgres-0 -- psql -U postgres -c "ALTER USER temporal CREATEDB; ALTER DATABASE temporal OWNER TO temporal; ALTER DATABASE temporal_visibility OWNER TO temporal;" || true
 	@echo "Updating Helm chart dependencies..."
 	helm dependency update temporal-helm/temporal/
 	@echo "Installing Temporal via Helm chart..."
 	helm upgrade --install temporal ./temporal-helm/temporal \
-		--namespace carbide \
+		--namespace temporal \
 		--values ./temporal-helm/temporal/values-kind.yaml \
 		--wait --timeout 16m || true
 	@echo "Waiting for Temporal services..."
-	kubectl -n carbide wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=frontend --timeout=360s || true
-	kubectl -n carbide wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=history --timeout=360s || true
-	kubectl -n carbide wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=matching --timeout=360s || true
-	kubectl -n carbide wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=worker --timeout=360s || true
+	kubectl -n temporal wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=frontend --timeout=360s || true
+	kubectl -n temporal wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=history --timeout=360s || true
+	kubectl -n temporal wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=matching --timeout=360s || true
+	kubectl -n temporal wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=worker --timeout=360s || true
 	@echo "Creating Temporal namespaces with TLS..."
-	kubectl -n carbide exec deploy/temporal-admintools -- temporal operator namespace create cloud --address temporal-frontend:7233 \
+	kubectl -n temporal exec deploy/temporal-admintools -- temporal operator namespace create cloud --address temporal-frontend:7233 \
 		--tls-cert-path /var/secrets/temporal/certs/server-interservice/tls.crt \
 		--tls-key-path /var/secrets/temporal/certs/server-interservice/tls.key \
 		--tls-ca-path /var/secrets/temporal/certs/server-interservice/ca.crt \
 		--tls-server-name interservice.server.temporal.nvidia.com || true
-	kubectl -n carbide exec deploy/temporal-admintools -- temporal operator namespace create site --address temporal-frontend:7233 \
+	kubectl -n temporal exec deploy/temporal-admintools -- temporal operator namespace create site --address temporal-frontend:7233 \
 		--tls-cert-path /var/secrets/temporal/certs/server-interservice/tls.crt \
 		--tls-key-path /var/secrets/temporal/certs/server-interservice/tls.key \
 		--tls-ca-path /var/secrets/temporal/certs/server-interservice/ca.crt \

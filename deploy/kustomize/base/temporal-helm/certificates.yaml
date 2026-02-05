@@ -4,7 +4,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: server-interservice-cert
-  namespace: carbide
+  namespace: temporal
 spec:
   secretName: server-interservice-certs
   duration: 2160h # 90 days
@@ -22,21 +22,21 @@ spec:
   dnsNames:
     - interservice.server.temporal.nvidia.com
     - temporal-frontend
-    - temporal-frontend.carbide
-    - temporal-frontend.carbide.svc
-    - temporal-frontend.carbide.svc.cluster.local
+    - temporal-frontend.temporal
+    - temporal-frontend.temporal.svc
+    - temporal-frontend.temporal.svc.cluster.local
     - temporal-history
-    - temporal-history.carbide
-    - temporal-history.carbide.svc
-    - temporal-history.carbide.svc.cluster.local
+    - temporal-history.temporal
+    - temporal-history.temporal.svc
+    - temporal-history.temporal.svc.cluster.local
     - temporal-matching
-    - temporal-matching.carbide
-    - temporal-matching.carbide.svc
-    - temporal-matching.carbide.svc.cluster.local
+    - temporal-matching.temporal
+    - temporal-matching.temporal.svc
+    - temporal-matching.temporal.svc.cluster.local
     - temporal-worker
-    - temporal-worker.carbide
-    - temporal-worker.carbide.svc
-    - temporal-worker.carbide.svc.cluster.local
+    - temporal-worker.temporal
+    - temporal-worker.temporal.svc
+    - temporal-worker.temporal.svc.cluster.local
   issuerRef:
     name: carbide-ca-issuer
     kind: ClusterIssuer
@@ -47,7 +47,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: server-cloud-cert
-  namespace: carbide
+  namespace: temporal
 spec:
   secretName: server-cloud-certs
   duration: 2160h # 90 days
@@ -65,8 +65,8 @@ spec:
   dnsNames:
     - cloud.server.temporal.nvidia.com
     - cloud.temporal-frontend
-    - cloud.temporal-frontend.carbide
-    - cloud.temporal-frontend.carbide.svc.cluster.local
+    - cloud.temporal-frontend.temporal
+    - cloud.temporal-frontend.temporal.svc.cluster.local
   issuerRef:
     name: carbide-ca-issuer
     kind: ClusterIssuer
@@ -77,7 +77,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: server-site-cert
-  namespace: carbide
+  namespace: temporal
 spec:
   secretName: server-site-certs
   duration: 2160h # 90 days
@@ -95,38 +95,8 @@ spec:
   dnsNames:
     - site.server.temporal.nvidia.com
     - site.temporal-frontend
-    - site.temporal-frontend.carbide
-    - site.temporal-frontend.carbide.svc.cluster.local
-  issuerRef:
-    name: carbide-ca-issuer
-    kind: ClusterIssuer
-    group: cert-manager.io
----
-# Client certificate for workflow services (API, cloud-worker, site-worker)
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: temporal-client-cert
-  namespace: carbide
-spec:
-  secretName: temporal-client-certs
-  duration: 2160h # 90 days
-  renewBefore: 360h # 15 days
-  subject:
-    organizations:
-      - NVIDIA
-  commonName: temporal-client
-  isCA: false
-  privateKey:
-    algorithm: RSA
-    size: 2048
-  usages:
-    - client auth
-  dnsNames:
-    - temporal-client
-    - carbide-rest-api
-    - cloud-worker
-    - site-worker
+    - site.temporal-frontend.temporal
+    - site.temporal-frontend.temporal.svc.cluster.local
   issuerRef:
     name: carbide-ca-issuer
     kind: ClusterIssuer

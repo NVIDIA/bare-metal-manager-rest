@@ -39,7 +39,7 @@ data:
       password: forge
 
     temporal:
-      host: temporal-frontend
+      host: temporal-frontend.temporal
       port: 7233
       serverName: server.temporal.nvidia.com
       namespace: cloud
