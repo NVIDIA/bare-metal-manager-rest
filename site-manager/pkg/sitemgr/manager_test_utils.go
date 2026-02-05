@@ -24,8 +24,8 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/nvidia/carbide-rest/cert-manager/pkg/certs"
 	"github.com/nvidia/carbide-rest/cert-manager/pkg/core"
-	"github.com/nvidia/carbide-rest/cert-manager/pkg/vault"
 	fakecrdclient "github.com/nvidia/carbide-rest/site-manager/pkg/client/clientset/versioned/fake"
 	crdsv1 "github.com/nvidia/carbide-rest/site-manager/pkg/crds/v1"
 	"github.com/nvidia/carbide-rest/site-manager/pkg/types"
@@ -147,7 +147,7 @@ func (s *Suite) setup() error {
 	})
 
 	rtr.HandleFunc("/v1/pki/cloud-cert", func(w http.ResponseWriter, _ *http.Request) {
-		resp := &vault.CertificateResponse{
+		resp := &certs.CertificateResponse{
 			Key:         testKey,
 			Certificate: testCert,
 		}

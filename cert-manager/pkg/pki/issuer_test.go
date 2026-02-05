@@ -24,8 +24,8 @@ import (
 func createTestCA(t *testing.T) (certPath, keyPath string, cleanup func()) {
 	t.Helper()
 
-	// Create a CA using the NewCA function
-	ca, err := NewCA(CAOptions{
+	// Create a CA using the NewTestCA function
+	ca, err := NewTestCA(CAOptions{
 		CommonName:   "Test CA",
 		Organization: "Test Org",
 	})

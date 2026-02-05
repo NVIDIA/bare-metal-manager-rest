@@ -29,8 +29,8 @@ type CAOptions struct {
 	TTL          time.Duration
 }
 
-// NewCA creates a new Certificate Authority for testing.
-func NewCA(opts CAOptions) (*CA, error) {
+// NewTestCA creates a new Certificate Authority for testing.
+func NewTestCA(opts CAOptions) (*CA, error) {
 	if opts.TTL == 0 {
 		opts.TTL = DefaultCATTL
 	}

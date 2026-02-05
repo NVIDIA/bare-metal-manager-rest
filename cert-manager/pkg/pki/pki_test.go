@@ -19,13 +19,13 @@ import (
 )
 
 func TestNewCA(t *testing.T) {
-	ca, err := NewCA(CAOptions{
+	ca, err := NewTestCA(CAOptions{
 		CommonName:   "Test CA",
 		Organization: "Test Org",
 		TTL:          24 * time.Hour,
 	})
 	if err != nil {
-		t.Fatalf("NewCA failed: %v", err)
+		t.Fatalf("NewTestCA failed: %v", err)
 	}
 
 	// Verify CA certificate is valid PEM
@@ -55,12 +55,12 @@ func TestNewCA(t *testing.T) {
 }
 
 func TestCA_IssueCertificate(t *testing.T) {
-	ca, err := NewCA(CAOptions{
+	ca, err := NewTestCA(CAOptions{
 		CommonName:   "Test CA",
 		Organization: "Test Org",
 	})
 	if err != nil {
-		t.Fatalf("NewCA failed: %v", err)
+		t.Fatalf("NewTestCA failed: %v", err)
 	}
 
 	// Issue a certificate
@@ -115,12 +115,12 @@ func TestCA_IssueCertificate(t *testing.T) {
 }
 
 func TestCA_GetCRL(t *testing.T) {
-	ca, err := NewCA(CAOptions{
+	ca, err := NewTestCA(CAOptions{
 		CommonName:   "Test CA",
 		Organization: "Test Org",
 	})
 	if err != nil {
-		t.Fatalf("NewCA failed: %v", err)
+		t.Fatalf("NewTestCA failed: %v", err)
 	}
 
 	crl := ca.GetCRL()
@@ -131,9 +131,9 @@ func TestCA_GetCRL(t *testing.T) {
 
 func TestNewCA_Defaults(t *testing.T) {
 	// Test that defaults are applied when options are empty
-	ca, err := NewCA(CAOptions{})
+	ca, err := NewTestCA(CAOptions{})
 	if err != nil {
-		t.Fatalf("NewCA with empty options failed: %v", err)
+		t.Fatalf("NewTestCA with empty options failed: %v", err)
 	}
 
 	certPEM := ca.GetCACertificatePEM()
@@ -153,9 +153,9 @@ func TestNewCA_Defaults(t *testing.T) {
 }
 
 func TestCA_IssueCertificate_KeyUsage(t *testing.T) {
-	ca, err := NewCA(CAOptions{})
+	ca, err := NewTestCA(CAOptions{})
 	if err != nil {
-		t.Fatalf("NewCA failed: %v", err)
+		t.Fatalf("NewTestCA failed: %v", err)
 	}
 
 	certPEM, _, err := ca.IssueCertificate("server.test.local", 24)
@@ -194,9 +194,9 @@ func TestCA_IssueCertificate_KeyUsage(t *testing.T) {
 }
 
 func TestCA_IssueCertificate_DNSNames(t *testing.T) {
-	ca, err := NewCA(CAOptions{})
+	ca, err := NewTestCA(CAOptions{})
 	if err != nil {
-		t.Fatalf("NewCA failed: %v", err)
+		t.Fatalf("NewTestCA failed: %v", err)
 	}
 
 	certPEM, _, err := ca.IssueCertificate("my-service.namespace.svc.cluster.local", 24)
@@ -224,9 +224,9 @@ func TestCA_IssueCertificate_DNSNames(t *testing.T) {
 }
 
 func TestCA_Concurrent(t *testing.T) {
-	ca, err := NewCA(CAOptions{})
+	ca, err := NewTestCA(CAOptions{})
 	if err != nil {
-		t.Fatalf("NewCA failed: %v", err)
+		t.Fatalf("NewTestCA failed: %v", err)
 	}
 
 	// Test concurrent certificate issuance
@@ -248,9 +248,9 @@ func TestCA_Concurrent(t *testing.T) {
 }
 
 func TestCA_CertificateValidity(t *testing.T) {
-	ca, err := NewCA(CAOptions{})
+	ca, err := NewTestCA(CAOptions{})
 	if err != nil {
-		t.Fatalf("NewCA failed: %v", err)
+		t.Fatalf("NewTestCA failed: %v", err)
 	}
 
 	ttlHours := 48
@@ -273,9 +273,9 @@ func TestCA_CertificateValidity(t *testing.T) {
 }
 
 func BenchmarkCA_IssueCertificate(b *testing.B) {
-	ca, err := NewCA(CAOptions{})
+	ca, err := NewTestCA(CAOptions{})
 	if err != nil {
-		b.Fatalf("NewCA failed: %v", err)
+		b.Fatalf("NewTestCA failed: %v", err)
 	}
 
 	b.ResetTimer()
@@ -289,12 +289,12 @@ func BenchmarkCA_IssueCertificate(b *testing.B) {
 
 func TestLoadCAFromPEM(t *testing.T) {
 	// First create a CA to get valid PEM data
-	originalCA, err := NewCA(CAOptions{
+	originalCA, err := NewTestCA(CAOptions{
 		CommonName:   "Test Load CA",
 		Organization: "Test Org",
 	})
 	if err != nil {
-		t.Fatalf("NewCA failed: %v", err)
+		t.Fatalf("NewTestCA failed: %v", err)
 	}
 
 	// Get the PEM data
@@ -302,12 +302,12 @@ func TestLoadCAFromPEM(t *testing.T) {
 
 	// We need to also get the key PEM - create a new CA and extract its key
 	// For this test, we'll generate a CA, save it, then load it
-	ca2, err := NewCA(CAOptions{
+	ca2, err := NewTestCA(CAOptions{
 		CommonName:   "Loadable CA",
 		Organization: "Test",
 	})
 	if err != nil {
-		t.Fatalf("NewCA failed: %v", err)
+		t.Fatalf("NewTestCA failed: %v", err)
 	}
 
 	// Issue a cert with the original CA
@@ -341,7 +341,7 @@ MIIEowIBAAKCAQEA0Z3VS5JJcds3xfn/ygWyF8PbnGy0AHB7MAsj6FZ0BxnNz6aO
 
 func TestLoadCA_InvalidKey(t *testing.T) {
 	// Create a valid CA cert first
-	ca, _ := NewCA(CAOptions{})
+	ca, _ := NewTestCA(CAOptions{})
 	certPEM := ca.GetCACertificatePEM()
 
 	invalidKey := []byte("not a key")

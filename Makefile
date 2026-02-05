@@ -1,4 +1,4 @@
-.PHONY: test postgres-up postgres-down ensure-postgres postgres-wait
+.PHONY: test postgres-up postgres-down ensure-postgres postgres-wait clean
 .PHONY: build docker-build docker-build-local
 .PHONY: test-ipam test-site-agent test-site-manager test-workflow test-db test-api test-auth test-common test-cert-manager test-site-workflow migrate carbide-mock-server-build carbide-mock-server-start carbide-mock-server-stop rla-mock-server-build rla-mock-server-start rla-mock-server-stop
 .PHONY: pre-commit-install pre-commit-run pre-commit-update
@@ -28,6 +28,21 @@ postgres-up:
 
 postgres-down:
 	-docker rm -f $(POSTGRES_CONTAINER_NAME)
+
+clean:
+	@echo "Cleaning up test resources..."
+	-$(MAKE) postgres-down
+	-$(MAKE) carbide-mock-server-stop
+	-$(MAKE) rla-mock-server-stop
+	@echo "Stopping kind cluster..."
+	-$(MAKE) kind-down
+	@echo "Stopping colima..."
+	-colima stop
+	@echo "Removing build artifacts..."
+	-rm -rf $(BUILD_DIR)
+	-rm -rf build
+	-rm -f db/cmd/migrations/migrations
+	@echo "Clean complete"
 
 ensure-postgres:
 	@docker inspect $(POSTGRES_CONTAINER_NAME) > /dev/null 2>&1 || $(MAKE) postgres-up

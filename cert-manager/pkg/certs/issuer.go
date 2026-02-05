@@ -8,8 +8,8 @@
 // without an express license agreement from NVIDIA CORPORATION or
 // its affiliates is strictly prohibited.
 
-// Package vault implements vault wrapper
-package vault
+// Package certs implements certificate management
+package certs
 
 import (
 	"github.com/nvidia/carbide-rest/cert-manager/pkg/types"
