@@ -16,6 +16,59 @@ import (
 	rlav1 "github.com/nvidia/carbide-rest/workflow-schema/rla/protobuf/v1"
 )
 
+// ========== Rack Query Fields ==========
+
+// RackOrderByFields is a list of valid order by fields for Rack
+var RackOrderByFields = []string{"name", "manufacturer", "model"}
+
+// RackFilterFieldMap maps API field names to RLA protobuf filter enum
+var RackFilterFieldMap = map[string]rlav1.RackFilterField{
+	"name":         rlav1.RackFilterField_RACK_FILTER_FIELD_NAME,
+	"manufacturer": rlav1.RackFilterField_RACK_FILTER_FIELD_MANUFACTURER,
+	"model":        rlav1.RackFilterField_RACK_FILTER_FIELD_MODEL,
+}
+
+// RackOrderByFieldMap maps API field names to RLA protobuf order by enum
+var RackOrderByFieldMap = map[string]rlav1.RackOrderByField{
+	"name":         rlav1.RackOrderByField_RACK_ORDER_BY_FIELD_NAME,
+	"manufacturer": rlav1.RackOrderByField_RACK_ORDER_BY_FIELD_MANUFACTURER,
+	"model":        rlav1.RackOrderByField_RACK_ORDER_BY_FIELD_MODEL,
+}
+
+// BuildRackStringFilter creates an RLA string filter for Rack queries
+func BuildRackStringFilter(fieldName, value string) *rlav1.Filter {
+	field, ok := RackFilterFieldMap[fieldName]
+	if !ok {
+		return nil
+	}
+	return &rlav1.Filter{
+		Field: &rlav1.Filter_RackField{
+			RackField: field,
+		},
+		QueryInfo: &rlav1.StringQueryInfo{
+			Patterns:   []string{value},
+			IsWildcard: false,
+			UseOr:      false,
+		},
+	}
+}
+
+// BuildRackOrderBy creates an RLA OrderBy for Rack queries
+func BuildRackOrderBy(fieldName, direction string) *rlav1.OrderBy {
+	field, ok := RackOrderByFieldMap[fieldName]
+	if !ok {
+		return nil
+	}
+	return &rlav1.OrderBy{
+		Field: &rlav1.OrderBy_RackField{
+			RackField: field,
+		},
+		Direction: direction,
+	}
+}
+
+// ========== Rack API Models ==========
+
 // APIRack is the API representation of a Rack from RLA
 type APIRack struct {
 	ID           string              `json:"id"`

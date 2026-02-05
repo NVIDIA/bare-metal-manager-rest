@@ -267,11 +267,8 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request pagination data", nil)
 	}
 
-	// Define valid order by fields for Rack
-	rackOrderByFields := []string{"name", "manufacturer", "model"}
-
 	// Validate pagination attributes
-	err = pageRequest.Validate(rackOrderByFields)
+	err = pageRequest.Validate(model.RackOrderByFields)
 	if err != nil {
 		logger.Warn().Err(err).Msg("error validating pagination request data")
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate pagination request data", err)
@@ -286,75 +283,18 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 	// Build filters from query params
 	var filters []*rlav1.Filter
 	qParams := c.QueryParams()
-
-	// Filter by name
-	if name := qParams.Get("name"); name != "" {
-		filters = append(filters, &rlav1.Filter{
-			Field: &rlav1.Filter_RackField{
-				RackField: rlav1.RackFilterField_RACK_FILTER_FIELD_NAME,
-			},
-			QueryInfo: &rlav1.StringQueryInfo{
-				Patterns:   []string{name},
-				IsWildcard: false,
-				UseOr:      false,
-			},
-		})
-	}
-
-	// Filter by manufacturer
-	if manufacturer := qParams.Get("manufacturer"); manufacturer != "" {
-		filters = append(filters, &rlav1.Filter{
-			Field: &rlav1.Filter_RackField{
-				RackField: rlav1.RackFilterField_RACK_FILTER_FIELD_MANUFACTURER,
-			},
-			QueryInfo: &rlav1.StringQueryInfo{
-				Patterns:   []string{manufacturer},
-				IsWildcard: false,
-				UseOr:      false,
-			},
-		})
-	}
-
-	// Filter by model
-	if model := qParams.Get("model"); model != "" {
-		filters = append(filters, &rlav1.Filter{
-			Field: &rlav1.Filter_RackField{
-				RackField: rlav1.RackFilterField_RACK_FILTER_FIELD_MODEL,
-			},
-			QueryInfo: &rlav1.StringQueryInfo{
-				Patterns:   []string{model},
-				IsWildcard: false,
-				UseOr:      false,
-			},
-		})
+	for _, field := range model.RackOrderByFields {
+		if value := qParams.Get(field); value != "" {
+			if f := model.BuildRackStringFilter(field, value); f != nil {
+				filters = append(filters, f)
+			}
+		}
 	}
 
 	// Build OrderBy from pagination
 	var orderBy *rlav1.OrderBy
 	if pageRequest.OrderBy != nil {
-		var rackField rlav1.RackOrderByField
-		switch pageRequest.OrderBy.Field {
-		case "name":
-			rackField = rlav1.RackOrderByField_RACK_ORDER_BY_FIELD_NAME
-		case "manufacturer":
-			rackField = rlav1.RackOrderByField_RACK_ORDER_BY_FIELD_MANUFACTURER
-		case "model":
-			rackField = rlav1.RackOrderByField_RACK_ORDER_BY_FIELD_MODEL
-		default:
-			rackField = rlav1.RackOrderByField_RACK_ORDER_BY_FIELD_UNSPECIFIED
-		}
-
-		direction := "ASC"
-		if strings.ToUpper(pageRequest.OrderBy.Order) == "DESC" {
-			direction = "DESC"
-		}
-
-		orderBy = &rlav1.OrderBy{
-			Field: &rlav1.OrderBy_RackField{
-				RackField: rackField,
-			},
-			Direction: direction,
-		}
+		orderBy = model.BuildRackOrderBy(pageRequest.OrderBy.Field, strings.ToUpper(pageRequest.OrderBy.Order))
 	}
 
 	// Build Pagination
