@@ -1493,3 +1493,46 @@ func AddToValidationErrors(errs validation.Errors, key string, err error) {
 		errs[key] = err
 	}
 }
+
+// ValidateProviderOrTenantSiteAccess validates if the provider or tenant has access to the site
+func ValidateProviderOrTenantSiteAccess(ctx context.Context, logger zerolog.Logger, dbSession *cdb.Session, site *cdbm.Site, infrastructureProvider *cdbm.InfrastructureProvider, tenant *cdbm.Tenant) (bool, *cau.APIError) {
+	hasAccess := false
+
+	// Validate if Provider has access to the Site
+	if infrastructureProvider != nil && site.InfrastructureProviderID == infrastructureProvider.ID {
+		hasAccess = true
+	}
+
+	if !hasAccess && tenant != nil {
+		// Check Tenant Site relationship
+		tsDAO := cdbm.NewTenantSiteDAO(dbSession)
+		_, tsCount, err := tsDAO.GetAll(ctx, nil, cdbm.TenantSiteFilterInput{
+			TenantIDs: []uuid.UUID{tenant.ID},
+			SiteIDs:   []uuid.UUID{site.ID},
+		}, cdbp.PageInput{}, []string{})
+		if err != nil {
+			logger.Error().Err(err).Msg("error retrieving Tenant Site relationship")
+			return false, cau.NewAPIError(http.StatusInternalServerError, "Failed to check Tenant/Site association due to DB error", nil)
+		}
+
+		hasAccess = tsCount > 0
+
+		// Check if Tenant is privileged
+		if !hasAccess && tenant.Config.TargetedInstanceCreation {
+			// Check if privileged tenant has an account with the Site's Infrastructure Provider
+			taDAO := cdbm.NewTenantAccountDAO(dbSession)
+			_, taCount, err := taDAO.GetAll(ctx, nil, cdbm.TenantAccountFilterInput{
+				InfrastructureProviderID: &site.InfrastructureProviderID,
+				TenantIDs:                []uuid.UUID{tenant.ID},
+			}, cdbp.PageInput{}, []string{})
+			if err != nil {
+				logger.Error().Err(err).Msg("error retrieving Tenant Account for Site")
+				return false, cau.NewAPIError(http.StatusInternalServerError, "Failed to retrieve Tenant's Account with Site's Provider due to DB error", nil)
+			}
+
+			hasAccess = taCount > 0
+		}
+	}
+
+	return hasAccess, nil
+}

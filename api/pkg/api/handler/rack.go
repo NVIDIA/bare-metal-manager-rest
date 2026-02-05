@@ -111,7 +111,7 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 	}
 
 	// Validate Provider/Tenant Site access
-	hasAccess, apiError := ValidateProviderOrTenantSiteAccess(ctx, logger, grh.dbSession, site, infrastructureProvider, tenant)
+	hasAccess, apiError := common.ValidateProviderOrTenantSiteAccess(ctx, logger, grh.dbSession, site, infrastructureProvider, tenant)
 	if apiError != nil {
 		return cerr.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
 	}
@@ -250,7 +250,7 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 	}
 
 	// Validate Provider/Tenant Site access
-	hasAccess, apiError := ValidateProviderOrTenantSiteAccess(ctx, logger, garh.dbSession, site, infrastructureProvider, tenant)
+	hasAccess, apiError := common.ValidateProviderOrTenantSiteAccess(ctx, logger, garh.dbSession, site, infrastructureProvider, tenant)
 	if apiError != nil {
 		return cerr.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
 	}
