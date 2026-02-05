@@ -25,6 +25,7 @@ import (
 	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/networksecuritygroup"
 	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/nvlinklogicalpartition"
 	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/operatingsystem"
+	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/rla"
 	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/sku"
 	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/sshkeygroup"
 	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/subnet"
@@ -146,4 +147,9 @@ func (m *Manager) DpuExtensionService() *dpuextensionservice.API {
 // NVLinkLogicalPartition - Add NVLinkLogicalPartition Manager instance here
 func (m *Manager) NVLinkLogicalPartition() *nvlinklogicalpartition.API {
 	return nvlinklogicalpartition.NewNVLinkLogicalPartitionManager(m.Data.EB, m.API, m.Conf)
+}
+
+// RLA - Add RLA Manager instance here
+func (m *Manager) RLA() *rla.API {
+	return rla.NewRLAManager(m.Data.EB, m.API, m.Conf)
 }

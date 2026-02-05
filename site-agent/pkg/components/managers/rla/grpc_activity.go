@@ -39,8 +39,8 @@ func (RLA *API) CreateGrpcClientActivity(ctx context.Context, ResourceID string)
 	return RLA.GetGrpcClient(), nil
 }
 
-// RegisterGRPC - Register GRPC
-func (RLA *API) RegisterGRPC() {
+// RegisterGrpc - Register GRPC
+func (RLA *API) RegisterGrpc() {
 	// Register activity
 	activityRegisterOptions := activity.RegisterOptions{
 		Name: "CreateRlaGrpcClientActivity",
