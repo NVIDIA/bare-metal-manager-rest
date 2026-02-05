@@ -21,15 +21,6 @@ cassandra:
               - matching
               - worker
           topologyKey: kubernetes.io/hostname
-      - weight: 50
-        podAffinityTerm:
-          labelSelector:
-            matchExpressions:
-            - key: app
-              operator: In
-              values:
-              - elasticsearch-master
-          topologyKey: kubernetes.io/hostname
       - weight: 5
         podAffinityTerm:
           labelSelector:
@@ -84,15 +75,6 @@ server:
                 values:
                 - cassandra
             topologyKey: kubernetes.io/hostname
-        - weight: 75
-          podAffinityTerm:
-            labelSelector:
-              matchExpressions:
-              - key: app
-                operator: In
-                values:
-                - elasticsearch-master
-            topologyKey: kubernetes.io/hostname    
         requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchExpressions:
@@ -101,7 +83,7 @@ server:
               values:
               - frontend
           topologyKey: kubernetes.io/hostname
- 
+
   history:
     affinity:
       podAffinity:
@@ -128,15 +110,6 @@ server:
                 values:
                 - cassandra
             topologyKey: kubernetes.io/hostname
-        - weight: 75
-          podAffinityTerm:
-            labelSelector:
-              matchExpressions:
-              - key: app
-                operator: In
-                values:
-                - elasticsearch-master
-            topologyKey: kubernetes.io/hostname    
         requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchExpressions:
@@ -172,15 +145,6 @@ server:
                 values:
                 - cassandra
             topologyKey: kubernetes.io/hostname
-        - weight: 75
-          podAffinityTerm:
-            labelSelector:
-              matchExpressions:
-              - key: app
-                operator: In
-                values:
-                - elasticsearch-master
-            topologyKey: kubernetes.io/hostname
         requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchExpressions:
@@ -215,15 +179,6 @@ server:
                 operator: In
                 values:
                 - cassandra
-            topologyKey: kubernetes.io/hostname
-        - weight: 75
-          podAffinityTerm:
-            labelSelector:
-              matchExpressions:
-              - key: app
-                operator: In
-                values:
-                - elasticsearch-master
             topologyKey: kubernetes.io/hostname
         requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
