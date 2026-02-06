@@ -6441,7 +6441,7 @@ paths:
           $ref: '#/components/responses/ForbiddenError'
       operationId: get-all-nvlink-interface
       description: |-
-        Get all InfiniBand Interfaces for an Instance
+        Get all NVLink Interfaces for an Instance
 
         Org must have a Tenant entity. User must have `FORGE_TENANT_ADMIN` NGC role.
       parameters:
@@ -6449,12 +6449,12 @@ paths:
             type: string
           in: query
           name: status
-          description: Filter Interfaces by Status
+          description: Filter NVLink Interfaces by Status
         - schema:
             type: string
             enum:
               - Instance
-              - Partition
+              - NVLinkLogicalPartition
           in: query
           name: includeRelation
           description: Related entity to expand
