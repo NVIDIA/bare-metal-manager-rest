@@ -1,4 +1,4 @@
-# Forge Temporal Helm Chart
+# Carbide Temporal Helm Chart
 
 Temporal is a distributed, scalable, durable, and highly available orchestration engine designed to execute asynchronous long-running business logic in a resilient way.
 
