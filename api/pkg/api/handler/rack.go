@@ -30,6 +30,7 @@ import (
 	"github.com/nvidia/carbide-rest/api/pkg/api/model"
 	"github.com/nvidia/carbide-rest/api/pkg/api/pagination"
 	sc "github.com/nvidia/carbide-rest/api/pkg/client/site"
+	auth "github.com/nvidia/carbide-rest/auth/pkg/authorization"
 	cerr "github.com/nvidia/carbide-rest/common/pkg/util"
 	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
 	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
@@ -84,10 +85,29 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
 	}
 
-	// ensure our user is a provider or privileged tenant for the org
-	infrastructureProvider, tenant, apiError := common.IsProviderOrTenant(ctx, logger, grh.dbSession, org, dbUser, false, true)
-	if apiError != nil {
-		return cerr.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
+	// Validate org membership
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Validate role, only Provider Admins are allowed to access Rack data
+	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Provider Admin role, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Provider Admin role with org", nil)
+	}
+
+	// Get Infrastructure Provider for org
+	infrastructureProvider, err := common.GetInfrastructureProviderForOrg(ctx, nil, grh.dbSession, org)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error getting infrastructure provider for org")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
 	}
 
 	// Get rack ID from URL param
@@ -110,14 +130,9 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site specified in request due to DB error", nil)
 	}
 
-	// Validate Provider/Tenant Site access
-	hasAccess, apiError := common.ValidateProviderOrTenantSiteAccess(ctx, logger, grh.dbSession, site, infrastructureProvider, tenant)
-	if apiError != nil {
-		return cerr.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
-	}
-
-	if !hasAccess {
-		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Current org is not associated with the Site specified in query", nil)
+	// Verify site belongs to the org's Infrastructure Provider
+	if site.InfrastructureProviderID != infrastructureProvider.ID {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
 	// Check includeComponents query param (API uses includeComponents, RLA uses WithComponents)
@@ -223,19 +238,34 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
 	}
 
-	// ensure our user is a provider or privileged tenant for the org
-	infrastructureProvider, tenant, apiError := common.IsProviderOrTenant(ctx, logger, garh.dbSession, org, dbUser, false, true)
-	if apiError != nil {
-		return cerr.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
+	// Validate org membership
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Validate role, only Provider Admins are allowed to access Rack data
+	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Provider Admin role, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Provider Admin role with org", nil)
+	}
+
+	// Get Infrastructure Provider for org
+	infrastructureProvider, err := common.GetInfrastructureProviderForOrg(ctx, nil, garh.dbSession, org)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error getting infrastructure provider for org")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
 	}
 
 	// Get site ID from query param (required)
 	siteStrID := c.QueryParam("siteId")
 	if siteStrID == "" {
-		if tenant != nil {
-			// Tenants must specify a Site ID
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site ID must be specified in query when retrieving Racks as a Tenant", nil)
-		}
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
 	}
 
@@ -249,14 +279,9 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site specified in request due to DB error", nil)
 	}
 
-	// Validate Provider/Tenant Site access
-	hasAccess, apiError := common.ValidateProviderOrTenantSiteAccess(ctx, logger, garh.dbSession, site, infrastructureProvider, tenant)
-	if apiError != nil {
-		return cerr.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
-	}
-
-	if !hasAccess {
-		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Current org is not associated with the Site specified in query", nil)
+	// Verify site belongs to the org's Infrastructure Provider
+	if site.InfrastructureProviderID != infrastructureProvider.ID {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
 	// Validate pagination request

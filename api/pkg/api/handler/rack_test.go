@@ -26,8 +26,8 @@ import (
 	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
 	"github.com/nvidia/carbide-rest/api/pkg/api/model"
 	"github.com/nvidia/carbide-rest/api/pkg/api/pagination"
-	"github.com/nvidia/carbide-rest/common/pkg/otelecho"
 	sc "github.com/nvidia/carbide-rest/api/pkg/client/site"
+	"github.com/nvidia/carbide-rest/common/pkg/otelecho"
 	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
@@ -91,8 +91,8 @@ func testRackSetupTestData(t *testing.T, dbSession *cdb.Session, org string) (*c
 
 	// Create tenant with TargetedInstanceCreation enabled (privileged tenant)
 	tenant := &cdbm.Tenant{
-		ID:   uuid.New(),
-		Org:  org,
+		ID:  uuid.New(),
+		Org: org,
 		Config: &cdbm.TenantConfig{
 			TargetedInstanceCreation: true,
 		},
@@ -239,7 +239,7 @@ func TestGetAllRackHandler_Handle(t *testing.T) {
 			reqOrg: org,
 			user:   providerUser,
 			queryParams: map[string]string{
-				"siteId":      site.ID.String(),
+				"siteId":       site.ID.String(),
 				"manufacturer": "Dell",
 			},
 			mockResponse:   createMockRLAResponse([]*rlav1.Rack{testRacks[2], testRacks[4]}, 2),
@@ -267,7 +267,7 @@ func TestGetAllRackHandler_Handle(t *testing.T) {
 			reqOrg: org,
 			user:   providerUser,
 			queryParams: map[string]string{
-				"siteId":    site.ID.String(),
+				"siteId":     site.ID.String(),
 				"pageNumber": "1",
 				"pageSize":   "2",
 			},
@@ -306,24 +306,14 @@ func TestGetAllRackHandler_Handle(t *testing.T) {
 			wantErr:        false,
 		},
 		{
-			name:   "success - privileged tenant access",
+			name:   "failure - tenant access denied",
 			reqOrg: org,
 			user:   tenantUser,
 			queryParams: map[string]string{
 				"siteId": site.ID.String(),
 			},
-			mockResponse:   createMockRLAResponse(testRacks, int32(len(testRacks))),
-			expectedStatus: http.StatusOK,
-			expectedCount:  len(testRacks),
-			expectedTotal:  cdb.GetIntPtr(len(testRacks)),
-			wantErr:        false,
-		},
-		{
-			name:   "failure - missing siteId for tenant",
-			reqOrg: org,
-			user:   tenantUser,
-			queryParams: map[string]string{},
-			expectedStatus: http.StatusBadRequest,
+			mockResponse:   nil, // No mock response needed for error case
+			expectedStatus: http.StatusForbidden,
 			wantErr:        true,
 		},
 		{
@@ -342,7 +332,7 @@ func TestGetAllRackHandler_Handle(t *testing.T) {
 			reqOrg: org,
 			user:   providerUser,
 			queryParams: map[string]string{
-				"siteId":    site.ID.String(),
+				"siteId":     site.ID.String(),
 				"pageNumber": "-1",
 			},
 			mockResponse:   nil, // No mock response needed for error case

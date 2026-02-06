@@ -13,6 +13,7 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -39,9 +40,53 @@ import (
 	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
 	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/nvidia/carbide-rest/workflow/pkg/queue"
+	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/attribute"
 	tclient "go.temporal.io/sdk/client"
 )
+
+// ValidateProviderOrTenantSiteAccess validates if the provider or tenant has access to the site
+func ValidateProviderOrTenantSiteAccess(ctx context.Context, logger zerolog.Logger, dbSession *cdb.Session, site *cdbm.Site, infrastructureProvider *cdbm.InfrastructureProvider, tenant *cdbm.Tenant) (bool, *cutil.APIError) {
+	hasAccess := false
+
+	// Validate if Provider has access to the Site
+	if infrastructureProvider != nil && site.InfrastructureProviderID == infrastructureProvider.ID {
+		hasAccess = true
+	}
+
+	if !hasAccess && tenant != nil {
+		// Check Tenant Site relationship
+		tsDAO := cdbm.NewTenantSiteDAO(dbSession)
+		_, tsCount, err := tsDAO.GetAll(ctx, nil, cdbm.TenantSiteFilterInput{
+			TenantIDs: []uuid.UUID{tenant.ID},
+			SiteIDs:   []uuid.UUID{site.ID},
+		}, paginator.PageInput{}, []string{})
+		if err != nil {
+			logger.Error().Err(err).Msg("error retrieving Tenant Site relationship")
+			return false, cutil.NewAPIError(http.StatusInternalServerError, "Failed to check Tenant/Site association due to DB error", nil)
+		}
+
+		hasAccess = tsCount > 0
+
+		// Check if Tenant is privileged
+		if !hasAccess && tenant.Config.TargetedInstanceCreation {
+			// Check if privileged tenant has an account with the Site's Infrastructure Provider
+			taDAO := cdbm.NewTenantAccountDAO(dbSession)
+			_, taCount, err := taDAO.GetAll(ctx, nil, cdbm.TenantAccountFilterInput{
+				InfrastructureProviderID: &site.InfrastructureProviderID,
+				TenantIDs:                []uuid.UUID{tenant.ID},
+			}, paginator.PageInput{}, []string{})
+			if err != nil {
+				logger.Error().Err(err).Msg("error retrieving Tenant Account for Site")
+				return false, cutil.NewAPIError(http.StatusInternalServerError, "Failed to retrieve Tenant's Account with Site's Provider due to DB error", nil)
+			}
+
+			hasAccess = taCount > 0
+		}
+	}
+
+	return hasAccess, nil
+}
 
 // ~~~~~ Create Handler ~~~~~ //
 
@@ -134,7 +179,7 @@ func (cemh CreateExpectedMachineHandler) Handle(c echo.Context) error {
 	}
 
 	// Validate ProviderTenantSite relationship and site state
-	hasAccess, apiError := common.ValidateProviderOrTenantSiteAccess(ctx, logger, cemh.dbSession, site, infrastructureProvider, tenant)
+	hasAccess, apiError := ValidateProviderOrTenantSiteAccess(ctx, logger, cemh.dbSession, site, infrastructureProvider, tenant)
 	if apiError != nil {
 		return cutil.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
 	}
@@ -333,7 +378,7 @@ func (gaemh GetAllExpectedMachineHandler) Handle(c echo.Context) error {
 		}
 
 		// Validate ProviderTenantSite relationship and site state
-		hasAccess, apiError := common.ValidateProviderOrTenantSiteAccess(ctx, logger, gaemh.dbSession, site, infrastructureProvider, tenant)
+		hasAccess, apiError := ValidateProviderOrTenantSiteAccess(ctx, logger, gaemh.dbSession, site, infrastructureProvider, tenant)
 		if apiError != nil {
 			return cutil.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
 		}
@@ -516,7 +561,7 @@ func (gemh GetExpectedMachineHandler) Handle(c echo.Context) error {
 	}
 
 	// Validate ProviderTenantSite relationship and site state
-	hasAccess, apiError := common.ValidateProviderOrTenantSiteAccess(ctx, logger, gemh.dbSession, site, infrastructureProvider, tenant)
+	hasAccess, apiError := ValidateProviderOrTenantSiteAccess(ctx, logger, gemh.dbSession, site, infrastructureProvider, tenant)
 	if apiError != nil {
 		return cutil.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
 	}
@@ -650,7 +695,7 @@ func (uemh UpdateExpectedMachineHandler) Handle(c echo.Context) error {
 	}
 
 	// Validate ProviderTenantSite relationship and site state
-	hasAccess, apiError := common.ValidateProviderOrTenantSiteAccess(ctx, logger, uemh.dbSession, site, infrastructureProvider, tenant)
+	hasAccess, apiError := ValidateProviderOrTenantSiteAccess(ctx, logger, uemh.dbSession, site, infrastructureProvider, tenant)
 	if apiError != nil {
 		return cutil.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
 	}
@@ -831,7 +876,7 @@ func (demh DeleteExpectedMachineHandler) Handle(c echo.Context) error {
 	}
 
 	// Validate ProviderTenantSite relationship and site state
-	hasAccess, apiError := common.ValidateProviderOrTenantSiteAccess(ctx, logger, demh.dbSession, site, infrastructureProvider, tenant)
+	hasAccess, apiError := ValidateProviderOrTenantSiteAccess(ctx, logger, demh.dbSession, site, infrastructureProvider, tenant)
 	if apiError != nil {
 		return cutil.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
 	}
@@ -1041,7 +1086,7 @@ func (cemh CreateExpectedMachinesHandler) Handle(c echo.Context) error {
 	}
 
 	// Validate access to Site
-	hasAccess, apiError := common.ValidateProviderOrTenantSiteAccess(ctx, logger, cemh.dbSession, site, infrastructureProvider, tenant)
+	hasAccess, apiError := ValidateProviderOrTenantSiteAccess(ctx, logger, cemh.dbSession, site, infrastructureProvider, tenant)
 	if apiError != nil {
 		return cutil.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
 	}
@@ -1459,7 +1504,7 @@ func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 	}
 
 	// Validate ProviderTenantSite relationship and state
-	hasAccess, apiError := common.ValidateProviderOrTenantSiteAccess(ctx, logger, uemh.dbSession, site, infrastructureProvider, tenant)
+	hasAccess, apiError := ValidateProviderOrTenantSiteAccess(ctx, logger, uemh.dbSession, site, infrastructureProvider, tenant)
 	if apiError != nil {
 		return cutil.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
 	}
