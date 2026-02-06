@@ -310,7 +310,12 @@ func NewAPIRoutes(dbSession *cdb.Session, tc tClient.Client, tnc tClient.Namespa
 		{
 			Path:    apiPathPrefix + "/instance/:instanceId/nvlink-interface",
 			Method:  http.MethodGet,
-			Handler: apiHandler.NewGetAllNVLinkInterfaceHandler(dbSession, tc, cfg),
+			Handler: apiHandler.NewGetAllNVLinkInterfaceByInstanceHandler(dbSession, tc, cfg),
+		},
+		{
+			Path:    apiPathPrefix + "/nvlink-logical-partition/:nvlinkLogicalPartitionId/nvlink-interface",
+			Method:  http.MethodGet,
+			Handler: apiHandler.NewGetAllNVLinkInterfaceByNVLinkLogicalPartitionHandler(dbSession, tc, cfg),
 		},
 		// InfiniBandPartition endpoints
 		{

@@ -15,11 +15,11 @@ package api
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/nvidia/carbide-rest/api/internal/config"
 	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
 	sc "github.com/nvidia/carbide-rest/api/pkg/client/site"
 	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
+	"github.com/stretchr/testify/assert"
 
 	temporalClient "go.temporal.io/sdk/client"
 	tmocks "go.temporal.io/sdk/mocks"
@@ -54,7 +54,7 @@ func TestNewAPIRoutes(t *testing.T) {
 		"instance":                8,
 		"interface":               1,
 		"infiniband-partition":    5,
-		"nvlinklogical-partition": 5,
+		"nvlinklogical-partition": 6,
 		"expected-machine":        5,
 		"instance-type":           5,
 		"machine":                 5,
