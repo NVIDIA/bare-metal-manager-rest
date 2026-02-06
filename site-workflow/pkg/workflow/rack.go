@@ -28,7 +28,7 @@ func GetRack(ctx workflow.Context, request *rlav1.GetRackInfoByIDRequest) (*rlav
 		logger = log.With().Str("Workflow", "Rack").Str("Action", "Get").Str("RackID", request.Id.Id).Logger()
 	}
 
-	logger.Info().Msg("starting workflow")
+	logger.Info().Msg("Starting workflow")
 
 	// RetryPolicy specifies how to automatically handle retries if an Activity fails.
 	retrypolicy := &temporal.RetryPolicy{
@@ -55,7 +55,7 @@ func GetRack(ctx workflow.Context, request *rlav1.GetRackInfoByIDRequest) (*rlav
 		return nil, err
 	}
 
-	logger.Info().Msg("completing workflow")
+	logger.Info().Msg("Completing workflow")
 
 	return &response, nil
 }
@@ -64,7 +64,7 @@ func GetRack(ctx workflow.Context, request *rlav1.GetRackInfoByIDRequest) (*rlav
 func GetRacks(ctx workflow.Context, request *rlav1.GetListOfRacksRequest) (*rlav1.GetListOfRacksResponse, error) {
 	logger := log.With().Str("Workflow", "Rack").Str("Action", "GetAll").Logger()
 
-	logger.Info().Msg("starting workflow")
+	logger.Info().Msg("Starting workflow")
 
 	// RetryPolicy specifies how to automatically handle retries if an Activity fails.
 	retrypolicy := &temporal.RetryPolicy{
@@ -91,7 +91,7 @@ func GetRacks(ctx workflow.Context, request *rlav1.GetListOfRacksRequest) (*rlav
 		return nil, err
 	}
 
-	logger.Info().Int32("total", response.GetTotal()).Msg("completing workflow")
+	logger.Info().Int32("total", response.GetTotal()).Msg("Completing workflow")
 
 	return &response, nil
 }
