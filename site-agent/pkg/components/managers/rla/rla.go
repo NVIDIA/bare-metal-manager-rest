@@ -59,7 +59,7 @@ func (rla *API) Start() {
 
 	// Create the client here
 	// Each workflow will check and reinitialize the client if needed
-	if err := rla.CreateGrpcClient(); err != nil {
+	if err := rla.CreateGRPCClient(); err != nil {
 		ManagerAccess.Data.EB.Log.Error().Msgf("RLA: failed to create GRPC client: %v", err)
 	}
 }
@@ -77,6 +77,6 @@ func (rla *API) GetState() []string {
 }
 
 // GetGrpcClientVersion returns the current version of the GRPC client
-func (rla *API) GetGrpcClientVersion() int64 {
+func (rla *API) GetGRPCClientVersion() int64 {
 	return ManagerAccess.Data.EB.Managers.RLA.Client.Version()
 }

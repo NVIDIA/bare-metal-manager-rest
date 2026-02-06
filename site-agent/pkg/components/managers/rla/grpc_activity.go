@@ -20,7 +20,7 @@ import (
 )
 
 // CreateGRPCClientActivity - Create GRPC client Activity
-func (RLA *API) CreateGrpcClientActivity(ctx context.Context, ResourceID string) (client *client.RlaClient, err error) {
+func (RLA *API) CreateGRPCClientActivity(ctx context.Context, ResourceID string) (client *client.RlaClient, err error) {
 	// Create the VPC
 	ManagerAccess.Data.EB.Log.Info().Interface("Request", ResourceID).Msg("RLA: Starting  the gRPC connection Activity")
 
@@ -32,22 +32,22 @@ func (RLA *API) CreateGrpcClientActivity(ctx context.Context, ResourceID string)
 	// Create the client
 	ManagerAccess.Data.EB.Log.Info().Interface("Request", ResourceID).Msg("RLA: Creating  grpc client")
 
-	err = RLA.CreateGrpcClient()
+	err = RLA.CreateGRPCClient()
 	if err != nil {
 		return nil, err
 	}
-	return RLA.GetGrpcClient(), nil
+	return RLA.GetGRPCClient(), nil
 }
 
 // RegisterGrpc - Register GRPC
-func (RLA *API) RegisterGrpc() {
+func (RLA *API) RegisterGRPC() {
 	// Register activity
 	activityRegisterOptions := activity.RegisterOptions{
 		Name: "CreateRlaGrpcClientActivity",
 	}
 
 	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterActivityWithOptions(
-		ManagerAccess.API.RLA.CreateGrpcClientActivity, activityRegisterOptions,
+		ManagerAccess.API.RLA.CreateGRPCClientActivity, activityRegisterOptions,
 	)
 	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered GRPC client activity")
 }

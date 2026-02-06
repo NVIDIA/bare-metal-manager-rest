@@ -67,7 +67,7 @@ func createGrpcClient() (conn *client.RlaClient, err error) {
 }
 
 // CreateGRPCClient - creates the grpc connection handle
-func (RLA *API) CreateGrpcClient() error {
+func (RLA *API) CreateGRPCClient() error {
 	// Initialize the GRPC client
 	// We can handle advanced features later
 	_, err := createGrpcClient()
@@ -81,7 +81,7 @@ func (RLA *API) CreateGrpcClient() error {
 }
 
 // GetGRPCClient - gets the grpc connection handle
-func (RLA *API) GetGrpcClient() *client.RlaClient {
+func (RLA *API) GetGRPCClient() *client.RlaClient {
 	return ManagerAccess.Data.EB.Managers.RLA.GetClient()
 }
 
@@ -94,8 +94,8 @@ func isGrpcUp(c codes.Code) bool {
 	return true
 }
 
-// UpdateGrpcClientState - updates RLA state
-func (RLA *API) UpdateGrpcClientState(err error) {
+// UpdateGRPCClientState - updates RLA state
+func (RLA *API) UpdateGRPCClientState(err error) {
 	defer computils.UpdateState(ManagerAccess.Data.EB)
 	if err == nil {
 		ManagerAccess.Data.EB.Managers.RLA.State.GrpcSucc.Inc()

@@ -24,13 +24,13 @@ type RLAInterface interface {
 	// List all the apis of RLA here
 	Init()
 	Start()
-	CreateGrpcClient() error
-	GetGrpcClient() *client.RlaClient
-	UpdateGrpcClientState(err error)
-	CreateGrpcClientActivity(ctx context.Context, ResourceID string) (client *client.RlaClient, err error)
-	RegisterGrpc()
+	CreateGRPCClient() error
+	GetGRPCClient() *client.RlaClient
+	UpdateGRPCClientState(err error)
+	CreateGRPCClientActivity(ctx context.Context, ResourceID string) (client *client.RlaClient, err error)
+	RegisterGRPC()
 	RegisterSubscriber() error
 	GetState() []string
-	GetGrpcClientVersion() int64
+	GetGRPCClientVersion() int64
 	RLAExpansion
 }

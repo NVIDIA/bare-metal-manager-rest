@@ -25,7 +25,7 @@ import (
 // TestRlaRack - test the RLA grpc client
 func TestRlaRack(t *testing.T) {
 	TestInitElektra(t)
-	grpcClient := testElektra.manager.API.RLA.GetGrpcClient()
+	grpcClient := testElektra.manager.API.RLA.GetGRPCClient()
 
 	var rack *rlav1.Rack
 
@@ -72,7 +72,7 @@ func TestRlaRack(t *testing.T) {
 
 				response, err := grpcClient.Rla().GetRackInfoByID(ctx, getRequest)
 				span.End()
-				rla.ManagerAccess.API.RLA.UpdateGrpcClientState(err)
+				rla.ManagerAccess.API.RLA.UpdateGRPCClientState(err)
 				if err != nil {
 					t.Log(err.Error())
 				}
@@ -94,7 +94,7 @@ func TestRlaRack(t *testing.T) {
 				listRequest := &rlav1.GetListOfRacksRequest{}
 				resq, err := grpcClient.Rla().GetListOfRacks(ctx, listRequest)
 				span.End()
-				rla.ManagerAccess.API.RLA.UpdateGrpcClientState(err)
+				rla.ManagerAccess.API.RLA.UpdateGRPCClientState(err)
 				if err != nil {
 					t.Log(err.Error())
 				}

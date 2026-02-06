@@ -185,6 +185,9 @@ func NewElektraConfig(utMode bool) *conftypes.Config {
 	var skipRlaServerAuth string
 	flag.StringVar(&skipRlaServerAuth, "rlaSkipServerAuth", os.Getenv("SKIP_RLA_GRPC_SERVER_AUTH"), "Skip RLA gRPC server auth in TLS")
 
+	var rlaEnabled string
+	flag.StringVar(&rlaEnabled, "rlaEnabled", os.Getenv("RLA_ENABLED"), "Enable RLA")
+
 	if conf.MetricsPort == "" {
 		log.Fatal().Msg("error loading config, invalid metrics port")
 	}
@@ -221,7 +224,7 @@ func NewElektraConfig(utMode bool) *conftypes.Config {
 	conf.DisableBootstrap = strings.ToLower(disableBootstrap) == "true"
 	conf.Carbide.SkipServerAuth = strings.ToLower(skipServerAuth) == "true"
 	conf.RLA.SkipServerAuth = strings.ToLower(skipRlaServerAuth) == "true"
-	conf.RLA.Enabled = strings.ToLower(os.Getenv("RLA_ENABLED")) == "true"
+	conf.RLA.Enabled = strings.ToLower(rlaEnabled) == "true"
 
 	// Initialize the WatcherInterval to default if not defined
 	if watcherInterval == "" {
