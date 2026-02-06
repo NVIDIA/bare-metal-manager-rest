@@ -25,42 +25,6 @@ spec:
       labels:
         app: carbide-rest-site-agent
     spec:
-      initContainers:
-        # Create the expected directory structure for temporal certs
-        - name: init-certs
-          image: busybox:latest
-          command:
-            - /bin/sh
-            - -c
-            - |
-              mkdir -p /etc/temporal-certs/ca /etc/temporal-certs/client
-              # Copy certs if they exist
-              if [ -f /tmp/certs/ca.crt ]; then
-                cp /tmp/certs/ca.crt /etc/temporal-certs/ca/tls.crt
-              else
-                # Create dummy cert for local dev (TLS disabled anyway)
-                echo "-----BEGIN CERTIFICATE-----" > /etc/temporal-certs/ca/tls.crt
-                echo "placeholder" >> /etc/temporal-certs/ca/tls.crt
-                echo "-----END CERTIFICATE-----" >> /etc/temporal-certs/ca/tls.crt
-              fi
-              if [ -f /tmp/certs/tls.crt ]; then
-                cp /tmp/certs/tls.crt /etc/temporal-certs/client/tls.crt
-                cp /tmp/certs/tls.key /etc/temporal-certs/client/tls.key
-              else
-                echo "-----BEGIN CERTIFICATE-----" > /etc/temporal-certs/client/tls.crt
-                echo "placeholder" >> /etc/temporal-certs/client/tls.crt
-                echo "-----END CERTIFICATE-----" >> /etc/temporal-certs/client/tls.crt
-                echo "-----BEGIN PRIVATE KEY-----" > /etc/temporal-certs/client/tls.key
-                echo "placeholder" >> /etc/temporal-certs/client/tls.key
-                echo "-----END PRIVATE KEY-----" >> /etc/temporal-certs/client/tls.key
-              fi
-              ls -la /etc/temporal-certs/ca/ /etc/temporal-certs/client/
-          volumeMounts:
-            - name: temporal-certs
-              mountPath: /etc/temporal-certs
-            - name: carbide-certs
-              mountPath: /tmp/certs
-              readOnly: true
       containers:
         - name: site-agent
           image: localhost:5000/carbide-rest-site-agent:latest
@@ -87,6 +51,7 @@ spec:
               readOnly: true
             - name: temporal-certs
               mountPath: /etc/temporal-certs
+              readOnly: true
           resources:
             requests:
               memory: "128Mi"
@@ -103,4 +68,13 @@ spec:
             secretName: carbide-tls-certs
             optional: true
         - name: temporal-certs
-          emptyDir: {}
+          secret:
+            secretName: temporal-client-certs
+            optional: true
+            items:
+              - key: ca.crt
+                path: ca/ca.crt
+              - key: tls.crt
+                path: client/tls.crt
+              - key: tls.key
+                path: client/tls.key
