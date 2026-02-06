@@ -122,35 +122,19 @@ configure_vault_pki() {
 }
 
 create_service_certs() {
-    echo "Creating service TLS certificates..."
+    echo "Creating service secrets..."
     
-    CERT_DIR=$(mktemp -d)
+    # Note: carbide-tls-certs and site-manager-tls are now managed by
+    # cert-manager.io Certificate resources (see deploy/kustomize/base/site-agent/certificate.yaml
+    # and deploy/kustomize/base/site-manager/certificate.yaml). They will be issued
+    # automatically once the carbide-ca-issuer ClusterIssuer is applied.
     
     CA_CERT=$(kubectl get secret ca-signing-secret -n "$NAMESPACE" -o jsonpath='{.data.tls\.crt}' | base64 -d 2>/dev/null || echo "")
-    CA_KEY=$(kubectl get secret ca-signing-secret -n "$NAMESPACE" -o jsonpath='{.data.tls\.key}' | base64 -d 2>/dev/null || echo "")
     
-    if [ -z "$CA_CERT" ] || [ -z "$CA_KEY" ]; then
+    if [ -z "$CA_CERT" ]; then
         echo "Warning: Could not retrieve CA certificate"
-        rm -rf "$CERT_DIR"
         return 0
     fi
-    
-    echo "$CA_CERT" > "$CERT_DIR/ca.crt"
-    echo "$CA_KEY" > "$CERT_DIR/ca.key"
-    
-    # Site-agent certs
-    openssl genrsa -out "$CERT_DIR/tls.key" 2048 2>/dev/null
-    openssl req -new -key "$CERT_DIR/tls.key" -out "$CERT_DIR/tls.csr" \
-        -subj "/C=US/ST=CA/L=Local/O=Carbide Dev/CN=carbide-rest-site-agent" 2>/dev/null
-    openssl x509 -req -in "$CERT_DIR/tls.csr" -CA "$CERT_DIR/ca.crt" -CAkey "$CERT_DIR/ca.key" \
-        -CAcreateserial -out "$CERT_DIR/tls.crt" -days 365 2>/dev/null
-    
-    kubectl create secret generic carbide-tls-certs \
-        --from-file=ca.crt="$CERT_DIR/ca.crt" \
-        --from-file=tls.crt="$CERT_DIR/tls.crt" \
-        --from-file=tls.key="$CERT_DIR/tls.key" \
-        -n "$NAMESPACE" \
-        --dry-run=client -o yaml | kubectl apply -f -
     
     kubectl create secret generic site-registration \
         --from-literal=site-uuid="00000000-0000-4000-8000-000000000001" \
@@ -160,47 +144,7 @@ create_service_certs() {
         -n "$NAMESPACE" \
         --dry-run=client -o yaml | kubectl apply -f -
     
-    # Site-manager certs
-    cat > "$CERT_DIR/san.cnf" << EOF
-[req]
-distinguished_name = req_distinguished_name
-req_extensions = v3_req
-prompt = no
-
-[req_distinguished_name]
-C = US
-ST = CA
-L = Local
-O = Carbide Dev
-CN = carbide-rest-site-manager
-
-[v3_req]
-basicConstraints = CA:FALSE
-keyUsage = nonRepudiation, digitalSignature, keyEncipherment
-subjectAltName = @alt_names
-
-[alt_names]
-DNS.1 = carbide-rest-site-manager
-DNS.2 = carbide-rest-site-manager.carbide
-DNS.3 = carbide-rest-site-manager.carbide.svc.cluster.local
-DNS.4 = localhost
-EOF
-
-    openssl genrsa -out "$CERT_DIR/sm-tls.key" 2048 2>/dev/null
-    openssl req -new -key "$CERT_DIR/sm-tls.key" -out "$CERT_DIR/sm-tls.csr" \
-        -config "$CERT_DIR/san.cnf" 2>/dev/null
-    openssl x509 -req -in "$CERT_DIR/sm-tls.csr" -CA "$CERT_DIR/ca.crt" -CAkey "$CERT_DIR/ca.key" \
-        -CAcreateserial -out "$CERT_DIR/sm-tls.crt" -days 365 \
-        -extensions v3_req -extfile "$CERT_DIR/san.cnf" 2>/dev/null
-    
-    kubectl create secret tls site-manager-tls \
-        --cert="$CERT_DIR/sm-tls.crt" \
-        --key="$CERT_DIR/sm-tls.key" \
-        -n "$NAMESPACE" \
-        --dry-run=client -o yaml | kubectl apply -f -
-    
-    echo "Service certificates created"
-    rm -rf "$CERT_DIR"
+    echo "Service secrets created"
 }
 
 setup_pki() {

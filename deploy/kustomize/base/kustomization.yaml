@@ -53,6 +53,7 @@ resources:
   - site-agent/service.yaml
   - site-agent/configmap.yaml
   - site-agent/secret.yaml
+  - site-agent/certificate.yaml
   - cert-manager/deployment.yaml
   - cert-manager/service.yaml
   - cert-manager/rbac.yaml
