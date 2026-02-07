@@ -17,7 +17,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -179,7 +181,8 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 	}
 
 	// Convert to API model
-	apiRack := model.NewAPIRack(rlaResponse.GetRack(), includeComponents)
+	protoRack := rlaResponse.GetRack()
+	apiRack := model.NewAPIRack(protoRack, includeComponents)
 
 	logger.Info().Msg("finishing API handler")
 
@@ -293,7 +296,7 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 	}
 
 	// Validate pagination attributes
-	err = pageRequest.Validate(model.RackOrderByFields)
+	err = pageRequest.Validate(slices.Collect(maps.Keys(model.RackOrderByFieldMap)))
 	if err != nil {
 		logger.Warn().Err(err).Msg("error validating pagination request data")
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate pagination request data", err)
@@ -308,9 +311,9 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 	// Build filters from query params
 	var filters []*rlav1.Filter
 	qParams := c.QueryParams()
-	for _, field := range model.RackOrderByFields {
+	for field := range model.RackFilterFieldMap {
 		if value := qParams.Get(field); value != "" {
-			if f := model.BuildRackStringFilter(field, value); f != nil {
+			if f := model.GetProtoRackFilterFromQueryParam(field, value); f != nil {
 				filters = append(filters, f)
 			}
 		}
@@ -319,7 +322,7 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 	// Build OrderBy from pagination
 	var orderBy *rlav1.OrderBy
 	if pageRequest.OrderBy != nil {
-		orderBy = model.BuildRackOrderBy(pageRequest.OrderBy.Field, strings.ToUpper(pageRequest.OrderBy.Order))
+		orderBy = model.GetProtoRackOrderByFromQueryParam(pageRequest.OrderBy.Field, strings.ToUpper(pageRequest.OrderBy.Order))
 	}
 
 	// Build Pagination

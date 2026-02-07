@@ -18,9 +18,6 @@ import (
 
 // ========== Rack Query Fields ==========
 
-// RackOrderByFields is a list of valid order by fields for Rack
-var RackOrderByFields = []string{"name", "manufacturer", "model"}
-
 // RackFilterFieldMap maps API field names to RLA protobuf filter enum
 var RackFilterFieldMap = map[string]rlav1.RackFilterField{
 	"name":         rlav1.RackFilterField_RACK_FILTER_FIELD_NAME,
@@ -35,8 +32,8 @@ var RackOrderByFieldMap = map[string]rlav1.RackOrderByField{
 	"model":        rlav1.RackOrderByField_RACK_ORDER_BY_FIELD_MODEL,
 }
 
-// BuildRackStringFilter creates an RLA string filter for Rack queries
-func BuildRackStringFilter(fieldName, value string) *rlav1.Filter {
+// GetProtoRackFilterFromQueryParam creates an RLA protobuf filter from API query parameters
+func GetProtoRackFilterFromQueryParam(fieldName, value string) *rlav1.Filter {
 	field, ok := RackFilterFieldMap[fieldName]
 	if !ok {
 		return nil
@@ -53,8 +50,8 @@ func BuildRackStringFilter(fieldName, value string) *rlav1.Filter {
 	}
 }
 
-// BuildRackOrderBy creates an RLA OrderBy for Rack queries
-func BuildRackOrderBy(fieldName, direction string) *rlav1.OrderBy {
+// GetProtoRackOrderByFromQueryParam creates an RLA protobuf OrderBy from API query parameters
+func GetProtoRackOrderByFromQueryParam(fieldName, direction string) *rlav1.OrderBy {
 	field, ok := RackOrderByFieldMap[fieldName]
 	if !ok {
 		return nil
@@ -138,46 +135,52 @@ func (arc *APIRackComponent) FromProto(protoComponent *rlav1.Component) {
 	}
 }
 
-// NewAPIRack creates an APIRack from the RLA protobuf Rack
-func NewAPIRack(rack *rlav1.Rack, withComponents bool) *APIRack {
-	if rack == nil {
-		return nil
+// FromProto converts an RLA protobuf Rack to an APIRack
+func (ar *APIRack) FromProto(protoRack *rlav1.Rack, includeComponents bool) {
+	if protoRack == nil {
+		return
 	}
 
-	apiRack := &APIRack{}
-
 	// Get info from DeviceInfo
-	if rack.GetInfo() != nil {
-		info := rack.GetInfo()
+	if protoRack.GetInfo() != nil {
+		info := protoRack.GetInfo()
 		if info.GetId() != nil {
-			apiRack.ID = info.GetId().GetId()
+			ar.ID = info.GetId().GetId()
 		}
-		apiRack.Name = info.GetName()
-		apiRack.Manufacturer = info.GetManufacturer()
+		ar.Name = info.GetName()
+		ar.Manufacturer = info.GetManufacturer()
 		if info.Model != nil {
-			apiRack.Model = *info.Model
+			ar.Model = *info.Model
 		}
-		apiRack.SerialNumber = info.GetSerialNumber()
+		ar.SerialNumber = info.GetSerialNumber()
 		if info.Description != nil {
-			apiRack.Description = *info.Description
+			ar.Description = *info.Description
 		}
 	}
 
 	// Get location
-	if rack.GetLocation() != nil {
-		apiRack.Location = &APIRackLocation{}
-		apiRack.Location.FromProto(rack.GetLocation())
+	if protoRack.GetLocation() != nil {
+		ar.Location = &APIRackLocation{}
+		ar.Location.FromProto(protoRack.GetLocation())
 	}
 
 	// Get components
-	if withComponents && len(rack.GetComponents()) > 0 {
-		apiRack.Components = make([]*APIRackComponent, 0, len(rack.GetComponents()))
-		for _, comp := range rack.GetComponents() {
+	if includeComponents && len(protoRack.GetComponents()) > 0 {
+		ar.Components = make([]*APIRackComponent, 0, len(protoRack.GetComponents()))
+		for _, comp := range protoRack.GetComponents() {
 			apiComp := &APIRackComponent{}
 			apiComp.FromProto(comp)
-			apiRack.Components = append(apiRack.Components, apiComp)
+			ar.Components = append(ar.Components, apiComp)
 		}
 	}
+}
 
+// NewAPIRack creates an APIRack from the RLA protobuf Rack
+func NewAPIRack(protoRack *rlav1.Rack, includeComponents bool) *APIRack {
+	if protoRack == nil {
+		return nil
+	}
+	apiRack := &APIRack{}
+	apiRack.FromProto(protoRack, includeComponents)
 	return apiRack
 }
