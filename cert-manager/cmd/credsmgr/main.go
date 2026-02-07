@@ -15,13 +15,13 @@ import (
 	"context"
 	"os"
 
-	cli "github.com/urfave/cli/v2"
+	"github.com/nvidia/carbide-rest/cert-manager/pkg/certs"
 	"github.com/nvidia/carbide-rest/cert-manager/pkg/core"
-	"github.com/nvidia/carbide-rest/cert-manager/pkg/vault"
+	cli "github.com/urfave/cli/v2"
 )
 
 func main() {
-	cmd := vault.NewCommand()
+	cmd := certs.NewCommand()
 	app := &cli.App{
 		Name:    cmd.Name,
 		Usage:   cmd.Usage,

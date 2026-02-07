@@ -24,11 +24,11 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
+	"github.com/nvidia/carbide-rest/cert-manager/pkg/certs"
+	"github.com/nvidia/carbide-rest/cert-manager/pkg/core"
+	crdclient "github.com/nvidia/carbide-rest/site-manager/pkg/client/clientset/versioned"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/nvidia/carbide-rest/cert-manager/pkg/core"
-	"github.com/nvidia/carbide-rest/cert-manager/pkg/vault"
-	crdclient "github.com/nvidia/carbide-rest/site-manager/pkg/client/clientset/versioned"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"k8s.io/client-go/rest"
 )
@@ -150,7 +150,7 @@ func (s *SiteMgr) tlsSetup(ctx context.Context) error {
 	log.Infof("Setting up TLS Config using vault service")
 
 	var (
-		resp *vault.CertificateResponse
+		resp *certs.CertificateResponse
 		err  error
 	)
 
@@ -177,8 +177,8 @@ func (s *SiteMgr) tlsSetup(ctx context.Context) error {
 	return nil
 }
 
-func (s *SiteMgr) getCertificate(ctx context.Context, name, app string, ttl int) (*vault.CertificateResponse, error) {
-	body := &vault.CertificateRequest{
+func (s *SiteMgr) getCertificate(ctx context.Context, name, app string, ttl int) (*certs.CertificateResponse, error) {
+	body := &certs.CertificateRequest{
 		Name: name,
 		App:  app,
 		TTL:  ttl,
@@ -200,7 +200,7 @@ func (s *SiteMgr) getCertificate(ctx context.Context, name, app string, ttl int)
 		return nil, fmt.Errorf("empty response")
 	}
 
-	creds := &vault.CertificateResponse{}
+	creds := &certs.CertificateResponse{}
 	err = json.Unmarshal(content, &creds)
 	if err != nil {
 		return nil, errors.Wrap(err, "s.json.Unmarshal")

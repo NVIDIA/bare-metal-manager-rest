@@ -10,7 +10,6 @@
  * its affiliates is strictly prohibited.
  */
 
-
 package model
 
 import (
@@ -19,11 +18,11 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/nvidia/carbide-rest/db/pkg/db"
 	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
 	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	otrace "go.opentelemetry.io/otel/trace"
 )
 
@@ -67,7 +66,7 @@ func TestInfiniBandPartitionSQLDAO_GetByID(t *testing.T) {
 
 	st := testBuildSite(t, dbSession, nil, ip.ID, "test-site", "Test Site", ip.Org, ipu.ID)
 
-	ibpr := testBuildInfiniBandPartition(t, dbSession, nil, "test-InfiniBandPartition", nil, tn.Org, tn.ID, st.ID, db.GetUUIDPtr(uuid.New()), nil, nil, nil, nil, nil, nil, db.GetStrPtr(InfiniBandPartitionStatusReady), tnu.ID)
+	ibpr := testBuildInfiniBandPartition(t, dbSession, nil, "test-InfiniBandPartition", nil, tn.Org, tn.ID, st.ID, db.GetUUIDPtr(uuid.New()), nil, nil, nil, nil, nil, nil, nil, db.GetStrPtr(InfiniBandPartitionStatusReady), tnu.ID)
 
 	// OTEL Spanner configuration
 	_, _, ctx := testCommonTraceProviderSetup(t, context.Background())
@@ -194,9 +193,9 @@ func TestInfiniBandPartition_GetAll(t *testing.T) {
 		}
 
 		if i%2 == 0 {
-			pt = testBuildInfiniBandPartition(t, dbSession, nil, fmt.Sprintf("test-InfiniBandPartition-batch-v1-%v", i), db.GetStrPtr(fmt.Sprintf("test-InfiniBandPartition-desc-batch-1-%v", i)), tn.Org, tn.ID, st.ID, db.GetUUIDPtr(uuid.New()), nil, nil, nil, nil, nil, nil, db.GetStrPtr(InfiniBandPartitionStatusReady), tn.CreatedBy)
+			pt = testBuildInfiniBandPartition(t, dbSession, nil, fmt.Sprintf("test-InfiniBandPartition-batch-v1-%v", i), db.GetStrPtr(fmt.Sprintf("test-InfiniBandPartition-desc-batch-1-%v", i)), tn.Org, tn.ID, st.ID, db.GetUUIDPtr(uuid.New()), nil, nil, nil, nil, nil, nil, map[string]string{fmt.Sprintf("test-InfiniBandPartition-batch-key1-%v", i): fmt.Sprintf("test-InfiniBandPartition-batch-value1-%v", i)}, db.GetStrPtr(InfiniBandPartitionStatusReady), tn.CreatedBy)
 		} else {
-			pt = testBuildInfiniBandPartition(t, dbSession, nil, fmt.Sprintf("test-InfiniBandPartition-batch-v2-%v", i), db.GetStrPtr(fmt.Sprintf("test-InfiniBandPartition-desc-batch-2-%v", i)), tn.Org, tn.ID, st.ID, db.GetUUIDPtr(uuid.New()), nil, nil, nil, nil, nil, nil, db.GetStrPtr(InfiniBandPartitionStatusDeleting), tn.CreatedBy)
+			pt = testBuildInfiniBandPartition(t, dbSession, nil, fmt.Sprintf("test-InfiniBandPartition-batch-v2-%v", i), db.GetStrPtr(fmt.Sprintf("test-InfiniBandPartition-desc-batch-2-%v", i)), tn.Org, tn.ID, st.ID, db.GetUUIDPtr(uuid.New()), nil, nil, nil, nil, nil, nil, map[string]string{fmt.Sprintf("test-InfiniBandPartition-batch-key2-%v", i): fmt.Sprintf("test-InfiniBandPartition-batch-value2-%v", i)}, db.GetStrPtr(InfiniBandPartitionStatusDeleting), tn.CreatedBy)
 		}
 
 		InfiniBandPartitions = append(InfiniBandPartitions, *pt)
@@ -610,6 +609,7 @@ func TestInfiniBandPartitionSQLDAO_Create(t *testing.T) {
 		siteID                            uuid.UUID
 		tenantID                          uuid.UUID
 		ControllerIBInfiniBandPartitionID *uuid.UUID
+		Labels                            map[string]string
 		status                            string
 		createdBy                         User
 	}
@@ -637,8 +637,12 @@ func TestInfiniBandPartitionSQLDAO_Create(t *testing.T) {
 		SiteID:                  st.ID,
 		TenantID:                tn.ID,
 		ControllerIBPartitionID: db.GetUUIDPtr(uuid.New()),
-		Status:                  InfiniBandPartitionStatusPending,
-		CreatedBy:               tnu.ID,
+		Labels: map[string]string{
+			"ibp1": "us-east-1",
+			"ibp2": "us-east-2",
+		},
+		Status:    InfiniBandPartitionStatusPending,
+		CreatedBy: tnu.ID,
 	}
 
 	// OTEL Spanner configuration
@@ -665,6 +669,7 @@ func TestInfiniBandPartitionSQLDAO_Create(t *testing.T) {
 				tenantID:                          ibpr.TenantID,
 				siteID:                            ibpr.SiteID,
 				ControllerIBInfiniBandPartitionID: ibpr.ControllerIBPartitionID,
+				Labels:                            ibpr.Labels,
 				status:                            ibpr.Status,
 				createdBy:                         User{ID: ibpr.CreatedBy},
 			},
@@ -688,6 +693,7 @@ func TestInfiniBandPartitionSQLDAO_Create(t *testing.T) {
 					SiteID:                  tt.args.siteID,
 					TenantID:                tt.args.tenantID,
 					ControllerIBPartitionID: tt.args.ControllerIBInfiniBandPartitionID,
+					Labels:                  tt.args.Labels,
 					Status:                  tt.args.status,
 					CreatedBy:               tt.args.createdBy.ID,
 				},
@@ -700,6 +706,7 @@ func TestInfiniBandPartitionSQLDAO_Create(t *testing.T) {
 			assert.Equal(t, tt.want.SiteID, got.SiteID)
 			assert.Equal(t, tt.want.TenantID, got.TenantID)
 			assert.Equal(t, *tt.want.ControllerIBPartitionID, *got.ControllerIBPartitionID)
+			assert.Equal(t, tt.want.Labels, got.Labels)
 			assert.Equal(t, tt.want.Status, got.Status)
 			assert.Equal(t, tt.want.CreatedBy, got.CreatedBy)
 
@@ -730,14 +737,18 @@ func TestInfiniBandPartitionSQLDAO_Update(t *testing.T) {
 
 	st := testBuildSite(t, dbSession, nil, ip.ID, "test-site", "Test Site", ip.Org, ipu.ID)
 
-	pt := testBuildInfiniBandPartition(t, dbSession, nil, "test-InfiniBandPartition", nil, tn.Org, tn.ID, st.ID, db.GetUUIDPtr(uuid.New()), nil, nil, nil, nil, nil, nil, db.GetStrPtr(InfiniBandPartitionStatusReady), tnu.ID)
+	pt := testBuildInfiniBandPartition(t, dbSession, nil, "test-InfiniBandPartition", nil, tn.Org, tn.ID, st.ID, db.GetUUIDPtr(uuid.New()), nil, nil, nil, nil, nil, nil, nil, db.GetStrPtr(InfiniBandPartitionStatusReady), tnu.ID)
 
 	uInfiniBandPartition := &InfiniBandPartition{
 		Name:                    "test-updated",
 		Description:             db.GetStrPtr("Test Updated"),
 		ControllerIBPartitionID: db.GetUUIDPtr(uuid.New()),
-		Status:                  InfiniBandPartitionStatusReady,
-		IsMissingOnSite:         true,
+		Labels: map[string]string{
+			"ibp1": "us-east-1",
+			"ibp2": "us-east-2",
+		},
+		Status:          InfiniBandPartitionStatusReady,
+		IsMissingOnSite: true,
 	}
 
 	// OTEL Spanner configuration
@@ -752,6 +763,7 @@ func TestInfiniBandPartitionSQLDAO_Update(t *testing.T) {
 		name                    *string
 		description             *string
 		ControllerIBPartitionID *uuid.UUID
+		Labels                  map[string]string
 		Status                  string
 		IsMissingOnSite         bool
 	}
@@ -774,6 +786,7 @@ func TestInfiniBandPartitionSQLDAO_Update(t *testing.T) {
 				name:                    &uInfiniBandPartition.Name,
 				description:             uInfiniBandPartition.Description,
 				ControllerIBPartitionID: uInfiniBandPartition.ControllerIBPartitionID,
+				Labels:                  uInfiniBandPartition.Labels,
 				Status:                  uInfiniBandPartition.Status,
 				IsMissingOnSite:         uInfiniBandPartition.IsMissingOnSite,
 			},
@@ -795,6 +808,7 @@ func TestInfiniBandPartitionSQLDAO_Update(t *testing.T) {
 					Name:                    tt.args.name,
 					Description:             tt.args.description,
 					ControllerIBPartitionID: tt.args.ControllerIBPartitionID,
+					Labels:                  tt.args.Labels,
 					Status:                  &tt.args.Status,
 					IsMissingOnSite:         &tt.args.IsMissingOnSite,
 				},
@@ -807,6 +821,7 @@ func TestInfiniBandPartitionSQLDAO_Update(t *testing.T) {
 			assert.Equal(t, tt.want.Name, got.Name)
 			assert.Equal(t, *tt.want.Description, *got.Description)
 			assert.Equal(t, *tt.want.ControllerIBPartitionID, *got.ControllerIBPartitionID)
+			assert.Equal(t, tt.want.Labels, got.Labels)
 			assert.Equal(t, tt.want.Status, got.Status)
 
 			assert.NotEqualValues(t, got.Updated, pt.Updated)
@@ -846,7 +861,7 @@ func TestInfiniBandPartitionSQLDAO_Delete(t *testing.T) {
 
 	st := testBuildSite(t, dbSession, nil, ip.ID, "test-site", "Test Site", ip.Org, ipu.ID)
 
-	pt := testBuildInfiniBandPartition(t, dbSession, nil, "test-InfiniBandPartition", nil, tn.Org, tn.ID, st.ID, db.GetUUIDPtr(uuid.New()), nil, nil, nil, nil, nil, nil, db.GetStrPtr(InfiniBandPartitionStatusReady), tnu.ID)
+	pt := testBuildInfiniBandPartition(t, dbSession, nil, "test-InfiniBandPartition", nil, tn.Org, tn.ID, st.ID, db.GetUUIDPtr(uuid.New()), nil, nil, nil, nil, nil, nil, nil, db.GetStrPtr(InfiniBandPartitionStatusReady), tnu.ID)
 
 	// OTEL Spanner configuration
 	_, _, ctx := testCommonTraceProviderSetup(t, context.Background())
@@ -912,7 +927,7 @@ func TestInfiniBandPartitionSQLDAO_Clear(t *testing.T) {
 
 	st := testBuildSite(t, dbSession, nil, ip.ID, "test-site", "Test Site", ip.Org, ipu.ID)
 
-	pt := testBuildInfiniBandPartition(t, dbSession, nil, "test-InfiniBandPartition", nil, tn.Org, tn.ID, st.ID, db.GetUUIDPtr(uuid.New()), nil, nil, nil, nil, nil, nil, db.GetStrPtr(InfiniBandPartitionStatusReady), tnu.ID)
+	pt := testBuildInfiniBandPartition(t, dbSession, nil, "test-InfiniBandPartition", nil, tn.Org, tn.ID, st.ID, db.GetUUIDPtr(uuid.New()), nil, nil, nil, nil, nil, nil, nil, db.GetStrPtr(InfiniBandPartitionStatusReady), tnu.ID)
 
 	// OTEL Spanner configuration
 	_, _, ctx := testCommonTraceProviderSetup(t, context.Background())

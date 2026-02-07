@@ -8,18 +8,12 @@
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
 
-# ClusterIssuer using Vault PKI backend (embedded in cert-manager pod)
+# CA ClusterIssuer using pre-created CA secret
+# Uses the same CA as credsmgr for consistency
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
-  name: vault-issuer
+  name: carbide-ca-issuer
 spec:
-  vault:
-    # Vault server URL (embedded in carbide-rest-cert-manager pod)
-    server: http://carbide-rest-cert-manager.carbide.svc.cluster.local:8200
-    # PKI path and role configured in Vault
-    path: pki/sign/cloud-cert
-    auth:
-      tokenSecretRef:
-        name: vault-token
-        key: token
+  ca:
+    secretName: ca-signing-secret

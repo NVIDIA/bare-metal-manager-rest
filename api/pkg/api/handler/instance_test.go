@@ -708,16 +708,16 @@ func TestCreateInstanceHandler_Handle(t *testing.T) {
 	istbyid := testInstanceBuildInstanceType(t, dbSession, ip, "test-instance-type-byid", st1, cdbm.InstanceStatusReady)
 	assert.NotNil(t, istbyid)
 
-	// Add capability to machine
-	common.TestBuildMachineCapability(t, dbSession, cdb.GetStrPtr(istbyid.ID.String()), nil, cdbm.MachineCapabilityTypeGPU, "NVIDIA GB200", nil, nil, cdb.GetStrPtr("NVIDIA"), cdb.GetIntPtr(4), cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeNVLink), nil)
-	assert.NotNil(t, mcNvlType)
-
 	albyid := testInstanceSiteBuildAllocation(t, dbSession, st1, tn1, "test-allocation-byid", ipu)
 	assert.NotNil(t, albyid)
 	alcbyid := testInstanceSiteBuildAllocationContraints(t, dbSession, albyid, cdbm.AllocationResourceTypeInstanceType, istbyid.ID, cdbm.AllocationConstraintTypeReserved, 10, ipu)
 	assert.NotNil(t, alcbyid)
 	mcbyid := testInstanceBuildMachine(t, dbSession, ip.ID, st1.ID, cdb.GetBoolPtr(false), nil)
 	assert.NotNil(t, mcbyid)
+
+	// Add capability to machine
+	common.TestBuildMachineCapability(t, dbSession, &mcbyid.ID, nil, cdbm.MachineCapabilityTypeGPU, "NVIDIA GB200", nil, nil, cdb.GetStrPtr("NVIDIA"), cdb.GetIntPtr(4), cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeNVLink), nil)
+
 	mcinstbyid := testInstanceBuildMachineInstanceType(t, dbSession, mcbyid, istbyid)
 	assert.NotNil(t, mcinstbyid)
 
@@ -1564,6 +1564,24 @@ func TestCreateInstanceHandler_Handle(t *testing.T) {
 							SubnetID: cdb.GetStrPtr(subnet2.ID.String()),
 						},
 					},
+					NVLinkInterfaces: []model.APINVLinkInterfaceCreateOrUpdateRequest{
+						{
+							NVLinkLogicalPartitionID: nvllp1.ID.String(),
+							DeviceInstance:           0,
+						},
+						{
+							NVLinkLogicalPartitionID: nvllp1.ID.String(),
+							DeviceInstance:           1,
+						},
+						{
+							NVLinkLogicalPartitionID: nvllp1.ID.String(),
+							DeviceInstance:           2,
+						},
+						{
+							NVLinkLogicalPartitionID: nvllp1.ID.String(),
+							DeviceInstance:           3,
+						},
+					},
 					PhoneHomeEnabled: cdb.GetBoolPtr(false),
 				},
 				reqMachine:   mcbyid,
@@ -2034,7 +2052,7 @@ func TestCreateInstanceHandler_Handle(t *testing.T) {
 				reqOrg:      tnOrg,
 				reqUser:     tnu1,
 				respCode:    http.StatusBadRequest,
-				respMessage: "InfiniBand Interfaces cannot be specified if Instance Type doesn't have InfiniBand Capability",
+				respMessage: "InfiniBand Interfaces cannot be specified if Instance Type or Machine doesn't have InfiniBand Capability",
 			},
 			wantErr: false,
 		},
@@ -3382,9 +3400,8 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 
 	inst13 := testInstanceBuildInstance(t, dbSession, "test-instance-nvlink-update", al3.ID, alc3.ID, tn1.ID, ip.ID, st3.ID, &ist4.ID, vpc4.ID, cdb.GetStrPtr(mc5.ID), &os2.ID, nil, cdbm.InstanceStatusReady)
 
-	// Add NVLink GPU capability to Instance Type
-	mcNvlType := common.TestBuildMachineCapability(t, dbSession, nil, &ist4.ID, cdbm.MachineCapabilityTypeGPU, "NVIDIA GB200", nil, nil, cdb.GetStrPtr("NVIDIA"), cdb.GetIntPtr(4), cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeNVLink), nil)
-	assert.NotNil(t, mcNvlType)
+	// Add NVLink GPU capability to Machine
+	common.TestBuildMachineCapability(t, dbSession, &mc5.ID, nil, cdbm.MachineCapabilityTypeGPU, "NVIDIA GB200", nil, nil, cdb.GetStrPtr("NVIDIA"), cdb.GetIntPtr(4), cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeNVLink), nil)
 
 	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", tnOrg1, st3, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 	assert.NotNil(t, nvllp1)
@@ -3395,13 +3412,13 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 	instnvlifc1 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp1.ID, cdb.GetStrPtr("NVIDIA GB200"), 0, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, instnvlifc1)
 
-	instnvlifc2 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp2.ID, cdb.GetStrPtr("NVIDIA GB200"), 1, cdbm.NVLinkInterfaceStatusReady)
+	instnvlifc2 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp1.ID, cdb.GetStrPtr("NVIDIA GB200"), 1, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, instnvlifc2)
 
-	instnvlifc3 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp2.ID, cdb.GetStrPtr("NVIDIA GB200"), 2, cdbm.NVLinkInterfaceStatusReady)
+	instnvlifc3 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp1.ID, cdb.GetStrPtr("NVIDIA GB200"), 2, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, instnvlifc3)
 
-	instnvlifc4 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp2.ID, cdb.GetStrPtr("NVIDIA GB200"), 3, cdbm.NVLinkInterfaceStatusReady)
+	instnvlifc4 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp1.ID, cdb.GetStrPtr("NVIDIA GB200"), 3, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, instnvlifc4)
 
 	// Fixtures for NSG-specific testing
@@ -4619,6 +4636,46 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 			verifyChildSpanner:          true,
 		},
 		{
+			name: "test Instance update API endpoint failure with update existing NVLink interfaces with same NVLink Logical Partition ID",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				scp:       scp,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIInstanceUpdateRequest{
+					IpxeScript: os2.IpxeScript,
+					NVLinkInterfaces: []model.APINVLinkInterfaceCreateOrUpdateRequest{
+						{
+							NVLinkLogicalPartitionID: nvllp1.ID.String(),
+							DeviceInstance:           0,
+						},
+						{
+							NVLinkLogicalPartitionID: nvllp1.ID.String(),
+							DeviceInstance:           1,
+						},
+						{
+							NVLinkLogicalPartitionID: nvllp1.ID.String(),
+							DeviceInstance:           2,
+						},
+						{
+							NVLinkLogicalPartitionID: nvllp1.ID.String(),
+							DeviceInstance:           3,
+						},
+					},
+				},
+				reqInstance: inst13.ID.String(),
+				reqOrg:      tnOrg1,
+				reqUser:     tnu1,
+				respCode:    http.StatusBadRequest,
+				respMessage: cdb.GetStrPtr(fmt.Sprintf("NVLink Interfaces of this Instance are already connected to NVLink Logical Partition: %v", nvllp1.ID.String())),
+			},
+			wantErr:                     false,
+			verifySiteControllerRequest: true,
+			verifyChildSpanner:          true,
+		},
+		{
 			name: "test Instance update API endpoint success with NVLink interface update ",
 			fields: fields{
 				dbSession: dbSession,
@@ -4976,7 +5033,7 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 						}
 
 						// Verify the InfiniBand Interfaces are in the Site Controller request
-						if tt.args.reqData.InfiniBandInterfaces != nil && len(tt.args.reqData.InfiniBandInterfaces) > 0 {
+						if len(tt.args.reqData.InfiniBandInterfaces) > 0 {
 							assert.Equal(t, len(siteReq.Config.Infiniband.IbInterfaces), len(tt.args.reqData.InfiniBandInterfaces))
 
 							// Make sure order to should be same as the request received
@@ -4986,7 +5043,7 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 						}
 
 						// Verify the NVLink Interfaces are in the Site Controller request
-						if tt.args.reqData.NVLinkInterfaces != nil && len(tt.args.reqData.NVLinkInterfaces) > 0 {
+						if len(tt.args.reqData.NVLinkInterfaces) > 0 {
 							assert.Equal(t, len(siteReq.Config.Nvlink.GpuConfigs), len(tt.args.reqData.NVLinkInterfaces))
 
 							// Make sure order to should be same as the request received

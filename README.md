@@ -35,7 +35,7 @@ make kind-reset
 This command:
 1. Creates a Kind Kubernetes cluster
 2. Builds all Docker images
-3. Deploys all services (PostgreSQL, Temporal, Keycloak, Vault, etc.)
+3. Deploys all services (PostgreSQL, Temporal, Keycloak, cert-manager, etc.)
 4. Runs database migrations
 5. Configures PKI and site-agent
 
@@ -46,7 +46,6 @@ Once complete, services are available at:
 | API | http://localhost:8388 |
 | Keycloak | http://localhost:8080 |
 | Temporal UI | http://localhost:8233 |
-| Vault | http://localhost:8200 |
 | Adminer (DB UI) | http://localhost:8081 |
 
 Other useful commands:
@@ -154,7 +153,7 @@ done
 | `carbide-rest-site-manager` | Site management worker |
 | `carbide-rest-site-agent` | On-site agent |
 | `carbide-rest-db` | Database migrations (run to completion) |
-| `carbide-rest-cert-manager` | Certificate manager |
+| `carbide-rest-cert-manager` | Native PKI certificate manager |
 
 
 
@@ -167,7 +166,7 @@ done
 | carbide-rest-site-manager | `sitemgr` | Site management service |
 | carbide-site-agent | `elektra` | On-site agent |
 | carbide-rest-db | `migrations` | Database migrations |
-| carbide-rest-cert-manager | `credsmgr` | Certificate/credentials manager |
+| carbide-rest-cert-manager | `credsmgr` | Native PKI certificate manager |
 
 Supporting modules:
 - **common** - Shared utilities and configurations

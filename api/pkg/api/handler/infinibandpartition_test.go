@@ -10,7 +10,6 @@
  * its affiliates is strictly prohibited.
  */
 
-
 package handler
 
 import (
@@ -26,9 +25,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 	"github.com/nvidia/carbide-rest/api/internal/config"
 	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
 	"github.com/nvidia/carbide-rest/api/pkg/api/model"
@@ -39,6 +35,9 @@ import (
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
 	swe "github.com/nvidia/carbide-rest/site-workflow/pkg/error"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	oteltrace "go.opentelemetry.io/otel/trace"
 	"go.temporal.io/api/enums/v1"
 	temporalClient "go.temporal.io/sdk/client"
@@ -138,7 +137,7 @@ func TestInfiniBandPartitionHandler_Create(t *testing.T) {
 	al2 := testBuildAllocation(t, dbSession, site3, tn1, "test-allocation-2", tnu1)
 	assert.NotNil(t, al2)
 
-	ibpObj := model.APIInfiniBandPartitionCreateRequest{Name: "test-ibp-1", Description: cdb.GetStrPtr("test"), SiteID: site1.ID.String()}
+	ibpObj := model.APIInfiniBandPartitionCreateRequest{Name: "test-ibp-1", Description: cdb.GetStrPtr("test"), SiteID: site1.ID.String(), Labels: map[string]string{"test-label-1": "test-value-1"}}
 	okBody, err := json.Marshal(ibpObj)
 	assert.Nil(t, err)
 
@@ -406,6 +405,7 @@ func TestInfiniBandPartitionHandler_Create(t *testing.T) {
 				// validate response fields
 				assert.Equal(t, len(rsp.StatusHistory), 1)
 				assert.Equal(t, rsp.Name, tc.reqBodyModel.Name)
+				assert.Equal(t, rsp.Labels, tc.reqBodyModel.Labels)
 				assert.Equal(t, rsp.Status, cdbm.InfiniBandPartitionStatusPending)
 			}
 			if tc.verifyChildSpanner {
@@ -472,6 +472,7 @@ func TestInfiniBandPartitionHandler_GetAll(t *testing.T) {
 				TenantOrg:   tnOrg1,
 				SiteID:      site1.ID,
 				TenantID:    tn1.ID,
+				Labels:      map[string]string{"test-ibp-labels-key-%02d": fmt.Sprintf("test-ibp-labels-value-%02d", i)},
 				Status:      cdbm.InfiniBandPartitionStatusPending,
 				CreatedBy:   tnu1.ID,
 			},
@@ -652,6 +653,17 @@ func TestInfiniBandPartitionHandler_GetAll(t *testing.T) {
 			user:           tnu1,
 			querySiteID:    cdb.GetStrPtr(site1.ID.String()),
 			querySearch:    cdb.GetStrPtr("test ready"),
+			expectedErr:    false,
+			expectedStatus: http.StatusOK,
+			expectedCnt:    paginator.DefaultLimit,
+			expectedTotal:  &totalCount,
+		},
+		{
+			name:           "success when labels query search specified",
+			reqOrgName:     tnOrg1,
+			user:           tnu1,
+			querySiteID:    cdb.GetStrPtr(site1.ID.String()),
+			querySearch:    cdb.GetStrPtr("test-ibp-labels-key"),
 			expectedErr:    false,
 			expectedStatus: http.StatusOK,
 			expectedCnt:    paginator.DefaultLimit,

@@ -10,7 +10,6 @@
  * its affiliates is strictly prohibited.
  */
 
-
 package model
 
 import (
@@ -36,23 +35,69 @@ type APIInfiniBandPartitionCreateRequest struct {
 	Description *string `json:"description"`
 	// SiteID is the ID of the Site
 	SiteID string `json:"siteId"`
+	// Labels is the labels of the InfiniBand Partition
+	Labels map[string]string `json:"labels"`
 }
 
 // Validate ensure the values passed in request are acceptable
-func (fbcr APIInfiniBandPartitionCreateRequest) Validate() error {
-	err := validation.ValidateStruct(&fbcr,
-		validation.Field(&fbcr.Name,
+func (ibpcr APIInfiniBandPartitionCreateRequest) Validate() error {
+	err := validation.ValidateStruct(&ibpcr,
+		validation.Field(&ibpcr.Name,
 			validation.Required.Error(validationErrorStringLength),
 			validation.By(util.ValidateNameCharacters),
 			validation.Length(2, 256).Error(validationErrorStringLength)),
-		validation.Field(&fbcr.SiteID,
+		validation.Field(&ibpcr.SiteID,
 			validation.Required.Error(validationErrorValueRequired),
 			validationis.UUID.Error(validationErrorInvalidUUID)),
 	)
+
 	if err != nil {
 		return err
 	}
-	return nil
+
+	// Labels validation
+	if ibpcr.Labels != nil {
+		if len(ibpcr.Labels) > util.LabelCountMax {
+			return validation.Errors{
+				"labels": util.ErrValidationLabelCount,
+			}
+		}
+
+		for key, value := range ibpcr.Labels {
+			if key == "" {
+				return validation.Errors{
+					"labels": util.ErrValidationLabelKeyEmpty,
+				}
+			}
+
+			// Key validation
+			err = validation.Validate(key,
+				validation.Match(util.NotAllWhitespaceRegexp).Error("label key consists only of whitespace"),
+				validation.Length(1, 255).Error(validationErrorMapKeyLabelStringLength),
+			)
+
+			if err != nil {
+				return validation.Errors{
+					"labels": util.ErrValidationLabelKeyLength,
+				}
+			}
+
+			// Value validation
+			err = validation.Validate(value,
+				validation.When(value != "",
+					validation.Length(0, 255).Error(validationErrorMapValueLabelStringLength),
+				),
+			)
+
+			if err != nil {
+				return validation.Errors{
+					"labels": util.ErrValidationLabelValueLength,
+				}
+			}
+		}
+	}
+
+	return err
 }
 
 // APIInfiniBandPartitionUpdateRequest is the data structure to capture user request to update a InfiniBandPartition
@@ -64,13 +109,19 @@ type APIInfiniBandPartitionUpdateRequest struct {
 }
 
 // Validate ensure the values passed in request are acceptable
-func (fbur APIInfiniBandPartitionUpdateRequest) Validate() error {
-	return validation.ValidateStruct(&fbur,
-		validation.Field(&fbur.Name,
-			validation.When(fbur.Name != nil, validation.Required.Error(validationErrorStringLength)),
-			validation.When(fbur.Name != nil, validation.By(util.ValidateNameCharacters)),
-			validation.When(fbur.Name != nil, validation.Length(2, 256).Error(validationErrorStringLength))),
+func (ibpur APIInfiniBandPartitionUpdateRequest) Validate() error {
+	err := validation.ValidateStruct(&ibpur,
+		validation.Field(&ibpur.Name,
+			validation.When(ibpur.Name != nil, validation.Required.Error(validationErrorStringLength)),
+			validation.When(ibpur.Name != nil, validation.By(util.ValidateNameCharacters)),
+			validation.When(ibpur.Name != nil, validation.Length(2, 256).Error(validationErrorStringLength))),
 	)
+
+	if err != nil {
+		return err
+	}
+
+	return err
 }
 
 // APIInfiniBandPartition is the data structure to capture API representation of a InfiniBand Partition
@@ -103,6 +154,8 @@ type APIInfiniBandPartition struct {
 	Mtu *int `json:"mtu"`
 	// EnableSharp indicates if sharp enable on the IB partition or not
 	EnableSharp *bool `json:"enableSharp"`
+	// Labels is the labels of the InfiniBand Partition
+	Labels map[string]string `json:"labels"`
 	// Status is the status o the InfiniBand Partition
 	Status string `json:"status"`
 	// StatusHistory is the status detail records for the InfiniBand Partition over time
@@ -126,6 +179,7 @@ func NewAPIInfiniBandPartition(dibp *cdbm.InfiniBandPartition, dbsds []cdbm.Stat
 		ServiceLevel:  dibp.ServiceLevel,
 		RateLimit:     dibp.RateLimit,
 		Mtu:           dibp.Mtu,
+		Labels:        dibp.Labels,
 		EnableSharp:   dibp.EnableSharp,
 		Status:        dibp.Status,
 		Created:       dibp.Created,
