@@ -113,7 +113,7 @@ func TestGetAllNVLinkInterface_Handle(t *testing.T) {
 
 	nvlinklogicalpartitions := []*cdbm.NVLinkLogicalPartition{}
 	for i := 0; i < 3; i++ {
-		nvlinklogicalpartition1 := testBuildNVLinkLogicalPartition(t, dbSession, fmt.Sprintf("test-nvlinklogicalpartition-%d", i), tn1.Org, st1, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+		nvlinklogicalpartition1 := testBuildNVLinkLogicalPartition(t, dbSession, fmt.Sprintf("test-nvlinklogicalpartition-%d", i), cdb.GetStrPtr("Test NVLink Logical Partition"), tn1.Org, st1, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 		assert.NotNil(t, nvlinklogicalpartition1)
 		nvlinklogicalpartitions = append(nvlinklogicalpartitions, nvlinklogicalpartition1)
 	}

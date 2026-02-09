@@ -1021,6 +1021,22 @@ func (uibph UpdateNVLinkLogicalPartitionHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "NVLink Logical Partition is not owned by current org's Tenant", nil)
 	}
 
+	needsUpdate := false
+	if apiRequest.Name != nil && *apiRequest.Name != nvllp.Name {
+		needsUpdate = true
+	}
+
+	if apiRequest.Description != nil && (nvllp.Description == nil || *apiRequest.Description != *nvllp.Description) {
+		needsUpdate = true
+	}
+
+	if !needsUpdate {
+		// no updates needed, send response
+		apiNvllp := model.NewAPINVLinkLogicalPartition(nvllp, nil, nil, nil)
+		logger.Info().Msg("finishing API handler")
+		return c.JSON(http.StatusOK, apiNvllp)
+	}
+
 	// check for name uniqueness for the tenant, ie, tenant cannot have another NVLink Logical Partition with same name
 	if apiRequest.Name != nil && *apiRequest.Name != nvllp.Name {
 		nvllps, tot, serr := nvllpDAO.GetAll(
@@ -1086,11 +1102,14 @@ func (uibph UpdateNVLinkLogicalPartitionHandler) Handle(c echo.Context) error {
 	updateRequest := &cwssaws.NVLinkLogicalPartitionUpdateRequest{
 		Id: &cwssaws.NVLinkLogicalPartitionId{Value: unvllp.ID.String()},
 		Config: &cwssaws.NVLinkLogicalPartitionConfig{
-			Metadata: &cwssaws.Metadata{
-				Name: unvllp.Name,
-			},
 			TenantOrganizationId: orgTenant.Org,
+			Metadata:             &cwssaws.Metadata{},
 		},
+	}
+
+	// Include name if it is present
+	if apiRequest.Name != nil {
+		updateRequest.Config.Metadata.Name = unvllp.Name
 	}
 
 	// Include description if it is present

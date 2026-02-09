@@ -806,7 +806,7 @@ func TestCreateInstanceHandler_Handle(t *testing.T) {
 	assert.NotNil(t, osPhoneHome)
 
 	// create a default NVLink Logical Partition
-	nvllpDefault := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-default", tnOrg, st1, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	nvllpDefault := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-default", cdb.GetStrPtr("Test NVLink Logical Partition"), tnOrg, st1, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 	assert.NotNil(t, nvllpDefault)
 
 	vpc1 := testInstanceBuildVPC(t, dbSession, "test-vpc-1", ip, tn1, st1, cdb.GetUUIDPtr(uuid.New()), nil, cdb.GetStrPtr(cdbm.VpcEthernetVirtualizer), cdb.GetUUIDPtr(nvllpDefault.ID), cdbm.VpcStatusReady, tnu1)
@@ -1106,7 +1106,7 @@ func TestCreateInstanceHandler_Handle(t *testing.T) {
 	*/
 
 	// NvLink Logical Partition
-	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", tnOrg, st1, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", cdb.GetStrPtr("Test NVLink Logical Partition"), tnOrg, st1, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 	assert.NotNil(t, nvllp1)
 
 	e := echo.New()
@@ -3404,10 +3404,10 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 	// Add NVLink GPU capability to Machine
 	common.TestBuildMachineCapability(t, dbSession, &mc5.ID, nil, cdbm.MachineCapabilityTypeGPU, "NVIDIA GB200", nil, nil, cdb.GetStrPtr("NVIDIA"), cdb.GetIntPtr(4), cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeNVLink), nil)
 
-	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", tnOrg1, st3, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", cdb.GetStrPtr("Test NVLink Logical Partition"), tnOrg1, st3, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 	assert.NotNil(t, nvllp1)
 
-	nvllp2 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-2", tnOrg1, st3, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	nvllp2 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-2", cdb.GetStrPtr("Test NVLink Logical Partition"), tnOrg1, st3, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 	assert.NotNil(t, nvllp2)
 
 	instnvlifc1 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp1.ID, cdb.GetUUIDPtr(uuid.New()), cdb.GetStrPtr("NVIDIA GB200"), 0, cdbm.NVLinkInterfaceStatusReady)
