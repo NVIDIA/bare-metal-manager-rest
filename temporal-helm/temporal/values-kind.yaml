@@ -29,7 +29,7 @@ server:
   replicaCount: 1
   additionalEnv:
     - name: TEMPORAL_CLI_TLS_SERVER_NAME
-      value: interservice.server.temporal.nvidia.com
+      value: interservice.server.temporal.local
     - name: TEMPORAL_CLI_TLS_ENABLE_HOST_VERIFICATION
       value: "true"
     - name: TEMPORAL_CLI_TLS_CERT
@@ -130,7 +130,7 @@ server:
             clientCaFiles:
               - /var/secrets/temporal/certs/server-interservice/ca.crt
           client:
-            serverName: interservice.server.temporal.nvidia.com
+            serverName: interservice.server.temporal.local
             rootCaFiles:
               - /var/secrets/temporal/certs/server-interservice/ca.crt
         frontend:
@@ -141,17 +141,17 @@ server:
             clientCaFiles:
               - /var/secrets/temporal/certs/server-interservice/ca.crt
           client:
-            serverName: interservice.server.temporal.nvidia.com
+            serverName: interservice.server.temporal.local
             rootCaFiles:
               - /var/secrets/temporal/certs/server-interservice/ca.crt
           hostOverrides:
-            cloud.server.temporal.nvidia.com:
+            cloud.server.temporal.local:
               certFile: /var/secrets/temporal/certs/server-cloud/tls.crt
               keyFile: /var/secrets/temporal/certs/server-cloud/tls.key
               requireClientAuth: true
               clientCaFiles:
                 - /var/secrets/temporal/certs/server-interservice/ca.crt
-            site.server.temporal.nvidia.com:
+            site.server.temporal.local:
               certFile: /var/secrets/temporal/certs/server-site/tls.crt
               keyFile: /var/secrets/temporal/certs/server-site/tls.key
               requireClientAuth: true
@@ -224,7 +224,7 @@ admintools:
     pullPolicy: IfNotPresent
   additionalEnv:
     - name: TEMPORAL_CLI_TLS_SERVER_NAME
-      value: interservice.server.temporal.nvidia.com
+      value: interservice.server.temporal.local
     - name: TEMPORAL_CLI_TLS_DISABLE_HOST_VERIFICATION
       value: "false"
     - name: TEMPORAL_CLI_TLS_CERT
@@ -261,7 +261,7 @@ web:
   replicaCount: 1
   additionalEnv:
     - name: TEMPORAL_TLS_SERVER_NAME
-      value: interservice.server.temporal.nvidia.com
+      value: interservice.server.temporal.local
     - name: TEMPORAL_TLS_ENABLE_HOST_VERIFICATION
       value: "true"
     - name: TEMPORAL_TLS_CERT

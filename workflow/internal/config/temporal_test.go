@@ -40,12 +40,12 @@ func TestNewTemporalConfig(t *testing.T) {
 	tcfg := TemporalConfig{
 		Host:          "localhost",
 		Port:          7233,
-		ServerName:    "temporal.nvidia.com",
+		ServerName:    "temporal.local",
 		Namespace:     "cloud",
 		Queue:         "cloud",
 		EncryptionKey: "test",
 		ClientTLSCfg: &tls.Config{
-			ServerName:         fmt.Sprintf("%s.%s", "cloud", "temporal.nvidia.com"),
+			ServerName:         fmt.Sprintf("%s.%s", "cloud", "temporal.local"),
 			MinVersion:         tls.VersionTLS12,
 			InsecureSkipVerify: false,
 		},

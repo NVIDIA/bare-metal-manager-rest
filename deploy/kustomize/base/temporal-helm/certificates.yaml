@@ -20,7 +20,7 @@ spec:
     - server auth
     - client auth
   dnsNames:
-    - interservice.server.temporal.nvidia.com
+    - interservice.server.temporal.local
     - temporal-frontend
     - temporal-frontend.temporal
     - temporal-frontend.temporal.svc
@@ -63,7 +63,7 @@ spec:
     - server auth
     - client auth
   dnsNames:
-    - cloud.server.temporal.nvidia.com
+    - cloud.server.temporal.local
     - cloud.temporal-frontend
     - cloud.temporal-frontend.temporal
     - cloud.temporal-frontend.temporal.svc.cluster.local
@@ -93,7 +93,7 @@ spec:
     - server auth
     - client auth
   dnsNames:
-    - site.server.temporal.nvidia.com
+    - site.server.temporal.local
     - site.temporal-frontend
     - site.temporal-frontend.temporal
     - site.temporal-frontend.temporal.svc.cluster.local

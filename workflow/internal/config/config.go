@@ -253,7 +253,7 @@ func (c *Config) Validate() {
 	}
 
 	if c.GetNgcAPIBaseURL() == "" {
-		log.Panic().Msg("ngc api base url config must be specified")
+		log.Warn().Msg("ngc api base url config not specified, NGC user lookups will be unavailable")
 	}
 }
 

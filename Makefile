@@ -351,12 +351,12 @@ kind-reset:
 		--tls-cert-path /var/secrets/temporal/certs/server-interservice/tls.crt \
 		--tls-key-path /var/secrets/temporal/certs/server-interservice/tls.key \
 		--tls-ca-path /var/secrets/temporal/certs/server-interservice/ca.crt \
-		--tls-server-name interservice.server.temporal.nvidia.com || true
+		--tls-server-name interservice.server.temporal.local || true
 	kubectl -n temporal exec deploy/temporal-admintools -- temporal operator namespace create site --address temporal-frontend:7233 \
 		--tls-cert-path /var/secrets/temporal/certs/server-interservice/tls.crt \
 		--tls-key-path /var/secrets/temporal/certs/server-interservice/tls.key \
 		--tls-ca-path /var/secrets/temporal/certs/server-interservice/ca.crt \
-		--tls-server-name interservice.server.temporal.nvidia.com || true
+		--tls-server-name interservice.server.temporal.local || true
 	@echo "Temporal Helm deployment ready"
 	kubectl -n carbide wait --for=condition=ready pod -l app=keycloak --timeout=360s
 	kubectl -n carbide wait --for=condition=complete job/db-migrations --timeout=240s

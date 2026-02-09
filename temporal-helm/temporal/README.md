@@ -44,26 +44,20 @@ Temporal can be configured to run with various dependencies. The default "Batter
 
 The sections that follow describe various deployment configurations, from a minimal one-replica installation using included dependencies, to a replicated deployment on existing infrastructure.
 
-### Installation for Forge
+### Installation for Local Kind Cluster
 
-To install Temporal for Forge environments, ensure that mTLS certs have been generated and pushed to the Forge Cloud control plane cluster appropriate for the environment.
-
-Values files for different environments can be found at: https://gitlab-master.nvidia.com/nvmetal/infra/-/tree/main/post-provision/files?ref_type=heads
+To install Temporal for a local kind cluster, ensure that mTLS certs have been generated and configured.
 
 Then you can run the following command:
 
 ```
-helm install --debug -n temporal -f values-<env>.yaml cloud-temporal . --timeout 900s
+helm install --debug -n temporal -f values-kind.yaml temporal . --timeout 900s
 ```
 
-The following components are enabled for Forge:
-
-* ElasticSearch
-
-To upgrade existing Temporal installation in a Forge env, run the following command:
+To upgrade existing Temporal installation, run the following command:
 
 ```
-helm upgrade --debug -n temporal -f values-<env>.yaml temporal . --timeout 900s
+helm upgrade --debug -n temporal -f values-kind.yaml temporal . --timeout 900s
 ```
 
 ### Minimal installation with required dependencies only

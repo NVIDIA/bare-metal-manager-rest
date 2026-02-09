@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	caBaseDNSDefault = "temporal.nvidia.com"
+	caBaseDNSDefault = "temporal.local"
 )
 
 // NewCommand creates a new cli command
