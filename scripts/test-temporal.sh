@@ -1,7 +1,4 @@
 #!/bin/bash
-# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
-
 set -e
 
 NAMESPACE="${NAMESPACE:-temporal}"
