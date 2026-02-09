@@ -83,8 +83,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            {{- if or $.Values.elasticsearch.enabled $.Values.elasticsearch.external }}
             - name: ENABLE_ES
-              value: "{{ or $.Values.elasticsearch.enabled $.Values.elasticsearch.external }}"
+              value: "true"
             - name: ES_SEEDS
               value: "{{ $.Values.elasticsearch.host }}"
             - name: ES_PORT
@@ -99,6 +100,7 @@ spec:
               value: "{{ $.Values.elasticsearch.username }}"
             - name: ES_PWD
               value: "{{ $.Values.elasticsearch.password }}"
+            {{- end }}
             - name: SERVICES
               value: {{ $service }}
             - name: TEMPORAL_STORE_PASSWORD
