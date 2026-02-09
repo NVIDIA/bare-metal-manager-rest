@@ -18,6 +18,10 @@ on:
         required: false
         default: "ubuntu-latest"
         type: string
+    secrets:
+      NVCR_STG_REGISTRY:
+        description: "Full NVCR staging registry path (e.g. nvcr.io/<org>/<team>)"
+        required: true
     outputs:
       semantic_version:
         description: "Semantic version from VERSION file"
@@ -85,9 +89,8 @@ jobs:
           SHORT_SHA=$(git rev-parse --short HEAD)
           FULL_SHA=$(git rev-parse HEAD)
 
-          # Set target registry - replace with your NVCR org/team
-          # Format: nvcr.io/<org>/<project>
-          target_registry="nvcr.io/0837451325059433/carbide-dev"
+          # Set target registry from secret
+          target_registry="${{ secrets.NVCR_STG_REGISTRY }}"
 
           # Get branch name and sanitize it for use in image tags
           # Replace slashes and other invalid characters with dashes

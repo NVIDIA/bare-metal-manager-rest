@@ -56,17 +56,15 @@ on:
         required: false
         default: ""
         type: string
-      ngc_path:
-        description: 'NGC path for resource uploads'
-        required: false
-        default: '0837451325059433/carbide-dev'
-        type: string
     secrets:
       NVCR_USERNAME:
         description: 'NVCR username'
         required: false
       NVCR_TOKEN:
         description: 'NVCR token'
+        required: false
+      NGC_STG_PATH:
+        description: 'NGC org/team path for staging resource uploads (e.g. <org>/<team>)'
         required: false
 
 jobs:
@@ -167,7 +165,7 @@ jobs:
           description: ${{ inputs.service_name }} binary (amd64)
           version: ${{ inputs.semantic_version }}-${{ inputs.short_sha }}
           path: artifacts/${{ inputs.binary_name }}-amd64
-          ngc-path: ${{ inputs.ngc_path }}
+          ngc-path: ${{ secrets.NGC_STG_PATH }}
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
       - name: Upload binary artifact with latest tag
@@ -179,7 +177,7 @@ jobs:
           description: ${{ inputs.service_name }} binary (amd64)
           version: latest
           path: artifacts/${{ inputs.binary_name }}-amd64
-          ngc-path: ${{ inputs.ngc_path }}
+          ngc-path: ${{ secrets.NGC_STG_PATH }}
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
       # Upload arm64 binary artifacts
@@ -192,7 +190,7 @@ jobs:
           description: ${{ inputs.service_name }} binary (arm64)
           version: ${{ inputs.semantic_version }}-${{ inputs.short_sha }}
           path: artifacts/${{ inputs.binary_name }}-arm64
-          ngc-path: ${{ inputs.ngc_path }}
+          ngc-path: ${{ secrets.NGC_STG_PATH }}
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
       - name: Upload arm64 binary artifact with latest tag
@@ -204,7 +202,7 @@ jobs:
           description: ${{ inputs.service_name }} binary (arm64)
           version: latest
           path: artifacts/${{ inputs.binary_name }}-arm64
-          ngc-path: ${{ inputs.ngc_path }}
+          ngc-path: ${{ secrets.NGC_STG_PATH }}
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
       - name: Upload Docker image artifact with semantic version
@@ -216,7 +214,7 @@ jobs:
           description: ${{ inputs.service_name }} image
           version: ${{ inputs.semantic_version }}-${{ inputs.short_sha }}
           path: artifacts/${{ inputs.service_name }}-${{ inputs.semantic_version }}-${{ inputs.short_sha }}.tar.gz
-          ngc-path: ${{ inputs.ngc_path }}
+          ngc-path: ${{ secrets.NGC_STG_PATH }}
           ngc-key: ${{ secrets.NVCR_TOKEN }}
 
       - name: Upload Docker image artifact with latest tag
@@ -228,5 +226,5 @@ jobs:
           description: ${{ inputs.service_name }} image
           version: latest
           path: artifacts/${{ inputs.service_name }}-${{ inputs.semantic_version }}-${{ inputs.short_sha }}.tar.gz
-          ngc-path: ${{ inputs.ngc_path }}
+          ngc-path: ${{ secrets.NGC_STG_PATH }}
           ngc-key: ${{ secrets.NVCR_TOKEN }}

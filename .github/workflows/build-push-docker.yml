@@ -60,6 +60,9 @@ on:
       NVCR_TOKEN:
         description: "NVIDIA Container Registry API token"
         required: false
+      NGC_STG_PATH:
+        description: "NGC org/team path for staging resource uploads (e.g. <org>/<team>)"
+        required: false
 
 # Required secrets (must be configured in GitHub repository settings):
 # - NVCR_USERNAME: NVIDIA Container Registry username (typically '$oauthtoken')

@@ -49,9 +49,9 @@ jobs:
     steps:
       - name: Approve Promote to Carbide Registry
         run: |
-          echo "Received build artifacts: ${{ inputs.build_artifacts }}"  
+          echo "Received build artifacts: ${{ inputs.build_artifacts }}"
           echo "Approve Promote to Carbide Registry"
-          echo "Promote Carbide REST to registry ngcr.io/0837451325059433/carbide"
+          echo "Promoting Carbide REST images to production registry"
 
   # ============================================================================
   # Prepare Promotion Matrix

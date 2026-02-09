@@ -33,6 +33,7 @@ jobs:
     uses: ./.github/workflows/prepare-build-info.yml
     with:
       runner: ubuntu-latest
+    secrets: inherit
 
   # Step 2: Lint and Test
   lint-and-test:
@@ -120,9 +121,7 @@ jobs:
       # Images are only pushed for main branch, version tags
       push_enabled: ${{ ((github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && github.event_name == 'push') || needs.prepare.outputs.push_requested == 'true' }}
       release_tag: ${{ needs.prepare.outputs.release_tag }}
-    secrets:
-      NVCR_USERNAME: ${{ secrets.NVCR_STG_USERNAME }}
-      NVCR_TOKEN: ${{ secrets.NVCR_STG_TOKEN }}
+    secrets: inherit
 
   # Step 6: Promote to release candidate
   promote-carbide-rest-to-release-candidate:
