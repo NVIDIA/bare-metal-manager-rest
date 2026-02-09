@@ -835,6 +835,75 @@ func GetIsProviderRequest(ctx context.Context, logger zerolog.Logger, dbSession 
 	return isProviderRequest, orgInfrastructureProvider, orgTenant, nil
 }
 
+// ValidateProviderSiteAccess validates that the user has Provider Admin access to the specified site
+// within the given org. It performs the following checks in order:
+//  1. Org membership validation
+//  2. Provider Admin role validation
+//  3. siteId is non-empty
+//  4. Infrastructure Provider exists for the org
+//  5. Site exists
+//  6. Site belongs to the org's Infrastructure Provider
+//
+// Returns the validated Site on success, or an APIError on the first failure.
+func ValidateProviderSiteAccess(ctx context.Context, logger zerolog.Logger, dbSession *cdb.Session, org string, user *cdbm.User, siteStrID string) (site *cdbm.Site, apiError *cau.APIError) {
+	// Validate org membership
+	ok, err := auth.ValidateOrgMembership(user, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		}
+		return nil, cau.NewAPIError(http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Validate role — only Provider Admins are allowed
+	ok = auth.ValidateUserRoles(user, org, nil, auth.ProviderAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Provider Admin role, access denied")
+		return nil, cau.NewAPIError(http.StatusForbidden, "User does not have Provider Admin role with org", nil)
+	}
+
+	// Validate siteId is provided
+	if siteStrID == "" {
+		return nil, cau.NewAPIError(http.StatusBadRequest, "siteId query parameter is required", nil)
+	}
+
+	// Check that infrastructure provider exists in org
+	ip, err := GetInfrastructureProviderForOrg(ctx, nil, dbSession, org)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error getting infrastructure provider for org")
+		return nil, cau.NewAPIError(http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
+	}
+
+	// Validate the site
+	site, err = GetSiteFromIDString(ctx, nil, siteStrID, dbSession)
+	if err != nil {
+		logger.Warn().Err(err).Str("Site ID", siteStrID).Msg("error getting site from request")
+		return nil, cau.NewAPIError(http.StatusBadRequest, "Error retrieving Site in request", nil)
+	}
+
+	// Verify site's infrastructure provider matches org's infrastructure provider
+	if site.InfrastructureProviderID != ip.ID {
+		return nil, cau.NewAPIError(http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
+	}
+
+	return site, nil
+}
+
+// SplitCommaSeparated expands a slice of query-param values into a single flat slice of trimmed, non-empty strings.
+// It handles both repeated params (e.g. ?key=a&key=b) and comma-separated values within a single param (e.g. ?key=a,b,c),
+// as well as any combination of the two.
+func SplitCommaSeparated(values []string) []string {
+	var out []string
+	for _, v := range values {
+		for _, part := range strings.Split(v, ",") {
+			if s := strings.TrimSpace(part); s != "" {
+				out = append(out, s)
+			}
+		}
+	}
+	return out
+}
+
 // MatchInstanceTypeCapabilitiesForMachines is a utility function to check if Instance Type Capabilities are present in the Capabilities of Machines
 func MatchInstanceTypeCapabilitiesForMachines(ctx context.Context, logger zerolog.Logger, dbSession *cdb.Session, instanceTypeID uuid.UUID, machineIds []string) (bool, *string, *cau.APIError) {
 	if len(machineIds) == 0 {
