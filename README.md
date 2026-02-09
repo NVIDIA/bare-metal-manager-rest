@@ -214,6 +214,14 @@ TruffleHog Secret Scan...................................................Passed
 make pre-commit-update  # Update hooks to latest versions
 ```
 
+## Experimental Notice
+
+This software is considered *experimental* and is a preview release. Use at
+your own risk in production environments. The software is provided "as is"
+without warranties of any kind. Features, APIs, and configurations may change
+without notice in future releases. For production deployments, thoroughly test
+in non-critical environments first.
+
 ## License
 
 See [LICENSE](LICENSE) for details.
