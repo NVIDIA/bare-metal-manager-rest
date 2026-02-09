@@ -222,18 +222,22 @@ type APIMachine struct {
 type APIDMIData struct {
 	// BoardName is the name of the Machine's board
 	BoardName *string `json:"boardName"`
-	// boardSerial is the searial number of the Machine's board
-	BoardSerial *string `json:"boardSerial"`
 	// BoardVersion is the version of the Machine's board
 	BoardVersion *string `json:"boardVersion"`
 	// BiosDate is the date of the Machine's bios
 	BiosDate *string `json:"biosDate"`
 	// BiosVersion is the version of the Machine's bios
 	BiosVersion *string `json:"biosVersion"`
+	// ProductName is the name of the Machine's product
+	ProductName *string `json:"productName"`
 	// ProductSerial is searial number the Machine
 	ProductSerial *string `json:"productSerial"`
+	// BoardSerial is the searial number of the Machine's board
+	BoardSerial *string `json:"boardSerial"`
 	// ChassisSerial is searial number the Machine's Chassis
 	ChassisSerial *string `json:"chassisSerial"`
+	// SysVendor is the vendor of the Machine's system
+	SysVendor *string `json:"sysVendor"`
 }
 
 // APIBMCInfo is the data structure to capture API representation of a Machine's BMC Info
@@ -423,8 +427,11 @@ func NewAPIMachine(dbm *cdbm.Machine, dbmcs []cdbm.MachineCapability, dbmis []cd
 					BoardVersion:  &machine.DiscoveryInfo.DmiData.BoardVersion,
 					BiosDate:      &machine.DiscoveryInfo.DmiData.BiosDate,
 					BiosVersion:   &machine.DiscoveryInfo.DmiData.BiosVersion,
+					ProductName:   &machine.DiscoveryInfo.DmiData.ProductName,
 					ProductSerial: &machine.DiscoveryInfo.DmiData.ProductSerial,
+					BoardSerial:   &machine.DiscoveryInfo.DmiData.BoardSerial,
 					ChassisSerial: &machine.DiscoveryInfo.DmiData.ChassisSerial,
+					SysVendor:     &machine.DiscoveryInfo.DmiData.SysVendor,
 				}
 			}
 
