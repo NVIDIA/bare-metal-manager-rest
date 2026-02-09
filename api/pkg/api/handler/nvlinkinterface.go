@@ -67,6 +67,7 @@ func NewGetAllNVLinkInterfaceHandler(dbSession *cdb.Session, tc temporalClient.C
 // @Param siteId query string true "ID of Site"
 // @Param instanceId path string true "ID of Instance"
 // @Param nvlinkLogicalPartitionId path string true "ID of NVLinkLogicalPartition"
+// @Param nvLinkDomainId path string true "ID of NVLinkDomain"
 // @Param status query string false "Filter by status" e.g. 'Pending', 'Error'"
 // @Param includeRelation query string false "Related entities to include in response e.g. 'NVLinkLogicalPartition, Instance'"
 // @Param pageNumber query integer false "Page number of results returned"
@@ -238,6 +239,17 @@ func (gaish GetAllNVLinkInterfaceHandler) Handle(c echo.Context) error {
 		nvlinkLogicalPartitionIDs = append(nvlinkLogicalPartitionIDs, nvlinkLogicalPartitionID)
 	}
 
+	// Get NVLink Domain ID from query param
+	var nvlinkDomainIDs []uuid.UUID
+	nvlinkDomainIDStr := qParams["nvLinkDomainId"]
+	for _, nvlinkDomainIDStr := range nvlinkDomainIDStr {
+		nvlinkDomainID, err := uuid.Parse(nvlinkDomainIDStr)
+		if err != nil {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid NVLink Domain ID in query param", nil)
+		}
+		nvlinkDomainIDs = append(nvlinkDomainIDs, nvlinkDomainID)
+	}
+
 	// Get status from query param
 	var statuses []string
 	statusQuery := qParams["status"]
@@ -258,6 +270,7 @@ func (gaish GetAllNVLinkInterfaceHandler) Handle(c echo.Context) error {
 		SiteIDs:                   siteIDs,
 		InstanceIDs:               instanceIDs,
 		NVLinkLogicalPartitionIDs: nvlinkLogicalPartitionIDs,
+		NVLinkDomainIDs:           nvlinkDomainIDs,
 		Statuses:                  statuses,
 	}
 

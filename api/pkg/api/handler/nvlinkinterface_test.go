@@ -49,6 +49,7 @@ func TestGetAllNVLinkInterface_Handle(t *testing.T) {
 		reqNvlinkLogicalPartition   *cdbm.NVLinkLogicalPartition
 		reqNvlinkLogicalPartitionID string
 		reqSiteID                   string
+		reqNVLinkDomainID           *uuid.UUID
 		reqOrg                      string
 		reqUser                     *cdbm.User
 		reqMachine                  *cdbm.Machine
@@ -120,7 +121,7 @@ func TestGetAllNVLinkInterface_Handle(t *testing.T) {
 	nvlifcs := []*cdbm.NVLinkInterface{}
 	for i := 0; i < 25; i++ {
 		nvlinklogicalpartition := nvlinklogicalpartitions[i%3]
-		nvlifc := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st1.ID, inst1.ID, nvlinklogicalpartition.ID, cdb.GetStrPtr("NVIDIA GB200"), i%4, cdbm.NVLinkInterfaceStatusProvisioning)
+		nvlifc := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st1.ID, inst1.ID, nvlinklogicalpartition.ID, cdb.GetUUIDPtr(uuid.New()), cdb.GetStrPtr("NVIDIA GB200"), i%4, cdbm.NVLinkInterfaceStatusProvisioning)
 		assert.NotNil(t, nvlifc)
 		nvlifcs = append(nvlifcs, nvlifc)
 	}
@@ -146,6 +147,7 @@ func TestGetAllNVLinkInterface_Handle(t *testing.T) {
 		expectedNVLinkLogicalPartitionID *uuid.UUID
 		expectedDeviceInstance           *int
 		expectedInstance                 *cdbm.Instance
+		expectedNVLinkDomainID           *uuid.UUID
 		expectedCount                    int
 		expectedTotal                    int
 		verifyChildSpanner               bool
@@ -194,6 +196,27 @@ func TestGetAllNVLinkInterface_Handle(t *testing.T) {
 			expectedNVLinkLogicalPartitionID: cdb.GetUUIDPtr(nvlinklogicalpartitions[0].ID),
 			expectedDeviceInstance:           cdb.GetIntPtr(nvlifcs[0].DeviceInstance),
 			verifyChildSpanner:               true,
+		},
+		{
+			name: "test NVLinkInterface getall by NVLinkDomain API endpoint success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqNVLinkDomainID: nvlifcs[0].NVLinkDomainID,
+				reqOrg:            tnOrg1,
+				reqUser:           tnu1,
+				respCode:          http.StatusOK,
+			},
+			wantErr:                false,
+			orderBy:                cdb.GetStrPtr("CREATED_ASC"),
+			expectedCount:          1,
+			expectedTotal:          1,
+			expectedNVLinkDomainID: nvlifcs[0].NVLinkDomainID,
+			expectedDeviceInstance: &nvlifcs[0].DeviceInstance,
+			verifyChildSpanner:     true,
 		},
 		{
 			name: "test NVLinkInterface getall by Instance success with paging",
@@ -495,6 +518,9 @@ func TestGetAllNVLinkInterface_Handle(t *testing.T) {
 			if tt.args.reqNvlinkLogicalPartitionID != "" {
 				q.Add("nvlinkLogicalPartitionId", tt.args.reqNvlinkLogicalPartitionID)
 			}
+			if tt.args.reqNVLinkDomainID != nil {
+				q.Add("nvLinkDomainId", tt.args.reqNVLinkDomainID.String())
+			}
 			if tt.queryIncludeRelations1 != nil {
 				q.Add("includeRelation", *tt.queryIncludeRelations1)
 			}
@@ -572,6 +598,9 @@ func TestGetAllNVLinkInterface_Handle(t *testing.T) {
 					}
 					if tt.expectedDeviceInstance != nil {
 						assert.Equal(t, *tt.expectedDeviceInstance, rst[0].DeviceInstance)
+					}
+					if tt.expectedNVLinkDomainID != nil && tt.expectedNVLinkDomainID.String() != "" {
+						assert.Equal(t, tt.expectedNVLinkDomainID.String(), *rst[0].NVLinkDomainID)
 					}
 				}
 			}

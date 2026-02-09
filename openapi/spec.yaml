@@ -6433,8 +6433,10 @@ paths:
                       instanceId: 64d2028c-ae87-4069-a624-66089d957ef9
                       siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
                       nvLinkLogicalPartitionId: 05ef7e84-1d4e-4e4d-980d-38589479a0fe
+                      "nvLinkDomainId": "4b145552-0d8f-45ff-b652-eed105f93e50",
+                      "deviceInstance": 0,
+                      "gpuGuid": "5108732638879268442",
                       deviceInstance: 0
-                      guid: 946dae0300339498
                       status: Ready
                       created: '2019-08-24T14:15:22Z'
                       updated: '2019-08-24T14:15:22Z'
@@ -6472,6 +6474,11 @@ paths:
           in: query
           name: nvlinkLogicalPartitionId
           description: Filter NVLink Interfaces by NVLink Logical Partition ID.  Can be specified multiple times to filter on more than one ID.
+        - schema:
+            type: string
+          in: query
+          name: nvlinkDomainId
+          description: Filter NVLink Interfaces by NVLink Domain ID.  Can be specified multiple times to filter on more than one ID.
         - schema:
             type: string
             enum:
