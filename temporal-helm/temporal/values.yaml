@@ -409,29 +409,9 @@ schema:
   containerSecurityContext: {}
   securityContext: {}
 
+# Disable elasticsearch - use postgres for visibility
 elasticsearch:
-  enabled: true
-  replicas: 3
-  # Keep your extra config (like esJavaOpts) if you need it
-  esJavaOpts: "-Xms256m -Xmx256m"
-  resources:
-    requests:
-      cpu: "400m"
-      memory: "1Gi"
-    limits:
-      cpu: "1000m"
-      memory: "2Gi"
-  persistence:
-    enabled: false
-  imageTag: 7.17.3
-  host: elasticsearch-master-headless
-  scheme: http
-  port: 9200
-  version: "v7"
-  logLevel: "error"
-  username: ""
-  password: ""
-  visibilityIndex: "temporal_visibility_v1_dev"
+  enabled: false
 
 prometheus:
   enabled: false

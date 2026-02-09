@@ -56,8 +56,9 @@ prometheus:
 grafana:
   enabled: true
 
+# Disable elasticsearch - use postgres for visibility
 elasticsearch:
-  enabled: true
+  enabled: false
 
 schema:
   setup:

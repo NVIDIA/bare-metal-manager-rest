@@ -1,8 +1,0 @@
-#
----
-# Source: cert-manager/templates/sa.yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: credsmgr
-  namespace: "cert-manager"
