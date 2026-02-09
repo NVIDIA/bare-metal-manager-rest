@@ -4164,6 +4164,19 @@ paths:
         Org must have a Tenant entity. User must have `FORGE_TENANT_ADMIN` NGC role.
       tags:
         - NVLink Logical Partition
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the NGC Org
+      - schema:
+          type: string
+        name: nvLinkLogicalPartitionId
+        in: path
+        required: true
+        description: ID of the NVLink Logical Partition
   '/v2/org/{org}/carbide/instance/type':
     parameters:
       - schema:
@@ -6392,7 +6405,7 @@ paths:
           in: query
           name: orderBy
           description: Ordering for pagination query
-  '/v2/org/{org}/carbide/instance/{instanceId}/nvlink-interface':
+  '/v2/org/{org}/carbide/nvlink-interface':
     parameters:
       - schema:
           type: string
@@ -6400,16 +6413,10 @@ paths:
         in: path
         required: true
         description: Name of the NGC Org
-      - schema:
-          type: string
-        name: instanceId
-        in: path
-        required: true
-        description: ID of the Instance
     get:
       summary: Retrieve all NVLink Interfaces
       tags:
-        - Instance
+        - NVLinkInterface
       responses:
         '200':
           description: OK
@@ -6441,7 +6448,7 @@ paths:
           $ref: '#/components/responses/ForbiddenError'
       operationId: get-all-nvlink-interface
       description: |-
-        Get all NVLink Interfaces for an Instance
+        Get all NVLink Interfaces
 
         Org must have a Tenant entity. User must have `FORGE_TENANT_ADMIN` NGC role.
       parameters:
@@ -6450,6 +6457,21 @@ paths:
           in: query
           name: status
           description: Filter NVLink Interfaces by Status
+        - schema:
+            type: string
+          in: query
+          name: siteId
+          description: Filter NVLink Interfaces by Site ID.  Can be specified multiple times to filter on more than one ID.
+        - schema:
+            type: string
+          in: query
+          name: instanceId
+          description: Filter NVLink Interfaces by Instance ID.  Can be specified multiple times to filter on more than one ID.
+        - schema:
+            type: string
+          in: query
+          name: nvlinkLogicalPartitionId
+          description: Filter NVLink Interfaces by NVLink Logical Partition ID.  Can be specified multiple times to filter on more than one ID.
         - schema:
             type: string
             enum:
