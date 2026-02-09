@@ -835,6 +835,21 @@ func GetIsProviderRequest(ctx context.Context, logger zerolog.Logger, dbSession 
 	return isProviderRequest, orgInfrastructureProvider, orgTenant, nil
 }
 
+// SplitCommaSeparated expands a slice of query-param values into a single flat slice of trimmed, non-empty strings.
+// It handles both repeated params (e.g. ?key=a&key=b) and comma-separated values within a single param (e.g. ?key=a,b,c),
+// as well as any combination of the two.
+func SplitCommaSeparated(values []string) []string {
+	var out []string
+	for _, v := range values {
+		for _, part := range strings.Split(v, ",") {
+			if s := strings.TrimSpace(part); s != "" {
+				out = append(out, s)
+			}
+		}
+	}
+	return out
+}
+
 // MatchInstanceTypeCapabilitiesForMachines is a utility function to check if Instance Type Capabilities are present in the Capabilities of Machines
 func MatchInstanceTypeCapabilitiesForMachines(ctx context.Context, logger zerolog.Logger, dbSession *cdb.Session, instanceTypeID uuid.UUID, machineIds []string) (bool, *string, *cau.APIError) {
 	if len(machineIds) == 0 {

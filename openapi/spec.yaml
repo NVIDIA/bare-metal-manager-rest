@@ -8184,6 +8184,187 @@ paths:
           $ref: '#/components/responses/NotFoundError'
       tags:
         - Rack
+  '/v2/org/{org}/carbide/tray':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+    get:
+      summary: Retrieve all Trays
+      operationId: get-all-tray
+      description: |-
+        Get all Trays (components) for the specified Site.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site to retrieve Trays from
+        - schema:
+            type: string
+            format: uuid
+          name: rackId
+          in: query
+          description: Filter by Rack ID
+        - schema:
+            type: string
+          name: rackName
+          in: query
+          description: Filter by Rack name
+        - schema:
+            type: string
+            enum:
+              - compute
+              - switch
+              - powershelf
+              - torswitch
+              - ums
+              - cdu
+          name: type
+          in: query
+          description: Filter by tray type
+        - schema:
+            type: string
+          name: componentId
+          in: query
+          description: Filter by component IDs (comma-separated)
+        - schema:
+            type: string
+          name: id
+          in: query
+          description: Filter by tray UUIDs (comma-separated)
+        - schema:
+            type: integer
+            example: 1
+            default: 1
+            minimum: 1
+          in: query
+          name: pageNumber
+          description: Page number for pagination query
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            example: 20
+          in: query
+          name: pageSize
+          description: Page size for pagination query
+        - schema:
+            type: string
+            enum:
+              - NAME_ASC
+              - NAME_DESC
+              - MANUFACTURER_ASC
+              - MANUFACTURER_DESC
+              - MODEL_ASC
+              - MODEL_DESC
+              - TYPE_ASC
+              - TYPE_DESC
+          in: query
+          name: orderBy
+          description: Ordering for pagination query
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Tray'
+              examples:
+                example-1:
+                  value:
+                    - id: 660e8400-e29b-41d4-a716-446655440001
+                      componentId: fm100ht4v4mce2qstjnl8970nnj3ie6ecek4mtjn27pea4kre5gsa49jg0g
+                      type: compute
+                      name: compute-tray-1
+                      manufacturer: NVIDIA
+                      model: GB200
+                      serialNumber: TSN001
+                      description: Compute tray in slot 1
+                      firmwareVersion: 2.1.0
+                      position:
+                        slotId: 1
+                        trayIdx: 0
+                        hostId: 1
+                      rackId: 550e8400-e29b-41d4-a716-446655440000
+          headers:
+            X-Pagination:
+              schema:
+                type: string
+                example: '{"pageNumber":1,"pageSize":20,"total":30,"orderBy":"NAME_ASC"}'
+              description: Pagination result in JSON format
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Tray
+  '/v2/org/{org}/carbide/tray/{id}':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+        name: id
+        in: path
+        required: true
+        description: ID of the Tray
+    get:
+      summary: Retrieve a Tray
+      operationId: get-tray
+      description: |-
+        Get a Tray by ID.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tray'
+              examples:
+                example-1:
+                  value:
+                    id: 660e8400-e29b-41d4-a716-446655440001
+                    componentId: fm100ht4v4mce2qstjnl8970nnj3ie6ecek4mtjn27pea4kre5gsa49jg0g
+                    type: compute
+                    name: compute-tray-1
+                    manufacturer: NVIDIA
+                    model: GB200
+                    serialNumber: TSN001
+                    description: Compute tray in slot 1
+                    firmwareVersion: 2.1.0
+                    position:
+                      slotId: 1
+                      trayIdx: 0
+                      hostId: 1
+                    rackId: 550e8400-e29b-41d4-a716-446655440000
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      tags:
+        - Tray
   '/v2/org/{org}/carbide/network-security-group':
     parameters:
       - schema:
@@ -13543,6 +13724,81 @@ components:
         position:
           type: integer
           description: Slot position of the component within the rack
+    Tray:
+      title: Tray
+      type: object
+      description: 'Tray represents a component within a rack (e.g. compute node, NVL switch, power shelf, TOR switch, UMS, CDU)'
+      examples:
+        - id: 660e8400-e29b-41d4-a716-446655440001
+          componentId: fm100ht4v4mce2qstjnl8970nnj3ie6ecek4mtjn27pea4kre5gsa49jg0g
+          type: compute
+          name: compute-tray-1
+          manufacturer: NVIDIA
+          model: GB200
+          serialNumber: TSN001
+          description: Compute tray in slot 1
+          firmwareVersion: 2.1.0
+          position:
+            slotId: 1
+            trayIdx: 0
+            hostId: 1
+          rackId: 550e8400-e29b-41d4-a716-446655440000
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier of the Tray
+        componentId:
+          type: string
+          description: ID of the component in its source system (e.g. Carbide machine ID for compute nodes)
+        type:
+          type: string
+          enum:
+            - compute
+            - switch
+            - powershelf
+            - torswitch
+            - ums
+            - cdu
+          description: Type of the tray
+        name:
+          type: string
+          description: Name of the tray
+        manufacturer:
+          type: string
+          description: Manufacturer of the tray
+        model:
+          type: string
+          description: Model of the tray
+        serialNumber:
+          type: string
+          description: Serial number of the tray
+        description:
+          type: string
+          description: Description of the tray
+        firmwareVersion:
+          type: string
+          description: Firmware version of the tray
+        position:
+          $ref: '#/components/schemas/TrayPosition'
+        rackId:
+          type: string
+          format: uuid
+          description: ID of the rack this tray belongs to
+    TrayPosition:
+      title: TrayPosition
+      type: object
+      description: Position of a tray within a rack
+      properties:
+        slotId:
+          type: integer
+          description: Slot number of the tray in the rack
+        trayIdx:
+          type: integer
+          description: Index of the tray within its slot
+        hostId:
+          type: integer
+          description: Host ID associated with the tray
     Machine:
       title: Machine
       type: object
