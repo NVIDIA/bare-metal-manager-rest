@@ -33,6 +33,7 @@ import (
 	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
 	tmocks "go.temporal.io/sdk/mocks"
 )
 
@@ -45,11 +46,19 @@ func testBatchInstanceInitDB(t *testing.T) *cdb.Session {
 	return dbSession
 }
 
-// testBatchBuildMachineWithRack creates a machine with RackIdentifier label
-func testBatchBuildMachineWithRack(t *testing.T, dbSession *cdb.Session, ip uuid.UUID, site uuid.UUID, rackID string) *cdbm.Machine {
+// testBatchBuildMachineWithNVLinkDomain creates a machine with NVLink domain ID in Metadata
+func testBatchBuildMachineWithNVLinkDomain(t *testing.T, dbSession *cdb.Session, ip uuid.UUID, site uuid.UUID, nvlinkDomainID string) *cdbm.Machine {
 	mc := testInstanceBuildMachine(t, dbSession, ip, site, cdb.GetBoolPtr(false), nil)
-	mc.Labels = map[string]string{"RackIdentifier": rackID}
-	_, err := dbSession.DB.NewUpdate().Model(mc).Column("labels").Where("id = ?", mc.ID).Exec(context.Background())
+	mc.Metadata = &cdbm.SiteControllerMachine{
+		Machine: &cwssaws.Machine{
+			NvlinkInfo: &cwssaws.MachineNVLinkInfo{
+				DomainUuid: &cwssaws.NVLinkDomainId{
+					Value: nvlinkDomainID,
+				},
+			},
+		},
+	}
+	_, err := dbSession.DB.NewUpdate().Model(mc).Column("metadata").Where("id = ?", mc.ID).Exec(context.Background())
 	assert.Nil(t, err)
 	return mc
 }
@@ -98,9 +107,9 @@ func TestBatchCreateInstanceHandler_Handle(t *testing.T) {
 	alc1 := testInstanceSiteBuildAllocationContraints(t, dbSession, al1, cdbm.AllocationResourceTypeInstanceType, ist1.ID, cdbm.AllocationConstraintTypeReserved, 15, ipu)
 	assert.NotNil(t, alc1)
 
-	// Create 15 machines for ist1 (all on same rack for topology optimization test)
+	// Create 15 machines for ist1 (all on same NVLink domain for topology optimization test)
 	for i := 0; i < 15; i++ {
-		mc := testBatchBuildMachineWithRack(t, dbSession, ip.ID, st1.ID, "rack-1")
+		mc := testBatchBuildMachineWithNVLinkDomain(t, dbSession, ip.ID, st1.ID, "nvlink-domain-1")
 		testInstanceBuildMachineInstanceType(t, dbSession, mc, ist1)
 	}
 
@@ -151,7 +160,7 @@ func TestBatchCreateInstanceHandler_Handle(t *testing.T) {
 	alc2 := testInstanceSiteBuildAllocationContraints(t, dbSession, al1, cdbm.AllocationResourceTypeInstanceType, ist2.ID, cdbm.AllocationConstraintTypeReserved, 5, ipu)
 	assert.NotNil(t, alc2)
 	for i := 0; i < 10; i++ {
-		mc := testBatchBuildMachineWithRack(t, dbSession, ip.ID, st1.ID, "rack-1")
+		mc := testBatchBuildMachineWithNVLinkDomain(t, dbSession, ip.ID, st1.ID, "nvlink-domain-1")
 		testInstanceBuildMachineInstanceType(t, dbSession, mc, ist2)
 	}
 
@@ -160,10 +169,10 @@ func TestBatchCreateInstanceHandler_Handle(t *testing.T) {
 	assert.NotNil(t, ist3)
 	alc3 := testInstanceSiteBuildAllocationContraints(t, dbSession, al1, cdbm.AllocationResourceTypeInstanceType, ist3.ID, cdbm.AllocationConstraintTypeReserved, 10, ipu)
 	assert.NotNil(t, alc3)
-	// Only 2 machines, each on different rack (to test insufficient machines with topology optimization)
-	mc3a := testBatchBuildMachineWithRack(t, dbSession, ip.ID, st1.ID, "rack-a")
+	// Only 2 machines, each on different NVLink domain (to test insufficient machines with topology optimization)
+	mc3a := testBatchBuildMachineWithNVLinkDomain(t, dbSession, ip.ID, st1.ID, "nvlink-domain-a")
 	testInstanceBuildMachineInstanceType(t, dbSession, mc3a, ist3)
-	mc3b := testBatchBuildMachineWithRack(t, dbSession, ip.ID, st1.ID, "rack-b")
+	mc3b := testBatchBuildMachineWithNVLinkDomain(t, dbSession, ip.ID, st1.ID, "nvlink-domain-b")
 	testInstanceBuildMachineInstanceType(t, dbSession, mc3b, ist3)
 
 	// Site 2 - Not ready site (for status check test)
@@ -178,7 +187,7 @@ func TestBatchCreateInstanceHandler_Handle(t *testing.T) {
 	alc4 := testInstanceSiteBuildAllocationContraints(t, dbSession, alNotReady, cdbm.AllocationResourceTypeInstanceType, ist4.ID, cdbm.AllocationConstraintTypeReserved, 10, ipu)
 	assert.NotNil(t, alc4)
 	for i := 0; i < 5; i++ {
-		mc := testBatchBuildMachineWithRack(t, dbSession, ip.ID, stNotReady.ID, "rack-1")
+		mc := testBatchBuildMachineWithNVLinkDomain(t, dbSession, ip.ID, stNotReady.ID, "nvlink-domain-1")
 		testInstanceBuildMachineInstanceType(t, dbSession, mc, ist4)
 	}
 	vpcNotReadySite := testInstanceBuildVPC(t, dbSession, "test-vpc-not-ready-site", ip, tn1, stNotReady, cdb.GetUUIDPtr(uuid.New()), nil, cdb.GetStrPtr(cdbm.VpcEthernetVirtualizer), nil, cdbm.VpcStatusReady, tnu1)
