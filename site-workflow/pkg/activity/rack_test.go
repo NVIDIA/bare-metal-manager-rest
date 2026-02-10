@@ -45,17 +45,17 @@ func TestManageRack_GetRack(t *testing.T) {
 			mockResp:    nil,
 			mockErr:     nil,
 			wantErr:     true,
-			errContains: "missing rack ID",
+		errContains: "without rack ID",
+	},
+	{
+		name: "request with empty ID returns error",
+		request: &rlav1.GetRackInfoByIDRequest{
+			Id: &rlav1.UUID{Id: ""},
 		},
-		{
-			name: "request with empty ID returns error",
-			request: &rlav1.GetRackInfoByIDRequest{
-				Id: &rlav1.UUID{Id: ""},
-			},
-			mockResp:    nil,
-			mockErr:     nil,
-			wantErr:     true,
-			errContains: "missing rack ID",
+		mockResp:    nil,
+		mockErr:     nil,
+		wantErr:     true,
+		errContains: "without rack ID",
 		},
 		{
 			name: "successful request",
