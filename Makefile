@@ -1,3 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 .PHONY: test postgres-up postgres-down ensure-postgres postgres-wait clean
 .PHONY: build docker-build docker-build-local
 .PHONY: test-ipam test-site-agent test-site-manager test-workflow test-db test-api test-auth test-common test-cert-manager test-site-workflow migrate carbide-mock-server-build carbide-mock-server-start carbide-mock-server-stop rla-mock-server-build rla-mock-server-start rla-mock-server-stop
@@ -351,12 +366,12 @@ kind-reset:
 		--tls-cert-path /var/secrets/temporal/certs/server-interservice/tls.crt \
 		--tls-key-path /var/secrets/temporal/certs/server-interservice/tls.key \
 		--tls-ca-path /var/secrets/temporal/certs/server-interservice/ca.crt \
-		--tls-server-name interservice.server.temporal.nvidia.com || true
+		--tls-server-name interservice.server.temporal.local || true
 	kubectl -n temporal exec deploy/temporal-admintools -- temporal operator namespace create site --address temporal-frontend:7233 \
 		--tls-cert-path /var/secrets/temporal/certs/server-interservice/tls.crt \
 		--tls-key-path /var/secrets/temporal/certs/server-interservice/tls.key \
 		--tls-ca-path /var/secrets/temporal/certs/server-interservice/ca.crt \
-		--tls-server-name interservice.server.temporal.nvidia.com || true
+		--tls-server-name interservice.server.temporal.local || true
 	@echo "Temporal Helm deployment ready"
 	kubectl -n carbide wait --for=condition=ready pod -l app=keycloak --timeout=360s
 	kubectl -n carbide wait --for=condition=complete job/db-migrations --timeout=240s
