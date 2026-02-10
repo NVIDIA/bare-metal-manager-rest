@@ -1,0 +1,83 @@
+#!/bin/bash
+# SPDX-FileCopyrightText: Copyright (c) 2021-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# Start a PostgreSQL container for local development and testing.
+# This script creates a container that matches the CI environment.
+#
+# Usage:
+#   ./scripts/start-test-postgres.sh        # Start the container
+#   ./scripts/start-test-postgres.sh stop   # Stop and remove the container
+#
+# The container will be accessible at localhost:30432
+# Credentials: postgres/postgres
+# Database: rla_test
+
+CONTAINER_NAME="rla-test-postgres"
+POSTGRES_PORT=30432
+POSTGRES_USER="postgres"
+POSTGRES_PASSWORD="postgres"
+POSTGRES_DB="rla_test"
+
+case "$1" in
+    stop)
+        echo "Stopping and removing container: $CONTAINER_NAME"
+        docker stop "$CONTAINER_NAME" 2>/dev/null
+        docker rm "$CONTAINER_NAME" 2>/dev/null
+        echo "Done."
+        ;;
+    status)
+        if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+            echo "Container $CONTAINER_NAME is running"
+            docker ps --filter "name=$CONTAINER_NAME" --format "table {{.ID}}\t{{.Status}}\t{{.Ports}}"
+        else
+            echo "Container $CONTAINER_NAME is not running"
+        fi
+        ;;
+    *)
+        # Check if container is already running
+        if docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+            echo "Container $CONTAINER_NAME is already running"
+            docker ps --filter "name=$CONTAINER_NAME" --format "table {{.ID}}\t{{.Status}}\t{{.Ports}}"
+            exit 0
+        fi
+
+        # Remove stopped container if exists
+        docker rm "$CONTAINER_NAME" 2>/dev/null
+
+        echo "Starting PostgreSQL container: $CONTAINER_NAME"
+        docker run -d \
+            --name "$CONTAINER_NAME" \
+            -p "${POSTGRES_PORT}:5432" \
+            -e POSTGRES_USER="$POSTGRES_USER" \
+            -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+            -e POSTGRES_DB="$POSTGRES_DB" \
+            postgres:14.4-alpine
+
+        echo ""
+        echo "PostgreSQL is starting..."
+        echo ""
+        echo "Connection details:"
+        echo "  Host:     localhost"
+        echo "  Port:     $POSTGRES_PORT"
+        echo "  User:     $POSTGRES_USER"
+        echo "  Password: $POSTGRES_PASSWORD"
+        echo "  Database: $POSTGRES_DB"
+        echo ""
+        echo "Environment variables for RLA:"
+        echo "  export DB_ADDR=localhost"
+        echo "  export DB_PORT=$POSTGRES_PORT"
+        echo "  export DB_USER=$POSTGRES_USER"
+        echo "  export DB_PASSWORD=$POSTGRES_PASSWORD"
+        echo "  export DB_DATABASE=$POSTGRES_DB"
+        echo ""
+        echo "Run migrations:"
+        echo "  go run . db migrate"
+        echo ""
+        echo "Run tests:"
+        echo "  go test ./..."
+        echo ""
+        echo "To stop the container:"
+        echo "  ./scripts/start-test-postgres.sh stop"
+        ;;
+esac

@@ -147,6 +147,7 @@ docker-build:
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-site-agent:$(IMAGE_TAG) -f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-agent .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) -f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-db .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) -f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-cert-manager .
+	docker build -t $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) -f $(DOCKERFILE_DIR)/Dockerfile.carbide-rla .
 
 carbide-proto:
 	if [ -d "carbide-core" ]; then cd carbide-core && git pull; else git clone ssh://git@github.com/nvidia/carbide-core.git; fi
@@ -163,25 +164,13 @@ carbide-protogen:
 	cd workflow-schema && buf generate
 
 rla-proto:
-	@# Support two modes: RLA_REPO_URL (auto-clone) or RLA_REPO_PATH (existing repo)
-	@if [ -n "$${RLA_REPO_URL}" ]; then \
-		echo "Using RLA_REPO_URL: cloning to local 'rla' directory..."; \
-		if [ -d "rla" ]; then cd rla && git pull; else git clone "$${RLA_REPO_URL}" rla; fi; \
-	elif [ -z "$${RLA_REPO_PATH}" ]; then \
-		echo "Error: Set RLA_REPO_PATH (existing repo) or RLA_REPO_URL (to clone)"; exit 1; \
-	elif [ ! -d "$${RLA_REPO_PATH}" ]; then \
-		echo "Error: RLA_REPO_PATH directory not found: $${RLA_REPO_PATH}"; exit 1; \
-	else \
-		cd "$${RLA_REPO_PATH}" && git pull; \
-	fi
-	@if [ -n "$${RLA_REPO_URL}" ]; then RLA_DIR=rla; else RLA_DIR="$${RLA_REPO_PATH}"; fi; \
+	RLA_DIR=rla \
 	ls "$${RLA_DIR}/proto/v1"; \
 	for file in "$${RLA_DIR}"/proto/v1/*.proto; do \
 		cp "$$file" "workflow-schema/rla/proto/v1/"; \
 		echo "Copied: $$file"; \
 		./workflow-schema/scripts/add-go-package-option.sh "workflow-schema/rla/proto/v1/$$(basename "$$file")" "github.com/nvidia/carbide-rest/workflow-schema/rla"; \
-	done; \
-	if [ -n "$${RLA_REPO_URL}" ]; then rm -rf rla; fi
+	done
 
 rla-protogen:
 	echo "Generating protobuf for RLA"

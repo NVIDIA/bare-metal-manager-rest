@@ -1,0 +1,8 @@
+version: v1
+name: github.com/nvidia/carbide-rest/rla
+lint:
+  use:
+    - DEFAULT
+breaking:
+  use:
+    - FILE

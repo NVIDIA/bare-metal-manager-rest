@@ -1,0 +1,234 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package cmd
+
+import (
+	"context"
+	"strings"
+
+	"github.com/rs/zerolog/log"
+	"github.com/spf13/cobra"
+
+	pb "github.com/nvidia/carbide-rest/rla/internal/proto/v1"
+	"github.com/nvidia/carbide-rest/rla/pkg/client"
+)
+
+var (
+	powerControlCmd = &cobra.Command{
+		Use:   "control",
+		Short: "Control power state of components in racks",
+		Long: `Control power state of components via carbide API.
+		
+Specify exactly ONE of the following options:
+  --rack-ids      : Comma-separated list of rack UUIDs
+  --rack-names    : Comma-separated list of rack names
+  --component-ids : Comma-separated list of component IDs (e.g. machine_id from Carbide)
+
+Component types (required for rack-ids/rack-names):
+  --type compute     : Compute nodes
+  --type nvlswitch   : NVL switches
+  --type powershelf  : Power shelves
+
+Power operations:
+  Power On:
+    --op on           : Power on
+    --op force-on     : Force power on
+  Power Off:
+    --op off          : Graceful shutdown
+    --op force-off    : Force power off
+  Restart (OS level):
+    --op restart      : Graceful restart
+    --op force-restart: Force restart
+  Reset (hardware level):
+    --op warm-reset   : Warm reset (keep memory)
+    --op cold-reset   : Cold reset (full power cycle)
+
+Examples:
+  # Power on compute nodes by rack names
+  rla power control --rack-names "rack-name-1,rack-name-2" --type compute --op on
+
+  # Graceful shutdown
+  rla power control --rack-names "rack-name-1" --type compute --op off
+
+  # Force power off
+  rla power control --rack-names "rack-name-1" --type compute --op force-off
+
+  # Cold reset (hardware level)
+  rla power control --rack-names "rack-name-1" --type compute --op cold-reset
+
+  # Power control by component IDs (no --type needed)
+  rla power control --component-ids "machine1,machine2" --op restart
+`,
+		Run: func(cmd *cobra.Command, args []string) {
+			doPowerControl()
+		},
+	}
+
+	powerControlRackIDs       string
+	powerControlRackNames     string
+	powerControlComponentIDs  string
+	powerControlComponentType string
+	powerControlOp            string
+	powerControlHost          string
+	powerControlPort          int
+)
+
+func init() {
+	powerCmd.AddCommand(powerControlCmd)
+
+	powerControlCmd.Flags().StringVar(&powerControlRackIDs, "rack-ids", "", "Comma-separated list of rack UUIDs")
+	powerControlCmd.Flags().StringVar(&powerControlRackNames, "rack-names", "", "Comma-separated list of rack names")
+	powerControlCmd.Flags().StringVar(&powerControlComponentIDs, "component-ids", "", "Comma-separated list of component IDs")
+	powerControlCmd.Flags().StringVarP(&powerControlComponentType, "type", "t", "", "Component type: compute, nvlswitch, powershelf (required for rack-ids/rack-names)")
+	powerControlCmd.Flags().StringVar(&powerControlOp, "op", "", "Power operation: on, off, force-off, reset, force-reset, ac-powercycle")
+	powerControlCmd.Flags().StringVar(&powerControlHost, "host", "localhost", "RLA service host")
+	powerControlCmd.Flags().IntVarP(&powerControlPort, "port", "p", defaultServicePort, "RLA service port")
+
+	powerControlCmd.MarkFlagRequired("op") //nolint
+}
+
+func parsePowerOp(op string) pb.PowerControlOp {
+	switch strings.ToLower(op) {
+	// Power On
+	case "on":
+		return pb.PowerControlOp_POWER_CONTROL_OP_ON
+	case "force-on", "forceon":
+		return pb.PowerControlOp_POWER_CONTROL_OP_FORCE_ON
+	// Power Off
+	case "off":
+		return pb.PowerControlOp_POWER_CONTROL_OP_OFF
+	case "force-off", "forceoff":
+		return pb.PowerControlOp_POWER_CONTROL_OP_FORCE_OFF
+	// Restart (OS level)
+	case "restart":
+		return pb.PowerControlOp_POWER_CONTROL_OP_RESTART
+	case "force-restart", "forcerestart":
+		return pb.PowerControlOp_POWER_CONTROL_OP_FORCE_RESTART
+	// Reset (hardware level)
+	case "warm-reset", "warmreset":
+		return pb.PowerControlOp_POWER_CONTROL_OP_WARM_RESET
+	case "cold-reset", "coldreset":
+		return pb.PowerControlOp_POWER_CONTROL_OP_COLD_RESET
+	default:
+		return pb.PowerControlOp_POWER_CONTROL_OP_UNKNOWN
+	}
+}
+
+func doPowerControl() {
+	// Validate inputs - only one of the options can be specified
+	hasRackIDs := powerControlRackIDs != ""
+	hasRackNames := powerControlRackNames != ""
+	hasComponentIDs := powerControlComponentIDs != ""
+
+	optionCount := 0
+	if hasRackIDs {
+		optionCount++
+	}
+	if hasRackNames {
+		optionCount++
+	}
+	if hasComponentIDs {
+		optionCount++
+	}
+
+	if optionCount == 0 {
+		log.Fatal().Msg("One of --rack-ids, --rack-names, or --component-ids must be specified")
+	}
+
+	if optionCount > 1 {
+		log.Fatal().Msg("Only one of --rack-ids, --rack-names, or --component-ids can be specified")
+	}
+
+	// Parse and validate component type (required for rack-ids/rack-names)
+	componentType := parseComponentType(powerControlComponentType)
+	if (hasRackIDs || hasRackNames) && componentType == pb.ComponentType_COMPONENT_TYPE_UNKNOWN {
+		log.Fatal().Msg("--type is required when using --rack-ids or --rack-names (compute, nvlswitch, powershelf)")
+	}
+
+	// Parse power operation
+	op := parsePowerOp(powerControlOp)
+	if op == pb.PowerControlOp_POWER_CONTROL_OP_UNKNOWN {
+		log.Fatal().Msgf("Invalid power operation: %s. Valid options: on, force-on, off, force-off, restart, force-restart, warm-reset, cold-reset", powerControlOp)
+	}
+
+	ctx := context.Background()
+
+	// Create RLA client
+	rlaClient, err := client.New(client.Config{
+		Host: powerControlHost,
+		Port: powerControlPort,
+	})
+	if err != nil {
+		log.Fatal().Msgf("Failed to create RLA client: %v", err)
+	}
+	defer rlaClient.Close()
+
+	// Execute based on the specified option
+	var result *client.PowerControlResult
+
+	switch {
+	case hasRackIDs:
+		rackIDs := parseUUIDList(powerControlRackIDs)
+		if len(rackIDs) == 0 {
+			log.Fatal().Msg("No valid rack IDs provided")
+		}
+		log.Info().
+			Int("rack_count", len(rackIDs)).
+			Str("component_type", powerControlComponentType).
+			Str("operation", powerControlOp).
+			Msg("Executing power control by rack IDs")
+		result, err = rlaClient.PowerControlByRackIDs(ctx, rackIDs, componentType, op)
+
+	case hasRackNames:
+		rackNames := parseCommaSeparatedList(powerControlRackNames)
+		if len(rackNames) == 0 {
+			log.Fatal().Msg("No valid rack names provided")
+		}
+		log.Info().
+			Strs("rack_names", rackNames).
+			Str("component_type", powerControlComponentType).
+			Str("operation", powerControlOp).
+			Msg("Executing power control by rack names")
+		result, err = rlaClient.PowerControlByRackNames(ctx, rackNames, componentType, op)
+
+	case hasComponentIDs:
+		componentIDs := parseCommaSeparatedList(powerControlComponentIDs)
+		if len(componentIDs) == 0 {
+			log.Fatal().Msg("No valid component IDs provided")
+		}
+		log.Info().
+			Strs("component_ids", componentIDs).
+			Str("operation", powerControlOp).
+			Msg("Executing power control by component IDs")
+		result, err = rlaClient.PowerControlByMachineIDs(ctx, componentIDs, op)
+	}
+
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to execute power control")
+	}
+
+	// Log results
+	taskIDStrs := make([]string, 0, len(result.TaskIDs))
+	for _, id := range result.TaskIDs {
+		taskIDStrs = append(taskIDStrs, id.String())
+	}
+
+	log.Info().
+		Strs("task_ids", taskIDStrs).
+		Int("task_count", len(result.TaskIDs)).
+		Msg("Power control tasks submitted successfully")
+}
