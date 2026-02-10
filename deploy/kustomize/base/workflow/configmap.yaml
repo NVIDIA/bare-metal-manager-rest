@@ -38,7 +38,7 @@ data:
     temporal:
       host: temporal-frontend.temporal
       port: 7233
-      serverName: server.temporal.nvidia.com
+      serverName: server.temporal.local
       namespace: cloud
       queue: cloud
       tls:
@@ -51,7 +51,7 @@ data:
 
     ngc:
       api:
-        baseUrl: https://api.stg.ngc.nvidia.com
+        baseUrl: ""
 
     notifications:
       slack:

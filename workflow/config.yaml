@@ -41,7 +41,7 @@ temporal:
 
 ngc:
   api:
-    baseUrl: https://api.stg.ngc.nvidia.com
+    baseUrl: ""
 
 notifications:
   slack:
