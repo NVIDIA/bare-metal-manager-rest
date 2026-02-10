@@ -158,14 +158,12 @@ repo_url_from_path() {
     printf 'license = "%s"\n' "$license_type"
 
     if [ -n "$license_file" ] && [ -r "$license_file" ]; then
-      # Include full license text for common licenses (keeps file useful)
-      if [ "$license_type" = "Apache-2.0" ] || [ "$license_type" = "MIT" ] || [ "$license_type" = "BSD-3-Clause" ]; then
-        printf '[[third_party_libraries.licenses]]\n'
-        printf 'license = "%s"\n' "$license_type"
-        printf 'text = """\n'
-        cat "$license_file" | escape_toml_text
-        printf '\n"""\n'
-      fi
+      # Include full license text for every dependency that has a license file
+      printf '[[third_party_libraries.licenses]]\n'
+      printf 'license = "%s"\n' "$license_type"
+      printf 'text = """\n'
+      cat "$license_file" | escape_toml_text
+      printf '\n"""\n'
     fi
   done
 } > "$OUTPUT.tmp"
