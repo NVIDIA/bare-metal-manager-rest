@@ -15,13 +15,13 @@ jobs:
         run: |
             # Define your required regex pattern here
             # This example enforces "Type(scope): Description", following Conventional Commits
-            PATTERN="^(feat|fix|docs|version|refactor|chore|ci): [A-Z].+$"
+            PATTERN="^(feat|fix|docs|version|refactor|chore|ci): [A-Z].{20,}$"
 
             if [[ "$PR_TITLE" =~ $PATTERN ]]; then
                 echo "PR title format is valid."
             else
-                echo "PR title format is invalid."
-                echo "Required format: (feat|fix|docs|version|refactor|chore|ci): [A-Z].+"
+                echo "PR title format is invalid. Start with a category followed by colon and a capitalized sentence of at least 20 characters."
+                echo "Required format: (feat|fix|docs|version|refactor|chore|ci): [A-Z].{19,}"
                 echo "Example: feat: Add login functionality"
                 exit 1
             fi
