@@ -135,7 +135,8 @@ repo_url_from_path() {
 {
   printf '%s' "$TEMPORAL_HELM_BLOCK"
 
-  go list -m all | while read -r path version; do
+  # Sort by module path then version so order is stable and diffs are minimal on regeneration
+  go list -m all | sort -k1,1 -k2,2 | while read -r path version; do
     [ -n "$path" ] || continue
     [ "$path" = "$MAIN_MODULE" ] && continue
     [ -n "$version" ] || version="(devel)"
