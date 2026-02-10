@@ -1030,9 +1030,17 @@ func (uibph UpdateNVLinkLogicalPartitionHandler) Handle(c echo.Context) error {
 		needsUpdate = true
 	}
 
+	// get status details for the response
+	sdDAO := cdbm.NewStatusDetailDAO(uibph.dbSession)
+	ssds, _, err := sdDAO.GetAllByEntityID(ctx, nil, nvllp.ID.String(), nil, cdb.GetIntPtr(pagination.MaxPageSize), nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving Status Details for NVLink Logical Partition from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Status Details for NVLink Logical Partition", nil)
+	}
+
 	if !needsUpdate {
 		// no updates needed, send response
-		apiNvllp := model.NewAPINVLinkLogicalPartition(nvllp, nil, nil, nil)
+		apiNvllp := model.NewAPINVLinkLogicalPartition(nvllp, nil, nil, ssds)
 		logger.Info().Msg("finishing API handler")
 		return c.JSON(http.StatusOK, apiNvllp)
 	}
@@ -1083,14 +1091,6 @@ func (uibph UpdateNVLinkLogicalPartitionHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to update NVLink Logical Partition", nil)
 	}
 	logger.Info().Msg("done updating NVLink Logical Partition in DB")
-
-	// get status details for the response
-	sdDAO := cdbm.NewStatusDetailDAO(uibph.dbSession)
-	ssds, _, err := sdDAO.GetAllByEntityID(ctx, tx, unvllp.ID.String(), nil, cdb.GetIntPtr(pagination.MaxPageSize), nil)
-	if err != nil {
-		logger.Error().Err(err).Msg("error retrieving Status Details for NVLink Logical Partition from DB")
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Status Details for NVLink Logical Partition", nil)
-	}
 
 	// Get the Temporal client for the site we are working with
 	stc, err := uibph.scp.GetClientByID(unvllp.SiteID)
