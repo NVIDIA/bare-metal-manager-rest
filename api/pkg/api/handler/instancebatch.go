@@ -1692,8 +1692,8 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 }
 
 // allocateMachinesForBatch allocates machines for batch instance creation with optional topology optimization.
-// If topologyOptimized is true, all machines must be allocated on the same topology domain (e.g., rack).
-// If false, machines can be allocated across different topology domains without rack consideration.
+// If topologyOptimized is true, all machines must be allocated on the same NVLink domain.
+// If false, machines can be allocated across different NVLink domains without topology consideration.
 //
 // Returns:
 //   - machines: the allocated machines
@@ -1739,56 +1739,53 @@ func allocateMachinesForBatch(
 
 	var candidateMachines []*cdbm.Machine
 
-	// If topologyOptimized is false, no need to consider rack - just use all available machines
+	// If topologyOptimized is false, no need to consider NVLink domain - just use all available machines
 	if !topologyOptimized {
 		logger.Info().Int("available", len(machines)).Int("requested", count).
-			Msg("topology optimization disabled - allocating machines without rack constraint")
+			Msg("topology optimization disabled - allocating machines without NVLink domain constraint")
 		candidateMachines = make([]*cdbm.Machine, len(machines))
 		for i := range machines {
 			candidateMachines[i] = &machines[i]
 		}
 	} else {
-		// topologyOptimized is true - must allocate all machines from the same rack
+		// topologyOptimized is true - must allocate all machines from the same NVLink domain
 		logger.Info().Int("available", len(machines)).Int("requested", count).
-			Msg("topology optimization enabled - ensuring all machines from same rack")
+			Msg("topology optimization enabled - ensuring all machines from same NVLink domain")
 
-		// Group machines by RackIdentifier from Labels
-		rackMap := make(map[string][]*cdbm.Machine)
-		noRackMachines := []*cdbm.Machine{}
+		// Group machines by NVLink Domain ID from Metadata
+		nvlinkDomainMap := make(map[string][]*cdbm.Machine)
+		noNvlinkDomainMachines := []*cdbm.Machine{}
 
 		for idx := range machines {
 			machine := &machines[idx]
-			if machine.Labels != nil {
-				if rackID, ok := machine.Labels["RackIdentifier"]; ok && rackID != "" {
-					rackMap[rackID] = append(rackMap[rackID], machine)
-				} else {
-					noRackMachines = append(noRackMachines, machine)
-				}
+			domainID := getNVLinkDomainID(machine)
+			if domainID != "" {
+				nvlinkDomainMap[domainID] = append(nvlinkDomainMap[domainID], machine)
 			} else {
-				noRackMachines = append(noRackMachines, machine)
+				noNvlinkDomainMachines = append(noNvlinkDomainMachines, machine)
 			}
 		}
 
-		// Find the rack with the most available machines
-		var bestRackID string
-		for rackID, rackMachines := range rackMap {
-			if len(rackMachines) > len(rackMap[bestRackID]) {
-				bestRackID = rackID
+		// Find the NVLink domain with the most available machines
+		var bestDomainID string
+		for domainID, domainMachines := range nvlinkDomainMap {
+			if len(domainMachines) > len(nvlinkDomainMap[bestDomainID]) {
+				bestDomainID = domainID
 			}
 		}
 
-		// Check if we have enough machines in a single rack
-		if len(rackMap[bestRackID]) < count {
-			logger.Warn().Str("bestRackID", bestRackID).Int("bestRackCount", len(rackMap[bestRackID])).Int("requested", count).
-				Msg("topology optimization requires same rack but insufficient machines in any single rack")
+		// Check if we have enough machines in a single NVLink domain
+		if len(nvlinkDomainMap[bestDomainID]) < count {
+			logger.Warn().Str("bestDomainID", bestDomainID).Int("bestDomainCount", len(nvlinkDomainMap[bestDomainID])).Int("requested", count).
+				Msg("topology optimization requires same NVLink domain but insufficient machines in any single domain")
 			return nil, cerr.NewAPIError(http.StatusConflict,
-				fmt.Sprintf("Topology optimization requires all %d machines on same rack, but best rack only has %d available", count, len(rackMap[bestRackID])), nil)
+				fmt.Sprintf("Topology optimization requires all %d machines on same NVLink domain, but best domain only has %d available", count, len(nvlinkDomainMap[bestDomainID])), nil)
 		}
 
-		// Use machines from the best rack
-		candidateMachines = rackMap[bestRackID]
-		logger.Info().Str("rackID", bestRackID).Int("available", len(rackMap[bestRackID])).Int("requested", count).
-			Msg("allocating all machines from single rack")
+		// Use machines from the best NVLink domain
+		candidateMachines = nvlinkDomainMap[bestDomainID]
+		logger.Info().Str("nvlinkDomainID", bestDomainID).Int("available", len(nvlinkDomainMap[bestDomainID])).Int("requested", count).
+			Msg("allocating all machines from single NVLink domain")
 	}
 
 	// Randomize the list of machines to help distribute load and avoid bad machines
@@ -1851,22 +1848,30 @@ func allocateMachinesForBatch(
 			fmt.Sprintf("Failed to batch update machines: %v", err), nil)
 	}
 
-	// Log topology distribution for observability
-	topologyDistribution := make(map[string]int)
+	// Log NVLink domain distribution for observability
+	nvlinkDomainDistribution := make(map[string]int)
 	for _, machine := range allocatedMachines {
-		topologyDomain := "<no-topology>"
-		if machine.Labels != nil {
-			if rackID, ok := machine.Labels["RackIdentifier"]; ok && rackID != "" {
-				topologyDomain = rackID
-			}
-		}
-		topologyDistribution[topologyDomain]++
+		domainID := getNVLinkDomainID(&machine)
+		nvlinkDomainDistribution[domainID]++
 	}
-	logger.Info().Interface("topologyDistribution", topologyDistribution).
+	logger.Info().Interface("nvlinkDomainDistribution", nvlinkDomainDistribution).
 		Bool("topologyOptimized", topologyOptimized).
-		Int("topologyDomainCount", len(topologyDistribution)).
+		Int("nvlinkDomainCount", len(nvlinkDomainDistribution)).
 		Int("machinesAllocated", len(allocatedMachines)).
 		Msg("successfully allocated machines for batch creation")
 
 	return allocatedMachines, nil
+}
+
+// getNVLinkDomainID extracts the NVLink domain ID from a machine's metadata.
+// Returns empty string if the machine has no NVLink domain information.
+func getNVLinkDomainID(machine *cdbm.Machine) string {
+	if machine.Metadata != nil {
+		if nvlinkInfo := machine.Metadata.GetNvlinkInfo(); nvlinkInfo != nil {
+			if domainUuid := nvlinkInfo.GetDomainUuid(); domainUuid != nil {
+				return domainUuid.GetValue()
+			}
+		}
+	}
+	return ""
 }

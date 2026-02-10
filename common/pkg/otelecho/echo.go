@@ -74,7 +74,21 @@ func Middleware(service string, opts ...upstreamotelecho.Option) echo.Middleware
 			}
 
 			// Now call the actual next handler
-			return next(c)
+			// Note: We return the error directly and let the upstream otelecho middleware
+			// handle it. The upstream middleware (v0.64.0+) will call c.Error() internally
+			// to record the status code on the span. To prevent double error handling
+			// (once by otelecho, once by Echo's ServeHTTP), we return nil after handling.
+			err := next(c)
+			if err != nil {
+				// Let Echo's HTTPErrorHandler handle the error normally.
+				// The upstream otelecho middleware will record the error on the span,
+				// but we return the error so Echo handles it exactly once.
+				// We use c.Error() here to handle it, then return nil to prevent
+				// the upstream from also calling c.Error() which would double-handle.
+				c.Error(err)
+				return nil
+			}
+			return nil
 		})
 
 		return upstreamHandler

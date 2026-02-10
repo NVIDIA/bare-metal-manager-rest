@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
+# property and proprietary rights in and to this material, related
+# documentation and any modifications thereto. Any use, reproduction,
+# disclosure or distribution of this material and related documentation
+# without an express license agreement from NVIDIA CORPORATION or
+# its affiliates is strictly prohibited.
+
+# SPIFFE certificate for site-agent gRPC client connections to Carbide/Forge API
+# Issued by carbide-ca-issuer (native Go PKI CA) instead of the legacy vault-forge-issuer
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: site-agent-grpc-client-cert
+spec:
+  secretName: carbide-tls-certs
+
+  duration: 720h # 30d
+  renewBefore: 360h # 15d
+  subject:
+    organizations:
+      - Nvidia
+  isCA: false
+  privateKey:
+    algorithm: ECDSA
+    size: 384
+  usages:
+    - client auth
+  dnsNames:
+    - carbide-rest-site-agent
+    - carbide-rest-site-agent.carbide
+    - carbide-rest-site-agent.carbide.svc.cluster.local
+  uris:
+    - spiffe://carbide.local/carbide/sa/carbide-rest-site-agent
+  issuerRef:
+    name: carbide-ca-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io

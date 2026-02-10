@@ -1,4 +1,4 @@
-.PHONY: test postgres-up postgres-down ensure-postgres postgres-wait
+.PHONY: test postgres-up postgres-down ensure-postgres postgres-wait clean
 .PHONY: build docker-build docker-build-local
 .PHONY: test-ipam test-site-agent test-site-manager test-workflow test-db test-api test-auth test-common test-cert-manager test-site-workflow migrate carbide-mock-server-build carbide-mock-server-start carbide-mock-server-stop rla-mock-server-build rla-mock-server-start rla-mock-server-stop
 .PHONY: pre-commit-install pre-commit-run pre-commit-update
@@ -28,6 +28,21 @@ postgres-up:
 
 postgres-down:
 	-docker rm -f $(POSTGRES_CONTAINER_NAME)
+
+clean:
+	@echo "Cleaning up test resources..."
+	-$(MAKE) postgres-down
+	-$(MAKE) carbide-mock-server-stop
+	-$(MAKE) rla-mock-server-stop
+	@echo "Stopping kind cluster..."
+	-$(MAKE) kind-down
+	@echo "Stopping colima..."
+	-colima stop
+	@echo "Removing build artifacts..."
+	-rm -rf $(BUILD_DIR)
+	-rm -rf build
+	-rm -f db/cmd/migrations/migrations
+	@echo "Clean complete"
 
 ensure-postgres:
 	@docker inspect $(POSTGRES_CONTAINER_NAME) > /dev/null 2>&1 || $(MAKE) postgres-up
@@ -187,6 +202,9 @@ KIND_CLUSTER_NAME := carbide-local
 KUSTOMIZE_OVERLAY := deploy/kustomize/overlays/local
 LOCAL_DOCKERFILE_DIR := docker/local
 
+# Recommended colima configuration for full stack with Temporal:
+#   colima start --cpu 8 --memory 8 --disk 100
+
 # Build images using local Dockerfiles (public base images for local dev)
 docker-build-local:
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-api:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-api .
@@ -225,7 +243,7 @@ kind-apply:
 	kubectl apply -k $(KUSTOMIZE_OVERLAY)
 	@echo "Waiting for PostgreSQL..."
 	kubectl -n carbide wait --for=condition=ready pod -l app=postgres --timeout=120s
-	@echo "Waiting for Cert Manager (with embedded Vault - PKI auto-initialized)..."
+	@echo "Waiting for Cert Manager..."
 	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=180s
 	@echo "Waiting for Temporal..."
 	kubectl -n carbide wait --for=condition=ready pod -l app=temporal --timeout=120s
@@ -245,7 +263,8 @@ kind-apply:
 # Rebuild and redeploy apps only (faster iteration)
 kind-redeploy: docker-build-local kind-load
 	kubectl -n carbide rollout restart deployment/carbide-rest-api
-	kubectl -n carbide rollout restart deployment/carbide-rest-workflow
+	kubectl -n carbide rollout restart deployment/cloud-worker
+	kubectl -n carbide rollout restart deployment/site-worker
 	kubectl -n carbide rollout restart deployment/carbide-rest-site-agent
 	kubectl -n carbide rollout restart deployment/carbide-rest-elektraserver
 	kubectl -n carbide rollout restart deployment/carbide-rest-cert-manager
@@ -267,9 +286,9 @@ kind-reset:
 	@echo "Installing cert-manager.io..."
 	kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
 	@echo "Waiting for cert-manager deployments..."
-	kubectl -n cert-manager rollout status deployment/cert-manager --timeout=120s
-	kubectl -n cert-manager rollout status deployment/cert-manager-webhook --timeout=120s
-	kubectl -n cert-manager rollout status deployment/cert-manager-cainjector --timeout=120s
+	kubectl -n cert-manager rollout status deployment/cert-manager --timeout=240s
+	kubectl -n cert-manager rollout status deployment/cert-manager-webhook --timeout=240s
+	kubectl -n cert-manager rollout status deployment/cert-manager-cainjector --timeout=240s
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-api:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-api .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-workflow:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-workflow .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-site-manager:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-manager .
@@ -284,19 +303,59 @@ kind-reset:
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-elektraserver:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
+	@echo "Setting up PKI secrets for cert-manager..."
+	NAMESPACE=carbide ./scripts/setup-local.sh pki
 	kubectl apply -k $(KUSTOMIZE_OVERLAY)
-	kubectl -n carbide wait --for=condition=ready pod -l app=postgres --timeout=120s
-	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=180s
-	@echo "Configuring cert-manager.io ClusterIssuer for Vault..."
+	kubectl -n carbide wait --for=condition=ready pod -l app=postgres --timeout=240s
+	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=360s
+	@echo "Configuring cert-manager.io ClusterIssuer..."
 	kubectl apply -k deploy/kustomize/base/cert-manager-io/
-	kubectl -n carbide wait --for=condition=ready pod -l app=temporal --timeout=120s
-	kubectl -n carbide wait --for=condition=ready pod -l app=keycloak --timeout=180s
-	kubectl -n carbide wait --for=condition=complete job/db-migrations --timeout=120s
-	-kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-api --timeout=120s
-	-kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-workflow --timeout=60s
-	@echo "Waiting for Site Manager (fetches TLS cert from Vault)..."
-	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=180s
-	./scripts/setup-local-site-agent.sh
+	@echo "Creating temporal namespace..."
+	kubectl create namespace temporal || true
+	@echo "Creating Temporal certificates..."
+	kubectl apply -k deploy/kustomize/base/temporal-helm/
+	@echo "Waiting for Temporal certificates to be issued..."
+	kubectl -n temporal wait --for=condition=Ready certificate/server-interservice-cert --timeout=240s || true
+	kubectl -n temporal wait --for=condition=Ready certificate/server-cloud-cert --timeout=240s || true
+	kubectl -n temporal wait --for=condition=Ready certificate/server-site-cert --timeout=240s || true
+	kubectl -n carbide wait --for=condition=Ready certificate/temporal-client-cert --timeout=240s || true
+	@echo "Creating postgres-auth secret for Temporal Helm chart..."
+	kubectl -n temporal create secret generic postgres-auth --from-literal=password=temporal || true
+	@echo "Granting temporal user CREATEDB permission..."
+	kubectl -n carbide exec -it postgres-0 -- psql -U postgres -c "ALTER USER temporal CREATEDB; ALTER DATABASE temporal OWNER TO temporal; ALTER DATABASE temporal_visibility OWNER TO temporal;" || true
+	@echo "Updating Helm chart dependencies..."
+	helm dependency update temporal-helm/temporal/
+	@echo "Installing Temporal via Helm chart..."
+	helm upgrade --install temporal ./temporal-helm/temporal \
+		--namespace temporal \
+		--values ./temporal-helm/temporal/values-kind.yaml \
+		--wait --timeout 16m || true
+	@echo "Waiting for Temporal services..."
+	kubectl -n temporal wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=frontend --timeout=360s || true
+	kubectl -n temporal wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=history --timeout=360s || true
+	kubectl -n temporal wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=matching --timeout=360s || true
+	kubectl -n temporal wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=worker --timeout=360s || true
+	@echo "Creating Temporal namespaces with TLS..."
+	kubectl -n temporal exec deploy/temporal-admintools -- temporal operator namespace create cloud --address temporal-frontend:7233 \
+		--tls-cert-path /var/secrets/temporal/certs/server-interservice/tls.crt \
+		--tls-key-path /var/secrets/temporal/certs/server-interservice/tls.key \
+		--tls-ca-path /var/secrets/temporal/certs/server-interservice/ca.crt \
+		--tls-server-name interservice.server.temporal.nvidia.com || true
+	kubectl -n temporal exec deploy/temporal-admintools -- temporal operator namespace create site --address temporal-frontend:7233 \
+		--tls-cert-path /var/secrets/temporal/certs/server-interservice/tls.crt \
+		--tls-key-path /var/secrets/temporal/certs/server-interservice/tls.key \
+		--tls-ca-path /var/secrets/temporal/certs/server-interservice/ca.crt \
+		--tls-server-name interservice.server.temporal.nvidia.com || true
+	@echo "Temporal Helm deployment ready"
+	kubectl -n carbide wait --for=condition=ready pod -l app=keycloak --timeout=360s
+	kubectl -n carbide wait --for=condition=complete job/db-migrations --timeout=240s
+	-kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-api --timeout=240s
+	@echo "Waiting for workflow workers..."
+	-kubectl -n carbide wait --for=condition=ready pod -l app=cloud-worker --timeout=240s
+	-kubectl -n carbide wait --for=condition=ready pod -l app=site-worker --timeout=240s
+	@echo "Waiting for Site Manager..."
+	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=360s
+	./scripts/setup-local.sh site-agent
 	@echo ""
 	@echo "================================================================================"
 	@echo "Deployment complete!"
@@ -306,7 +365,6 @@ kind-reset:
 	@echo ""
 	@echo "API: http://localhost:8388"
 	@echo "Keycloak: http://localhost:8080"
-	@echo "Vault: http://localhost:8200"
 	@echo "================================================================================"
 	@echo ""
 	@echo "Example: Get a token and list all sites:"
@@ -325,11 +383,19 @@ kind-reset:
 
 # Setup site-agent with a real site created via the API
 setup-site-agent:
-	./scripts/setup-local-site-agent.sh
+	./scripts/setup-local.sh site-agent
 
 # Verify the local deployment (health checks)
 kind-verify:
-	./scripts/verify-local.sh
+	./scripts/setup-local.sh verify
+
+# Run PKI E2E tests
+test-pki:
+	./scripts/test-pki.sh
+
+# Run Temporal mTLS and rotation tests
+test-temporal-e2e:
+	./scripts/test-temporal.sh all
 
 # =============================================================================
 # Pre-commit Hooks (TruffleHog Secret Detection)

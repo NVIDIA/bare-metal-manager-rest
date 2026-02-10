@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+#
+# Based on Temporal Helm Charts (MIT License)
+# Original Copyright (c) 2020 Temporal Technologies Inc. / Uber Technologies, Inc.
+# See THIRD-PARTY-LICENSES for full license text.
+
+prometheus: 
+  alertmanager:
+    enabled: false
+  alertmanagerFiles:
+    alertmanager.yml: {}
+  kubeStateMetrics:
+    enabled: false
+  nodeExporter:
+    enabled: false
+  pushgateway:
+    enabled: false
+  server:
+    persistentVolume:
+      enabled: false
+    extraArgs:
+      # minimal possible values
+      storage.tsdb.retention: 6h
+      storage.tsdb.min-block-duration: 2h
+      storage.tsdb.max-block-duration: 2h
+  serverFiles:
+    alerts: {}
+    prometheus.yml:
+      remote_write:
+        - url: _URL_
+          basic_auth:
+            password: _PASSWORD_
+            username: _USERNAME_
+    rules: {}

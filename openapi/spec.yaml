@@ -5632,13 +5632,13 @@ paths:
         '403':
           $ref: '#/components/responses/ForbiddenError'
       description: |
-        Batch create multiple Instances for Tenant with rack-aware machine allocation.
+        Batch create multiple Instances for Tenant with NVLink domain-aware machine allocation.
 
         This endpoint creates multiple instances in a single atomic transaction. All instances share the same configuration (interfaces, OS, SSH keys, etc.) but are assigned different machines.
 
-        When `topologyOptimized` is true (default), all instances must be allocated on machines within the same rack. If insufficient machines are available in a single rack, the request will fail.
+        When `topologyOptimized` is true (default), all instances must be allocated on machines within the same NVLink domain. If insufficient machines are available in a single NVLink domain, the request will fail.
 
-        When `topologyOptimized` is false, instances can be spread across different racks.
+        When `topologyOptimized` is false, instances can be spread across different NVLink domains.
 
         Instance names are automatically generated using the `namePrefix` with a random 6-character suffix (e.g., "worker" becomes "worker-abc123", "worker-def456").
 
@@ -5674,11 +5674,11 @@ paths:
                       deviceInstance: 1
                   sshKeyGroupIds:
                     - 497f6eca-6276-4993-bfeb-53cbbbba6f08
-              Cross-rack batch with VPC Prefix:
+              Cross-domain batch with VPC Prefix:
                 value:
                   namePrefix: inference-node
                   count: 8
-                  description: Inference nodes spread across racks
+                  description: Inference nodes spread across NVLink domains
                   tenantId: f97df110-f4de-492e-8849-4a6af68026b0
                   instanceTypeId: 83e71f8f-65d3-44ba-92ba-19daac2e497a
                   vpcId: ebcd2d2a-deca-4ac4-b079-d7a97fff8a6b
@@ -12609,7 +12609,7 @@ components:
         topologyOptimized:
           type: boolean
           default: true
-          description: 'When true (default), all instances must be allocated on machines within the same rack. When false, instances can be spread across different racks.'
+          description: 'When true (default), all instances must be allocated on machines within the same NVLink domain. When false, instances can be spread across different NVLink domains.'
       required:
         - namePrefix
         - count

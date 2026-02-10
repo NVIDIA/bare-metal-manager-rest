@@ -26,12 +26,14 @@ resources:
   - postgres/service.yaml
   - postgres/init-configmap.yaml
   - postgres/adminer.yaml
-  - temporal/deployment.yaml
-  - temporal/service.yaml
+  
+  # Temporal deployed via Helm chart (see Makefile:kind-reset)
+  # Temporal certificates applied separately via temporal-helm kustomization
+  # Temporal client certificate (for services in carbide namespace)
+  - temporal/temporal-client-cert.yaml
   - keycloak/deployment.yaml
   - keycloak/service.yaml
   - keycloak/realm-configmap.yaml
-  # Vault is embedded in cert-manager pod (see cert-manager/deployment.yaml)
   
   # Secrets
   - secrets/secrets.yaml
@@ -51,10 +53,10 @@ resources:
   - site-agent/service.yaml
   - site-agent/configmap.yaml
   - site-agent/secret.yaml
+  - site-agent/certificate.yaml
   - cert-manager/deployment.yaml
   - cert-manager/service.yaml
   - cert-manager/rbac.yaml
-  - cert-manager/secret.yaml
   - site-manager/deployment.yaml
   - site-manager/service.yaml
   - site-manager/rbac.yaml
