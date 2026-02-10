@@ -27,10 +27,17 @@ import (
 	otrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/google/uuid"
+<<<<<<< HEAD
 	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
 	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
 	stracer "github.com/nvidia/bare-metal-manager-rest/db/pkg/tracer"
 	"github.com/nvidia/bare-metal-manager-rest/db/pkg/util"
+=======
+	"github.com/nvidia/carbide-rest/db/pkg/db"
+	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
+	"github.com/nvidia/carbide-rest/db/pkg/util"
+>>>>>>> 806686c (feat: Add labels support in InstanceType)
 	"github.com/uptrace/bun/extra/bundebug"
 )
 
@@ -132,7 +139,7 @@ func TestInstanceTypeSQLDAO_Create(t *testing.T) {
 			desc: "create one",
 			its: []InstanceType{
 				{
-					Name: "test", InfrastructureProviderID: ip.ID, InfinityResourceTypeID: &infinityResourceTypeID, SiteID: &site.ID, CreatedBy: user.ID,
+					Name: "test", InfrastructureProviderID: ip.ID, InfinityResourceTypeID: &infinityResourceTypeID, SiteID: &site.ID, Labels: map[string]string{"test1": "test1"}, CreatedBy: user.ID,
 				},
 			},
 			expectError:        false,
@@ -206,7 +213,7 @@ func TestInstanceTypeSQLDAO_Create(t *testing.T) {
 				}
 				it, err := itsd.Create(
 					ctx, nil, InstanceTypeCreateInput{ID: id, Name: i.Name, DisplayName: db.GetStrPtr("displayName"), Description: db.GetStrPtr("description"), ControllerMachineType: db.GetStrPtr("controllerMachineType"),
-						InfrastructureProviderID: i.InfrastructureProviderID, InfinityResourceTypeID: i.InfinityResourceTypeID, SiteID: i.SiteID, Status: InstanceTypeStatusPending, CreatedBy: i.CreatedBy},
+						InfrastructureProviderID: i.InfrastructureProviderID, InfinityResourceTypeID: i.InfinityResourceTypeID, SiteID: i.SiteID, Labels: i.Labels, Status: InstanceTypeStatusPending, CreatedBy: i.CreatedBy},
 				)
 				assert.Equal(t, tc.expectError, err != nil)
 				if !tc.expectError {
@@ -214,6 +221,9 @@ func TestInstanceTypeSQLDAO_Create(t *testing.T) {
 
 					if tc.knownID != nil {
 						assert.Equal(t, *tc.knownID, it.ID)
+					}
+					if i.Labels != nil {
+						assert.Equal(t, i.Labels, it.Labels)
 					}
 				}
 
@@ -391,7 +401,7 @@ func TestInstanceTypeSQLDAO_GetAll(t *testing.T) {
 		if i%2 == 1 {
 			it, err := itsd.Create(
 				ctx, nil, InstanceTypeCreateInput{Name: fmt.Sprintf("test-%v", i), DisplayName: db.GetStrPtr(fmt.Sprintf("test-displayname-%v", i)), Description: db.GetStrPtr("Test Description"), ControllerMachineType: db.GetStrPtr("controllerMachineType"),
-					InfrastructureProviderID: ip.ID, InfinityResourceTypeID: db.GetUUIDPtr(uuid.New()), SiteID: &site1.ID, Status: InstanceTypeStatusPending, CreatedBy: user.ID})
+					InfrastructureProviderID: ip.ID, InfinityResourceTypeID: db.GetUUIDPtr(uuid.New()), SiteID: &site1.ID, Labels: map[string]string{fmt.Sprintf("label-key-%v", i): fmt.Sprintf("label-value-%v", i)}, Status: InstanceTypeStatusPending, CreatedBy: user.ID})
 			assert.NoError(t, err)
 
 			// Create a single allocation with a constraint > 0
@@ -409,7 +419,7 @@ func TestInstanceTypeSQLDAO_GetAll(t *testing.T) {
 		} else {
 			it, err := itsd.Create(
 				ctx, nil, InstanceTypeCreateInput{Name: fmt.Sprintf("test-%v", i), DisplayName: db.GetStrPtr(fmt.Sprintf("test-displayname-%v", i)), Description: db.GetStrPtr("Test Description"), ControllerMachineType: db.GetStrPtr("controllerMachineType"),
-					InfrastructureProviderID: ip.ID, InfinityResourceTypeID: db.GetUUIDPtr(uuid.New()), SiteID: &site2.ID, Status: InstanceTypeStatusPending, CreatedBy: user.ID})
+					InfrastructureProviderID: ip.ID, InfinityResourceTypeID: db.GetUUIDPtr(uuid.New()), SiteID: &site2.ID, Labels: map[string]string{fmt.Sprintf("label-key-%v", i): fmt.Sprintf("label-value-%v", i)}, Status: InstanceTypeStatusPending, CreatedBy: user.ID})
 			assert.NoError(t, err)
 			site2its = append(site2its, *it)
 		}
@@ -660,6 +670,15 @@ func TestInstanceTypeSQLDAO_GetAll(t *testing.T) {
 			expectedError: false,
 		},
 		{
+			desc:          "GetAll with label search query returns objects",
+			itName:        nil,
+			ipID:          nil,
+			siteID:        nil,
+			searchQuery:   db.GetStrPtr("label-key-10"),
+			expectedCount: 1,
+			expectedError: false,
+		},
+		{
 			desc:          "GetAll with empty search query returns nothing when hiding empty allocations for tenants if no tenant IDs",
 			itName:        nil,
 			ipID:          nil,
@@ -745,7 +764,7 @@ func TestInstanceTypeSQLDAO_Update(t *testing.T) {
 	infinityResourceTypeID := uuid.New()
 	it1, err := itsd.Create(
 		ctx, nil, InstanceTypeCreateInput{Name: "test1", DisplayName: db.GetStrPtr("displayName"), Description: db.GetStrPtr("description"), ControllerMachineType: db.GetStrPtr("controllerMachineType"),
-			InfrastructureProviderID: ip.ID, InfinityResourceTypeID: db.GetUUIDPtr(infinityResourceTypeID), SiteID: &site.ID, Status: InstanceTypeStatusPending, CreatedBy: user.ID},
+			InfrastructureProviderID: ip.ID, InfinityResourceTypeID: db.GetUUIDPtr(infinityResourceTypeID), SiteID: &site.ID, Labels: map[string]string{"test1": "test1"}, Status: InstanceTypeStatusPending, CreatedBy: user.ID},
 	)
 	assert.Nil(t, err)
 	assert.NotNil(t, it1)
@@ -763,6 +782,7 @@ func TestInstanceTypeSQLDAO_Update(t *testing.T) {
 		paramDescription               *string
 		paramInfinityResourceTypeID    *uuid.UUID
 		paramSiteID                    *uuid.UUID
+		paramLabels                    map[string]string
 		paramStatus                    *string
 		paramVersion                   *string
 		expectedName                   *string
@@ -770,6 +790,7 @@ func TestInstanceTypeSQLDAO_Update(t *testing.T) {
 		expectedDescription            *string
 		expectedInfinityResourceTypeID *uuid.UUID
 		expectedSiteID                 *uuid.UUID
+		expectedLabels                 map[string]string
 		expectedStatus                 *string
 		expectedVersion                *string
 		verifyChildSpanner             bool
@@ -832,6 +853,21 @@ func TestInstanceTypeSQLDAO_Update(t *testing.T) {
 			expectedStatus:                 db.GetStrPtr(InstanceTypeStatusPending),
 		},
 		{
+			desc:                "can update labels",
+			paramName:           nil,
+			paramDisplayName:    nil,
+			paramDescription:    nil,
+			paramSiteID:         nil,
+			paramStatus:         nil,
+			paramLabels:         map[string]string{"test2": "test2"},
+			expectedName:        db.GetStrPtr("updatedName"),
+			expectedDisplayName: db.GetStrPtr("updatedDisplayName"),
+			expectedDescription: db.GetStrPtr("updatedDescription"),
+			expectedSiteID:      &site2.ID,
+			expectedLabels:      map[string]string{"test2": "test2"},
+			expectedStatus:      db.GetStrPtr(InstanceTypeStatusPending),
+		},
+		{
 			desc:                "can update status",
 			paramName:           nil,
 			paramDisplayName:    nil,
@@ -886,6 +922,7 @@ func TestInstanceTypeSQLDAO_Update(t *testing.T) {
 				DisplayName:            tc.paramDisplayName,
 				Description:            tc.paramDescription,
 				SiteID:                 tc.paramSiteID,
+				Labels:                 tc.paramLabels,
 				InfinityResourceTypeID: tc.paramInfinityResourceTypeID,
 				Status:                 tc.paramStatus,
 				Version:                tc.paramVersion,
@@ -900,6 +937,9 @@ func TestInstanceTypeSQLDAO_Update(t *testing.T) {
 				assert.Equal(t, *tc.expectedInfinityResourceTypeID, *got.InfinityResourceTypeID)
 			}
 			assert.Equal(t, *tc.expectedSiteID, *got.SiteID)
+			if tc.expectedLabels != nil {
+				assert.Equal(t, tc.expectedLabels, got.Labels)
+			}
 			assert.Equal(t, *tc.expectedStatus, got.Status)
 			assert.True(t, tc.expectedVersion == nil || got.Version == *tc.expectedVersion)
 
@@ -917,7 +957,7 @@ func TestInstanceTypeSQLDAO_Update(t *testing.T) {
 	}
 }
 
-func TestInstanceTypeSQLDAO_ClearFromParams(t *testing.T) {
+func TestInstanceTypeSQLDAO_Clear(t *testing.T) {
 	ctx := context.Background()
 	dbSession := testInstanceTypeInitDB(t)
 	defer dbSession.Close()
@@ -928,19 +968,19 @@ func TestInstanceTypeSQLDAO_ClearFromParams(t *testing.T) {
 	itsd := NewInstanceTypeDAO(dbSession)
 	it1, err := itsd.Create(
 		ctx, nil, InstanceTypeCreateInput{Name: "test1", DisplayName: db.GetStrPtr("displayName"), Description: db.GetStrPtr("description"), ControllerMachineType: db.GetStrPtr("controllerMachineType"),
-			InfrastructureProviderID: ip.ID, InfinityResourceTypeID: db.GetUUIDPtr(uuid.New()), SiteID: &site.ID, Status: InstanceTypeStatusPending, CreatedBy: user.ID},
+			InfrastructureProviderID: ip.ID, InfinityResourceTypeID: db.GetUUIDPtr(uuid.New()), SiteID: &site.ID, Labels: map[string]string{"test1": "test1"}, Status: InstanceTypeStatusPending, CreatedBy: user.ID},
 	)
 	assert.Nil(t, err)
 	assert.NotNil(t, it1)
 	it2, err := itsd.Create(
 		ctx, nil, InstanceTypeCreateInput{Name: "test2", DisplayName: db.GetStrPtr("displayName"), Description: db.GetStrPtr("description"), ControllerMachineType: db.GetStrPtr("controllerMachineType"),
-			InfrastructureProviderID: ip.ID, InfinityResourceTypeID: db.GetUUIDPtr(uuid.New()), SiteID: &site.ID, Status: InstanceTypeStatusPending, CreatedBy: user.ID},
+			InfrastructureProviderID: ip.ID, InfinityResourceTypeID: db.GetUUIDPtr(uuid.New()), SiteID: &site.ID, Labels: map[string]string{"test2": "test2"}, Status: InstanceTypeStatusPending, CreatedBy: user.ID},
 	)
 	assert.Nil(t, err)
 	assert.NotNil(t, it2)
 	it3, err := itsd.Create(
 		ctx, nil, InstanceTypeCreateInput{Name: "test3", DisplayName: db.GetStrPtr("displayName"), Description: db.GetStrPtr("description"), ControllerMachineType: db.GetStrPtr("controllerMachineType"),
-			InfrastructureProviderID: ip.ID, InfinityResourceTypeID: db.GetUUIDPtr(uuid.New()), SiteID: &site.ID, Status: InstanceTypeStatusPending, CreatedBy: user.ID},
+			InfrastructureProviderID: ip.ID, InfinityResourceTypeID: db.GetUUIDPtr(uuid.New()), SiteID: &site.ID, Labels: map[string]string{"test3": "test3"}, Status: InstanceTypeStatusPending, CreatedBy: user.ID},
 	)
 	assert.Nil(t, err)
 	assert.NotNil(t, it3)
@@ -954,10 +994,12 @@ func TestInstanceTypeSQLDAO_ClearFromParams(t *testing.T) {
 		paramDisplayName    bool
 		paramDescription    bool
 		paramSiteID         bool
+		paramLabels         bool
 		expectedUpdate      bool
 		expectedDisplayName *string
 		expectedDescription *string
 		expectedSiteID      *uuid.UUID
+		expectedLabels      map[string]string
 		verifyChildSpanner  bool
 	}{
 		{
@@ -993,6 +1035,17 @@ func TestInstanceTypeSQLDAO_ClearFromParams(t *testing.T) {
 			expectedDisplayName: nil,
 			expectedDescription: nil,
 			expectedSiteID:      nil,
+			expectedLabels:      map[string]string{"test1": "test1"},
+		},
+		{
+			desc:             "can clear labels",
+			it:               it1,
+			paramDisplayName: false,
+			paramDescription: false,
+			paramSiteID:      false,
+			paramLabels:      true,
+			expectedUpdate:   true,
+			expectedLabels:   nil,
 		},
 		{
 			desc:                "can clear multiple fields at once",
@@ -1029,7 +1082,7 @@ func TestInstanceTypeSQLDAO_ClearFromParams(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.desc, func(t *testing.T) {
-			tmp, err := itsd.ClearFromParams(ctx, nil, tc.it.ID, tc.paramDisplayName, tc.paramDescription, tc.paramSiteID)
+			tmp, err := itsd.Clear(ctx, nil, InstanceTypeClearInput{InstanceTypeID: tc.it.ID, DisplayName: tc.paramDisplayName, Description: tc.paramDescription, SiteID: tc.paramSiteID, Labels: tc.paramLabels})
 			assert.Nil(t, err)
 			assert.NotNil(t, tmp)
 			assert.Equal(t, tc.expectedDisplayName == nil, tmp.DisplayName == nil)
@@ -1043,6 +1096,9 @@ func TestInstanceTypeSQLDAO_ClearFromParams(t *testing.T) {
 			assert.Equal(t, tc.expectedSiteID == nil, tmp.SiteID == nil)
 			if tc.expectedSiteID != nil {
 				assert.Equal(t, *tc.expectedSiteID, *tmp.SiteID)
+			}
+			if tc.expectedLabels != nil {
+				assert.Equal(t, tc.expectedLabels, tmp.Labels)
 			}
 
 			if tc.expectedUpdate {
