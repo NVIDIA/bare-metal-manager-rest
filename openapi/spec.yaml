@@ -6416,7 +6416,7 @@ paths:
     get:
       summary: Retrieve all NVLink Interfaces
       tags:
-        - NVLinkInterface
+        - NVLinkLogicalPartition
       responses:
         '200':
           description: OK
