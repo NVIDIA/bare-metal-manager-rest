@@ -4171,19 +4171,6 @@ paths:
         Org must have a Tenant entity. User must have `FORGE_TENANT_ADMIN` NGC role.
       tags:
         - NVLink Logical Partition
-    parameters:
-      - schema:
-          type: string
-        name: org
-        in: path
-        required: true
-        description: Name of the NGC Org
-      - schema:
-          type: string
-        name: nvLinkLogicalPartitionId
-        in: path
-        required: true
-        description: ID of the NVLink Logical Partition
   '/v2/org/{org}/carbide/instance/type':
     parameters:
       - schema:
@@ -6440,10 +6427,9 @@ paths:
                       instanceId: 64d2028c-ae87-4069-a624-66089d957ef9
                       siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
                       nvLinkLogicalPartitionId: 05ef7e84-1d4e-4e4d-980d-38589479a0fe
-                      "nvLinkDomainId": "4b145552-0d8f-45ff-b652-eed105f93e50",
-                      "deviceInstance": 0,
-                      "gpuGuid": "5108732638879268442",
+                      nvLinkDomainId: 4b145552-0d8f-45ff-b652-eed105f93e50
                       deviceInstance: 0
+                      gpuGuid: '5108732638879268442'
                       status: Ready
                       created: '2019-08-24T14:15:22Z'
                       updated: '2019-08-24T14:15:22Z'
