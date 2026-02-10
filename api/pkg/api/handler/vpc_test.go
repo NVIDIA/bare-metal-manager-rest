@@ -31,10 +31,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bun/extra/bundebug"
 	"github.com/nvidia/carbide-rest/api/internal/config"
 	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
 	"github.com/nvidia/carbide-rest/api/pkg/api/model"
@@ -48,6 +44,10 @@ import (
 	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
 	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
 	swe "github.com/nvidia/carbide-rest/site-workflow/pkg/error"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun/extra/bundebug"
 	"go.temporal.io/api/enums/v1"
 	temporalClient "go.temporal.io/sdk/client"
 	tmocks "go.temporal.io/sdk/mocks"
@@ -337,7 +337,7 @@ func TestCreateVPCHandler_Handle(t *testing.T) {
 	assert.NotNil(t, nsgTenant2Site1)
 
 	// NVLink Logical Partition for tenant 1 on site 1
-	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", tnOrg, st1, tn, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", cdb.GetStrPtr("Test NVLink Logical Partition"), tnOrg, st1, tn, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 	assert.NotNil(t, nvllp1)
 
 	e := echo.New()
@@ -777,7 +777,7 @@ func TestUpdateVPCHandler_Handle(t *testing.T) {
 	assert.NotNil(t, al1)
 
 	// NVLink Logical Partition for tenant 1 on site 1
-	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", tnOrg, st, tn, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", cdb.GetStrPtr("Test NVLink Logical Partition"), tnOrg, st, tn, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 	assert.NotNil(t, nvllp1)
 
 	vpc := testVPCBuildVPC(t, dbSession, "test-vpc", ip, tn, st, cdb.GetStrPtr(cdbm.VpcEthernetVirtualizer), cdb.GetUUIDPtr(nvllp1.ID), map[string]string{"zone": "west1"}, cdbm.VpcStatusReady, tnu)
@@ -2337,7 +2337,7 @@ func TestDeleteVPCHandler_Handle(t *testing.T) {
 	assert.NotNil(t, ipb1)
 
 	// NVLink Logical Partition for tenant 1 on site 1
-	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", tnOrg1, st, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", cdb.GetStrPtr("Test NVLink Logical Partition"), tnOrg1, st, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 	assert.NotNil(t, nvllp1)
 
 	vpc1 := testVPCBuildVPC(t, dbSession, "test-vpc-1", ip, tn1, st, cdb.GetStrPtr(cdbm.VpcEthernetVirtualizer), cdb.GetUUIDPtr(nvllp1.ID), map[string]string{"zone": "east1"}, cdbm.VpcStatusReady, tnu1)
@@ -2370,7 +2370,7 @@ func TestDeleteVPCHandler_Handle(t *testing.T) {
 	vpcPrefix := testVPCBuildVPCPrefix(t, dbSession, "test-vpc-prefix", tn1, vpc3, db.GetUUIDPtr(ipb1.ID), "10.0.0.0/24", tnu1)
 	assert.NotNil(t, vpcPrefix)
 
-	nvllp := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp", tn1.Org, st, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	nvllp := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp", cdb.GetStrPtr("Test NVLink Logical Partition"), tn1.Org, st, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 	assert.NotNil(t, nvllp)
 
 	e := echo.New()
