@@ -226,7 +226,7 @@ func NewGetAllRackHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.Cli
 // @Param model query string false "Filter by model"
 // @Param pageNumber query integer false "Page number of results returned"
 // @Param pageSize query integer false "Number of results per page"
-// @Param orderBy query string false "Order by field (NAME_ASC, NAME_DESC, MANUFACTURER_ASC, MANUFACTURER_DESC, MODEL_ASC, MODEL_DESC)"
+// @Param orderBy query string false "Order by field"
 // @Success 200 {array} model.APIRack
 // @Router /v2/org/{org}/carbide/rack [get]
 func (garh GetAllRackHandler) Handle(c echo.Context) error {
