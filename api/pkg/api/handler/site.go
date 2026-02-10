@@ -768,6 +768,8 @@ func NewGetAllSiteHandler(dbSession *cdb.Session, tc tClient.Client, cfg *config
 // @Security ApiKeyAuth
 // @Param org path string true "Name of NGC organization"
 // @Param isNativeNetworkingEnabled query boolean false "Filter by native networking enabled flag"
+// @Param isNetworkSecurityGroupEnabled query boolean false "Filter by network security group enabled flag"
+// @Param isNVLinkPartitionEnabled query boolean false "Filter by NVLink partition enabled flag"
 // @Param query query string false "Query input for full text search"
 // @Param status query string false "Query input for status"
 // @Param includeRelation query string false "Related entities to include in response e.g. 'InfrastructureProvider'"
@@ -900,6 +902,18 @@ func (gash GetAllSiteHandler) Handle(c echo.Context) error {
 		isNetworkSecurityGroupEnabled = &isEnabled
 	}
 	filter.Config.NetworkSecurityGroup = isNetworkSecurityGroupEnabled
+
+	// Check `isNVLinkPartitionEnabled` in query
+	var isNVLinkPartitionEnabled *bool
+	qinlpe := c.QueryParam("isNVLinkPartitionEnabled")
+	if qinlpe != "" {
+		isEnabled, err := strconv.ParseBool(qinlpe)
+		if err != nil {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid value specified for `isNVLinkPartitionEnabled` query param", nil)
+		}
+		isNVLinkPartitionEnabled = &isEnabled
+	}
+	filter.Config.NVLinkPartition = isNVLinkPartitionEnabled
 
 	// Get machine stats if requested
 	var machineStats map[uuid.UUID]*model.APISiteMachineStats
