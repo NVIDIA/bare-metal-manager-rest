@@ -23,9 +23,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/uptrace/bun/extra/bundebug"
 	"github.com/nvidia/carbide-rest/api/internal/config"
 	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
 	"github.com/nvidia/carbide-rest/api/pkg/api/model"
@@ -34,6 +31,9 @@ import (
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
 	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/uptrace/bun/extra/bundebug"
 	tmocks "go.temporal.io/sdk/mocks"
 )
 
@@ -131,7 +131,7 @@ func TestBatchCreateInstanceHandler_Handle(t *testing.T) {
 	assert.NotNil(t, ibp1)
 
 	// NVLink Logical Partition for testing NVLink Interfaces
-	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", tnOrg, st1, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", cdb.GetStrPtr("Test NVLink Logical Partition"), tnOrg, st1, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 	assert.NotNil(t, nvllp1)
 
 	// Add NVLink GPU capability to Instance Type 1 for NVLink interface tests
@@ -643,9 +643,9 @@ func TestBatchCreateInstanceHandler_Handle(t *testing.T) {
 			},
 			args: args{
 				reqData: &model.APIBatchInstanceCreateRequest{
-					NamePrefix:     "test-batch-with-dpu-multi-version",
-					Count:          2,
-					TenantID:       tn1.ID.String(),
+					NamePrefix: "test-batch-with-dpu-multi-version",
+					Count:      2,
+					TenantID:   tn1.ID.String(),
 					// Use ist2 to avoid consuming ist1 quota needed by later OS tests.
 					InstanceTypeID: ist2.ID.String(),
 					VpcID:          vpc1.ID.String(),

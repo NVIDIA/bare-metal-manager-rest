@@ -10,7 +10,6 @@
  * its affiliates is strictly prohibited.
  */
 
-
 package model
 
 import (
@@ -20,9 +19,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/nvidia/carbide-rest/api/pkg/api/model/util"
 	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
@@ -479,11 +478,13 @@ func TestMachine_NewAPIMachine(t *testing.T) {
 
 		if apimi.Metadata.DMIData != nil {
 			assert.Equal(t, *apimi.Metadata.DMIData.BoardName, machineInfo1.Machine.DiscoveryInfo.DmiData.BoardName)
+			assert.Equal(t, *apimi.Metadata.DMIData.BoardVersion, machineInfo1.Machine.DiscoveryInfo.DmiData.BoardVersion)
 			assert.Equal(t, *apimi.Metadata.DMIData.BiosDate, machineInfo1.Machine.DiscoveryInfo.DmiData.BiosDate)
 			assert.Equal(t, *apimi.Metadata.DMIData.BiosVersion, machineInfo1.Machine.DiscoveryInfo.DmiData.BiosVersion)
-			assert.Equal(t, *apimi.Metadata.DMIData.BoardVersion, machineInfo1.Machine.DiscoveryInfo.DmiData.BoardVersion)
 			assert.Equal(t, *apimi.Metadata.DMIData.ProductSerial, machineInfo1.Machine.DiscoveryInfo.DmiData.ProductSerial)
+			assert.Equal(t, *apimi.Metadata.DMIData.BoardSerial, machineInfo1.Machine.DiscoveryInfo.DmiData.BoardSerial)
 			assert.Equal(t, *apimi.Metadata.DMIData.ChassisSerial, machineInfo1.Machine.DiscoveryInfo.DmiData.ChassisSerial)
+			assert.Equal(t, *apimi.Metadata.DMIData.SysVendor, machineInfo1.Machine.DiscoveryInfo.DmiData.SysVendor)
 		}
 
 		if apimi.Metadata.GPUs != nil {
