@@ -137,9 +137,9 @@ rla-mock-server-stop:
 	-kill $$(cat build/rlaserver.pid) 2>/dev/null
 	-rm -f build/rlaserver.pid
 
-test-site-agent: carbide-mock-server-start
+test-site-agent: carbide-mock-server-start rla-mock-server-start
 	cd site-agent/pkg/components && CGO_ENABLED=1 go test -race -p 1 ./... -count=1 ; \
-	ret=$$? ; cd ../../.. && $(MAKE) carbide-mock-server-stop ; exit $$ret
+	ret=$$? ; cd ../../.. && $(MAKE) carbide-mock-server-stop rla-mock-server-stop ; exit $$ret
 
 test-api:
 	$(MAKE) ensure-postgres

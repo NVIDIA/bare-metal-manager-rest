@@ -110,6 +110,8 @@ tags:
     description: Machine operations
   - name: Machine Capability
     description: Machine Capability operations
+  - name: Rack
+    description: Rack operations
   - name: Network Security Group
     description: Network Security Group operations
   - name: IP Block
@@ -8031,6 +8033,189 @@ paths:
           in: query
           name: orderBy
           description: Ordering for pagination query
+  '/v2/org/{org}/carbide/rack':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+    get:
+      summary: Retrieve all Racks
+      operationId: get-all-rack
+      description: |-
+        Get all Racks for the specified Site.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site to retrieve Racks from
+        - schema:
+            type: boolean
+          in: query
+          name: includeComponents
+          description: Include rack components in response
+        - schema:
+            type: string
+          in: query
+          name: name
+          description: Filter by rack name
+        - schema:
+            type: string
+          in: query
+          name: manufacturer
+          description: Filter by manufacturer
+        - schema:
+            type: string
+          in: query
+          name: model
+          description: Filter by model
+        - schema:
+            type: integer
+            example: 1
+            default: 1
+            minimum: 1
+          in: query
+          name: pageNumber
+          description: Page number for pagination query
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            example: 20
+          in: query
+          name: pageSize
+          description: Page size for pagination query
+        - schema:
+            type: string
+            enum:
+              - NAME_ASC
+              - NAME_DESC
+              - MANUFACTURER_ASC
+              - MANUFACTURER_DESC
+              - MODEL_ASC
+              - MODEL_DESC
+          in: query
+          name: orderBy
+          description: Ordering for pagination query
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Rack'
+              examples:
+                example-1:
+                  value:
+                    - id: 550e8400-e29b-41d4-a716-446655440000
+                      name: Rack-01
+                      manufacturer: Dell
+                      model: PowerEdge R750
+                      serialNumber: SN-RACK-001
+                      description: Primary compute rack
+                      location:
+                        region: us-east-1
+                        datacenter: DC-01
+                        room: Room-A
+                        position: A1
+                      components:
+                        - id: 660e8400-e29b-41d4-a716-446655440001
+                          componentId: fm100ht4v4mce2qstjnl8970nnj3ie6ecek4mtjn27pea4kre5gsa49jg0g
+                          type: COMPONENT_TYPE_COMPUTE
+                          name: Server-01
+                          serialNumber: SN-SRV-001
+                          manufacturer: Dell
+                          firmwareVersion: 2.1.0
+                          position: 1
+          headers:
+            X-Pagination:
+              schema:
+                type: string
+                example: '{"pageNumber":1,"pageSize":20,"total":30,"orderBy":"NAME_ASC"}'
+              description: Pagination result in JSON format
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Rack
+  '/v2/org/{org}/carbide/rack/{id}':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+        name: id
+        in: path
+        required: true
+        description: ID of the Rack
+    get:
+      summary: Retrieve a Rack
+      operationId: get-rack
+      description: |-
+        Get a Rack by ID.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site
+        - schema:
+            type: boolean
+          in: query
+          name: includeComponents
+          description: Include rack components in response
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rack'
+              examples:
+                example-1:
+                  value:
+                    id: 550e8400-e29b-41d4-a716-446655440000
+                    name: Rack-01
+                    manufacturer: Dell
+                    model: PowerEdge R750
+                    serialNumber: SN-RACK-001
+                    description: Primary compute rack
+                    location:
+                      region: us-east-1
+                      datacenter: DC-01
+                      room: Room-A
+                      position: A1
+                    components:
+                      - id: 660e8400-e29b-41d4-a716-446655440001
+                        componentId: fm100ht4v4mce2qstjnl8970nnj3ie6ecek4mtjn27pea4kre5gsa49jg0g
+                        type: COMPONENT_TYPE_COMPUTE
+                        name: Server-01
+                        serialNumber: SN-SRV-001
+                        manufacturer: Dell
+                        firmwareVersion: 2.1.0
+                        position: 1
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      tags:
+        - Rack
   '/v2/org/{org}/carbide/network-security-group':
     parameters:
       - schema:
@@ -13275,6 +13460,105 @@ components:
             - string
             - 'null'
           description: 'Device Type of the Capability component, if available'
+    Rack:
+      title: Rack
+      type: object
+      description: Rack represents a physical rack in the datacenter
+      examples:
+        - id: 550e8400-e29b-41d4-a716-446655440000
+          name: Rack-01
+          manufacturer: Dell
+          model: PowerEdge R750
+          serialNumber: SN-RACK-001
+          description: Primary compute rack
+          location:
+            region: us-east-1
+            datacenter: DC-01
+            room: Room-A
+            position: A1
+          components:
+            - id: 660e8400-e29b-41d4-a716-446655440001
+              componentId: fm100ht4v4mce2qstjnl8970nnj3ie6ecek4mtjn27pea4kre5gsa49jg0g
+              type: COMPONENT_TYPE_COMPUTE
+              name: Server-01
+              serialNumber: SN-SRV-001
+              manufacturer: Dell
+              firmwareVersion: 2.1.0
+              position: 1
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier of the Rack
+        name:
+          type: string
+          description: Name of the Rack
+        manufacturer:
+          type: string
+          description: Manufacturer of the Rack
+        model:
+          type: string
+          description: Model of the Rack
+        serialNumber:
+          type: string
+          description: Serial number of the Rack
+        description:
+          type: string
+          description: Description of the Rack
+        location:
+          $ref: '#/components/schemas/RackLocation'
+        components:
+          type: array
+          description: Components within the Rack. Only returned when includeComponents is true.
+          items:
+            $ref: '#/components/schemas/RackComponent'
+    RackLocation:
+      title: RackLocation
+      type: object
+      description: Physical location of a Rack
+      properties:
+        region:
+          type: string
+          description: Region where the rack is located
+        datacenter:
+          type: string
+          description: Datacenter where the rack is located
+        room:
+          type: string
+          description: Room within the datacenter
+        position:
+          type: string
+          description: Position of the rack within the room
+    RackComponent:
+      title: RackComponent
+      type: object
+      description: A component within a Rack (e.g. compute node, switch, PDU)
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier of the component in RLA
+        componentId:
+          type: string
+          description: ID of the component in its source system (e.g. Carbide machine ID for compute nodes)
+        type:
+          type: string
+          description: Type of the component (e.g. COMPONENT_TYPE_COMPUTE, COMPONENT_TYPE_SWITCH)
+        name:
+          type: string
+          description: Name of the component
+        serialNumber:
+          type: string
+          description: Serial number of the component
+        manufacturer:
+          type: string
+          description: Manufacturer of the component
+        firmwareVersion:
+          type: string
+          description: Firmware version of the component
+        position:
+          type: integer
+          description: Slot position of the component within the rack
     Machine:
       title: Machine
       type: object

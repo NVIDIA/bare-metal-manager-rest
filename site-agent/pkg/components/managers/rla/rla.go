@@ -31,6 +31,12 @@ const (
 
 // Init - initialize RLA manager
 func (rla *API) Init() {
+	// Check if RLA is enabled via environment variable
+	if !ManagerAccess.Conf.EB.RLA.Enabled {
+		ManagerAccess.Data.EB.Log.Info().Msg("RLA: RLA is disabled, skipping initialization")
+		return
+	}
+
 	ManagerAccess.Data.EB.Log.Info().Msg("RLA: Initializing RLA manager")
 
 	prometheus.MustRegister(
@@ -60,7 +66,7 @@ func (rla *API) Start() {
 
 	// Create the client here
 	// Each workflow will check and reinitialize the client if needed
-	if err := rla.CreateGrpcClient(); err != nil {
+	if err := rla.CreateGRPCClient(); err != nil {
 		ManagerAccess.Data.EB.Log.Error().Msgf("RLA: failed to create GRPC client: %v", err)
 	}
 }
@@ -77,7 +83,7 @@ func (rla *API) GetState() []string {
 	return strs
 }
 
-// GetGRPCClientVersion returns the current version of the GRPC client
+// GetGrpcClientVersion returns the current version of the GRPC client
 func (rla *API) GetGRPCClientVersion() int64 {
 	return ManagerAccess.Data.EB.Managers.RLA.Client.Version()
 }

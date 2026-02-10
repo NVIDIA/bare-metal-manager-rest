@@ -153,12 +153,14 @@ jobs:
 
           if [ "${{ matrix.module }}" = "site-agent" ]; then
             make carbide-mock-server-start
+            make rla-mock-server-start
           fi
 
           go test -v -race -p 1 ./${{ matrix.module }}/... -coverprofile=coverage-${{ matrix.module }}.txt -covermode=atomic 2>&1 | tee test-output-${{ matrix.module }}.txt
 
           if [ "${{ matrix.module }}" = "site-agent" ]; then
             make carbide-mock-server-stop
+            make rla-mock-server-stop
           fi
 
       - name: Generate JUnit report
