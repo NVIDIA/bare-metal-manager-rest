@@ -1,13 +1,18 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  *
- * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
- * property and proprietary rights in and to this material, related
- * documentation and any modifications thereto. Any use, reproduction,
- * disclosure or distribution of this material and related documentation
- * without an express license agreement from NVIDIA CORPORATION or
- * its affiliates is strictly prohibited.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package model
@@ -222,18 +227,22 @@ type APIMachine struct {
 type APIDMIData struct {
 	// BoardName is the name of the Machine's board
 	BoardName *string `json:"boardName"`
-	// boardSerial is the searial number of the Machine's board
-	BoardSerial *string `json:"boardSerial"`
 	// BoardVersion is the version of the Machine's board
 	BoardVersion *string `json:"boardVersion"`
 	// BiosDate is the date of the Machine's bios
 	BiosDate *string `json:"biosDate"`
 	// BiosVersion is the version of the Machine's bios
 	BiosVersion *string `json:"biosVersion"`
+	// ProductName is the name of the Machine's product
+	ProductName *string `json:"productName"`
 	// ProductSerial is searial number the Machine
 	ProductSerial *string `json:"productSerial"`
+	// BoardSerial is the searial number of the Machine's board
+	BoardSerial *string `json:"boardSerial"`
 	// ChassisSerial is searial number the Machine's Chassis
 	ChassisSerial *string `json:"chassisSerial"`
+	// SysVendor is the vendor of the Machine's system
+	SysVendor *string `json:"sysVendor"`
 }
 
 // APIBMCInfo is the data structure to capture API representation of a Machine's BMC Info
@@ -423,8 +432,11 @@ func NewAPIMachine(dbm *cdbm.Machine, dbmcs []cdbm.MachineCapability, dbmis []cd
 					BoardVersion:  &machine.DiscoveryInfo.DmiData.BoardVersion,
 					BiosDate:      &machine.DiscoveryInfo.DmiData.BiosDate,
 					BiosVersion:   &machine.DiscoveryInfo.DmiData.BiosVersion,
+					ProductName:   &machine.DiscoveryInfo.DmiData.ProductName,
 					ProductSerial: &machine.DiscoveryInfo.DmiData.ProductSerial,
+					BoardSerial:   &machine.DiscoveryInfo.DmiData.BoardSerial,
 					ChassisSerial: &machine.DiscoveryInfo.DmiData.ChassisSerial,
+					SysVendor:     &machine.DiscoveryInfo.DmiData.SysVendor,
 				}
 			}
 

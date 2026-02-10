@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Carbide REST API
 
 A collection of microservices that comprise the management backend for Carbide, exposed as a REST API.
@@ -213,6 +218,14 @@ TruffleHog Secret Scan...................................................Passed
 ```bash
 make pre-commit-update  # Update hooks to latest versions
 ```
+
+## Experimental Notice
+
+This software is considered *experimental* and is a preview release. Use at
+your own risk in production environments. The software is provided "as is"
+without warranties of any kind. Features, APIs, and configurations may change
+without notice in future releases. For production deployments, thoroughly test
+in non-critical environments first.
 
 ## License
 

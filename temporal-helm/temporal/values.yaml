@@ -1,9 +1,17 @@
-# SPDX-FileCopyrightText: Copyright (c) 2021-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 #
-# Based on Temporal Helm Charts (MIT License)
-# Original Copyright (c) 2020 Temporal Technologies Inc. / Uber Technologies, Inc.
-# See THIRD-PARTY-LICENSES for full license text.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 nameOverride: ""
 fullnameOverride: ""
@@ -35,13 +43,13 @@ server:
     tag: 1.22.6
     pullPolicy: IfNotPresent
 
-  # Keep your higher replicaCount
-  replicaCount: 3
+  # Global default settings (can be overridden per service)
+  replicaCount: 1
 
   # Incorporate your additional environment (TLS)
   additionalEnv:
     - name: TEMPORAL_CLI_TLS_SERVER_NAME
-      value: interservice.server.temporal.nvidia.com
+      value: interservice.server.temporal.local
     - name: TEMPORAL_CLI_TLS_ENABLE_HOST_VERIFICATION
       value: "true"
     - name: TEMPORAL_CLI_TLS_CERT
@@ -146,7 +154,7 @@ server:
 
         sql:
           driver: "postgres12"
-          host: "staging.cdgwzusskcou.us-west-2.rds.amazonaws.com"
+          host: "postgres.carbide.svc.cluster.local"
           port: 5432
           database: "temporal"
           user: "temporal"
@@ -159,7 +167,7 @@ server:
 
         sql:
           driver: "postgres12"
-          host: "staging.cdgwzusskcou.us-west-2.rds.amazonaws.com"
+          host: "postgres.carbide.svc.cluster.local"
           port: 5432
           database: "temporal_visibility"
           user: "temporal"
@@ -177,7 +185,7 @@ server:
             clientCaFiles:
               - /var/secrets/temporal/certs/server-interservice/ca.crt
           client:
-            serverName: interservice.server.temporal.nvidia.com
+            serverName: interservice.server.temporal.local
             rootCaFiles:
               - /var/secrets/temporal/certs/server-interservice/ca.crt
         frontend:
@@ -188,33 +196,33 @@ server:
             clientCaFiles:
               - /var/secrets/temporal/certs/server-interservice/ca.crt
           client:
-            serverName: interservice.server.temporal.nvidia.com
+            serverName: interservice.server.temporal.local
             rootCaFiles:
               - /var/secrets/temporal/certs/server-interservice/ca.crt
           hostOverrides:
-            interservice.server.temporal.nvidia.com:
+            interservice.server.temporal.local:
               certFile: /var/secrets/temporal/certs/server-interservice/tls.crt
               keyFile: /var/secrets/temporal/certs/server-interservice/tls.key
               requireClientAuth: true
               clientCaFiles:
                 - /var/secrets/temporal/certs/server-interservice/ca.crt
-            cloud.server.temporal.nvidia.com:
+            cloud.server.temporal.local:
               certFile: /var/secrets/temporal/certs/server-cloud/tls.crt
               keyFile: /var/secrets/temporal/certs/server-cloud/tls.key
               requireClientAuth: true
               clientCaFiles:
                 - /var/secrets/temporal/certs/server-cloud/ca.crt
-            site.server.temporal.nvidia.com:
+            site.server.temporal.local:
               certFile: /var/secrets/temporal/certs/server-site/tls.crt
               keyFile: /var/secrets/temporal/certs/server-site/tls.key
               requireClientAuth: true
               clientCaFiles:
                 - /var/secrets/temporal/certs/server-site/ca.crt
 
-  # Keep your custom LoadBalancer
   frontend:
+    replicaCount: 1
     service:
-      type: LoadBalancer
+      type: ClusterIP
       annotations: {}
       port: 7233
     externalService:
@@ -299,7 +307,7 @@ admintools:
   # Merge your additionalEnv (TLS) with upstream placeholders
   additionalEnv:
     - name: TEMPORAL_CLI_TLS_SERVER_NAME
-      value: interservice.server.temporal.nvidia.com
+      value: interservice.server.temporal.local
     - name: TEMPORAL_CLI_TLS_DISABLE_HOST_VERIFICATION
       value: "false"
     - name: TEMPORAL_CLI_TLS_CERT
@@ -348,7 +356,7 @@ web:
       issue_report_link: https://github.com/temporalio/web/issues/new/choose
   additionalEnv:
     - name: TEMPORAL_TLS_SERVER_NAME
-      value: interservice.server.temporal.nvidia.com
+      value: interservice.server.temporal.local
     - name: TEMPORAL_TLS_ENABLE_HOST_VERIFICATION
       value: "true"
     - name: TEMPORAL_TLS_CERT
@@ -416,29 +424,9 @@ schema:
   containerSecurityContext: {}
   securityContext: {}
 
+# Disable elasticsearch - use postgres for visibility
 elasticsearch:
-  enabled: true
-  replicas: 3
-  # Keep your extra config (like esJavaOpts) if you need it
-  esJavaOpts: "-Xms256m -Xmx256m"
-  resources:
-    requests:
-      cpu: "400m"
-      memory: "1Gi"
-    limits:
-      cpu: "1000m"
-      memory: "2Gi"
-  persistence:
-    enabled: false
-  imageTag: 7.17.3
-  host: elasticsearch-master-headless
-  scheme: http
-  port: 9200
-  version: "v7"
-  logLevel: "error"
-  username: ""
-  password: ""
-  visibilityIndex: "temporal_visibility_v1_dev"
+  enabled: false
 
 prometheus:
   enabled: false
