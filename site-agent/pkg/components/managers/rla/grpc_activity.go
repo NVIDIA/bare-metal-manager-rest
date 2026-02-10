@@ -21,16 +21,15 @@ import (
 
 // CreateGRPCClientActivity - Create GRPC client Activity
 func (RLA *API) CreateGRPCClientActivity(ctx context.Context, ResourceID string) (client *client.RlaClient, err error) {
-	// Create the VPC
-	ManagerAccess.Data.EB.Log.Info().Interface("Request", ResourceID).Msg("RLA: Starting  the gRPC connection Activity")
+	ManagerAccess.Data.EB.Log.Info().Interface("Request", ResourceID).Msg("RLA: Starting the gRPC connection Activity")
 
 	// Use temporal logger for temporal logs
 	logger := activity.GetLogger(ctx)
-	withLogger := log.With(logger, "Activity", "CreateGrpcClientActivity", "ResourceReq", ResourceID)
-	withLogger.Info("RLA: Starting  the gRPC connection Activity")
+	withLogger := log.With(logger, "Activity", "CreateGRPCClientActivity", "ResourceReq", ResourceID)
+	withLogger.Info("RLA: Starting the gRPC connection Activity")
 
 	// Create the client
-	ManagerAccess.Data.EB.Log.Info().Interface("Request", ResourceID).Msg("RLA: Creating  grpc client")
+	ManagerAccess.Data.EB.Log.Info().Interface("Request", ResourceID).Msg("RLA: Creating gRPC client")
 
 	err = RLA.CreateGRPCClient()
 	if err != nil {
@@ -39,7 +38,7 @@ func (RLA *API) CreateGRPCClientActivity(ctx context.Context, ResourceID string)
 	return RLA.GetGRPCClient(), nil
 }
 
-// RegisterGrpc - Register GRPC
+// RegisterGRPC - Register GRPC
 func (RLA *API) RegisterGRPC() {
 	// Register activity
 	activityRegisterOptions := activity.RegisterOptions{

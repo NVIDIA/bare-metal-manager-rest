@@ -16,9 +16,9 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	rlav1 "github.com/nvidia/carbide-rest/workflow-schema/rla/protobuf/v1"
 	swe "github.com/nvidia/carbide-rest/site-workflow/pkg/error"
 	cClient "github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
+	rlav1 "github.com/nvidia/carbide-rest/workflow-schema/rla/protobuf/v1"
 	"go.temporal.io/sdk/temporal"
 )
 
@@ -46,7 +46,7 @@ func (mr *ManageRack) GetRack(ctx context.Context, request *rlav1.GetRackInfoByI
 	case request == nil:
 		err = errors.New("received empty get rack request")
 	case request.Id == nil || request.Id.Id == "":
-		err = errors.New("received get rack request missing rack ID")
+		err = errors.New("received get rack request without rack ID")
 	}
 
 	if err != nil {
@@ -88,7 +88,7 @@ func (mr *ManageRack) GetRacks(ctx context.Context, request *rlav1.GetListOfRack
 		return nil, swe.WrapErr(err)
 	}
 
-	logger.Info().Int32("total", response.GetTotal()).Msg("Completed activity")
+	logger.Info().Int32("Total", response.GetTotal()).Msg("Completed activity")
 
 	return response, nil
 }

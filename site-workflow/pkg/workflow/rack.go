@@ -91,7 +91,7 @@ func GetRacks(ctx workflow.Context, request *rlav1.GetListOfRacksRequest) (*rlav
 		return nil, err
 	}
 
-	logger.Info().Int32("total", response.GetTotal()).Msg("Completing workflow")
+	logger.Info().Int32("Total", response.GetTotal()).Msg("Completing workflow")
 
 	return &response, nil
 }

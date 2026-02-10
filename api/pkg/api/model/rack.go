@@ -78,6 +78,56 @@ type APIRack struct {
 	Components   []*APIRackComponent `json:"components,omitempty"`
 }
 
+// FromProto converts an RLA protobuf Rack to an APIRack
+func (ar *APIRack) FromProto(protoRack *rlav1.Rack, includeComponents bool) {
+	if protoRack == nil {
+		return
+	}
+
+	// Get info from DeviceInfo
+	if protoRack.GetInfo() != nil {
+		info := protoRack.GetInfo()
+		if info.GetId() != nil {
+			ar.ID = info.GetId().GetId()
+		}
+		ar.Name = info.GetName()
+		ar.Manufacturer = info.GetManufacturer()
+		if info.Model != nil {
+			ar.Model = *info.Model
+		}
+		ar.SerialNumber = info.GetSerialNumber()
+		if info.Description != nil {
+			ar.Description = *info.Description
+		}
+	}
+
+	// Get location
+	if protoRack.GetLocation() != nil {
+		ar.Location = &APIRackLocation{}
+		ar.Location.FromProto(protoRack.GetLocation())
+	}
+
+	// Get components
+	if includeComponents && len(protoRack.GetComponents()) > 0 {
+		ar.Components = make([]*APIRackComponent, 0, len(protoRack.GetComponents()))
+		for _, comp := range protoRack.GetComponents() {
+			apiComp := &APIRackComponent{}
+			apiComp.FromProto(comp)
+			ar.Components = append(ar.Components, apiComp)
+		}
+	}
+}
+
+// NewAPIRack creates an APIRack from the RLA protobuf Rack
+func NewAPIRack(protoRack *rlav1.Rack, includeComponents bool) *APIRack {
+	if protoRack == nil {
+		return nil
+	}
+	apiRack := &APIRack{}
+	apiRack.FromProto(protoRack, includeComponents)
+	return apiRack
+}
+
 // APIRackLocation represents the location of a rack
 type APIRackLocation struct {
 	Region     string `json:"region"`
@@ -133,54 +183,4 @@ func (arc *APIRackComponent) FromProto(protoComponent *rlav1.Component) {
 	if protoComponent.GetPosition() != nil {
 		arc.Position = protoComponent.GetPosition().GetSlotId()
 	}
-}
-
-// FromProto converts an RLA protobuf Rack to an APIRack
-func (ar *APIRack) FromProto(protoRack *rlav1.Rack, includeComponents bool) {
-	if protoRack == nil {
-		return
-	}
-
-	// Get info from DeviceInfo
-	if protoRack.GetInfo() != nil {
-		info := protoRack.GetInfo()
-		if info.GetId() != nil {
-			ar.ID = info.GetId().GetId()
-		}
-		ar.Name = info.GetName()
-		ar.Manufacturer = info.GetManufacturer()
-		if info.Model != nil {
-			ar.Model = *info.Model
-		}
-		ar.SerialNumber = info.GetSerialNumber()
-		if info.Description != nil {
-			ar.Description = *info.Description
-		}
-	}
-
-	// Get location
-	if protoRack.GetLocation() != nil {
-		ar.Location = &APIRackLocation{}
-		ar.Location.FromProto(protoRack.GetLocation())
-	}
-
-	// Get components
-	if includeComponents && len(protoRack.GetComponents()) > 0 {
-		ar.Components = make([]*APIRackComponent, 0, len(protoRack.GetComponents()))
-		for _, comp := range protoRack.GetComponents() {
-			apiComp := &APIRackComponent{}
-			apiComp.FromProto(comp)
-			ar.Components = append(ar.Components, apiComp)
-		}
-	}
-}
-
-// NewAPIRack creates an APIRack from the RLA protobuf Rack
-func NewAPIRack(protoRack *rlav1.Rack, includeComponents bool) *APIRack {
-	if protoRack == nil {
-		return nil
-	}
-	apiRack := &APIRack{}
-	apiRack.FromProto(protoRack, includeComponents)
-	return apiRack
 }
