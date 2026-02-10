@@ -1,6 +1,6 @@
-# Carbide REST API
+# NVIDIA Bare Metal Manager REST API
 
-A collection of microservices that comprise the management backend for Carbide, exposed as a REST API.
+A collection of microservices that comprise the management backend for NVIDIA Bare Metal Manager, exposed as a REST API.
 
 ## Prerequisites
 
@@ -225,4 +225,3 @@ in non-critical environments first.
 ## License
 
 See [LICENSE](LICENSE) for details.
-

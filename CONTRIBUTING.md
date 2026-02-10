@@ -1,6 +1,6 @@
-# Contributing to Carbide
+# Contributing to NVIDIA Bare Metal Manager
 
-Thank you for your interest in contributing to Carbide! We welcome contributions from the community.
+Thank you for your interest in contributing to NVIDIA Bare Metal Manager! We welcome contributions from the community.
 
 ## Table of Contents
 
@@ -11,7 +11,7 @@ Thank you for your interest in contributing to Carbide! We welcome contributions
 
 ## Developer Certificate of Origin (DCO)
 
-Carbide requires the Developer Certificate of Origin (DCO) process to be followed for all contributions.
+NVIDIA Bare Metal Manager requires the Developer Certificate of Origin (DCO) process to be followed for all contributions.
 
 The DCO is a lightweight way for contributors to certify that they wrote or otherwise have the right to submit the code they are contributing. The full text of the DCO can be found at [developercertificate.org](https://developercertificate.org/):
 
@@ -100,11 +100,11 @@ All pull requests are automatically checked for DCO compliance via DCO bot. Pull
 
 ## Fork and Setup
 
-Developers must first fork the upstream [Carbide REST repository](https://github.com/NVIDIA/carbide-rest).
+Developers must first fork the upstream [NVIDIA Bare Metal Manager REST repository](https://github.com/NVIDIA/carbide-rest).
 
 ### 1. Fork the Repository
 
-1. Navigate to the [Carbide REST repository](https://github.com/NVIDIA/carbide-rest) on GitHub.
+1. Navigate to the [NVIDIA Bare Metal Manager REST repository](https://github.com/NVIDIA/carbide-rest) on GitHub.
 2. Click the **Fork** button in the upper right corner.
 3. Select your GitHub account as the destination.
 
