@@ -82,9 +82,13 @@ func TestCreateInstanceTypeHandler_Handle(t *testing.T) {
 	st := common.TestBuildSite(t, dbSession, ip, "Test Site", ipu)
 
 	itcrValid := &model.APIInstanceTypeCreateRequest{
-		Name:                  "x2.large",
-		Description:           cdb.GetStrPtr("Test Description"),
-		SiteID:                st.ID.String(),
+		Name:        "x2.large",
+		Description: cdb.GetStrPtr("Test Description"),
+		SiteID:      st.ID.String(),
+		Labels: map[string]string{
+			"name":        "a-dpu-instance",
+			"description": "Multi-DPU Instance Type",
+		},
 		ControllerMachineType: cdb.GetStrPtr("intel_xeon_e5_2650v2"),
 		MachineCapabilities: []model.APIMachineCapability{
 			{
@@ -276,9 +280,13 @@ func TestCreateInstanceTypeHandler_Handle(t *testing.T) {
 			},
 			args: args{
 				reqData: &model.APIInstanceTypeCreateRequest{
-					Name:                  "x9001.large",
-					Description:           cdb.GetStrPtr("Test Description"),
-					SiteID:                st.ID.String(),
+					Name:        "x9001.large",
+					Description: cdb.GetStrPtr("Test Description"),
+					SiteID:      st.ID.String(),
+					Labels: map[string]string{
+						"name":        "x9001-instance-type",
+						"description": "Test x9001 Instance Type ",
+					},
 					ControllerMachineType: cdb.GetStrPtr("intel_goku_e9001_dbzv2"),
 					MachineCapabilities:   []model.APIMachineCapability{},
 				},
@@ -467,6 +475,7 @@ func TestCreateInstanceTypeHandler_Handle(t *testing.T) {
 			require.NotNil(t, rst.Description)
 			assert.Equal(t, *tt.args.reqData.Description, *rst.Description)
 			assert.Equal(t, tt.args.reqData.SiteID, rst.SiteID)
+			assert.Equal(t, tt.args.reqData.Labels, rst.Labels)
 			assert.Equal(t, cdbm.InstanceTypeStatusReady, rst.Status)
 			assert.Equal(t, len(rst.StatusHistory), 1)
 			assert.Equal(t, cdbm.InstanceTypeStatusReady, rst.StatusHistory[0].Status)

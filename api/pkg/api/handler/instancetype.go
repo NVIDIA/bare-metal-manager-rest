@@ -202,6 +202,7 @@ func (cith CreateInstanceTypeHandler) Handle(c echo.Context) error {
 		ControllerMachineType:    apiRequest.ControllerMachineType,
 		InfrastructureProviderID: ip.ID,
 		SiteID:                   &site.ID,
+		Labels:                   apiRequest.Labels,
 		Status:                   cdbm.InstanceTypeStatusReady,
 		CreatedBy:                dbUser.ID,
 	})
@@ -397,6 +398,20 @@ func (cith CreateInstanceTypeHandler) Handle(c echo.Context) error {
 	// Include description if present
 	if it.Description != nil {
 		metadata.Description = *it.Description
+	}
+
+	// Prepare labels for site controller
+	if len(it.Labels) > 0 {
+		var labels []*cwssaws.Label
+		for key, value := range it.Labels {
+			curVal := value
+			localLable := &cwssaws.Label{
+				Key:   key,
+				Value: &curVal,
+			}
+			labels = append(labels, localLable)
+		}
+		metadata.Labels = labels
 	}
 
 	createInstanceTypeRequest.Metadata = metadata
@@ -1302,7 +1317,7 @@ func (uith UpdateInstanceTypeHandler) Handle(c echo.Context) error {
 	}
 
 	// Update Instance Type
-	it, err = itDAO.Update(ctx, tx, cdbm.InstanceTypeUpdateInput{ID: itID, Name: apiRequest.Name, Description: apiRequest.Description})
+	it, err = itDAO.Update(ctx, tx, cdbm.InstanceTypeUpdateInput{ID: itID, Name: apiRequest.Name, Description: apiRequest.Description, Labels: apiRequest.Labels})
 	if err != nil {
 		logger.Error().Err(err).Msg("error updating Instance Type in DB")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to update Instance Type", nil)
@@ -1449,6 +1464,18 @@ func (uith UpdateInstanceTypeHandler) Handle(c echo.Context) error {
 	if it.Description != nil {
 		metadata.Description = *it.Description
 	}
+
+	// Prepare the labels for the metadata of the carbide call.
+	var labels []*cwssaws.Label
+	for key, value := range it.Labels {
+		curVal := value
+		localLable := &cwssaws.Label{
+			Key:   key,
+			Value: &curVal,
+		}
+		labels = append(labels, localLable)
+	}
+	metadata.Labels = labels
 
 	updateInstanceTypeRequest.Metadata = metadata
 
