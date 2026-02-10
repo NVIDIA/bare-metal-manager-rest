@@ -17,7 +17,6 @@
 .PHONY: build docker-build docker-build-local
 .PHONY: test-ipam test-site-agent test-site-manager test-workflow test-db test-api test-auth test-common test-cert-manager test-site-workflow migrate carbide-mock-server-build carbide-mock-server-start carbide-mock-server-stop rla-mock-server-build rla-mock-server-start rla-mock-server-stop
 .PHONY: pre-commit-install pre-commit-run pre-commit-update
-.PHONY: generate-third-party-licenses verify-third-party-licenses
 
 # Build configuration
 BUILD_DIR := build/binaries
@@ -439,15 +438,6 @@ pre-commit-install:
 # Run pre-commit on all files
 pre-commit-run:
 	pre-commit run --all-files
-
-# Regenerate THIRD-PARTY-LICENSES from go.mod (downloads deps, then writes TOML).
-# The temporal-helm-charts MIT entry is always prepended; other entries come from go list -m all.
-generate-third-party-licenses:
-	./scripts/generate-third-party-licenses.sh
-
-# Verify every Go module dependency (go list -m all) is listed in THIRD-PARTY-LICENSES. Exit 1 if any missing.
-verify-third-party-licenses:
-	./scripts/verify-third-party-licenses.sh
 
 # Update pre-commit hooks to latest versions
 pre-commit-update:
