@@ -1,0 +1,288 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package dao
+
+import (
+	"net"
+
+	"github.com/google/uuid"
+
+	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/bmc"
+	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/component"
+	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/nvldomain"
+	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/rack"
+	"github.com/nvidia/carbide-rest/rla/internal/operation"
+	taskdef "github.com/nvidia/carbide-rest/rla/internal/task/task"
+	identifier "github.com/nvidia/carbide-rest/rla/pkg/common/Identifier"
+	"github.com/nvidia/carbide-rest/rla/pkg/common/credential"
+	"github.com/nvidia/carbide-rest/rla/pkg/common/deviceinfo"
+	"github.com/nvidia/carbide-rest/rla/pkg/common/devicetypes"
+	"github.com/nvidia/carbide-rest/rla/pkg/common/location"
+	"github.com/nvidia/carbide-rest/rla/pkg/common/utils"
+	"github.com/nvidia/carbide-rest/rla/pkg/db/model"
+)
+
+// BMCTypeFrom converts BMC type from DAO model to internal model.
+func BMCTypeFrom(dt string) devicetypes.BMCType {
+	return devicetypes.BMCTypeFromString(dt)
+}
+
+// ComponentTypeFrom convers component type from DAO model to internal model.
+func ComponentTypeFrom(dt string) devicetypes.ComponentType {
+	return devicetypes.ComponentTypeFromString(dt)
+}
+
+// BMCFrom converts BMC from DAO model to internal model
+func BMCFrom(dao model.BMC) bmc.BMC {
+	var b bmc.BMC
+
+	if hwAddr, err := net.ParseMAC(dao.MacAddress); err == nil {
+		b.MAC = hwAddr
+	}
+
+	if dao.IPAddress != nil {
+		b.IP = net.ParseIP(*dao.IPAddress)
+	}
+
+	if dao.User != nil && dao.Password != nil {
+		// Create a new credential only if the user and password are not nil.
+		nc := credential.New(*dao.User, *dao.Password)
+		b.Credential = &nc
+	}
+
+	return b
+}
+
+// ComponentFrom converts Component from DAO model to internal model.
+func ComponentFrom(dao model.Component) *component.Component {
+	bmcsByType := make(map[devicetypes.BMCType][]bmc.BMC)
+	for _, bd := range dao.BMCs {
+		t := BMCTypeFrom(bd.Type)
+		bmcsByType[t] = append(bmcsByType[t], BMCFrom(bd))
+	}
+
+	var componentID string
+	if dao.ComponentID != nil {
+		componentID = *dao.ComponentID
+	}
+
+	return &component.Component{
+		Type: ComponentTypeFrom(dao.Type),
+		Info: deviceinfo.DeviceInfo{
+			ID:           dao.ID,
+			Name:         dao.Name,
+			Manufacturer: dao.Manufacturer,
+			Model:        dao.Model,
+			SerialNumber: dao.SerialNumber,
+			Description:  utils.MapToJSONString(dao.Description),
+		},
+		FirmwareVersion: dao.FirmwareVersion,
+		Position: component.InRackPosition{
+			SlotID:    dao.SlotID,
+			TrayIndex: dao.TrayIndex,
+			HostID:    dao.HostID,
+		},
+		BmcsByType:  bmcsByType,
+		ComponentID: componentID,
+		RackID:      dao.RackID,
+	}
+}
+
+// RackFrom converts Rack from DAO model to internal model.
+func RackFrom(dao *model.Rack) *rack.Rack {
+	if dao == nil {
+		return nil
+	}
+
+	components := make([]component.Component, 0, len(dao.Components))
+	for _, c := range dao.Components {
+		components = append(components, *ComponentFrom(c))
+	}
+
+	return &rack.Rack{
+		Info: deviceinfo.DeviceInfo{
+			ID:           dao.ID,
+			Name:         dao.Name,
+			Manufacturer: dao.Manufacturer,
+			SerialNumber: dao.SerialNumber,
+			Description:  utils.MapToJSONString(dao.Description),
+		},
+		Loc: location.New(
+			[]byte(utils.MapToJSONString(dao.Location)),
+		),
+		Components: components,
+	}
+}
+
+func NVLDomainFrom(dao *model.NVLDomain) *nvldomain.NVLDomain {
+	if dao == nil {
+		return nil
+	}
+
+	return &nvldomain.NVLDomain{
+		Identifier: *identifier.New(dao.ID, dao.Name),
+	}
+}
+
+func TaskFrom(dao *model.Task) *taskdef.Task {
+	if dao == nil {
+		return nil
+	}
+
+	return &taskdef.Task{
+		ID: dao.ID,
+		Operation: operation.Wrapper{
+			Type: dao.Type,
+			Info: dao.Information,
+		},
+		RackID:         dao.RackID,
+		ComponentUUIDs: dao.ComponentUUIDs,
+		Description:    dao.Description,
+		ExecutorType:   dao.ExecutorType,
+		ExecutionID:    dao.ExecutionID,
+		Status:         dao.Status,
+		Message:        dao.Message,
+	}
+}
+
+// BMCTypeTo converts BMC type from internal model to DAO model
+func BMCTypeTo(bt devicetypes.BMCType) string {
+	return devicetypes.BMCTypeToString(bt)
+}
+
+// ComponentTypeTo converts Component type from internal model to DAO model
+func ComponentTypeTo(ct devicetypes.ComponentType) string {
+	return devicetypes.ComponentTypeToString(ct)
+}
+
+// BMCTo converts BMC from internal model to DAO model
+func BMCTo(typ devicetypes.BMCType, b *bmc.BMC, compDao *model.Component) *model.BMC {
+	if b == nil {
+		return nil
+	}
+
+	bmcDAO := model.BMC{
+		MacAddress: b.MAC.String(),
+		Type:       BMCTypeTo(typ),
+		Component:  compDao,
+	}
+
+	if compDao != nil {
+		bmcDAO.ComponentID = compDao.ID
+	} else {
+		bmcDAO.ComponentID = uuid.Nil
+	}
+
+	if b.IP != nil {
+		ip := b.IP.String()
+		bmcDAO.IPAddress = &ip
+	}
+
+	if b.Credential != nil {
+		bmcDAO.User, bmcDAO.Password = b.Credential.Retrieve()
+	}
+
+	return &bmcDAO
+}
+
+// ComponentTo converts Component from internal model to DAO model
+func ComponentTo(c *component.Component, rackID uuid.UUID) *model.Component {
+	if c == nil {
+		return nil
+	}
+
+	compDAO := model.Component{
+		ID:              c.Info.ID,
+		Name:            c.Info.Name,
+		Type:            ComponentTypeTo(c.Type),
+		Manufacturer:    c.Info.Manufacturer,
+		Model:           c.Info.Model,
+		SerialNumber:    c.Info.SerialNumber,
+		Description:     utils.JSONStringToMap("description", c.Info.Description),
+		FirmwareVersion: c.FirmwareVersion,
+		SlotID:          c.Position.SlotID,
+		TrayIndex:       c.Position.TrayIndex,
+		HostID:          c.Position.HostID,
+		RackID:          rackID,
+	}
+
+	if c.ComponentID != "" {
+		compDAO.ComponentID = &c.ComponentID
+	}
+
+	for _, t := range devicetypes.BMCTypes() {
+		for _, b := range c.BmcsByType[t] {
+			bmcDAO := BMCTo(t, &b, &compDAO)
+			compDAO.BMCs = append(compDAO.BMCs, *bmcDAO)
+		}
+	}
+
+	return &compDAO
+}
+
+// RackTo converts Rack from internal model to DAO model
+func RackTo(r *rack.Rack) *model.Rack {
+	if r == nil {
+		return nil
+	}
+
+	components := make([]model.Component, 0, len(r.Components))
+	for _, c := range r.Components {
+		components = append(components, *ComponentTo(&c, r.Info.ID))
+	}
+
+	return &model.Rack{
+		ID:           r.Info.ID,
+		Name:         r.Info.Name,
+		Manufacturer: r.Info.Manufacturer,
+		SerialNumber: r.Info.SerialNumber,
+		Description:  utils.JSONStringToMap("description", r.Info.Description),
+		Location:     r.Loc.ToMap(),
+		Components:   components,
+	}
+}
+
+// NVLDomainTo converts NVLDomain from internal model to DAO model
+func NVLDomainTo(n *nvldomain.NVLDomain) *model.NVLDomain {
+	if n == nil {
+		return nil
+	}
+
+	return &model.NVLDomain{
+		ID:   n.Identifier.ID,
+		Name: n.Identifier.Name,
+	}
+}
+
+func TaskTo(task *taskdef.Task) *model.Task {
+	if task == nil {
+		return nil
+	}
+
+	return &model.Task{
+		ID:             task.ID,
+		Type:           task.Operation.Type,
+		Information:    task.Operation.Info,
+		Description:    task.Description,
+		RackID:         task.RackID,
+		ComponentUUIDs: task.ComponentUUIDs,
+		ExecutorType:   task.ExecutorType,
+		ExecutionID:    task.ExecutionID,
+		Status:         task.Status,
+		Message:        task.Message,
+	}
+}
