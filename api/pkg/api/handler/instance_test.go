@@ -542,7 +542,7 @@ func testInstanceBuildInstanceInterface(t *testing.T, dbSession *cdb.Session, in
 	return ifc
 }
 
-func testInstanceBuildInstanceNVLinkInterface(t *testing.T, dbSession *cdb.Session, siteID uuid.UUID, in uuid.UUID, nvlinklogicalID uuid.UUID, device *string, deviceInstance int, status string) *cdbm.NVLinkInterface {
+func testInstanceBuildInstanceNVLinkInterface(t *testing.T, dbSession *cdb.Session, siteID uuid.UUID, in uuid.UUID, nvlinklogicalID uuid.UUID, nvlinkDomainID *uuid.UUID, device *string, deviceInstance int, status string) *cdbm.NVLinkInterface {
 	nvlifc := &cdbm.NVLinkInterface{
 		ID:                       uuid.New(),
 		InstanceID:               in,
@@ -550,6 +550,7 @@ func testInstanceBuildInstanceNVLinkInterface(t *testing.T, dbSession *cdb.Sessi
 		NVLinkLogicalPartitionID: nvlinklogicalID,
 		Device:                   device,
 		DeviceInstance:           deviceInstance,
+		NVLinkDomainID:           nvlinkDomainID,
 		Status:                   status,
 		Created:                  cdb.GetCurTime(),
 		Updated:                  cdb.GetCurTime(),
@@ -3409,16 +3410,16 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 	nvllp2 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-2", tnOrg1, st3, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 	assert.NotNil(t, nvllp2)
 
-	instnvlifc1 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp1.ID, cdb.GetStrPtr("NVIDIA GB200"), 0, cdbm.NVLinkInterfaceStatusReady)
+	instnvlifc1 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp1.ID, cdb.GetUUIDPtr(uuid.New()), cdb.GetStrPtr("NVIDIA GB200"), 0, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, instnvlifc1)
 
-	instnvlifc2 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp1.ID, cdb.GetStrPtr("NVIDIA GB200"), 1, cdbm.NVLinkInterfaceStatusReady)
+	instnvlifc2 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp1.ID, cdb.GetUUIDPtr(uuid.New()), cdb.GetStrPtr("NVIDIA GB200"), 1, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, instnvlifc2)
 
-	instnvlifc3 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp1.ID, cdb.GetStrPtr("NVIDIA GB200"), 2, cdbm.NVLinkInterfaceStatusReady)
+	instnvlifc3 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp1.ID, cdb.GetUUIDPtr(uuid.New()), cdb.GetStrPtr("NVIDIA GB200"), 2, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, instnvlifc3)
 
-	instnvlifc4 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp1.ID, cdb.GetStrPtr("NVIDIA GB200"), 3, cdbm.NVLinkInterfaceStatusReady)
+	instnvlifc4 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp1.ID, cdb.GetUUIDPtr(uuid.New()), cdb.GetStrPtr("NVIDIA GB200"), 3, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, instnvlifc4)
 
 	// Fixtures for NSG-specific testing
