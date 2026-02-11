@@ -80,6 +80,12 @@ jobs:
           version: v2.7.2
           args: --timeout=10m --issues-exit-code=0 ./...
 
+      - name: Run Spectral OpenAPI Lint
+        uses: stoplightio/spectral-action@latest
+        with:
+          file_glob: 'openapi/*.yaml'
+          config_file: .spectral.yml
+
   # ============================================================================
   # Test Job - Unit tests per module with PostgreSQL service
   # ============================================================================

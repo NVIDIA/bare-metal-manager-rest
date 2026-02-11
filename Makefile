@@ -429,13 +429,13 @@ test-temporal-e2e:
 # =============================================================================
 
 # Validate OpenAPI spec using Redocly CLI (Docker)
-validate-openapi:
-	docker run --rm -v $(PWD)/openapi:/spec redocly/cli lint /spec/spec.yaml
+lint-openapi:
+	docker run --rm -v ./openapi:/spec redocly/cli lint /spec/spec.yaml
 
-# Preview OpenAPI spec in Swagger UI (Docker)
+# Preview OpenAPI spec in Redoc UI (Docker)
 preview-openapi:
-	@echo "Starting Swagger UI at http://localhost:8090"
-	docker run --rm -p 8090:8080 -e SWAGGER_JSON=/spec/spec.yaml -v $(PWD)/openapi:/spec swaggerapi/swagger-ui
+	@echo "Starting Redoc UI at http://localhost:8090"
+	docker run -it --rm -p 8090:80 -v ./openapi/spec.yaml:/usr/share/nginx/html/openapi.yaml -e SPEC_URL=openapi.yaml redocly/redoc
 
 # =============================================================================
 # Pre-commit Hooks (TruffleHog Secret Detection)

@@ -6465,12 +6465,12 @@ paths:
         - schema:
             type: string
           in: query
-          name: nvlinkLogicalPartitionId
+          name: nvLinkLogicalPartitionId
           description: Filter NVLink Interfaces by NVLink Logical Partition ID.  Can be specified multiple times to filter on more than one ID.
         - schema:
             type: string
           in: query
-          name: nvlinkDomainId
+          name: nvLinkDomainId
           description: Filter NVLink Interfaces by NVLink Domain ID.  Can be specified multiple times to filter on more than one ID.
         - schema:
             type: string
@@ -6560,7 +6560,8 @@ paths:
                             isOnline: true
                             capabilities:
                               nativeNetworking: false
-                              NetworkSecurityGroup: true
+                              networkSecurityGroup: true
+                              nvLinkPartition: false
                             status: Registered
                           status: Syncing
                           version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -6574,7 +6575,8 @@ paths:
                             isOnline: true
                             capabilities:
                               nativeNetworking: false
-                              NetworkSecurityGroup: false
+                              networkSecurityGroup: false
+                              nvLinkPartition: false
                             status: Registered
                           status: Syncing
                           version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -6894,7 +6896,8 @@ paths:
                           isOnline: true
                           capabilities:
                             nativeNetworking: false
-                            NetworkSecurityGroup: true
+                            networkSecurityGroup: true
+                            nvLinkPartition: false
                           status: Registered
                         status: Syncing
                         version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -6908,7 +6911,8 @@ paths:
                           isOnline: true
                           capabilities:
                             nativeNetworking: false
-                            NetworkSecurityGroup: false
+                            networkSecurityGroup: false
+                            nvLinkPartition: false
                           status: Registered
                         status: Syncing
                         version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -8754,7 +8758,8 @@ paths:
                             isOnline: true
                             capabilities:
                               nativeNetworking: false
-                              NetworkSecurityGroup: true
+                              networkSecurityGroup: true
+                              nvLinkPartition: false
                             status: Registered
                           status: Syncing
                           version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -8876,7 +8881,7 @@ paths:
                           isOnline: true
                           capabilities:
                             nativeNetworking: true
-                            NetworkSecurityGroup: true
+                            networkSecurityGroup: true
                           status: Registered
                         status: Syncing
                         version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -9040,7 +9045,7 @@ paths:
                           isOnline: true
                           capabilities:
                             nativeNetworking: true
-                            NetworkSecurityGroup: true
+                            networkSecurityGroup: true
                           status: Registered
                         status: Syncing
                         version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -9054,7 +9059,7 @@ paths:
                           isOnline: true
                           capabilities:
                             nativeNetworking: true
-                            NetworkSecurityGroup: true
+                            networkSecurityGroup: true
                           status: Registered
                         status: Syncing
                         version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -10097,7 +10102,8 @@ components:
           isOnline: false
           capabilities:
             nativeNetworking: false
-            NetworkSecurityGroup: false
+            networkSecurityGroup: true
+            nvLinkPartition: false
           status: Pending
       properties:
         id:
@@ -10136,9 +10142,11 @@ components:
       type: object
       description: Boolean flags to indicate features supported by a Site
       properties:
-        NativeNetworking:
+        nativeNetworking:
           type: boolean
-        NetworkSecurityGroup:
+        networkSecurityGroup:
+          type: boolean
+        nvLinkPartition:
           type: boolean
     SiteCreateRequest:
       title: SiteCreateRequest
@@ -10225,10 +10233,9 @@ components:
       type: object
       description: Location of the Site
       examples:
-        - location:
-            city: San Jose
-            state: CA
-            country: USA
+        - city: San Jose
+          state: CA
+          country: USA
       properties:
         city:
           type: string
@@ -10244,8 +10251,7 @@ components:
       type: object
       description: Contact for the Site
       examples:
-        - contact:
-            email: johndoe@nvidia.com
+        - email: johndoe@nvidia.com
       properties:
         email:
           type: string
@@ -11368,7 +11374,8 @@ components:
                 isOnline: true
                 capabilities:
                   nativeNetworking: false
-                  NetworkSecurityGroup: true
+                  networkSecurityGroup: true
+                  nvLinkPartition: false
                 status: Registered
               status: Syncing
               version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -11382,7 +11389,8 @@ components:
                 isOnline: true
                 capabilities:
                   nativeNetworking: false
-                  NetworkSecurityGroup: false
+                  networkSecurityGroup: false
+                  nvLinkPartition: false
                 status: Registered
               status: Syncing
               version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -11577,7 +11585,8 @@ components:
             isOnline: false
             capabilities:
               nativeNetworking: false
-              NetworkSecurityGroup: false
+              networkSecurityGroup: false
+              nvLinkPartition: false
             status: Pending
           status: Syncing
           version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -15203,7 +15212,8 @@ components:
                 isOnline: true
                 capabilities:
                   nativeNetworking: false
-                  NetworkSecurityGroup: true
+                  networkSecurityGroup: true
+                  nvLinkPartition: false
                 status: Registered
               status: Syncing
               version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -15300,7 +15310,8 @@ components:
             isOnline: false
             capabilities:
               nativeNetworking: false
-              NetworkSecurityGroup: true
+              networkSecurityGroup: true
+              nvLinkPartition: false
             status: Pending
           status: Syncing
           version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
