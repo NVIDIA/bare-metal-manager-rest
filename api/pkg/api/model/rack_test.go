@@ -15,8 +15,8 @@ package model
 import (
 	"testing"
 
+	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 	"github.com/stretchr/testify/assert"
-	rlav1 "github.com/nvidia/carbide-rest/workflow-schema/rla/protobuf/v1"
 )
 
 func TestNewAPIRack(t *testing.T) {

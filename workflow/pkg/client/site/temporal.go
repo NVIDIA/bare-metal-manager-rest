@@ -33,7 +33,7 @@ import (
 	tsdkClient "go.temporal.io/sdk/client"
 	tsdkConverter "go.temporal.io/sdk/converter"
 
-	"github.com/nvidia/carbide-rest/workflow/internal/config"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/internal/config"
 )
 
 // ClientPool contains Temporal clients for different site agents

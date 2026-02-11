@@ -21,18 +21,18 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/nvidia/carbide-rest/auth/pkg/config"
-	commonConfig "github.com/nvidia/carbide-rest/common/pkg/config"
-	"github.com/nvidia/carbide-rest/common/pkg/util"
+	"github.com/nvidia/bare-metal-manager-rest/auth/pkg/config"
+	commonConfig "github.com/nvidia/bare-metal-manager-rest/common/pkg/config"
+	"github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
 
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rs/zerolog/log"
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/nvidia/carbide-rest/auth/pkg/processors"
+	"github.com/nvidia/bare-metal-manager-rest/auth/pkg/processors"
 	temporalClient "go.temporal.io/sdk/client"
 )
 

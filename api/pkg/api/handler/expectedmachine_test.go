@@ -28,14 +28,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/nvidia/carbide-rest/api/internal/config"
-	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
-	"github.com/nvidia/carbide-rest/api/pkg/api/model"
-	sc "github.com/nvidia/carbide-rest/api/pkg/client/site"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	"github.com/nvidia/bare-metal-manager-rest/api/internal/config"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/handler/util/common"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model"
+	sc "github.com/nvidia/bare-metal-manager-rest/api/pkg/client/site"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	cdbu "github.com/nvidia/bare-metal-manager-rest/db/pkg/util"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/uptrace/bun/extra/bundebug"
@@ -2114,7 +2114,7 @@ func TestUpdateExpectedMachinesHandler_Handle(t *testing.T) {
 			requestBody: []model.APIExpectedMachineUpdateRequest{
 				{
 					ID:                  cdb.GetStrPtr(testEM1.ID.String()),
-					BmcMacAddress:       cdb.GetStrPtr("ff:ff:ff:ff:ff:ff"), // lowercase
+					BmcMacAddress:       cdb.GetStrPtr("ff:ff:ff:ff:ff:ff"),    // lowercase
 					ChassisSerialNumber: cdb.GetStrPtr("Duplicate-Everything"), // mixed case
 				},
 				{

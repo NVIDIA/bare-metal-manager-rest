@@ -23,12 +23,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/nvidia/carbide-rest/db/pkg/db"
-	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
 
 	"github.com/uptrace/bun"
 
-	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
+	stracer "github.com/nvidia/bare-metal-manager-rest/db/pkg/tracer"
 )
 
 const (

@@ -24,10 +24,10 @@ import (
 	validationis "github.com/go-ozzo/ozzo-validation/v4/is"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
-	camu "github.com/nvidia/carbide-rest/api/pkg/api/model/util"
+	camu "github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model/util"
 
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 )
 
 const (

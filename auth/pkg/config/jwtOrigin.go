@@ -21,8 +21,8 @@ import (
 	"sync"
 
 	"github.com/labstack/echo/v4"
-	"github.com/nvidia/carbide-rest/common/pkg/util"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	"github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )

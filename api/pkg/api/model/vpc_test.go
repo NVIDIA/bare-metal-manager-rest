@@ -23,10 +23,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model/util"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 	"github.com/stretchr/testify/assert"
-	"github.com/nvidia/carbide-rest/api/pkg/api/model/util"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 )
 
 func TestAPIVpcCreateRequest_Validate(t *testing.T) {

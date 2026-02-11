@@ -20,9 +20,9 @@ package pagination
 import (
 	"testing"
 
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbp "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
 	"github.com/stretchr/testify/assert"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbp "github.com/nvidia/carbide-rest/db/pkg/db/paginator"
 )
 
 func TestPageRequest_Validate(t *testing.T) {

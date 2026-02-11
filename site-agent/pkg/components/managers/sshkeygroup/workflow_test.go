@@ -22,7 +22,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	wflows "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	wflows "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 func Test_sshkgWorkflowMetadata_ResponseState(t *testing.T) {

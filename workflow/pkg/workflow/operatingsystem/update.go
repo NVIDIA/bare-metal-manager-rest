@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"time"
 
-	cwm "github.com/nvidia/carbide-rest/workflow/internal/metrics"
+	cwm "github.com/nvidia/bare-metal-manager-rest/workflow/internal/metrics"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -29,8 +29,8 @@ import (
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
-	osImageActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/operatingsystem"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
+	osImageActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/operatingsystem"
 )
 
 // UpdateOsImageInventory is a workflow called by Site Agent to update image based Operating System for a Site

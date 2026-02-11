@@ -4600,7 +4600,7 @@ const file_rla_proto_rawDesc = "" +
 	"\fPowerOffRack\x12\x17.v1.PowerOffRackRequest\x1a\x16.v1.SubmitTaskResponse\x12C\n" +
 	"\x0ePowerResetRack\x12\x19.v1.PowerResetRackRequest\x1a\x16.v1.SubmitTaskResponse\x128\n" +
 	"\tListTasks\x12\x14.v1.ListTasksRequest\x1a\x15.v1.ListTasksResponse\x12D\n" +
-	"\rGetTasksByIDs\x12\x18.v1.GetTasksByIDsRequest\x1a\x19.v1.GetTasksByIDsResponseB4Z2github.com/nvidia/carbide-rest/workflow-schema/rlab\x06proto3"
+	"\rGetTasksByIDs\x12\x18.v1.GetTasksByIDsRequest\x1a\x19.v1.GetTasksByIDsResponseB4Z2github.com/nvidia/bare-metal-manager-rest/workflow-schema/rlab\x06proto3"
 
 var (
 	file_rla_proto_rawDescOnce sync.Once

@@ -8,8 +8,8 @@ import (
 	"os"
 
 	"github.com/metal-stack/v"
+	goipam "github.com/nvidia/bare-metal-manager-rest/ipam"
 	"github.com/urfave/cli/v2"
-	goipam "github.com/nvidia/carbide-rest/ipam"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 

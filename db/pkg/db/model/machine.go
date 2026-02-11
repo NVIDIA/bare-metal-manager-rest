@@ -27,14 +27,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mitchellh/mapstructure"
-	"github.com/nvidia/carbide-rest/db/pkg/db"
-	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/uptrace/bun"
 
-	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
+	stracer "github.com/nvidia/bare-metal-manager-rest/db/pkg/tracer"
 )
 
 // Represents status of the machine

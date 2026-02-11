@@ -24,7 +24,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/nvidia/carbide-rest/db/pkg/db"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
 )
 
 // TestSetupSchema creates/resets the schema

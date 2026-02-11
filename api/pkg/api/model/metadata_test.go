@@ -20,8 +20,8 @@ package model
 import (
 	"testing"
 
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/metadata"
 	"github.com/stretchr/testify/assert"
-	"github.com/nvidia/carbide-rest/api/pkg/metadata"
 )
 
 func TestNewAPIMetadata(t *testing.T) {

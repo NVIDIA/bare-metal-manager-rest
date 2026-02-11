@@ -23,8 +23,8 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 	"github.com/uptrace/bun"
-	"github.com/nvidia/carbide-rest/db/pkg/db/model"
 )
 
 func createAndPopulateTenantSiteUpMigrationfunc(ctx context.Context, db *bun.DB) error {

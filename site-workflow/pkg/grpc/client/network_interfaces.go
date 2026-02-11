@@ -18,7 +18,7 @@
 package client
 
 import (
-	wflows "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	wflows "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 // NetworkGetter is the interface for the network workflows

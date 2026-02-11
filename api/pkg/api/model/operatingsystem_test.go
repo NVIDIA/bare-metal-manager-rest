@@ -25,13 +25,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model/util"
+	cdmu "github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model/util"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/nvidia/carbide-rest/api/pkg/api/model/util"
-	cdmu "github.com/nvidia/carbide-rest/api/pkg/api/model/util"
-	"github.com/nvidia/carbide-rest/db/pkg/db"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 )
 
 func TestAPIOperatingSystemCreateRequest_Validate(t *testing.T) {

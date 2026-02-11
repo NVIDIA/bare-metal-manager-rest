@@ -12,10 +12,10 @@ import (
 	"connectrpc.com/connect"
 
 	compress "github.com/klauspost/connect-compress/v2"
-	goipam "github.com/nvidia/carbide-rest/ipam"
-	v1 "github.com/nvidia/carbide-rest/ipam/api/v1"
-	"github.com/nvidia/carbide-rest/ipam/api/v1/apiv1connect"
-	"github.com/nvidia/carbide-rest/ipam/pkg/service"
+	goipam "github.com/nvidia/bare-metal-manager-rest/ipam"
+	v1 "github.com/nvidia/bare-metal-manager-rest/ipam/api/v1"
+	"github.com/nvidia/bare-metal-manager-rest/ipam/api/v1/apiv1connect"
+	"github.com/nvidia/bare-metal-manager-rest/ipam/pkg/service"
 )
 
 // BenchmarkGrpcImpact located in a separate package to prevent import cycles.

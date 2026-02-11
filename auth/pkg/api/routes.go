@@ -21,10 +21,10 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
 
-	"github.com/nvidia/carbide-rest/auth/pkg/authentication"
-	"github.com/nvidia/carbide-rest/auth/pkg/config"
+	"github.com/nvidia/bare-metal-manager-rest/auth/pkg/authentication"
+	"github.com/nvidia/bare-metal-manager-rest/auth/pkg/config"
 
-	cah "github.com/nvidia/carbide-rest/auth/pkg/api/handler"
+	cah "github.com/nvidia/bare-metal-manager-rest/auth/pkg/api/handler"
 )
 
 // AuthRoute represents an authentication route

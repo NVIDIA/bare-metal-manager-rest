@@ -21,8 +21,8 @@ import (
 	"context"
 	"errors"
 
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
 	"github.com/uptrace/bun"
-	"github.com/nvidia/carbide-rest/db/pkg/db"
 )
 
 const (

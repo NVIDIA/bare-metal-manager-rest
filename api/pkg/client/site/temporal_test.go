@@ -23,8 +23,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/nvidia/bare-metal-manager-rest/api/internal/config"
 	"github.com/stretchr/testify/assert"
-	"github.com/nvidia/carbide-rest/api/internal/config"
 
 	temporalClient "go.temporal.io/sdk/client"
 )

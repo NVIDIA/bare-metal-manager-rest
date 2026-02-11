@@ -18,9 +18,9 @@
 package workflow
 
 import (
+	"github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/activity"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/rs/zerolog/log"
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
-	"github.com/nvidia/carbide-rest/site-workflow/pkg/activity"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 	"time"

@@ -27,12 +27,12 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/google/uuid"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
+	stracer "github.com/nvidia/bare-metal-manager-rest/db/pkg/tracer"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/util"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/uptrace/bun/extra/bundebug"
-	"github.com/nvidia/carbide-rest/db/pkg/db"
-	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
-	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
-	"github.com/nvidia/carbide-rest/db/pkg/util"
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 func testInstanceInitDB(t *testing.T) *db.Session {

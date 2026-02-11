@@ -24,7 +24,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	wflows "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	wflows "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 func TestCarbideAtomicClient_GetInitialCertMD5(t *testing.T) {

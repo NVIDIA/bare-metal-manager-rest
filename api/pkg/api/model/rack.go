@@ -13,7 +13,7 @@
 package model
 
 import (
-	rlav1 "github.com/nvidia/carbide-rest/workflow-schema/rla/protobuf/v1"
+	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 )
 
 // ========== Rack Query Fields ==========

@@ -31,12 +31,12 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/nvidia/carbide-rest/api/internal/config"
-	"github.com/nvidia/carbide-rest/common/pkg/otelecho"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
-	cipam "github.com/nvidia/carbide-rest/ipam"
+	"github.com/nvidia/bare-metal-manager-rest/api/internal/config"
+	"github.com/nvidia/bare-metal-manager-rest/common/pkg/otelecho"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	cdbu "github.com/nvidia/bare-metal-manager-rest/db/pkg/util"
+	cipam "github.com/nvidia/bare-metal-manager-rest/ipam"
 )
 
 var (

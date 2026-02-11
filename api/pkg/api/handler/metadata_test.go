@@ -26,8 +26,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/nvidia/carbide-rest/api/pkg/api/model"
-	"github.com/nvidia/carbide-rest/api/pkg/metadata"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/metadata"
 )
 
 func TestMetadataHandler_Handle(t *testing.T) {

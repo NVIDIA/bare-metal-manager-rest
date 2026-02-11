@@ -8,7 +8,7 @@ import (
 	connect "connectrpc.com/connect"
 	context "context"
 	errors "errors"
-	v1 "github.com/nvidia/carbide-rest/ipam/api/v1"
+	v1 "github.com/nvidia/bare-metal-manager-rest/ipam/api/v1"
 	http "net/http"
 	strings "strings"
 )

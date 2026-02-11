@@ -39,9 +39,9 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	computils "github.com/nvidia/carbide-rest/site-agent/pkg/components/utils"
-	"github.com/nvidia/carbide-rest/site-agent/pkg/conftypes"
-	bootstraptypes "github.com/nvidia/carbide-rest/site-agent/pkg/datatypes/managertypes/bootstrap"
+	computils "github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/components/utils"
+	"github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/conftypes"
+	bootstraptypes "github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/datatypes/managertypes/bootstrap"
 	"gopkg.in/fsnotify.v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"

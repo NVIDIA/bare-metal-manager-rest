@@ -23,8 +23,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/nvidia/bare-metal-manager-rest/cert-manager/pkg/core"
 	"github.com/stretchr/testify/assert"
-	"github.com/nvidia/carbide-rest/cert-manager/pkg/core"
 )
 
 func TestNewTemporalConfig(t *testing.T) {

@@ -23,10 +23,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 )
 
 func TestNewAPISite(t *testing.T) {

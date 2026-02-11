@@ -77,6 +77,11 @@ migrate:
 	PGPASSWORD=$(POSTGRES_PASSWORD) \
 	./db/cmd/migrations/migrations db init_migrate
 
+lint-go:
+	go vet ./...
+	golangci-lint run --issues-exit-code 0 --output.code-climate.path=stdout | jq .
+	go list ./... | xargs -L1 revive -config .revive.toml -set_exit_status
+
 test-ipam:
 	$(MAKE) ensure-postgres
 	cd ipam && go test ./... -count=1
@@ -185,7 +190,7 @@ carbide-proto:
 	@for file in carbide-core/rpc/proto/*.proto; do \
 		cp "$$file" "workflow-schema/site-agent/workflows/v1/$$(basename "$$file" .proto)_carbide.proto"; \
 		echo "Copied: $$file"; \
-		./workflow-schema/scripts/add-go-package-option.sh "workflow-schema/site-agent/workflows/v1/$$(basename "$$file" .proto)_carbide.proto" "github.com/nvidia/carbide-rest/workflow-schema/proto"; \
+		./workflow-schema/scripts/add-go-package-option.sh "workflow-schema/site-agent/workflows/v1/$$(basename "$$file" .proto)_carbide.proto" "github.com/nvidia/bare-metal-manager-rest/workflow-schema/proto"; \
 	done
 	rm -rf carbide-core
 
@@ -210,7 +215,7 @@ rla-proto:
 	for file in "$${RLA_DIR}"/proto/v1/*.proto; do \
 		cp "$$file" "workflow-schema/rla/proto/v1/"; \
 		echo "Copied: $$file"; \
-		./workflow-schema/scripts/add-go-package-option.sh "workflow-schema/rla/proto/v1/$$(basename "$$file")" "github.com/nvidia/carbide-rest/workflow-schema/rla"; \
+		./workflow-schema/scripts/add-go-package-option.sh "workflow-schema/rla/proto/v1/$$(basename "$$file")" "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla"; \
 	done; \
 	if [ -n "$${RLA_REPO_URL}" ]; then rm -rf rla; fi
 

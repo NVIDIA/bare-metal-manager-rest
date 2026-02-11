@@ -33,10 +33,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nvidia/carbide-rest/auth/pkg/config"
-	"github.com/nvidia/carbide-rest/auth/pkg/core"
-	testutil "github.com/nvidia/carbide-rest/auth/pkg/testing"
-	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
+	"github.com/nvidia/bare-metal-manager-rest/auth/pkg/config"
+	"github.com/nvidia/bare-metal-manager-rest/auth/pkg/core"
+	testutil "github.com/nvidia/bare-metal-manager-rest/auth/pkg/testing"
+	cdbu "github.com/nvidia/bare-metal-manager-rest/db/pkg/util"
 )
 
 // setupTestEnvironment creates a test environment with mock JWKS server and database

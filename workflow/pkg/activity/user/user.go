@@ -35,12 +35,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
 
-	cloudutils "github.com/nvidia/carbide-rest/common/pkg/util"
-	"github.com/nvidia/carbide-rest/workflow/internal/config"
+	cloudutils "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/internal/config"
 )
 
 const (

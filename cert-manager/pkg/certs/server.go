@@ -23,7 +23,7 @@ import (
 	"os"
 
 	"github.com/getsentry/sentry-go"
-	"github.com/nvidia/carbide-rest/cert-manager/pkg/core"
+	"github.com/nvidia/bare-metal-manager-rest/cert-manager/pkg/core"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 

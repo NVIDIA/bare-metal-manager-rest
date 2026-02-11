@@ -21,9 +21,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/nvidia/bare-metal-manager-rest/common/pkg/otelecho"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
-	"github.com/nvidia/carbide-rest/common/pkg/otelecho"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"

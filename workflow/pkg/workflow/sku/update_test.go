@@ -25,12 +25,12 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	skuActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/sku"
+	skuActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/sku"
 
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 type UpdateSkuTestSuite struct {
@@ -86,4 +86,3 @@ func (s *UpdateSkuTestSuite) Test_UpdateSkuInventory_ActivityFails() {
 func TestUpdateSkuTestSuite(t *testing.T) {
 	suite.Run(t, new(UpdateSkuTestSuite))
 }
-

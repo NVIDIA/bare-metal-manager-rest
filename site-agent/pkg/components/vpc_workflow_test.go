@@ -25,18 +25,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/components/managers/carbide"
+	"github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/components/managers/vpc"
+	wflows "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-	wflows "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
-	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/carbide"
-	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/vpc"
 	"go.opentelemetry.io/otel"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	computils "github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/components/utils"
 	log "github.com/rs/zerolog/log"
-	computils "github.com/nvidia/carbide-rest/site-agent/pkg/components/utils"
 )
 
 type CreateVpcTestSuite struct {

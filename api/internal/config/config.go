@@ -28,7 +28,7 @@ import (
 	"sync"
 	"time"
 
-	cauth "github.com/nvidia/carbide-rest/auth/pkg/config"
+	cauth "github.com/nvidia/bare-metal-manager-rest/auth/pkg/config"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"

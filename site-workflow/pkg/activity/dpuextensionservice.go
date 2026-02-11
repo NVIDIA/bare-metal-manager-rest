@@ -22,10 +22,10 @@ import (
 	"errors"
 	"time"
 
+	swe "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/error"
+	cclient "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/grpc/client"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/rs/zerolog/log"
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
-	swe "github.com/nvidia/carbide-rest/site-workflow/pkg/error"
-	cclient "github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
 	"go.temporal.io/sdk/temporal"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

@@ -12,11 +12,11 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+	goipam "github.com/nvidia/bare-metal-manager-rest/ipam"
+	v1 "github.com/nvidia/bare-metal-manager-rest/ipam/api/v1"
+	"github.com/nvidia/bare-metal-manager-rest/ipam/api/v1/apiv1connect"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	goipam "github.com/nvidia/carbide-rest/ipam"
-	v1 "github.com/nvidia/carbide-rest/ipam/api/v1"
-	"github.com/nvidia/carbide-rest/ipam/api/v1/apiv1connect"
 )
 
 func TestIpamService(t *testing.T) {

@@ -30,8 +30,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
-	cClient "github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
+	cClient "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/grpc/client"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 func TestManageSubnet_CreateSubnetOnSiteOnSite(t *testing.T) {

@@ -30,10 +30,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	csmtypes "github.com/nvidia/bare-metal-manager-rest/site-manager/pkg/types"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	csmtypes "github.com/nvidia/carbide-rest/site-manager/pkg/types"
 )
 
 // testUtils simulates a Site Manager service.

@@ -21,8 +21,8 @@ import (
 	"errors"
 	"time"
 
-	wflows "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
-	"github.com/nvidia/carbide-rest/site-agent/pkg/conftypes"
+	"github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/conftypes"
+	wflows "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/log"
 	"go.temporal.io/sdk/temporal"

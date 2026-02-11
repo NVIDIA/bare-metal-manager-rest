@@ -51,8 +51,8 @@ RUN VERSION=$(cat /workspace/VERSION 2>/dev/null || echo "dev") && \
     BUILD_TIME=$(date +"%Y-%m-%d %H:%M:%S") && \
     go build \
         -ldflags "-extldflags '-static' -w -s \
-                  -X 'github.com/nvidia/carbide-rest/site-agent/pkg/metadata.Version=${VERSION}' \
-                  -X 'github.com/nvidia/carbide-rest/site-agent/pkg/metadata.BuildTime=${BUILD_TIME}'" \
+                  -X 'github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/metadata.Version=${VERSION}' \
+                  -X 'github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/metadata.BuildTime=${BUILD_TIME}'" \
         -o /app/elektra \
         ./cmd/elektra
 

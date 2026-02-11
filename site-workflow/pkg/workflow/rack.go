@@ -15,8 +15,8 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/nvidia/carbide-rest/site-workflow/pkg/activity"
-	rlav1 "github.com/nvidia/carbide-rest/workflow-schema/rla/protobuf/v1"
+	"github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/activity"
+	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )

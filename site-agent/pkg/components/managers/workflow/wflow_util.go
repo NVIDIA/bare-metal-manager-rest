@@ -22,16 +22,16 @@ import (
 	"fmt"
 	"time"
 
-	carbidetypes "github.com/nvidia/carbide-rest/site-agent/pkg/datatypes/managertypes/carbide"
+	carbidetypes "github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/datatypes/managertypes/carbide"
 
 	"go.temporal.io/sdk/converter"
 	"go.temporal.io/sdk/log"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 
-	wflows "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
-	computils "github.com/nvidia/carbide-rest/site-agent/pkg/components/utils"
-	wflowtypes "github.com/nvidia/carbide-rest/site-agent/pkg/datatypes/managertypes/workflow"
+	computils "github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/components/utils"
+	wflowtypes "github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/datatypes/managertypes/workflow"
+	wflows "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 // Retry parameters for Temporal workflows

@@ -25,12 +25,12 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	expectedMachineActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/expectedmachine"
+	expectedMachineActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/expectedmachine"
 
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 type UpdateExpectedMachineTestSuite struct {

@@ -24,8 +24,8 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cipam "github.com/nvidia/carbide-rest/ipam"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	cipam "github.com/nvidia/bare-metal-manager-rest/ipam"
 )
 
 func init() {

@@ -26,13 +26,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"github.com/nvidia/bare-metal-manager-rest/api/internal/config"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	cdbu "github.com/nvidia/bare-metal-manager-rest/db/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/uptrace/bun/extra/bundebug"
-	"github.com/nvidia/carbide-rest/api/internal/config"
-	"github.com/nvidia/carbide-rest/api/pkg/api/model"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
 )
 
 // testSkuInitDB initializes a test database session (pattern from tenant_test.go)
@@ -54,7 +54,7 @@ func testSkuSetupSchema(t *testing.T, dbSession *cdb.Session) {
 	assert.Nil(t, err)
 	err = dbSession.DB.ResetModel(ctx, (*cdbm.SKU)(nil))
 	assert.Nil(t, err)
-	
+
 	// Reset parent tables
 	err = dbSession.DB.ResetModel(ctx, (*cdbm.Tenant)(nil))
 	assert.Nil(t, err)
@@ -664,4 +664,3 @@ func TestGetSkuHandler_Handle(t *testing.T) {
 		})
 	}
 }
-

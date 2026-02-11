@@ -18,8 +18,8 @@
 package model
 
 import (
-	"github.com/nvidia/carbide-rest/api/pkg/api/model/util"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model/util"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 	"net/url"
 	"time"
 )

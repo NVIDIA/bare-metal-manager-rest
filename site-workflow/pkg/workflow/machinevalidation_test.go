@@ -19,11 +19,11 @@ package workflow
 
 import (
 	"errors"
+	iActivity "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/activity"
+	"github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/util"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
-	iActivity "github.com/nvidia/carbide-rest/site-workflow/pkg/activity"
-	"github.com/nvidia/carbide-rest/site-workflow/pkg/util"
 	"go.temporal.io/sdk/testsuite"
 	"testing"
 )

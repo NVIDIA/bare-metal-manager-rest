@@ -27,9 +27,9 @@ import (
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 
-	vpcPrefixActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/vpcprefix"
+	vpcPrefixActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/vpcprefix"
 )
 
 type UpdateVpcPrefixTestSuite struct {

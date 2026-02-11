@@ -22,11 +22,11 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	stracer "github.com/nvidia/bare-metal-manager-rest/db/pkg/tracer"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/nvidia/carbide-rest/db/pkg/db"
-	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
-	"github.com/nvidia/carbide-rest/db/pkg/util"
 	otrace "go.opentelemetry.io/otel/trace"
 )
 

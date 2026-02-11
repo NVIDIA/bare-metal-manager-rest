@@ -9,9 +9,9 @@ import (
 	"connectrpc.com/connect"
 	compress "github.com/klauspost/connect-compress/v2"
 	"github.com/metal-stack/v"
+	v1 "github.com/nvidia/bare-metal-manager-rest/ipam/api/v1"
+	"github.com/nvidia/bare-metal-manager-rest/ipam/api/v1/apiv1connect"
 	"github.com/urfave/cli/v2"
-	v1 "github.com/nvidia/carbide-rest/ipam/api/v1"
-	"github.com/nvidia/carbide-rest/ipam/api/v1/apiv1connect"
 )
 
 func main() {

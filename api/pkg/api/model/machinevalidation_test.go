@@ -19,8 +19,8 @@ package model
 
 import (
 	"fmt"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
 	"github.com/stretchr/testify/assert"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
 	"testing"
 )
 

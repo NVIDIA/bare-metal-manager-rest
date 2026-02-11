@@ -23,12 +23,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
+	stracer "github.com/nvidia/bare-metal-manager-rest/db/pkg/tracer"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/nvidia/carbide-rest/db/pkg/db"
-	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
-	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
-	"github.com/nvidia/carbide-rest/db/pkg/util"
 	otrace "go.opentelemetry.io/otel/trace"
 )
 
@@ -649,15 +649,14 @@ func TestStatusDetailSQLDAO_GetRecentByEntityIDs(t *testing.T) {
 	}
 }
 
-
 func TestStatusDetailSQLDAO_CreateMultiple(t *testing.T) {
 	ctx := context.Background()
 	dbSession := util.GetTestDBSession(t, false)
 	defer dbSession.Close()
-	
+
 	err := dbSession.DB.ResetModel(context.Background(), (*StatusDetail)(nil))
 	assert.NoError(t, err)
-	
+
 	sdd := NewStatusDetailDAO(dbSession)
 
 	tests := []struct {

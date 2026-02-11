@@ -21,9 +21,9 @@ import (
 	"errors"
 	"testing"
 
+	iActivity "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/activity"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-	iActivity "github.com/nvidia/carbide-rest/site-workflow/pkg/activity"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 )

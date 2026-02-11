@@ -30,7 +30,7 @@ import (
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 
-	sshKeyGroupActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/sshkeygroup"
+	sshKeyGroupActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/sshkeygroup"
 )
 
 type SyncSSHKeyGroupTestSuite struct {

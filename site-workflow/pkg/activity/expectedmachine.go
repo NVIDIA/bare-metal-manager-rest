@@ -31,9 +31,9 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
-	swe "github.com/nvidia/carbide-rest/site-workflow/pkg/error"
-	cclient "github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
+	swe "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/error"
+	cclient "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/grpc/client"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 // ManageExpectedMachineInventory is an activity wrapper for Expected Machine inventory collection and publishing

@@ -25,9 +25,9 @@ import (
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 
-	"github.com/nvidia/carbide-rest/site-workflow/pkg/activity"
+	"github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/activity"
 )
 
 // SetMachineMaintenance is a workflow to set Machine maintenance mode using SetMaintenanceOnSite activity

@@ -22,7 +22,7 @@ import (
 	"errors"
 	"reflect"
 
-	wflows "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	wflows "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 // TODO(deprecated): Remove any related DeleteVPC references after cloud-api and agent are updated everywhere.  We've moved to sync workflow.

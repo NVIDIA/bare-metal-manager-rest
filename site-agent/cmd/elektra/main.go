@@ -22,11 +22,11 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/nvidia/carbide-rest/site-agent/pkg/metadata"
+	"github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/metadata"
 
+	components "github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/components"
+	"github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/datatypes/elektratypes"
 	"github.com/rs/zerolog/log"
-	components "github.com/nvidia/carbide-rest/site-agent/pkg/components"
-	"github.com/nvidia/carbide-rest/site-agent/pkg/datatypes/elektratypes"
 )
 
 // InitElektra initializes the Elektra site agent framework

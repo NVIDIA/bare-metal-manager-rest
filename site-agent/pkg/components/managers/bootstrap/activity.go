@@ -24,8 +24,8 @@ import (
 	"encoding/pem"
 	"errors"
 
+	cloudutils "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
 	"github.com/rs/zerolog/log"
-	cloudutils "github.com/nvidia/carbide-rest/common/pkg/util"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/temporal"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

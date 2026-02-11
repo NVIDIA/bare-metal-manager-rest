@@ -30,7 +30,7 @@ import (
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 
-	subnetActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/subnet"
+	subnetActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/subnet"
 )
 
 type CreateSubnetTestSuite struct {

@@ -20,9 +20,9 @@ package carbide
 import (
 	"time"
 
+	carbidetypes "github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/datatypes/managertypes/carbide"
+	"github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/grpc/client"
 	"github.com/prometheus/client_golang/prometheus"
-	carbidetypes "github.com/nvidia/carbide-rest/site-agent/pkg/datatypes/managertypes/carbide"
-	"github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
 )
 
 const (

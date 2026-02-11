@@ -19,7 +19,7 @@
 package certs
 
 import (
-	"github.com/nvidia/carbide-rest/cert-manager/pkg/types"
+	"github.com/nvidia/bare-metal-manager-rest/cert-manager/pkg/types"
 )
 
 // CertificateIssuer is an alias for types.CertificateIssuer for backward compatibility

@@ -23,8 +23,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 	"github.com/stretchr/testify/assert"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 )
 
 func TestNewAPINVLinkInterface(t *testing.T) {

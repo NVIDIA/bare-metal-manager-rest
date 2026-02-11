@@ -35,22 +35,22 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cdbp "github.com/nvidia/carbide-rest/db/pkg/db/paginator"
-	"github.com/nvidia/carbide-rest/workflow/pkg/queue"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	cdbp "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
 
-	"github.com/nvidia/carbide-rest/api/internal/config"
-	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
-	"github.com/nvidia/carbide-rest/api/pkg/api/model"
-	"github.com/nvidia/carbide-rest/api/pkg/api/pagination"
-	sc "github.com/nvidia/carbide-rest/api/pkg/client/site"
-	auth "github.com/nvidia/carbide-rest/auth/pkg/authorization"
-	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	"github.com/nvidia/bare-metal-manager-rest/api/internal/config"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/handler/util/common"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/pagination"
+	sc "github.com/nvidia/bare-metal-manager-rest/api/pkg/client/site"
+	auth "github.com/nvidia/bare-metal-manager-rest/auth/pkg/authorization"
+	sutil "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 
-	cerr "github.com/nvidia/carbide-rest/common/pkg/util"
-	"github.com/nvidia/carbide-rest/db/pkg/db/ipam"
+	cerr "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/ipam"
 )
 
 // ~~~~~ Create Handler ~~~~~ //
@@ -1475,13 +1475,13 @@ func (dah DeleteAllocationHandler) Handle(c echo.Context) error {
 		case cdbm.AllocationResourceTypeInstanceType:
 			// check if the tenant has instances using this instance type id
 			_, iCount, serr := iDAO.GetAll(ctx, tx,
-			cdbm.InstanceFilterInput{
-				AllocationIDs:             []uuid.UUID{a.ID},
-				AllocationConstraintIDs:   []uuid.UUID{ac.ID},
-				TenantIDs:                 []uuid.UUID{a.TenantID},
-				InfrastructureProviderIDs: []uuid.UUID{a.InfrastructureProviderID},
-				InstanceTypeIDs:           []uuid.UUID{ac.ResourceTypeID},
-			},
+				cdbm.InstanceFilterInput{
+					AllocationIDs:             []uuid.UUID{a.ID},
+					AllocationConstraintIDs:   []uuid.UUID{ac.ID},
+					TenantIDs:                 []uuid.UUID{a.TenantID},
+					InfrastructureProviderIDs: []uuid.UUID{a.InfrastructureProviderID},
+					InstanceTypeIDs:           []uuid.UUID{ac.ResourceTypeID},
+				},
 				cdbp.PageInput{Limit: cdb.GetIntPtr(0)},
 				nil,
 			)

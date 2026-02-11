@@ -27,8 +27,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/stretchr/testify/assert"
 
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	"github.com/nvidia/carbide-rest/workflow/pkg/util"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/util"
 )
 
 func TestManageInventoryMetrics_RecordLatency(t *testing.T) {

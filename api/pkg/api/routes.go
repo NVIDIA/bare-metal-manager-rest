@@ -22,11 +22,11 @@ import (
 
 	tClient "go.temporal.io/sdk/client"
 
-	"github.com/nvidia/carbide-rest/api/internal/config"
-	apiHandler "github.com/nvidia/carbide-rest/api/pkg/api/handler"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
+	"github.com/nvidia/bare-metal-manager-rest/api/internal/config"
+	apiHandler "github.com/nvidia/bare-metal-manager-rest/api/pkg/api/handler"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
 
-	sc "github.com/nvidia/carbide-rest/api/pkg/client/site"
+	sc "github.com/nvidia/bare-metal-manager-rest/api/pkg/client/site"
 )
 
 // NewAPIRoutes returns all API routes

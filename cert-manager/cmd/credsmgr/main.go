@@ -22,8 +22,8 @@ import (
 	"context"
 	"os"
 
-	"github.com/nvidia/carbide-rest/cert-manager/pkg/certs"
-	"github.com/nvidia/carbide-rest/cert-manager/pkg/core"
+	"github.com/nvidia/bare-metal-manager-rest/cert-manager/pkg/certs"
+	"github.com/nvidia/bare-metal-manager-rest/cert-manager/pkg/core"
 	cli "github.com/urfave/cli/v2"
 )
 

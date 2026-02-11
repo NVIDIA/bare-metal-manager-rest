@@ -7,8 +7,8 @@ import (
 	"net/netip"
 
 	"connectrpc.com/connect"
-	goipam "github.com/nvidia/carbide-rest/ipam"
-	v1 "github.com/nvidia/carbide-rest/ipam/api/v1"
+	goipam "github.com/nvidia/bare-metal-manager-rest/ipam"
+	v1 "github.com/nvidia/bare-metal-manager-rest/ipam/api/v1"
 )
 
 type IPAMService struct {

@@ -24,19 +24,19 @@ import (
 	"testing"
 	"time"
 
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	cdbu "github.com/nvidia/bare-metal-manager-rest/db/pkg/util"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
+	sc "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/client/site"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/uptrace/bun/extra/bundebug"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
-	sc "github.com/nvidia/carbide-rest/workflow/pkg/client/site"
-	"github.com/nvidia/carbide-rest/workflow/pkg/util"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/google/uuid"
 
-	"github.com/nvidia/carbide-rest/workflow/internal/config"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/internal/config"
 
 	"os"
 

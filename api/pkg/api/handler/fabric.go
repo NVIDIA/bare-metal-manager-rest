@@ -30,16 +30,16 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/nvidia/carbide-rest/api/internal/config"
-	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
-	"github.com/nvidia/carbide-rest/api/pkg/api/model"
-	"github.com/nvidia/carbide-rest/api/pkg/api/pagination"
-	auth "github.com/nvidia/carbide-rest/auth/pkg/authorization"
-	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	"github.com/nvidia/bare-metal-manager-rest/api/internal/config"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/handler/util/common"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/pagination"
+	auth "github.com/nvidia/bare-metal-manager-rest/auth/pkg/authorization"
+	sutil "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 
-	cerr "github.com/nvidia/carbide-rest/common/pkg/util"
+	cerr "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
 )
 
 // ~~~~~ GetAll Handler ~~~~~ //

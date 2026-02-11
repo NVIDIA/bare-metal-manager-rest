@@ -38,14 +38,14 @@ import (
 
 	"gopkg.in/yaml.v2"
 
+	"github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/components/managers/carbide"
+	"github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/conftypes"
+	"github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/datatypes/elektratypes"
 	"github.com/rs/zerolog/log"
-	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/carbide"
-	"github.com/nvidia/carbide-rest/site-agent/pkg/conftypes"
-	"github.com/nvidia/carbide-rest/site-agent/pkg/datatypes/elektratypes"
 
-	computils "github.com/nvidia/carbide-rest/site-agent/pkg/components/utils"
-	bootstraptypes "github.com/nvidia/carbide-rest/site-agent/pkg/datatypes/managertypes/bootstrap"
-	workflowtypes "github.com/nvidia/carbide-rest/site-agent/pkg/datatypes/managertypes/workflow"
+	computils "github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/components/utils"
+	bootstraptypes "github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/datatypes/managertypes/bootstrap"
+	workflowtypes "github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/datatypes/managertypes/workflow"
 )
 
 var (

@@ -21,7 +21,7 @@ import (
 	"errors"
 	"fmt"
 
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"gopkg.in/yaml.v3"
 )
 

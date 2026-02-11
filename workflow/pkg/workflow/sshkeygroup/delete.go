@@ -22,9 +22,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	sshKeyGroupActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/sshkeygroup"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
 	"github.com/rs/zerolog/log"
-	sshKeyGroupActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/sshkeygroup"
-	"github.com/nvidia/carbide-rest/workflow/pkg/queue"
 
 	temporalEnums "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/client"

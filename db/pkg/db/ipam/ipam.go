@@ -24,11 +24,11 @@ import (
 	"net/netip"
 	"strings"
 
+	cipam "github.com/nvidia/bare-metal-manager-rest/ipam"
 	"github.com/uptrace/bun"
-	cipam "github.com/nvidia/carbide-rest/ipam"
 
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 )
 
 var (

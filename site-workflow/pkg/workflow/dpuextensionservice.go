@@ -20,12 +20,12 @@ package workflow
 import (
 	"time"
 
+	"github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/activity"
 	"github.com/rs/zerolog/log"
-	"github.com/nvidia/carbide-rest/site-workflow/pkg/activity"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 // DiscoverDpuExtensionServiceInventory is a workflow to discover DPU Extension Services on Site and publish to Cloud

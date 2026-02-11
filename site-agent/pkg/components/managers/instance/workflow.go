@@ -21,10 +21,10 @@ import (
 	"context"
 	"fmt"
 
-	wflows "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
-	computils "github.com/nvidia/carbide-rest/site-agent/pkg/components/common"
-	"github.com/nvidia/carbide-rest/site-agent/pkg/conftypes"
-	workflowtypes "github.com/nvidia/carbide-rest/site-agent/pkg/datatypes/managertypes/workflow"
+	computils "github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/components/common"
+	"github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/conftypes"
+	workflowtypes "github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/datatypes/managertypes/workflow"
+	wflows "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"go.temporal.io/sdk/client"
 	workflow "go.temporal.io/sdk/workflow"
 )

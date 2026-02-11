@@ -24,14 +24,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cdbp "github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	cdbp "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
 
-	"github.com/nvidia/carbide-rest/workflow/internal/config"
-	cwu "github.com/nvidia/carbide-rest/workflow/pkg/util"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/internal/config"
+	cwu "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/util"
 
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 func TestManageSku_Reconcile_CreateUpdateDelete(t *testing.T) {

@@ -26,15 +26,15 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	"github.com/nvidia/carbide-rest/db/pkg/db/ipam"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cdbp "github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/ipam"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	cdbp "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
 
-	sc "github.com/nvidia/carbide-rest/workflow/pkg/client/site"
-	cwu "github.com/nvidia/carbide-rest/workflow/pkg/util"
+	sc "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/client/site"
+	cwu "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/util"
 
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 // ManageVpcPrefix is an activity wrapper for managing VPC Prefix lifecycle that allows

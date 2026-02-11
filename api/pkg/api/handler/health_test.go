@@ -24,8 +24,8 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v4"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model"
 	"github.com/stretchr/testify/assert"
-	"github.com/nvidia/carbide-rest/api/pkg/api/model"
 )
 
 func TestHealthCheckHandler_Handle(t *testing.T) {

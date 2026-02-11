@@ -29,8 +29,8 @@ import (
 
 	"github.com/urfave/cli/v2"
 
-	"github.com/nvidia/carbide-rest/db/pkg/db"
-	"github.com/nvidia/carbide-rest/db/pkg/migrations"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/migrations"
 )
 
 func main() {

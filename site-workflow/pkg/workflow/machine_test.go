@@ -28,10 +28,10 @@ import (
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 
-	mActivity "github.com/nvidia/carbide-rest/site-workflow/pkg/activity"
-	"github.com/nvidia/carbide-rest/site-workflow/pkg/util"
+	mActivity "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/activity"
+	"github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/util"
 )
 
 type MachineWorkflowTestSuite struct {

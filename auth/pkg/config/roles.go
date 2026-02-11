@@ -19,7 +19,7 @@ package config
 
 import (
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/nvidia/carbide-rest/auth/pkg/core"
+	"github.com/nvidia/bare-metal-manager-rest/auth/pkg/core"
 )
 
 // =============================================================================

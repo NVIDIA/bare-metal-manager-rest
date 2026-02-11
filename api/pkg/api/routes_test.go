@@ -20,10 +20,10 @@ package api
 import (
 	"testing"
 
-	"github.com/nvidia/carbide-rest/api/internal/config"
-	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
-	sc "github.com/nvidia/carbide-rest/api/pkg/client/site"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
+	"github.com/nvidia/bare-metal-manager-rest/api/internal/config"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/handler/util/common"
+	sc "github.com/nvidia/bare-metal-manager-rest/api/pkg/client/site"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
 	"github.com/stretchr/testify/assert"
 
 	temporalClient "go.temporal.io/sdk/client"

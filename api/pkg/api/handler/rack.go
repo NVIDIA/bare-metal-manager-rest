@@ -27,17 +27,17 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	tClient "go.temporal.io/sdk/client"
 
-	"github.com/nvidia/carbide-rest/api/internal/config"
-	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
-	"github.com/nvidia/carbide-rest/api/pkg/api/model"
-	"github.com/nvidia/carbide-rest/api/pkg/api/pagination"
-	sc "github.com/nvidia/carbide-rest/api/pkg/client/site"
-	auth "github.com/nvidia/carbide-rest/auth/pkg/authorization"
-	cerr "github.com/nvidia/carbide-rest/common/pkg/util"
-	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	rlav1 "github.com/nvidia/carbide-rest/workflow-schema/rla/protobuf/v1"
-	"github.com/nvidia/carbide-rest/workflow/pkg/queue"
+	"github.com/nvidia/bare-metal-manager-rest/api/internal/config"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/handler/util/common"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/pagination"
+	sc "github.com/nvidia/bare-metal-manager-rest/api/pkg/client/site"
+	auth "github.com/nvidia/bare-metal-manager-rest/auth/pkg/authorization"
+	cerr "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
+	sutil "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
 )
 
 // ~~~~~ Get Rack Handler ~~~~~ //

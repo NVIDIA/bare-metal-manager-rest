@@ -24,24 +24,24 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	cdbu "github.com/nvidia/bare-metal-manager-rest/db/pkg/util"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
+	sc "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/client/site"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/util"
+	cwu "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun/extra/bundebug"
-	"github.com/nvidia/carbide-rest/db/pkg/db"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
-	sc "github.com/nvidia/carbide-rest/workflow/pkg/client/site"
-	"github.com/nvidia/carbide-rest/workflow/pkg/queue"
-	"github.com/nvidia/carbide-rest/workflow/pkg/util"
-	cwu "github.com/nvidia/carbide-rest/workflow/pkg/util"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/google/uuid"
 
-	"github.com/nvidia/carbide-rest/workflow/internal/config"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/internal/config"
 
 	"os"
 
@@ -50,8 +50,8 @@ import (
 
 	"go.temporal.io/sdk/testsuite"
 
+	cwm "github.com/nvidia/bare-metal-manager-rest/workflow/internal/metrics"
 	"github.com/prometheus/client_golang/prometheus"
-	cwm "github.com/nvidia/carbide-rest/workflow/internal/metrics"
 )
 
 // testTemporalSiteClientPool Building site client pool

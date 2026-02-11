@@ -23,11 +23,11 @@ import (
 	"errors"
 	"time"
 
-	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
 
 	"github.com/google/uuid"
-	"github.com/nvidia/carbide-rest/db/pkg/db"
-	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	stracer "github.com/nvidia/bare-metal-manager-rest/db/pkg/tracer"
 
 	"github.com/uptrace/bun"
 )

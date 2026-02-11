@@ -32,14 +32,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun/extra/bundebug"
 
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
-	"github.com/nvidia/carbide-rest/workflow/internal/config"
-	sc "github.com/nvidia/carbide-rest/workflow/pkg/client/site"
-	cwu "github.com/nvidia/carbide-rest/workflow/pkg/util"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	cdbu "github.com/nvidia/bare-metal-manager-rest/db/pkg/util"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/internal/config"
+	sc "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/client/site"
+	cwu "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/util"
 
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 
 	tmocks "go.temporal.io/sdk/mocks"
 )

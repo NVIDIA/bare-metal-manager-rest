@@ -22,16 +22,16 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	cwm "github.com/nvidia/bare-metal-manager-rest/workflow/internal/metrics"
+	vpcActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/vpc"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-	cwm "github.com/nvidia/carbide-rest/workflow/internal/metrics"
-	vpcActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/vpc"
 
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 type UpdateVpcTestSuite struct {

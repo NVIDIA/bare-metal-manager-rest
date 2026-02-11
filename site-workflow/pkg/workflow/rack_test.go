@@ -20,8 +20,8 @@ import (
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 
-	rActivity "github.com/nvidia/carbide-rest/site-workflow/pkg/activity"
-	rlav1 "github.com/nvidia/carbide-rest/workflow-schema/rla/protobuf/v1"
+	rActivity "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/activity"
+	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 )
 
 // GetRackTestSuite tests the GetRack workflow

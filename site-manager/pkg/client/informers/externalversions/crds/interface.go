@@ -24,8 +24,8 @@ Code is generated
 package crds
 
 import (
-	v1 "github.com/nvidia/carbide-rest/site-manager/pkg/client/informers/externalversions/crds/v1"
-	internalinterfaces "github.com/nvidia/carbide-rest/site-manager/pkg/client/informers/externalversions/internalinterfaces"
+	v1 "github.com/nvidia/bare-metal-manager-rest/site-manager/pkg/client/informers/externalversions/crds/v1"
+	internalinterfaces "github.com/nvidia/bare-metal-manager-rest/site-manager/pkg/client/informers/externalversions/internalinterfaces"
 )
 
 // Interface provides access to each of this group's versions.

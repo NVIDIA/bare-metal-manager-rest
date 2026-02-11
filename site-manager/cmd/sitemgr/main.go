@@ -22,9 +22,9 @@ import (
 	"context"
 	"os"
 
+	"github.com/nvidia/bare-metal-manager-rest/cert-manager/pkg/core"
+	"github.com/nvidia/bare-metal-manager-rest/site-manager/pkg/sitemgr"
 	cli "github.com/urfave/cli/v2"
-	"github.com/nvidia/carbide-rest/cert-manager/pkg/core"
-	"github.com/nvidia/carbide-rest/site-manager/pkg/sitemgr"
 )
 
 func main() {

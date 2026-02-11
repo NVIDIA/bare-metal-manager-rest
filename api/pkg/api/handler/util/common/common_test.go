@@ -28,7 +28,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	swe "github.com/nvidia/carbide-rest/site-workflow/pkg/error"
+	swe "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/error"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/uptrace/bun/extra/bundebug"
@@ -36,11 +36,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	cam "github.com/nvidia/carbide-rest/api/pkg/api/model"
-	cerr "github.com/nvidia/carbide-rest/common/pkg/util"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
+	cam "github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model"
+	cerr "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	cdbu "github.com/nvidia/bare-metal-manager-rest/db/pkg/util"
 )
 
 func testCommonInitDB(t *testing.T) *cdb.Session {

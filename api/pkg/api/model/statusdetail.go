@@ -20,7 +20,7 @@ package model
 import (
 	"time"
 
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 )
 
 // APIStatusDetail captures API representation of a status detail DB object

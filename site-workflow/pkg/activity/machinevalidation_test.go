@@ -21,10 +21,10 @@ import (
 	"context"
 	"testing"
 
+	cClient "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/grpc/client"
+	"github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/util"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/stretchr/testify/assert"
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
-	cClient "github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
-	"github.com/nvidia/carbide-rest/site-workflow/pkg/util"
 )
 
 func TestManageMachineValidation_EnableDisableMachineValidationTestOnSite(t *testing.T) {

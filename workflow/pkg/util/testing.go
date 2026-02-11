@@ -30,12 +30,12 @@ import (
 
 	"github.com/uptrace/bun/extra/bundebug"
 
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	sc "github.com/nvidia/carbide-rest/workflow/pkg/client/site"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	sc "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/client/site"
 
-	"github.com/nvidia/carbide-rest/db/pkg/util"
-	"github.com/nvidia/carbide-rest/workflow/internal/config"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/util"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/internal/config"
 )
 
 // TestInitDB init DB

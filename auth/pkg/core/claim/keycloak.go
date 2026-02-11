@@ -20,8 +20,8 @@ package claim
 import (
 	"strings"
 
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 	"github.com/rs/zerolog/log"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 
 	"github.com/golang-jwt/jwt/v5"
 )

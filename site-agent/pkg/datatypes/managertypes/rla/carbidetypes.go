@@ -18,7 +18,7 @@
 package rlatypes
 
 import (
-	"github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
+	"github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/grpc/client"
 	"go.uber.org/atomic"
 )
 

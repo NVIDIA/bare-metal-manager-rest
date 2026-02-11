@@ -20,7 +20,7 @@ package v1;
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/nvidia/carbide-rest/workflow-schema/rla";
+option go_package = "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla";
 
 service RLA {
     // What version of RLA is this service running?
@@ -39,7 +39,7 @@ service RLA {
     rpc GetListOfNVLDomains(GetListOfNVLDomainsRequest) returns (GetListOfNVLDomainsResponse);
     rpc GetRacksForNVLDomain(GetRacksForNVLDomainRequest) returns (GetRacksForNVLDomainResponse);
     rpc UpgradeFirmware(UpgradeFirmwareRequest) returns (SubmitTaskResponse);
-    
+
     // Components APIs
     rpc GetComponents(GetComponentsRequest) returns (GetComponentsResponse);
     // rpc GetActualComponents(GetActualComponentsRequest) returns (GetActualComponentsResponse);  // Temporarily disabled
@@ -97,7 +97,7 @@ message BMCInfo {
 message RackPosition {
     int32 slot_id = 1;
     int32 tray_idx = 2;
-    int32 host_id = 3; 
+    int32 host_id = 3;
 }
 
 enum ComponentType {
@@ -192,7 +192,7 @@ message ActualComponent {
     repeated BMCInfo bmcs = 5;
     string component_id = 6;    // Component's own ID from its source system
     UUID rack_id = 7;           // Looked up from local DB using component_id
-    
+
     // Actual-specific fields
     google.protobuf.Timestamp last_seen = 8;    // When this component was last observed
     string power_state = 9;                      // Current power state
@@ -433,7 +433,7 @@ message ValidateComponentsRequest {
 message ValidateComponentsResponse {
     repeated ComponentDiff diffs = 1;
     int32 total_diffs = 2;
-    
+
     // Summary counts
     int32 only_in_expected_count = 3;
     int32 only_in_actual_count = 4;
@@ -451,13 +451,13 @@ enum DiffType {
 message ComponentDiff {
     DiffType type = 1;
     string component_id = 2;
-    
+
     // Populated when type is ONLY_IN_EXPECTED
     Component expected = 3;
-    
+
     // Populated when type is ONLY_IN_ACTUAL
     ActualComponent actual = 4;
-    
+
     // Populated when type is DRIFT - lists the fields that differ
     repeated FieldDiff field_diffs = 5;
 }

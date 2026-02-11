@@ -24,8 +24,8 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 
 	"go.opentelemetry.io/otel/attribute"
 	temporalClient "go.temporal.io/sdk/client"
@@ -33,14 +33,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
-	"github.com/nvidia/carbide-rest/api/internal/config"
-	common "github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
-	"github.com/nvidia/carbide-rest/api/pkg/api/model"
-	"github.com/nvidia/carbide-rest/api/pkg/api/pagination"
-	auth "github.com/nvidia/carbide-rest/auth/pkg/authorization"
-	cerr "github.com/nvidia/carbide-rest/common/pkg/util"
-	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
-	cdbp "github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+	"github.com/nvidia/bare-metal-manager-rest/api/internal/config"
+	common "github.com/nvidia/bare-metal-manager-rest/api/pkg/api/handler/util/common"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/pagination"
+	auth "github.com/nvidia/bare-metal-manager-rest/auth/pkg/authorization"
+	cerr "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
+	sutil "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
+	cdbp "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
 )
 
 // ~~~~~ Create Handler ~~~~~ //

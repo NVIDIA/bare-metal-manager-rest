@@ -23,9 +23,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 	"github.com/stretchr/testify/assert"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 )
 
 func TestAPITenantAccountCreateRequest_Validate(t *testing.T) {
@@ -139,7 +139,7 @@ func TestAPITenantAccountNew(t *testing.T) {
 	}
 	dbUsr := &cdbm.User{
 		ID:          uuid.New(),
-					StarfleetID: cdb.GetStrPtr("sf"),
+		StarfleetID: cdb.GetStrPtr("sf"),
 		FirstName:   cdb.GetStrPtr("t"),
 		LastName:    cdb.GetStrPtr("s"),
 		Created:     cdb.GetCurTime(),

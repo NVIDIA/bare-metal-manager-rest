@@ -20,8 +20,8 @@ package nvlinklogicalpartition
 import (
 	"github.com/google/uuid"
 
-	swa "github.com/nvidia/carbide-rest/site-workflow/pkg/activity"
-	sww "github.com/nvidia/carbide-rest/site-workflow/pkg/workflow"
+	swa "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/activity"
+	sww "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/workflow"
 )
 
 // RegisterPublisher registers the NVLinkLogicalPartitionWorkflows with the Temporal client

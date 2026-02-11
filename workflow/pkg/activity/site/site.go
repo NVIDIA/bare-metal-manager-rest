@@ -31,18 +31,18 @@ import (
 	"go.temporal.io/sdk/client"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	cloudutils "github.com/nvidia/carbide-rest/common/pkg/util"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cdbp "github.com/nvidia/carbide-rest/db/pkg/db/paginator"
-	csm "github.com/nvidia/carbide-rest/site-manager/pkg/sitemgr"
+	cloudutils "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	cdbp "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
+	csm "github.com/nvidia/bare-metal-manager-rest/site-manager/pkg/sitemgr"
 
-	"github.com/nvidia/carbide-rest/workflow/internal/config"
-	sc "github.com/nvidia/carbide-rest/workflow/pkg/client/site"
-	"github.com/nvidia/carbide-rest/workflow/pkg/queue"
-	"github.com/nvidia/carbide-rest/workflow/pkg/util"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/internal/config"
+	sc "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/client/site"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/util"
 
-	cwsv1 "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cwsv1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 const (

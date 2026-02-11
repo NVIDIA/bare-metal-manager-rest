@@ -15,9 +15,9 @@ import (
 	"errors"
 	"testing"
 
+	cClient "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/grpc/client"
+	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 	"github.com/stretchr/testify/assert"
-	rlav1 "github.com/nvidia/carbide-rest/workflow-schema/rla/protobuf/v1"
-	cClient "github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
 )
 
 func TestManageRack_GetRack(t *testing.T) {
@@ -45,17 +45,17 @@ func TestManageRack_GetRack(t *testing.T) {
 			mockResp:    nil,
 			mockErr:     nil,
 			wantErr:     true,
-		errContains: "without rack ID",
-	},
-	{
-		name: "request with empty ID returns error",
-		request: &rlav1.GetRackInfoByIDRequest{
-			Id: &rlav1.UUID{Id: ""},
+			errContains: "without rack ID",
 		},
-		mockResp:    nil,
-		mockErr:     nil,
-		wantErr:     true,
-		errContains: "without rack ID",
+		{
+			name: "request with empty ID returns error",
+			request: &rlav1.GetRackInfoByIDRequest{
+				Id: &rlav1.UUID{Id: ""},
+			},
+			mockResp:    nil,
+			mockErr:     nil,
+			wantErr:     true,
+			errContains: "without rack ID",
 		},
 		{
 			name: "successful request",

@@ -29,7 +29,7 @@ import (
 	"time"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
-	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
+	sutil "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -44,14 +44,14 @@ import (
 
 	tclient "go.temporal.io/sdk/client"
 
-	auth "github.com/nvidia/carbide-rest/auth/pkg/authorization"
+	auth "github.com/nvidia/bare-metal-manager-rest/auth/pkg/authorization"
 
-	cam "github.com/nvidia/carbide-rest/api/pkg/api/model"
-	cau "github.com/nvidia/carbide-rest/common/pkg/util"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cdbp "github.com/nvidia/carbide-rest/db/pkg/db/paginator"
-	swe "github.com/nvidia/carbide-rest/site-workflow/pkg/error"
+	cam "github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model"
+	cau "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	cdbp "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
+	swe "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/error"
 )
 
 const (

@@ -24,15 +24,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/extra/bundebug"
 	"github.com/uptrace/bun/migrate"
-	"github.com/nvidia/carbide-rest/db/pkg/db"
-	"github.com/nvidia/carbide-rest/db/pkg/db/model"
-	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
-	"github.com/nvidia/carbide-rest/db/pkg/util"
 )
 
 func TestMigrations(t *testing.T) {

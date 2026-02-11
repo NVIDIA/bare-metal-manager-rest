@@ -24,9 +24,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/stretchr/testify/assert"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 func TestNewAPISku(t *testing.T) {

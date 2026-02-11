@@ -23,13 +23,13 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	cdbutil "github.com/nvidia/bare-metal-manager-rest/db/pkg/util"
+	cipam "github.com/nvidia/bare-metal-manager-rest/ipam"
 	"github.com/stretchr/testify/assert"
 	"github.com/uptrace/bun/extra/bundebug"
-	"github.com/nvidia/carbide-rest/db/pkg/db"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cdbutil "github.com/nvidia/carbide-rest/db/pkg/util"
-	cipam "github.com/nvidia/carbide-rest/ipam"
 )
 
 // ~~~~~ For Testing IPAM ~~~~~ //

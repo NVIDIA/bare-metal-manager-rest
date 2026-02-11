@@ -20,9 +20,9 @@ package workflow
 import (
 	"fmt"
 
+	computils "github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/components/utils"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
-	computils "github.com/nvidia/carbide-rest/site-agent/pkg/components/utils"
 	"gopkg.in/fsnotify.v1"
 )
 

@@ -25,11 +25,11 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
-	"github.com/nvidia/carbide-rest/auth/pkg/config"
-	"github.com/nvidia/carbide-rest/auth/pkg/core"
-	"github.com/nvidia/carbide-rest/common/pkg/util"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	"github.com/nvidia/bare-metal-manager-rest/auth/pkg/config"
+	"github.com/nvidia/bare-metal-manager-rest/auth/pkg/core"
+	"github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 	"github.com/rs/zerolog"
 )
 

@@ -46,6 +46,7 @@ jobs:
 
       - name: Install revive
         run: go install github.com/mgechev/revive@v1.3.9
+
       - name: Run go fmt
         run: |
           pkgs=$(go list ./... | grep -v $(go env GOMODCACHE))

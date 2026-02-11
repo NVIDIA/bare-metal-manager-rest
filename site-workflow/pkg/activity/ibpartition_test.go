@@ -22,10 +22,10 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	cClient "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/grpc/client"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
-	cClient "github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
 	tmocks "go.temporal.io/sdk/mocks"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

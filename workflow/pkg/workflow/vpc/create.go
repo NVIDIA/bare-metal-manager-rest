@@ -29,8 +29,8 @@ import (
 
 	"go.temporal.io/sdk/client"
 
-	vpcActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/vpc"
-	"github.com/nvidia/carbide-rest/workflow/pkg/queue"
+	vpcActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/vpc"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
 )
 
 // CreateVpc is a Temporal workflow to create a new VPC via Site Agent

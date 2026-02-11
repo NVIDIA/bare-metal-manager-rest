@@ -40,25 +40,25 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cdbp "github.com/nvidia/carbide-rest/db/pkg/db/paginator"
-	swe "github.com/nvidia/carbide-rest/site-workflow/pkg/error"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	cdbp "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
+	swe "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/error"
 
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 
-	"github.com/nvidia/carbide-rest/workflow/pkg/queue"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
 
-	"github.com/nvidia/carbide-rest/api/internal/config"
-	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
-	"github.com/nvidia/carbide-rest/api/pkg/api/model"
-	"github.com/nvidia/carbide-rest/api/pkg/api/pagination"
-	auth "github.com/nvidia/carbide-rest/auth/pkg/authorization"
-	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
+	"github.com/nvidia/bare-metal-manager-rest/api/internal/config"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/handler/util/common"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/pagination"
+	auth "github.com/nvidia/bare-metal-manager-rest/auth/pkg/authorization"
+	sutil "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
 
-	sc "github.com/nvidia/carbide-rest/api/pkg/client/site"
+	sc "github.com/nvidia/bare-metal-manager-rest/api/pkg/client/site"
 
-	cerr "github.com/nvidia/carbide-rest/common/pkg/util"
+	cerr "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
 )
 
 const MachineMissingDelayThreshold = 24 * time.Hour

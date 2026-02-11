@@ -22,8 +22,8 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 	"github.com/uptrace/bun"
-	"github.com/nvidia/carbide-rest/db/pkg/db/model"
 )
 
 func init() {
@@ -66,4 +66,3 @@ func init() {
 		return nil
 	})
 }
-

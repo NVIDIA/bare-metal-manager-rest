@@ -21,7 +21,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
+	"github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/grpc/client"
 )
 
 // RunInEnvironment provides a strongly-typed indicator for the environment

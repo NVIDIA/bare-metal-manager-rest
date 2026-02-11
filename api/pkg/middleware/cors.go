@@ -21,7 +21,7 @@ import (
 	"github.com/labstack/echo/v4"
 	echoMiddleware "github.com/labstack/echo/v4/middleware"
 
-	"github.com/nvidia/carbide-rest/api/pkg/api/pagination"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/pagination"
 )
 
 // CORS configures echo to accept requests from scripts from domains different

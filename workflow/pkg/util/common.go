@@ -21,7 +21,7 @@ import (
 	"slices"
 	"time"
 
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 )
 
 var (

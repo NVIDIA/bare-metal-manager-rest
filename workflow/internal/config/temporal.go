@@ -21,8 +21,8 @@ import (
 	"crypto/tls"
 	"fmt"
 
-	"github.com/nvidia/carbide-rest/cert-manager/pkg/core"
-	cwfns "github.com/nvidia/carbide-rest/workflow/pkg/namespace"
+	"github.com/nvidia/bare-metal-manager-rest/cert-manager/pkg/core"
+	cwfns "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/namespace"
 )
 
 // TemporalConfig holds configuration for Temporal communication

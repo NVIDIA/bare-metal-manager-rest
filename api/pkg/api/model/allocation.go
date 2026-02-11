@@ -26,9 +26,9 @@ import (
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	validationis "github.com/go-ozzo/ozzo-validation/v4/is"
 
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 
-	"github.com/nvidia/carbide-rest/api/pkg/api/model/util"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model/util"
 )
 
 var (

@@ -21,10 +21,10 @@ import (
 	"errors"
 	"testing"
 
+	iActivity "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/activity"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
-	iActivity "github.com/nvidia/carbide-rest/site-workflow/pkg/activity"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 )
@@ -362,9 +362,9 @@ func (cemts *CreateExpectedMachinesTestSuite) Test_CreateExpectedMachines_Partia
 				ExpectedMachine: firstMachine,
 			},
 			{
-				Id:             secondMachine.GetId(),
-				Success:        false,
-				ErrorMessage:   &duplicateMacMsg,
+				Id:              secondMachine.GetId(),
+				Success:         false,
+				ErrorMessage:    &duplicateMacMsg,
 				ExpectedMachine: nil,
 			},
 		},
@@ -537,9 +537,9 @@ func (uemts *UpdateExpectedMachinesTestSuite) Test_UpdateExpectedMachines_Partia
 				ExpectedMachine: firstMachine,
 			},
 			{
-				Id:             secondMachine.GetId(),
-				Success:        false,
-				ErrorMessage:   &notFoundMsg,
+				Id:              secondMachine.GetId(),
+				Success:         false,
+				ErrorMessage:    &notFoundMsg,
 				ExpectedMachine: nil,
 			},
 		},

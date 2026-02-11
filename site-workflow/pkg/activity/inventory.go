@@ -24,10 +24,10 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	cClient "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/grpc/client"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
-	cClient "github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
 	tClient "go.temporal.io/sdk/client"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

@@ -34,20 +34,20 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
-	cdbp "github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
+	cdbp "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
 
-	"github.com/nvidia/carbide-rest/api/internal/config"
-	common "github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
-	"github.com/nvidia/carbide-rest/api/pkg/api/model"
-	"github.com/nvidia/carbide-rest/api/pkg/api/pagination"
-	auth "github.com/nvidia/carbide-rest/auth/pkg/authorization"
-	cerr "github.com/nvidia/carbide-rest/common/pkg/util"
-	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
+	"github.com/nvidia/bare-metal-manager-rest/api/internal/config"
+	common "github.com/nvidia/bare-metal-manager-rest/api/pkg/api/handler/util/common"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/pagination"
+	auth "github.com/nvidia/bare-metal-manager-rest/auth/pkg/authorization"
+	cerr "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
+	sutil "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
 
-	sshKeyGroupWorkflow "github.com/nvidia/carbide-rest/workflow/pkg/workflow/sshkeygroup"
+	sshKeyGroupWorkflow "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/workflow/sshkeygroup"
 )
 
 // ~~~~~ Create Handler ~~~~~ //

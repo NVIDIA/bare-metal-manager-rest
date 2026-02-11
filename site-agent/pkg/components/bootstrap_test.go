@@ -22,11 +22,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/components/managers/bootstrap"
+	computils "github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/components/utils"
+	sitemgr "github.com/nvidia/bare-metal-manager-rest/site-manager/pkg/sitemgr"
 	log "github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/assert"
-	sitemgr "github.com/nvidia/carbide-rest/site-manager/pkg/sitemgr"
-	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/bootstrap"
-	computils "github.com/nvidia/carbide-rest/site-agent/pkg/components/utils"
 )
 
 // Test_Bootstrap - test the bootstrap registeration

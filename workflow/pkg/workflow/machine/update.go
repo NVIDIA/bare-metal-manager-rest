@@ -28,11 +28,11 @@ import (
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 
-	machineActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/machine"
+	machineActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/machine"
 
-	cwm "github.com/nvidia/carbide-rest/workflow/internal/metrics"
+	cwm "github.com/nvidia/bare-metal-manager-rest/workflow/internal/metrics"
 )
 
 // UpdateMachineInventory is a workflow called by Site Agent to update machine inventory for a Site

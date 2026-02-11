@@ -23,10 +23,10 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
+	stracer "github.com/nvidia/bare-metal-manager-rest/db/pkg/tracer"
 	"github.com/stretchr/testify/assert"
-	"github.com/nvidia/carbide-rest/db/pkg/db"
-	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
-	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
 	otrace "go.opentelemetry.io/otel/trace"
 )
 

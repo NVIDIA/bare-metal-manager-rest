@@ -20,8 +20,8 @@ package util
 import (
 	"context"
 
+	"github.com/nvidia/bare-metal-manager-rest/common/pkg/otelecho"
 	"github.com/rs/zerolog"
-	"github.com/nvidia/carbide-rest/common/pkg/otelecho"
 	"go.opentelemetry.io/otel/attribute"
 	oteltrace "go.opentelemetry.io/otel/trace"
 )

@@ -29,9 +29,9 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.opentelemetry.io/otel"
 
-	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/carbide"
-	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/instance"
-	wflows "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	"github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/components/managers/carbide"
+	"github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/components/managers/instance"
+	wflows "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 	"google.golang.org/protobuf/types/known/timestamppb"

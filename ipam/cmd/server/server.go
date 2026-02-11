@@ -10,10 +10,10 @@ import (
 	"connectrpc.com/otelconnect"
 	compress "github.com/klauspost/connect-compress/v2"
 	"github.com/metal-stack/v"
+	goipam "github.com/nvidia/bare-metal-manager-rest/ipam"
+	"github.com/nvidia/bare-metal-manager-rest/ipam/api/v1/apiv1connect"
+	"github.com/nvidia/bare-metal-manager-rest/ipam/pkg/service"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	goipam "github.com/nvidia/carbide-rest/ipam"
-	"github.com/nvidia/carbide-rest/ipam/api/v1/apiv1connect"
-	"github.com/nvidia/carbide-rest/ipam/pkg/service"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/sdk/metric"
 

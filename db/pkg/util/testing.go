@@ -24,10 +24,10 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
 	"github.com/uptrace/bun/extra/bundebug"
-	"github.com/nvidia/carbide-rest/db/pkg/db"
 
-	cipam "github.com/nvidia/carbide-rest/ipam"
+	cipam "github.com/nvidia/bare-metal-manager-rest/ipam"
 )
 
 // TestDBConfig describes a test DB config params

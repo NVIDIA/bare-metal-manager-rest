@@ -31,17 +31,17 @@ import (
 
 	"go.temporal.io/sdk/client"
 
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	"github.com/nvidia/carbide-rest/db/pkg/db/ipam"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cdbp "github.com/nvidia/carbide-rest/db/pkg/db/paginator"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/ipam"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	cdbp "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
 
-	cwm "github.com/nvidia/carbide-rest/workflow/internal/metrics"
-	sc "github.com/nvidia/carbide-rest/workflow/pkg/client/site"
-	"github.com/nvidia/carbide-rest/workflow/pkg/queue"
-	cwu "github.com/nvidia/carbide-rest/workflow/pkg/util"
+	cwm "github.com/nvidia/bare-metal-manager-rest/workflow/internal/metrics"
+	sc "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/client/site"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
+	cwu "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/util"
 
-	cwsv1 "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cwsv1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 
 	"github.com/prometheus/client_golang/prometheus"
 )

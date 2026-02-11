@@ -20,7 +20,7 @@ package managerapi
 import (
 	"context"
 
-	"github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
+	"github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/grpc/client"
 )
 
 // CarbideExpansion - Carbide Expansion

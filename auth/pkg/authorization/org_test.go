@@ -22,11 +22,11 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/nvidia/bare-metal-manager-rest/auth/pkg/core/claim"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	cdbu "github.com/nvidia/bare-metal-manager-rest/db/pkg/util"
 	"github.com/stretchr/testify/require"
-	"github.com/nvidia/carbide-rest/auth/pkg/core/claim"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
 )
 
 func TestValidateOrgMembership(t *testing.T) {

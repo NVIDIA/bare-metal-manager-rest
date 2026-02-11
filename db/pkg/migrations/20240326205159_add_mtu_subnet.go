@@ -21,7 +21,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/nvidia/carbide-rest/db/pkg/db/model"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 
 	"github.com/uptrace/bun"
 )

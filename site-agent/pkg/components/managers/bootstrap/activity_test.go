@@ -37,13 +37,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
-	cloudutils "github.com/nvidia/carbide-rest/common/pkg/util"
-	Manager "github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/managerapi"
-	"github.com/nvidia/carbide-rest/site-agent/pkg/conftypes"
-	"github.com/nvidia/carbide-rest/site-agent/pkg/datatypes/elektratypes"
-	"github.com/nvidia/carbide-rest/site-agent/pkg/datatypes/managertypes"
-	bootstraptypes "github.com/nvidia/carbide-rest/site-agent/pkg/datatypes/managertypes/bootstrap"
-	workflowtypes "github.com/nvidia/carbide-rest/site-agent/pkg/datatypes/managertypes/workflow"
+	cloudutils "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
+	Manager "github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/components/managers/managerapi"
+	"github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/conftypes"
+	"github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/datatypes/elektratypes"
+	"github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/datatypes/managertypes"
+	bootstraptypes "github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/datatypes/managertypes/bootstrap"
+	workflowtypes "github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/datatypes/managertypes/workflow"
 
 	tmocks "go.temporal.io/sdk/mocks"
 )

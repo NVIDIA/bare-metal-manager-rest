@@ -28,9 +28,9 @@ import (
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/testsuite"
 
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 
-	osImageActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/operatingsystem"
+	osImageActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/operatingsystem"
 )
 
 type UpdateOsImageTestSuite struct {

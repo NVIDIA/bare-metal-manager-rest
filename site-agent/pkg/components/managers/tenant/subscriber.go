@@ -18,8 +18,8 @@
 package tenant
 
 import (
-	swa "github.com/nvidia/carbide-rest/site-workflow/pkg/activity"
-	sww "github.com/nvidia/carbide-rest/site-workflow/pkg/workflow"
+	swa "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/activity"
+	sww "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/workflow"
 )
 
 // RegisterSubscriber registers Tenant workflows Site Agent subscribes to execute

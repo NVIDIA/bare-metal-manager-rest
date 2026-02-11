@@ -24,9 +24,9 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	testutil "github.com/nvidia/bare-metal-manager-rest/auth/pkg/testing"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 	"github.com/stretchr/testify/assert"
-	testutil "github.com/nvidia/carbide-rest/auth/pkg/testing"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 )
 
 func TestKeycloakClaims_GetClientId(t *testing.T) {

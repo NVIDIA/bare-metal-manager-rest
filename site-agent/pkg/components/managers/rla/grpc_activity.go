@@ -20,7 +20,7 @@ package rla
 import (
 	"context"
 
-	"github.com/nvidia/carbide-rest/site-workflow/pkg/grpc/client"
+	"github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/grpc/client"
 
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/log"

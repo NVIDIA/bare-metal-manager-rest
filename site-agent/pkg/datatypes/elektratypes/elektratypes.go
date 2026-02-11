@@ -20,9 +20,9 @@ package elektratypes
 import (
 	"os"
 
+	"github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/conftypes"
+	"github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/datatypes/managertypes"
 	"github.com/rs/zerolog"
-	"github.com/nvidia/carbide-rest/site-agent/pkg/conftypes"
-	"github.com/nvidia/carbide-rest/site-agent/pkg/datatypes/managertypes"
 	"go.uber.org/atomic"
 )
 

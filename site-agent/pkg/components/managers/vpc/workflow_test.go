@@ -21,8 +21,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	wflows "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/stretchr/testify/assert"
-	wflows "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 func Test_vpcWorkflowMetadata_ResponseState(t *testing.T) {

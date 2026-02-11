@@ -32,16 +32,16 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	cdbu "github.com/nvidia/bare-metal-manager-rest/db/pkg/util"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/internal/config"
+	sc "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/client/site"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/uptrace/bun/extra/bundebug"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
-	"github.com/nvidia/carbide-rest/workflow/internal/config"
-	sc "github.com/nvidia/carbide-rest/workflow/pkg/client/site"
-	"github.com/nvidia/carbide-rest/workflow/pkg/queue"
-	"github.com/nvidia/carbide-rest/workflow/pkg/util"
 	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/testsuite"
@@ -54,7 +54,7 @@ import (
 	twsv1mock "go.temporal.io/api/workflowservicemock/v1"
 	tmocks "go.temporal.io/sdk/mocks"
 
-	cwsv1 "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cwsv1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 // testTemporalSiteClientPool Building site client pool

@@ -22,8 +22,8 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/nvidia/carbide-rest/api/internal/config"
-	ccu "github.com/nvidia/carbide-rest/common/pkg/util"
+	"github.com/nvidia/bare-metal-manager-rest/api/internal/config"
+	ccu "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
 )
 
 // NotFoundHandler returns a middleware that returns a 404 status code for unmatched routes
