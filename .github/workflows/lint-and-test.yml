@@ -80,11 +80,14 @@ jobs:
           version: v2.7.2
           args: --timeout=10m --issues-exit-code=0 ./...
 
-      - name: Run Spectral OpenAPI Lint
-        uses: stoplightio/spectral-action@latest
-        with:
-          file_glob: 'openapi/*.yaml'
-          config_file: .spectral.yml
+      - name: Set up node
+        uses: actions/setup-node@v4
+
+      - name: Install Redocly CLI
+        run: npm install -g @redocly/cli@latest
+
+      - name: Run linting
+        run: redocly lint ./openapi/spec.yaml --format=github-actions
 
   # ============================================================================
   # Test Job - Unit tests per module with PostgreSQL service
