@@ -7,9 +7,9 @@ SPDX-License-Identifier: Apache-2.0
 
 This repo contains OpenAPI schema for Cabide REST endpoints.
 
-To view a rendered/browsable version of the schema, please ensure docker command is available and run the following:
+To view a rendered/browsable version of the schema, please ensure docker is available and run the following command from project root:
 
-    ./local-preview.sh
+    make preview-openapi
 
 Then access the schema at:
 

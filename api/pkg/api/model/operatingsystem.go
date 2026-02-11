@@ -52,6 +52,8 @@ type APIOperatingSystemCreateRequest struct {
 	SiteIDs []string `json:"siteIds"`
 	// TenantID is the ID of the Tenant creating the Operating System
 	TenantID *string `json:"tenantId"`
+	// IpxeScript is the iPXE script for the Operating System
+	IpxeScript *string `json:"ipxeScript"`
 	// ImageURL is the image path for the Operating System
 	ImageURL *string `json:"imageUrl"`
 	// ImageSHA is SHA for the Operating System image type
@@ -66,8 +68,6 @@ type APIOperatingSystemCreateRequest struct {
 	RootFsID *string `json:"rootFsId"`
 	// RootFsLabel is root fs label for the Operating System image type
 	RootFsLabel *string `json:"rootFsLabel"`
-	// IpxeScript is the iPXE script for the Operating System
-	IpxeScript *string `json:"ipxeScript"`
 	// PhoneHomeEnabled is the flag to allow enable phone home
 	PhoneHomeEnabled *bool `json:"phoneHomeEnabled"`
 	// UserData is the user data for the Operating System

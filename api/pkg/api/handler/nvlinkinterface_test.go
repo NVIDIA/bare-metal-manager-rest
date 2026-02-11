@@ -523,7 +523,7 @@ func TestGetAllNVLinkInterface_Handle(t *testing.T) {
 				q.Add("instanceId", tt.args.reqInstanceID)
 			}
 			if tt.args.reqNvlinkLogicalPartitionID != "" {
-				q.Add("nvlinkLogicalPartitionId", tt.args.reqNvlinkLogicalPartitionID)
+				q.Add("nvLinkLogicalPartitionId", tt.args.reqNvlinkLogicalPartitionID)
 			}
 			if tt.args.reqNVLinkDomainID != nil {
 				q.Add("nvLinkDomainId", tt.args.reqNVLinkDomainID.String())
