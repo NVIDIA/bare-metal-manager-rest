@@ -41,6 +41,7 @@ import (
 	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/networksecuritygroup"
 	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/nvlinklogicalpartition"
 	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/operatingsystem"
+	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/rla"
 	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/sku"
 	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/sshkeygroup"
 	"github.com/nvidia/carbide-rest/site-agent/pkg/components/managers/subnet"
@@ -78,6 +79,7 @@ func NewAPIHandlers() {
 		SKU:                    &sku.API{},
 		DpuExtensionService:    &dpuextensionservice.API{},
 		NVLinkLogicalPartition: &nvlinklogicalpartition.API{},
+		RLA:                    &rla.API{},
 	}
 }
 
@@ -120,6 +122,7 @@ func (Managers *Manager) NewInstance() {
 	Managers.SKU()
 	Managers.DpuExtensionService()
 	Managers.NVLinkLogicalPartition()
+	Managers.RLA()
 }
 
 // Init - initialize all the mgrs
@@ -165,6 +168,7 @@ func (Managers *Manager) Init() {
 	Managers.SKU().Init()
 	Managers.DpuExtensionService().Init()
 	Managers.NVLinkLogicalPartition().Init()
+	Managers.RLA().Init()
 
 }
 
@@ -176,6 +180,7 @@ func (Managers *Manager) Start() {
 	Managers.Carbide().Start()
 	Managers.Bootstrap().Start()
 	Managers.Orchestrator().Start()
+	Managers.RLA().Start()
 }
 
 // StartMetricServer - Start serving Metric Server

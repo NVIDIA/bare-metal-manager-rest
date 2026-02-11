@@ -725,6 +725,17 @@ func NewAPIRoutes(dbSession *cdb.Session, tc tClient.Client, tnc tClient.Namespa
 			Method:  http.MethodGet,
 			Handler: apiHandler.NewGetSkuHandler(dbSession, tc, cfg),
 		},
+		// Rack endpoints (RLA)
+		{
+			Path:    apiPathPrefix + "/rack",
+			Method:  http.MethodGet,
+			Handler: apiHandler.NewGetAllRackHandler(dbSession, tc, scp, cfg),
+		},
+		{
+			Path:    apiPathPrefix + "/rack/:id",
+			Method:  http.MethodGet,
+			Handler: apiHandler.NewGetRackHandler(dbSession, tc, scp, cfg),
+		},
 	}
 
 	return apiRoutes

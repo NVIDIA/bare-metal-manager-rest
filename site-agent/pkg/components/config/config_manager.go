@@ -94,7 +94,6 @@ func NewElektraConfig(utMode bool) *conftypes.Config {
 	var watcherInterval string
 	var podName string
 	var skipServerAuth string
-	var rlaEnabled string
 
 	// Determine environment in which app is running.
 	conf.RunningIn = determineEnvironment()
@@ -192,6 +191,8 @@ func NewElektraConfig(utMode bool) *conftypes.Config {
 
 	var skipRlaServerAuth string
 	flag.StringVar(&skipRlaServerAuth, "rlaSkipServerAuth", os.Getenv("SKIP_RLA_GRPC_SERVER_AUTH"), "Skip RLA gRPC server auth in TLS")
+
+	var rlaEnabled string
 	flag.StringVar(&rlaEnabled, "rlaEnabled", os.Getenv("RLA_ENABLED"), "Enable RLA")
 
 	if conf.MetricsPort == "" {

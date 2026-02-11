@@ -51,11 +51,12 @@ jobs:
           pkgs=$(go list ./... | grep -v $(go env GOMODCACHE))
           go fmt $pkgs
           go list $pkgs | grep -v $(go env GOMODCACHE) | xargs -L1 revive -config .revive.toml -set_exit_status
+
   # ============================================================================
-  # Lint Job - Static analysis
+  # Lint Go Job - Static analysis
   # ============================================================================
-  lint:
-    name: Lint
+  lint-go:
+    name: Lint Go
     runs-on: linux-amd64-cpu4
     continue-on-error: false
     steps:
@@ -79,6 +80,28 @@ jobs:
         with:
           version: v2.7.2
           args: --timeout=10m --issues-exit-code=0 ./...
+
+  # ============================================================================
+  # Lint OpenAPI Job - OpenAPI spec validation
+  # ============================================================================
+  lint-openapi:
+    name: Lint OpenAPI
+    runs-on: linux-amd64-cpu4
+    continue-on-error: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Install Redocly CLI
+        run: npm install -g @redocly/cli@latest
+
+      - name: Run OpenAPI lint
+        run: redocly lint ./openapi/spec.yaml --format=github-actions
 
   # ============================================================================
   # Test Job - Unit tests per module with PostgreSQL service
@@ -153,12 +176,14 @@ jobs:
 
           if [ "${{ matrix.module }}" = "site-agent" ]; then
             make carbide-mock-server-start
+            make rla-mock-server-start
           fi
 
           go test -v -race -p 1 ./${{ matrix.module }}/... -coverprofile=coverage-${{ matrix.module }}.txt -covermode=atomic 2>&1 | tee test-output-${{ matrix.module }}.txt
 
           if [ "${{ matrix.module }}" = "site-agent" ]; then
             make carbide-mock-server-stop
+            make rla-mock-server-stop
           fi
 
       - name: Generate JUnit report

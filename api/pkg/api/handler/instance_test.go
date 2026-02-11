@@ -547,15 +547,15 @@ func testInstanceBuildInstanceInterface(t *testing.T, dbSession *cdb.Session, in
 	return ifc
 }
 
-func testInstanceBuildInstanceNVLinkInterface(t *testing.T, dbSession *cdb.Session, siteID uuid.UUID, in uuid.UUID, nvlinklogicalID uuid.UUID, nvlinkDomainID *uuid.UUID, device *string, deviceInstance int, status string) *cdbm.NVLinkInterface {
+func testInstanceBuildInstanceNVLinkInterface(t *testing.T, dbSession *cdb.Session, siteID uuid.UUID, in uuid.UUID, nvLinkLogicalID uuid.UUID, nvLinkDomainID *uuid.UUID, device *string, deviceInstance int, status string) *cdbm.NVLinkInterface {
 	nvlifc := &cdbm.NVLinkInterface{
 		ID:                       uuid.New(),
 		InstanceID:               in,
 		SiteID:                   siteID,
-		NVLinkLogicalPartitionID: nvlinklogicalID,
+		NVLinkLogicalPartitionID: nvLinkLogicalID,
 		Device:                   device,
 		DeviceInstance:           deviceInstance,
-		NVLinkDomainID:           nvlinkDomainID,
+		NVLinkDomainID:           nvLinkDomainID,
 		Status:                   status,
 		Created:                  cdb.GetCurTime(),
 		Updated:                  cdb.GetCurTime(),

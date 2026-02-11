@@ -26,9 +26,9 @@ import (
 )
 
 const (
-	metricsNamespace      = "elektra_site_agent"
-	metricRLAGrpcLatency  = "rla_grpc_client_latency_seconds"
-	metricWorkflowLatency = "workflow_latency_seconds"
+	metricsNamespace         = "elektra_site_agent"
+	metricRLAGrpcLatency     = "rla_grpc_client_latency_seconds"
+	metricRLAWorkflowLatency = "rla_workflow_latency_seconds"
 )
 
 type grpcClientMetrics struct {
@@ -64,7 +64,7 @@ func newWorkflowMetrics() rlatypes.WorkflowMetrics {
 		latency: prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
 				Namespace: metricsNamespace,
-				Name:      metricWorkflowLatency,
+				Name:      metricRLAWorkflowLatency,
 				Help:      "Latency of each workflow",
 				Buckets:   []float64{0.0005, 0.001, 0.005, 0.010, 0.025, 0.050, 0.100, 0.250, 0.500, 1.0, 2.5, 5.0, 10.0},
 			},

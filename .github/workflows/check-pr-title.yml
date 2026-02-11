@@ -2,13 +2,14 @@ name: "PR Title Checker"
 
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened]
+    types: [opened, edited, reopened]
 
 jobs:
   title-check:
+    name: Check PR Title
     runs-on: ubuntu-latest
     steps:
-      - name: Check PR Title
+      - name: Check Format
         env:
             # Pass the PR title to an environment variable for secure handling in bash
             PR_TITLE: ${{ github.event.pull_request.title }}
@@ -20,7 +21,7 @@ jobs:
             if [[ "$PR_TITLE" =~ $PATTERN ]]; then
                 echo "PR title format is valid."
             else
-                echo "PR title format is invalid. Start with a category followed by colon and a capitalized sentence of at least 20 characters."
+                echo "Error: PR title format is invalid. Start with a category followed by colon and a capitalized sentence of at least 20 characters."
                 echo "Required format: (feat|fix|docs|version|refactor|chore|ci): [A-Z].{19,}"
                 echo "Example: feat: Add login functionality"
                 exit 1

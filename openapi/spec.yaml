@@ -110,6 +110,8 @@ tags:
     description: Machine operations
   - name: Machine Capability
     description: Machine Capability operations
+  - name: Rack
+    description: Rack operations
   - name: Network Security Group
     description: Network Security Group operations
   - name: IP Block
@@ -1214,7 +1216,7 @@ paths:
                   description: Echo Studios resource allocation in SJC4
                   tenantId: f97df110-f4de-492e-8849-4a6af68026b0
                   siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
-                  constraints:
+                  allocationConstraints:
                     - resourceType: InstanceType
                       resourceTypeId: bd5a0240-eb62-4bff-91f7-335e6bb86459
                       constraintType: Reserved
@@ -1820,11 +1822,10 @@ paths:
                   name: Public Network Overlay for Site SJC4
                   description: This is the primary IP overlay for SJC4. All IPs are publicly routable
                   siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
-                  infrastructureProviderId: e94bcfda-f6cb-42e4-80ec-516811e5abbf
                   routingType: Public
                   prefix: 202.168.1.0
                   prefixLength: 24
-                  protocolVersion: ipv4
+                  protocolVersion: IPv4
       tags:
         - IP Block
   '/v2/org/{org}/carbide/ipblock/{ipBlockId}':
@@ -4169,19 +4170,6 @@ paths:
         Org must have a Tenant entity. User must have `FORGE_TENANT_ADMIN` NGC role.
       tags:
         - NVLink Logical Partition
-    parameters:
-      - schema:
-          type: string
-        name: org
-        in: path
-        required: true
-        description: Name of the NGC Org
-      - schema:
-          type: string
-        name: nvLinkLogicalPartitionId
-        in: path
-        required: true
-        description: ID of the NVLink Logical Partition
   '/v2/org/{org}/carbide/instance/type':
     parameters:
       - schema:
@@ -4914,7 +4902,6 @@ paths:
                       nvLinkInterfaces:
                         - id: fc19ab3f-1e52-4846-91bd-98743ff2752c
                           instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
-                          siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
                           nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
                           nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
                           deviceInstance: 0
@@ -4923,7 +4910,6 @@ paths:
                           updated: '2019-08-24T14:15:22Z'
                         - id: c0ae6ec4-9a77-4358-baad-ee8cc3332c91
                           instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
-                          siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
                           nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
                           nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
                           deviceInstance: 1
@@ -4932,7 +4918,6 @@ paths:
                           updated: '2019-08-24T14:15:22Z'
                         - id: aa44ff62-d86b-4db6-9fa4-90a19b05be01
                           instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
-                          siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
                           nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
                           nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
                           deviceInstance: 2
@@ -4941,7 +4926,6 @@ paths:
                           updated: '2019-08-24T14:15:22Z'
                         - id: a403d1ca-2c07-410a-9678-3eb44d570ad9
                           instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
-                          siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
                           nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
                           nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
                           deviceInstance: 3
@@ -5140,7 +5124,7 @@ paths:
                           status: Ready
                           created: '2019-08-24T14:15:22Z'
                           updated: '2019-08-24T14:15:22Z'
-                      infiniBandInterfaces: []
+                      infinibandInterfaces: []
                       dpuExtensionServiceDeployments: []
                       sshKeyGroupIds:
                         - 497f6eca-6276-4993-bfeb-53cbbbba6f08
@@ -5366,7 +5350,6 @@ paths:
                     nvLinkInterfaces:
                       - id: fc19ab3f-1e52-4846-91bd-98743ff2752c
                         instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
-                        siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
                         nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
                         nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
                         deviceInstance: 0
@@ -5525,7 +5508,7 @@ paths:
                       deviceInstance: 2
                     - nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
                       deviceInstance: 3
-                  sshKeyGroupsIds:
+                  sshKeyGroupIds:
                     - 497f6eca-6276-4993-bfeb-53cbbbba6f08
               With Machine ID & VPC Prefix Interface:
                 value:
@@ -5799,7 +5782,6 @@ paths:
                     nvLinkInterfaces:
                       - id: fc19ab3f-1e52-4846-91bd-98743ff2752c
                         instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
-                        siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
                         nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
                         nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
                         deviceInstance: 0
@@ -5808,7 +5790,6 @@ paths:
                         updated: '2019-08-24T14:15:22Z'
                       - id: c0ae6ec4-9a77-4358-baad-ee8cc3332c91
                         instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
-                        siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
                         nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
                         nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
                         deviceInstance: 1
@@ -5817,7 +5798,6 @@ paths:
                         updated: '2019-08-24T14:15:22Z'
                       - id: aa44ff62-d86b-4db6-9fa4-90a19b05be01
                         instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
-                        siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
                         nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
                         nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
                         deviceInstance: 2
@@ -5826,7 +5806,6 @@ paths:
                         updated: '2019-08-24T14:15:22Z'
                       - id: a403d1ca-2c07-410a-9678-3eb44d570ad9
                         instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
-                        siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
                         nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
                         nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
                         deviceInstance: 3
@@ -6436,12 +6415,10 @@ paths:
                   value:
                     - id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
                       instanceId: 64d2028c-ae87-4069-a624-66089d957ef9
-                      siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
                       nvLinkLogicalPartitionId: 05ef7e84-1d4e-4e4d-980d-38589479a0fe
-                      "nvLinkDomainId": "4b145552-0d8f-45ff-b652-eed105f93e50",
-                      "deviceInstance": 0,
-                      "gpuGuid": "5108732638879268442",
+                      nvLinkDomainId: 4b145552-0d8f-45ff-b652-eed105f93e50
                       deviceInstance: 0
+                      gpuGuid: '5108732638879268442'
                       status: Ready
                       created: '2019-08-24T14:15:22Z'
                       updated: '2019-08-24T14:15:22Z'
@@ -6477,12 +6454,12 @@ paths:
         - schema:
             type: string
           in: query
-          name: nvlinkLogicalPartitionId
+          name: nvLinkLogicalPartitionId
           description: Filter NVLink Interfaces by NVLink Logical Partition ID.  Can be specified multiple times to filter on more than one ID.
         - schema:
             type: string
           in: query
-          name: nvlinkDomainId
+          name: nvLinkDomainId
           description: Filter NVLink Interfaces by NVLink Domain ID.  Can be specified multiple times to filter on more than one ID.
         - schema:
             type: string
@@ -6572,7 +6549,8 @@ paths:
                             isOnline: true
                             capabilities:
                               nativeNetworking: false
-                              NetworkSecurityGroup: true
+                              networkSecurityGroup: true
+                              nvLinkPartition: false
                             status: Registered
                           status: Syncing
                           version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -6586,7 +6564,8 @@ paths:
                             isOnline: true
                             capabilities:
                               nativeNetworking: false
-                              NetworkSecurityGroup: false
+                              networkSecurityGroup: false
+                              nvLinkPartition: false
                             status: Registered
                           status: Syncing
                           version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -6630,7 +6609,6 @@ paths:
                       isCloudInit: true
                       phoneHomeEnabled: false
                       allowOverride: false
-                      enableBlockStorage: false
                       imageAuthToken: null
                       imageAuthType: null
                       imageDisk: null
@@ -6764,7 +6742,6 @@ paths:
                     isCloudInit: true
                     phoneHomeEnabled: false
                     allowOverride: false
-                    enableBlockStorage: false
                     imageAuthToken: null
                     imageAuthType: null
                     imageDisk: null
@@ -6828,7 +6805,6 @@ paths:
                   isCloudInit: true
                   phoneHomeEnabled: true
                   allowOverride: false
-                  enableBlockStorage: false
               example-2:
                 value:
                   name: debian-12-amd64
@@ -6836,7 +6812,6 @@ paths:
                   tenantId: f97df110-f4de-492e-8849-4a6af68026b0
                   siteIds:
                     - 497f6eca-6276-4993-bfeb-53cbbbba6f08
-                  type: Image
                   imageUrl: 'https://saimei.ftp.acc.umu.se/images/cloud/bookworm/latest/debian-12-generic-amd64.qcow2'
                   imageSha: 2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae
                   imageAuthType: Bearer
@@ -6848,7 +6823,6 @@ paths:
                   isCloudInit: true
                   phoneHomeEnabled: false
                   allowOverride: false
-                  enableBlockStorage: false
       tags:
         - Operating System
   '/v2/org/{org}/carbide/operating-system/{operatingSystemId}':
@@ -6906,7 +6880,8 @@ paths:
                           isOnline: true
                           capabilities:
                             nativeNetworking: false
-                            NetworkSecurityGroup: true
+                            networkSecurityGroup: true
+                            nvLinkPartition: false
                           status: Registered
                         status: Syncing
                         version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -6920,7 +6895,8 @@ paths:
                           isOnline: true
                           capabilities:
                             nativeNetworking: false
-                            NetworkSecurityGroup: false
+                            networkSecurityGroup: false
+                            nvLinkPartition: false
                           status: Registered
                         status: Syncing
                         version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -6964,7 +6940,6 @@ paths:
                     isCloudInit: true
                     phoneHomeEnabled: false
                     allowOverride: false
-                    enableBlockStorage: false
                     imageAuthToken: null
                     imageAuthType: null
                     imageDisk: null
@@ -7056,7 +7031,6 @@ paths:
                     isCloudInit: true
                     allowOverride: true
                     phoneHomeEnabled: true
-                    enableBlockStorage: false
                     imageAuthToken: null
                     imageAuthType: null
                     imageDisk: null
@@ -7531,7 +7505,7 @@ paths:
                           numaNode: 0
                           description: NetXtreme BCM5720 Gigabit Ethernet PCIe (PowerEdge Rx5xx LOM Board)
                           slot: '0000:04:00.0'
-                      infiniBandInterfaces:
+                      infinibandInterfaces:
                         - guid: 1070fd0300bd43ac
                           vendor: Mellanox Technologies
                           device: 'MT28908 Family [ConnectX-6]'
@@ -7725,7 +7699,7 @@ paths:
                       - type: Memory
                         name: Corsair Vengeance LPX
                         capacity: 32GB
-                        count": 4
+                        count: 4
                     machineInterfaces:
                       - id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
                         machineId: fm100ht4v4mce2qstjnl8970nnj3ie6ecek4mtjn27pea4kre5gsa49jg0g
@@ -8031,6 +8005,189 @@ paths:
           in: query
           name: orderBy
           description: Ordering for pagination query
+  '/v2/org/{org}/carbide/rack':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+    get:
+      summary: Retrieve all Racks
+      operationId: get-all-rack
+      description: |-
+        Get all Racks for the specified Site.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site to retrieve Racks from
+        - schema:
+            type: boolean
+          in: query
+          name: includeComponents
+          description: Include rack components in response
+        - schema:
+            type: string
+          in: query
+          name: name
+          description: Filter by rack name
+        - schema:
+            type: string
+          in: query
+          name: manufacturer
+          description: Filter by manufacturer
+        - schema:
+            type: string
+          in: query
+          name: model
+          description: Filter by model
+        - schema:
+            type: integer
+            example: 1
+            default: 1
+            minimum: 1
+          in: query
+          name: pageNumber
+          description: Page number for pagination query
+        - schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            example: 20
+          in: query
+          name: pageSize
+          description: Page size for pagination query
+        - schema:
+            type: string
+            enum:
+              - NAME_ASC
+              - NAME_DESC
+              - MANUFACTURER_ASC
+              - MANUFACTURER_DESC
+              - MODEL_ASC
+              - MODEL_DESC
+          in: query
+          name: orderBy
+          description: Ordering for pagination query
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Rack'
+              examples:
+                example-1:
+                  value:
+                    - id: 550e8400-e29b-41d4-a716-446655440000
+                      name: Rack-01
+                      manufacturer: Dell
+                      model: PowerEdge R750
+                      serialNumber: SN-RACK-001
+                      description: Primary compute rack
+                      location:
+                        region: us-east-1
+                        datacenter: DC-01
+                        room: Room-A
+                        position: A1
+                      components:
+                        - id: 660e8400-e29b-41d4-a716-446655440001
+                          componentId: fm100ht4v4mce2qstjnl8970nnj3ie6ecek4mtjn27pea4kre5gsa49jg0g
+                          type: COMPONENT_TYPE_COMPUTE
+                          name: Server-01
+                          serialNumber: SN-SRV-001
+                          manufacturer: Dell
+                          firmwareVersion: 2.1.0
+                          position: 1
+          headers:
+            X-Pagination:
+              schema:
+                type: string
+                example: '{"pageNumber":1,"pageSize":20,"total":30,"orderBy":"NAME_ASC"}'
+              description: Pagination result in JSON format
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Rack
+  '/v2/org/{org}/carbide/rack/{id}':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+        name: id
+        in: path
+        required: true
+        description: ID of the Rack
+    get:
+      summary: Retrieve a Rack
+      operationId: get-rack
+      description: |-
+        Get a Rack by ID.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site
+        - schema:
+            type: boolean
+          in: query
+          name: includeComponents
+          description: Include rack components in response
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Rack'
+              examples:
+                example-1:
+                  value:
+                    id: 550e8400-e29b-41d4-a716-446655440000
+                    name: Rack-01
+                    manufacturer: Dell
+                    model: PowerEdge R750
+                    serialNumber: SN-RACK-001
+                    description: Primary compute rack
+                    location:
+                      region: us-east-1
+                      datacenter: DC-01
+                      room: Room-A
+                      position: A1
+                    components:
+                      - id: 660e8400-e29b-41d4-a716-446655440001
+                        componentId: fm100ht4v4mce2qstjnl8970nnj3ie6ecek4mtjn27pea4kre5gsa49jg0g
+                        type: COMPONENT_TYPE_COMPUTE
+                        name: Server-01
+                        serialNumber: SN-SRV-001
+                        manufacturer: Dell
+                        firmwareVersion: 2.1.0
+                        position: 1
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      tags:
+        - Rack
   '/v2/org/{org}/carbide/network-security-group':
     parameters:
       - schema:
@@ -8583,7 +8740,8 @@ paths:
                             isOnline: true
                             capabilities:
                               nativeNetworking: false
-                              NetworkSecurityGroup: true
+                              networkSecurityGroup: true
+                              nvLinkPartition: false
                             status: Registered
                           status: Syncing
                           version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -8705,7 +8863,7 @@ paths:
                           isOnline: true
                           capabilities:
                             nativeNetworking: true
-                            NetworkSecurityGroup: true
+                            networkSecurityGroup: true
                           status: Registered
                         status: Syncing
                         version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -8792,7 +8950,8 @@ paths:
                           isOnline: true
                           capabilities:
                             nativeNetworking: true
-                            NetworkSecurityGroup: true
+                            networkSecurityGroup: true
+                            nvLinkPartition: false
                           status: Registered
                         status: Syncing
                         version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -8869,7 +9028,7 @@ paths:
                           isOnline: true
                           capabilities:
                             nativeNetworking: true
-                            NetworkSecurityGroup: true
+                            networkSecurityGroup: true
                           status: Registered
                         status: Syncing
                         version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -8883,7 +9042,7 @@ paths:
                           isOnline: true
                           capabilities:
                             nativeNetworking: true
-                            NetworkSecurityGroup: true
+                            networkSecurityGroup: true
                           status: Registered
                         status: Syncing
                         version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -9067,7 +9226,7 @@ paths:
                 value:
                   name: reno-sre-access
                   publicKey: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICip4hl6WjuVHs60PeikVUs0sWE/kPhk2D0rRHWsIuyL jdoe@test.com
-                  tenantId: f97df110-f4de-492e-8849-4a6af68026b0
+                  sshKeyGroupId: 86ca8cab-b285-4c2d-9e00-25c88810dc2e
   '/v2/org/{org}/carbide/sshkey/{sshKeyId}':
     parameters:
       - schema:
@@ -9824,7 +9983,8 @@ components:
                 unhealthy: 0
           capabilities:
             nativeNetworking: true
-            NetworkSecurityGroup: true
+            networkSecurityGroup: true
+            nvLinkPartition: false
           isOnline: false
           status: Pending
           statusHistory:
@@ -9920,13 +10080,13 @@ components:
       examples:
         - id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
           name: San Jose Central 4
-          org: qygdmg8oqik8
           infrastructureProviderId: 5f2cc306-76e9-4fca-9186-950c9ef9a74e
           isSerialConsoleEnabled: true
           isOnline: false
           capabilities:
             nativeNetworking: false
-            NetworkSecurityGroup: false
+            networkSecurityGroup: true
+            nvLinkPartition: false
           status: Pending
       properties:
         id:
@@ -9965,9 +10125,11 @@ components:
       type: object
       description: Boolean flags to indicate features supported by a Site
       properties:
-        NativeNetworking:
+        nativeNetworking:
           type: boolean
-        NetworkSecurityGroup:
+        networkSecurityGroup:
+          type: boolean
+        nvLinkPartition:
           type: boolean
     SiteCreateRequest:
       title: SiteCreateRequest
@@ -10054,10 +10216,9 @@ components:
       type: object
       description: Location of the Site
       examples:
-        - location:
-            city: San Jose
-            state: CA
-            country: USA
+        - city: San Jose
+          state: CA
+          country: USA
       properties:
         city:
           type: string
@@ -10073,8 +10234,7 @@ components:
       type: object
       description: Contact for the Site
       examples:
-        - contact:
-            email: johndoe@nvidia.com
+        - email: johndoe@nvidia.com
       properties:
         email:
           type: string
@@ -10338,8 +10498,8 @@ components:
           tenantId: 34f5c98e-f430-457b-a812-92637d0c6fd0
           siteId: 72771e6a-6f5e-4de4-a5b9-1266c4197811
           labels:
-            - region: us-west-1
-            - env: dev
+            region: us-west-1
+            env: dev
           controllerVpcId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
           networkVirtualizationType: ETHERNET_VIRTUALIZER
           networkSecurityGroupId: c602eb90-3039-11f0-997a-b38d4fc8389e
@@ -10592,18 +10752,17 @@ components:
           type: string
           format: uuid
           description: ID of the Tenant the VPC Prefix belongs to
-        prefix:
-          type:
-            - string
-            - 'null'
-          format: ipv4
-          description: The network prefix including prefix length in CIDR notation
         ipBlockId:
           type:
             - string
             - 'null'
           format: uuid
           description: ID of the IP Block that contains the prefix of the VPC Prefix
+        prefix:
+          type:
+            - string
+            - 'null'
+          description: The network prefix including prefix length in CIDR notation
         prefixLength:
           type: integer
           example: 24
@@ -10689,9 +10848,9 @@ components:
           vpcId: 5e28ad7c-5fb7-46d6-a28a-fc0ba6fdc4a3
           tenantId: f97df110-f4de-492e-8849-4a6af68026b0
           controllerNetworkSegmentId: abe7b0e8-67db-4e89-903e-fc4f2bd7f034
-          ipv4Prefix: 292.168.0.250
+          ipv4Prefix: 204.168.0.250
           ipv4BlockId: 8c1d1a06-90a2-4863-8ee1-6029265b9f0a
-          ipv4Gateway: 292.168.0.1
+          ipv4Gateway: 204.168.0.1
           ipv6Prefix: null
           ipv6BlockId: null
           ipv6Gateway: null
@@ -10981,7 +11140,7 @@ components:
       type: object
       examples:
         - name: turbo-net
-          vpcId: 5e28ad7c-5fb7-46d6-a28a-fc0ba6fdc4a3
+          siteId: 8c43e859-d301-4ecf-9d0e-46bf374473c4
       description: Request data to create an InfiniBand Partition
       properties:
         name:
@@ -11004,7 +11163,7 @@ components:
       type: object
       examples:
         - name: turbo-net
-          vpcId: 5e28ad7c-5fb7-46d6-a28a-fc0ba6fdc4a3
+          description: InfiniBand Partition for model training Instances
       description: Request data to update an InfiniBand Partition
       properties:
         name:
@@ -11197,7 +11356,8 @@ components:
                 isOnline: true
                 capabilities:
                   nativeNetworking: false
-                  NetworkSecurityGroup: true
+                  networkSecurityGroup: true
+                  nvLinkPartition: false
                 status: Registered
               status: Syncing
               version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -11211,7 +11371,8 @@ components:
                 isOnline: true
                 capabilities:
                   nativeNetworking: false
-                  NetworkSecurityGroup: false
+                  networkSecurityGroup: false
+                  nvLinkPartition: false
                 status: Registered
               status: Syncing
               version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -11295,6 +11456,12 @@ components:
             - 'null'
           format: uuid
           description: Specified if a Tenant owns the Operating System
+        type:
+          type: string
+          description: Type of the Operating System
+          enum:
+            - iPXE
+            - Image
         imageUrl:
           type:
             - string
@@ -11406,7 +11573,8 @@ components:
             isOnline: false
             capabilities:
               nativeNetworking: false
-              NetworkSecurityGroup: false
+              networkSecurityGroup: false
+              nvLinkPartition: false
             status: Pending
           status: Syncing
           version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -11453,6 +11621,7 @@ components:
                   uri: http://archive.ubuntu.com/ubuntu
                 - arches: [default]
                   uri: http://ports.ubuntu.com/ubuntu-ports
+          phoneHomeEnabled: true
           isCloudInit: true
           allowOverride: false
         - name: debian-12-amd64
@@ -11496,6 +11665,11 @@ components:
             type: string
             format: uuid
           description: 'Specified only one Site if an Operating System is Image based, more than one Site is not supported"'
+        ipxeScript:
+          type:
+            - string
+            - 'null'
+          description: 'iPXE script or URL, only applicable for iPXE based OS. Cannot be specified if imageUrl is specified'
         imageUrl:
           type:
             - string
@@ -11532,11 +11706,11 @@ components:
             - string
             - 'null'
           description: 'Root filesystem label, this or `rootFsId` required for image based OS'
-        ipxeScript:
+        phoneHomeEnabled:
           type:
-            - string
+            - boolean
             - 'null'
-          description: 'iPXE script or URL, only applicable for iPXE based OS. Cannot be specified if imageUrl is specified'
+          description: Indicates whether the Phone Home service should be enabled or disabled for Operating System
         userData:
           type:
             - string
@@ -11556,6 +11730,7 @@ components:
       examples:
         - name: ubuntu-22.04
           description: Ubuntu 22.04
+          phoneHomeEnabled: true
           allowOverride: false
         - name: debian-12-amd64
           description: Official Debian 12 for AMD/Intel
@@ -11583,6 +11758,11 @@ components:
             - string
             - 'null'
           description: Optional description of the Operating System
+        ipxeScript:
+          type:
+            - string
+            - 'null'
+          description: 'iPXE script or URL, only applicable for iPXE based OS. Cannot be specified if imageUrl is specified'
         imageUrl:
           type:
             - string
@@ -11619,11 +11799,11 @@ components:
             - string
             - 'null'
           description: 'Root filesystem label, this or `rootFsId` required for image based OS'
-        ipxeScript:
+        phoneHomeEnabled:
           type:
-            - string
+            - boolean
             - 'null'
-          description: 'iPXE script or URL, only applicable for iPXE based OS. Cannot be specified if imageUrl is specified'
+          description: Indicates whether the Phone Home service should be enabled or disabled for Operating System
         userData:
           type:
             - string
@@ -11748,6 +11928,10 @@ components:
           siteId: 72771e6a-6f5e-4de4-a5b9-1266c4197811
           status: Pending
       properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
         name:
           type: string
           minLength: 2
@@ -11811,7 +11995,7 @@ components:
             - type: Memory
               name: Corsair Vengeance LPX
               capacity: 32GB
-              count": 4
+              count: 4
       description: Request data to create an Instance Type
       properties:
         name:
@@ -11857,8 +12041,6 @@ components:
         - type: CPU
           name: Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz
           frequency: 3.0GHz
-          cores: 18
-          threads: 36
           count: 2
         - type: Memory
           name: DDR4
@@ -11974,7 +12156,7 @@ components:
               isPhysical: true
               virtualFunctionId: null
               macAddress: null
-              ipAddresses: {}
+              ipAddresses: []
               status: Pending
               created: '2019-08-24T14:15:22Z'
               updated: '2019-08-24T14:15:22Z'
@@ -11993,7 +12175,6 @@ components:
           nvLinkInterfaces:
             - id: fc19ab3f-1e52-4846-91bd-98743ff2752c
               instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
-              siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
               nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
               nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
               deviceInstance: 0
@@ -12002,7 +12183,6 @@ components:
               updated: '2019-08-24T14:15:22Z'
             - id: fc19ab3f-1e52-4846-91bd-98743ff2752c
               instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
-              siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
               nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
               nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
               deviceInstance: 1
@@ -12011,7 +12191,6 @@ components:
               updated: '2019-08-24T14:15:22Z'
             - id: fc19ab3f-1e52-4846-91bd-98743ff2752c
               instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
-              siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
               nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
               nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
               deviceInstance: 2
@@ -12020,7 +12199,6 @@ components:
               updated: '2019-08-24T14:15:22Z'
             - id: fc19ab3f-1e52-4846-91bd-98743ff2752c
               instanceId: 497f6eca-6276-4993-bfeb-53cbbbba6f08
-              siteId: 60189e9c-7d12-438c-b9ca-6998d9c364b1
               nvLinkLogicalPartitionId: 2f8676fd-d228-4db5-ac76-1cfc74f48a23
               nvLinkDomainId: 59202b81-65fb-45ec-b3b8-91ab0ad3f34a
               deviceInstance: 3
@@ -12086,7 +12264,7 @@ components:
               isPhysical: true
               virtualFunctionId: null
               macAddress: null
-              ipAddresses: {}
+              ipAddresses: []
               status: Pending
               created: '2019-08-24T14:15:22Z'
               updated: '2019-08-24T14:15:22Z'
@@ -12108,7 +12286,7 @@ components:
                 id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
                 name: busybox
                 serviceType: KubernetesPod
-                version: V1-T1761856992374052
+                latestVersion: V1-T1761856992374052
                 status: Ready
               version: V1-T1761856992374052
               status: Running
@@ -13133,7 +13311,7 @@ components:
         instanceId:
           type: string
           format: uuid
-        nvLinklogicalPartitionId:
+        nvLinkLogicalPartitionId:
           type: string
           format: uuid
           description: ID of the NVLink Logical Partition associated with this interface
@@ -13275,6 +13453,105 @@ components:
             - string
             - 'null'
           description: 'Device Type of the Capability component, if available'
+    Rack:
+      title: Rack
+      type: object
+      description: Rack represents a physical rack in the datacenter
+      examples:
+        - id: 550e8400-e29b-41d4-a716-446655440000
+          name: Rack-01
+          manufacturer: Dell
+          model: PowerEdge R750
+          serialNumber: SN-RACK-001
+          description: Primary compute rack
+          location:
+            region: us-east-1
+            datacenter: DC-01
+            room: Room-A
+            position: A1
+          components:
+            - id: 660e8400-e29b-41d4-a716-446655440001
+              componentId: fm100ht4v4mce2qstjnl8970nnj3ie6ecek4mtjn27pea4kre5gsa49jg0g
+              type: COMPONENT_TYPE_COMPUTE
+              name: Server-01
+              serialNumber: SN-SRV-001
+              manufacturer: Dell
+              firmwareVersion: 2.1.0
+              position: 1
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier of the Rack
+        name:
+          type: string
+          description: Name of the Rack
+        manufacturer:
+          type: string
+          description: Manufacturer of the Rack
+        model:
+          type: string
+          description: Model of the Rack
+        serialNumber:
+          type: string
+          description: Serial number of the Rack
+        description:
+          type: string
+          description: Description of the Rack
+        location:
+          $ref: '#/components/schemas/RackLocation'
+        components:
+          type: array
+          description: Components within the Rack. Only returned when includeComponents is true.
+          items:
+            $ref: '#/components/schemas/RackComponent'
+    RackLocation:
+      title: RackLocation
+      type: object
+      description: Physical location of a Rack
+      properties:
+        region:
+          type: string
+          description: Region where the rack is located
+        datacenter:
+          type: string
+          description: Datacenter where the rack is located
+        room:
+          type: string
+          description: Room within the datacenter
+        position:
+          type: string
+          description: Position of the rack within the room
+    RackComponent:
+      title: RackComponent
+      type: object
+      description: A component within a Rack (e.g. compute node, switch, PDU)
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier of the component in RLA
+        componentId:
+          type: string
+          description: ID of the component in its source system (e.g. Carbide machine ID for compute nodes)
+        type:
+          type: string
+          description: Type of the component (e.g. COMPONENT_TYPE_COMPUTE, COMPONENT_TYPE_SWITCH)
+        name:
+          type: string
+          description: Name of the component
+        serialNumber:
+          type: string
+          description: Serial number of the component
+        manufacturer:
+          type: string
+          description: Manufacturer of the component
+        firmwareVersion:
+          type: string
+          description: Firmware version of the component
+        position:
+          type: integer
+          description: Slot position of the component within the rack
     Machine:
       title: Machine
       type: object
@@ -13540,7 +13817,7 @@ components:
           maxLength: 256
           format: uuid
           description: Update the Instance Type of the Machine. Cannot be specified when clearing Instance Type. Can only be updated by Provider.
-        clearinstanceType:
+        clearInstanceType:
           type:
             - boolean
             - 'null'
@@ -13569,6 +13846,7 @@ components:
           machineId: fm100ht4v4mce2qstjnl8970nnj3ie6ecek4mtjn27pea4kre5gsa49jg0g
           controllerInterfaceId: ad3dac49-741d-4c1f-815c-c020127c532f
           controllerSegmentId: f2207a3c-1847-42e5-bf2c-cd015f87a2bc
+          attachedDpuMachineID: fm100dsg4ekcb4sdi6hkqn0iojhj18okrr8vct64luh8957lfe8e69vme20
           subnetId: 1f232bf0-7b90-456e-b9b0-38d9fea4171a
           hostname: example.com
           isPrimary: true
@@ -13590,6 +13868,10 @@ components:
         controllerSegmentId:
           type: string
           format: uuid
+        attachedDpuMachineID:
+          type:
+            - string
+            - 'null'
         subnetId:
           type:
             - string
@@ -13650,7 +13932,7 @@ components:
               numaNode: 0
               description: NetXtreme BCM5720 Gigabit Ethernet PCIe (PowerEdge Rx5xx LOM Board)
               slot: '0000:04:00.0'
-          infiniBandInterfaces:
+          infinibandInterfaces:
             - guid: 1070fd0300bd43ac
               vendor: Mellanox Technologies
               device: 'MT28908 Family [ConnectX-6]'
@@ -13671,7 +13953,7 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/MachineNetworkInterface'
-        infiniBandInterfaces:
+        infinibandInterfaces:
           type: array
           items:
             $ref: '#/components/schemas/MachineInfiniBandInterface'
@@ -13880,21 +14162,19 @@ components:
           description: NetXtreme BCM5720 Gigabit Ethernet PCIe (PowerEdge Rx5xx LOM Board)
           slot: '0000:04:00.0'
       properties:
-        name:
+        macAddress:
           type: string
-        serial:
+        vendor:
           type: string
-        driverVersion:
+        device:
           type: string
-        vbiosVersion:
+        path:
           type: string
-        inforomVersion:
+        numaNode:
+          type: integer
+        description:
           type: string
-        totalMemory:
-          type: string
-        frequency:
-          type: string
-        pciBusId:
+        slot:
           type: string
     MachineInfiniBandInterface:
       title: MachineInfiniBandInterface
@@ -14279,7 +14559,6 @@ components:
         chassis:
           $ref: '#/components/schemas/SkuChassis'
           description: Chassis component
-          nullable: true
         ethernetDevices:
           type: array
           description: Ethernet device components
@@ -14437,7 +14716,7 @@ components:
           routingType: Public
           prefix: 202.168.16.0
           prefixLength: 20
-          protocolVersion: ipv4
+          protocolVersion: IPv4
           status: Pending
           statusHistory:
             - status: Pending
@@ -14517,6 +14796,10 @@ components:
           prefixLength: 20
           status: Pending
       properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
         name:
           type: string
           minLength: 2
@@ -14594,7 +14877,7 @@ components:
           routingType: Public
           prefix: 202.168.1.0
           prefixLength: 24
-          protocolVersion: ipv4
+          protocolVersion: IPv4
       properties:
         name:
           type: string
@@ -14612,15 +14895,15 @@ components:
             - Datacenter Only
         prefix:
           type: string
-          description: Either ipv4 or ipv6 address
+          description: Either IPv4 or IPv6 address
         prefixLength:
           type: integer
-          description: 'Min: 1, Max: 32 for ipv4, 128 for ipv6'
+          description: 'Min: 1, Max: 32 for IPv4, 128 for IPv6'
         protocolVersion:
           type: string
           enum:
-            - ipv4
-            - ipv6
+            - IPv4
+            - IPv6
       required:
         - name
         - siteId
@@ -14657,7 +14940,7 @@ components:
               created: '2025-02-26T18:17:44.862879-05:00'
               updated: '2025-02-26T18:17:44.862879-05:00'
           rules:
-            - id: null
+            - name: allow-http-from-public
               direction: INGRESS
               sourcePortRange: 80-81
               destinationPortRange: 180-181
@@ -14722,9 +15005,8 @@ components:
         - name: Spark VPC Firewall
           description: Security policies for machines in Spark VPC
           siteId: 188a8f32-0001-45cf-b243-f62720a22cc4
-          tenantId: dbb6bdd9-3ad4-4653-9618-baad143e71b7
           rules:
-            - id: null
+            - name: allow-http-from-public
               direction: INGRESS
               sourcePortRange: 80-81
               destinationPortRange: 180-181
@@ -14764,7 +15046,7 @@ components:
         - name: Spark VPC Firewall
           description: Security policies for machines in Spark VPC
           rules:
-            - id: null
+            - name: allow-http-from-public
               direction: INGRESS
               sourcePortRange: 80-81
               destinationPortRange: 180-181
@@ -14933,7 +15215,8 @@ components:
                 isOnline: true
                 capabilities:
                   nativeNetworking: false
-                  NetworkSecurityGroup: true
+                  networkSecurityGroup: true
+                  nvLinkPartition: false
                 status: Registered
               status: Syncing
               version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -15030,7 +15313,8 @@ components:
             isOnline: false
             capabilities:
               nativeNetworking: false
-              NetworkSecurityGroup: true
+              networkSecurityGroup: true
+              nvLinkPartition: false
             status: Pending
           status: Syncing
           version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -15104,6 +15388,7 @@ components:
           sshKeyIds:
             - ff06da79-707a-4069-8623-211d49ae96c8
             - 30fc7238-133d-42f7-8d29-866658b0c019
+          version: 098f6bcd4621d373cade4e832627b4f6
       properties:
         name:
           type:
@@ -15670,11 +15955,15 @@ components:
           type:
             - string
             - 'null'
+        queryParam:
+          type:
+            - string
+            - 'null'
         endpoint:
           type:
             - string
             - 'null'
-        queryParam:
+        replacedBy:
           type:
             - string
             - 'null'

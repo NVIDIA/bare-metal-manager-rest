@@ -51,8 +51,7 @@ const (
 	RLA_GetListOfNVLDomains_FullMethodName      = "/v1.RLA/GetListOfNVLDomains"
 	RLA_GetRacksForNVLDomain_FullMethodName     = "/v1.RLA/GetRacksForNVLDomain"
 	RLA_UpgradeFirmware_FullMethodName          = "/v1.RLA/UpgradeFirmware"
-	RLA_GetExpectedComponents_FullMethodName    = "/v1.RLA/GetExpectedComponents"
-	RLA_GetActualComponents_FullMethodName      = "/v1.RLA/GetActualComponents"
+	RLA_GetComponents_FullMethodName            = "/v1.RLA/GetComponents"
 	RLA_ValidateComponents_FullMethodName       = "/v1.RLA/ValidateComponents"
 	RLA_PowerOnRack_FullMethodName              = "/v1.RLA/PowerOnRack"
 	RLA_PowerOffRack_FullMethodName             = "/v1.RLA/PowerOffRack"
@@ -81,8 +80,8 @@ type RLAClient interface {
 	GetRacksForNVLDomain(ctx context.Context, in *GetRacksForNVLDomainRequest, opts ...grpc.CallOption) (*GetRacksForNVLDomainResponse, error)
 	UpgradeFirmware(ctx context.Context, in *UpgradeFirmwareRequest, opts ...grpc.CallOption) (*SubmitTaskResponse, error)
 	// Components APIs
-	GetExpectedComponents(ctx context.Context, in *GetExpectedComponentsRequest, opts ...grpc.CallOption) (*GetExpectedComponentsResponse, error)
-	GetActualComponents(ctx context.Context, in *GetActualComponentsRequest, opts ...grpc.CallOption) (*GetActualComponentsResponse, error)
+	GetComponents(ctx context.Context, in *GetComponentsRequest, opts ...grpc.CallOption) (*GetComponentsResponse, error)
+	// rpc GetActualComponents(GetActualComponentsRequest) returns (GetActualComponentsResponse);  // Temporarily disabled
 	ValidateComponents(ctx context.Context, in *ValidateComponentsRequest, opts ...grpc.CallOption) (*ValidateComponentsResponse, error)
 	// Power control a rack or a rack's specified components
 	PowerOnRack(ctx context.Context, in *PowerOnRackRequest, opts ...grpc.CallOption) (*SubmitTaskResponse, error)
@@ -241,20 +240,10 @@ func (c *rLAClient) UpgradeFirmware(ctx context.Context, in *UpgradeFirmwareRequ
 	return out, nil
 }
 
-func (c *rLAClient) GetExpectedComponents(ctx context.Context, in *GetExpectedComponentsRequest, opts ...grpc.CallOption) (*GetExpectedComponentsResponse, error) {
+func (c *rLAClient) GetComponents(ctx context.Context, in *GetComponentsRequest, opts ...grpc.CallOption) (*GetComponentsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetExpectedComponentsResponse)
-	err := c.cc.Invoke(ctx, RLA_GetExpectedComponents_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *rLAClient) GetActualComponents(ctx context.Context, in *GetActualComponentsRequest, opts ...grpc.CallOption) (*GetActualComponentsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetActualComponentsResponse)
-	err := c.cc.Invoke(ctx, RLA_GetActualComponents_FullMethodName, in, out, cOpts...)
+	out := new(GetComponentsResponse)
+	err := c.cc.Invoke(ctx, RLA_GetComponents_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -341,8 +330,8 @@ type RLAServer interface {
 	GetRacksForNVLDomain(context.Context, *GetRacksForNVLDomainRequest) (*GetRacksForNVLDomainResponse, error)
 	UpgradeFirmware(context.Context, *UpgradeFirmwareRequest) (*SubmitTaskResponse, error)
 	// Components APIs
-	GetExpectedComponents(context.Context, *GetExpectedComponentsRequest) (*GetExpectedComponentsResponse, error)
-	GetActualComponents(context.Context, *GetActualComponentsRequest) (*GetActualComponentsResponse, error)
+	GetComponents(context.Context, *GetComponentsRequest) (*GetComponentsResponse, error)
+	// rpc GetActualComponents(GetActualComponentsRequest) returns (GetActualComponentsResponse);  // Temporarily disabled
 	ValidateComponents(context.Context, *ValidateComponentsRequest) (*ValidateComponentsResponse, error)
 	// Power control a rack or a rack's specified components
 	PowerOnRack(context.Context, *PowerOnRackRequest) (*SubmitTaskResponse, error)
@@ -402,11 +391,8 @@ func (UnimplementedRLAServer) GetRacksForNVLDomain(context.Context, *GetRacksFor
 func (UnimplementedRLAServer) UpgradeFirmware(context.Context, *UpgradeFirmwareRequest) (*SubmitTaskResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpgradeFirmware not implemented")
 }
-func (UnimplementedRLAServer) GetExpectedComponents(context.Context, *GetExpectedComponentsRequest) (*GetExpectedComponentsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetExpectedComponents not implemented")
-}
-func (UnimplementedRLAServer) GetActualComponents(context.Context, *GetActualComponentsRequest) (*GetActualComponentsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetActualComponents not implemented")
+func (UnimplementedRLAServer) GetComponents(context.Context, *GetComponentsRequest) (*GetComponentsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetComponents not implemented")
 }
 func (UnimplementedRLAServer) ValidateComponents(context.Context, *ValidateComponentsRequest) (*ValidateComponentsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ValidateComponents not implemented")
@@ -698,38 +684,20 @@ func _RLA_UpgradeFirmware_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
-func _RLA_GetExpectedComponents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetExpectedComponentsRequest)
+func _RLA_GetComponents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetComponentsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(RLAServer).GetExpectedComponents(ctx, in)
+		return srv.(RLAServer).GetComponents(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: RLA_GetExpectedComponents_FullMethodName,
+		FullMethod: RLA_GetComponents_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RLAServer).GetExpectedComponents(ctx, req.(*GetExpectedComponentsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _RLA_GetActualComponents_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetActualComponentsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RLAServer).GetActualComponents(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: RLA_GetActualComponents_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RLAServer).GetActualComponents(ctx, req.(*GetActualComponentsRequest))
+		return srv.(RLAServer).GetComponents(ctx, req.(*GetComponentsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -906,12 +874,8 @@ var RLA_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _RLA_UpgradeFirmware_Handler,
 		},
 		{
-			MethodName: "GetExpectedComponents",
-			Handler:    _RLA_GetExpectedComponents_Handler,
-		},
-		{
-			MethodName: "GetActualComponents",
-			Handler:    _RLA_GetActualComponents_Handler,
+			MethodName: "GetComponents",
+			Handler:    _RLA_GetComponents_Handler,
 		},
 		{
 			MethodName: "ValidateComponents",

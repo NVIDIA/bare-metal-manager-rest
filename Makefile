@@ -16,6 +16,7 @@
 .PHONY: test postgres-up postgres-down ensure-postgres postgres-wait clean
 .PHONY: build docker-build docker-build-local
 .PHONY: test-ipam test-site-agent test-site-manager test-workflow test-db test-api test-auth test-common test-cert-manager test-site-workflow migrate carbide-mock-server-build carbide-mock-server-start carbide-mock-server-stop rla-mock-server-build rla-mock-server-start rla-mock-server-stop
+.PHONY: validate-openapi preview-openapi
 .PHONY: pre-commit-install pre-commit-run pre-commit-update
 
 # Build configuration
@@ -137,9 +138,9 @@ rla-mock-server-stop:
 	-kill $$(cat build/rlaserver.pid) 2>/dev/null
 	-rm -f build/rlaserver.pid
 
-test-site-agent: carbide-mock-server-start
+test-site-agent: carbide-mock-server-start rla-mock-server-start
 	cd site-agent/pkg/components && CGO_ENABLED=1 go test -race -p 1 ./... -count=1 ; \
-	ret=$$? ; cd ../../.. && $(MAKE) carbide-mock-server-stop ; exit $$ret
+	ret=$$? ; cd ../../.. && $(MAKE) carbide-mock-server-stop rla-mock-server-stop ; exit $$ret
 
 test-api:
 	$(MAKE) ensure-postgres
@@ -422,6 +423,19 @@ test-pki:
 # Run Temporal mTLS and rotation tests
 test-temporal-e2e:
 	./scripts/test-temporal.sh all
+
+# =============================================================================
+# OpenAPI Spec Validation
+# =============================================================================
+
+# Validate OpenAPI spec using Redocly CLI (Docker)
+lint-openapi:
+	docker run --rm -v ./openapi:/spec redocly/cli lint /spec/spec.yaml
+
+# Preview OpenAPI spec in Redoc UI (Docker)
+preview-openapi:
+	@echo "Starting Redoc UI at http://localhost:8090"
+	docker run -it --rm -p 8090:80 -v ./openapi/spec.yaml:/usr/share/nginx/html/openapi.yaml -e SPEC_URL=openapi.yaml redocly/redoc
 
 # =============================================================================
 # Pre-commit Hooks (TruffleHog Secret Detection)

@@ -219,7 +219,7 @@ func (gaish GetAllNVLinkInterfaceHandler) Handle(c echo.Context) error {
 
 	// Get NVLink Logical Partition ID from URL param
 	var nvlinkLogicalPartitionIDs []uuid.UUID
-	nvlinkLogicalPartitionIDStr := qParams["nvlinkLogicalPartitionId"]
+	nvlinkLogicalPartitionIDStr := qParams["nvLinkLogicalPartitionId"]
 
 	nvllpDAO := cdbm.NewNVLinkLogicalPartitionDAO(gaish.dbSession)
 	for _, nvlinkLogicalPartitionIDStr := range nvlinkLogicalPartitionIDStr {
