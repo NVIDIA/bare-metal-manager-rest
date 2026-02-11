@@ -185,14 +185,14 @@ docker-build:
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) -f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-cert-manager .
 
 carbide-proto:
-	if [ -d "carbide-core" ]; then cd carbide-core && git pull; else git clone ssh://git@github.com/nvidia/carbide-core.git; fi
-	ls carbide-core/rpc/proto
-	@for file in carbide-core/rpc/proto/*.proto; do \
+	if [ -d "bare-metal-manager-core" ]; then cd bare-metal-manager-core && git pull; else git clone ssh://git@github.com/nvidia/bare-metal-manager-core.git; fi
+	ls bare-metal-manager-core/rpc/proto
+	@for file in bare-metal-manager-core/rpc/proto/*.proto; do \
 		cp "$$file" "workflow-schema/site-agent/workflows/v1/$$(basename "$$file" .proto)_carbide.proto"; \
 		echo "Copied: $$file"; \
 		./workflow-schema/scripts/add-go-package-option.sh "workflow-schema/site-agent/workflows/v1/$$(basename "$$file" .proto)_carbide.proto" "github.com/nvidia/bare-metal-manager-rest/workflow-schema/proto"; \
 	done
-	rm -rf carbide-core
+	rm -rf bare-metal-manager-core
 
 carbide-protogen:
 	echo "Generating protobuf for Carbide"

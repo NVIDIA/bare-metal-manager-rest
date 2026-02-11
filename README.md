@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 
 A collection of microservices that comprise the management backend for NVIDIA Bare Metal Manager, exposed as a REST API.
 
+In deployments, NVIDIA Bare Metal Manager REST requires [NVIDIA Bare Metal Manager Core](github.com/NVIDIA/bare-metal-manager-core) to function.
+
 ## Prerequisites
 
 - Go 1.25.4 or later
@@ -43,6 +45,7 @@ This command:
 3. Deploys all services (PostgreSQL, Temporal, Keycloak, cert-manager, etc.)
 4. Runs database migrations
 5. Configures PKI and site-agent
+6. Deploys a mock Bare Metal Manager Core
 
 Once complete, services are available at:
 
