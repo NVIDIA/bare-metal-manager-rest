@@ -4340,7 +4340,7 @@ paths:
             type: string
           in: query
           name: query
-          description: 'Search for matches across all Sites. Input will be matched against name, display name, description and status fields'
+          description: 'Search for matches across all Sites. Input will be matched against name, display name, description, labels and status fields'
         - schema:
             type: string
             enum:
@@ -4414,6 +4414,9 @@ paths:
                     description: 'Part of X family, the X3 Large features increased compute power'
                     infrastructureProviderId: 5f2cc306-76e9-4fca-9186-950c9ef9a74e
                     siteId: 72771e6a-6f5e-4de4-a5b9-1266c4197811
+                    labels:
+                      region: portland
+                      env: staging
                     machineCapabilities:
                       - type: CPU
                         name: Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz
@@ -4460,6 +4463,9 @@ paths:
                   name: x3.large
                   description: 'Part of X family, the X3 Large features increased compute power'
                   siteId: 8d97fa69-9199-49ff-bcf3-168c62d3874e
+                  labels:
+                    region: portland
+                    env: staging
                   machineCapabilities:
                     - type: CPU
                       name: Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz
@@ -4474,6 +4480,9 @@ paths:
                   name: infiniband-mt2910-4x2
                   description: Machines with 2 active InfiniBand MT2910 NICs
                   siteId: 8d97fa69-9199-49ff-bcf3-168c62d3874e
+                  labels:
+                    region: portland
+                    env: dev
                   machineCapabilities:
                     - type: InfiniBand
                       name: 'MT2910 Family [ConnectX-7]'
@@ -4518,6 +4527,9 @@ paths:
                     description: 'Part of X family, the X3 Large features increased compute power'
                     infrastructureProviderId: 5f2cc306-76e9-4fca-9186-950c9ef9a74e
                     siteId: 72771e6a-6f5e-4de4-a5b9-1266c4197811
+                    labels:
+                      region: portland
+                      env: staging
                     machineCapabilities:
                       - type: CPU
                         name: Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz
@@ -4607,6 +4619,9 @@ paths:
                     description: Updated version of the X3 Large family of machines
                     infrastructureProviderId: 5f2cc306-76e9-4fca-9186-950c9ef9a74e
                     siteId: 72771e6a-6f5e-4de4-a5b9-1266c4197811
+                    labels:
+                      region: portland
+                      env: staging
                     machineCapabilities:
                       - type: CPU
                         name: Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz
@@ -4645,6 +4660,9 @@ paths:
               example-1:
                 value:
                   description: Updated version of the X3 Large family of machines
+                  labels:
+                    region: portland
+                    env: staging
                   machineCapabilities:
                     - type: CPU
                       name: Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz
@@ -11844,6 +11862,9 @@ components:
           description: 'Part of X family, the X3 Large features increased compute power'
           infrastructureProviderId: 5f2cc306-76e9-4fca-9186-950c9ef9a74e
           siteId: 72771e6a-6f5e-4de4-a5b9-1266c4197811
+          labels:
+            region: portland
+            env: staging
           machineCapabilities:
             - type: CPU
               name: Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz
@@ -11892,6 +11913,8 @@ components:
         siteId:
           type: string
           format: uuid
+        labels:
+          $ref: '#/components/schemas/Labels'
         machineCapabilities:
           type: array
           items:
@@ -11992,6 +12015,9 @@ components:
         - name: x3.large
           description: 'Part of X family, the X3 Large features increased compute power'
           siteId: 8d97fa69-9199-49ff-bcf3-168c62d3874e
+          labels:
+            region: portland
+            env: staging
           machineCapabilities:
             - type: CPU
               name: Intel(R) Xeon(R) Gold 6354 CPU @ 3.00GHz
@@ -12012,6 +12038,8 @@ components:
         siteId:
           type: string
           format: uuid
+        labels:
+          $ref: '#/components/schemas/Labels'
         controllerMachineType:
           type: string
         machineCapabilities:
@@ -12034,6 +12062,8 @@ components:
           maxLength: 256
         description:
           type: string
+        labels:
+          $ref: '#/components/schemas/Labels'
         machineCapabilities:
           type: array
           items:

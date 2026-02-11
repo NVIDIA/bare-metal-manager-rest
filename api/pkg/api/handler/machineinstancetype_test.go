@@ -67,9 +67,18 @@ func TestCreateMachineInstanceTypeHandler_Handle(t *testing.T) {
 	ip := common.TestBuildInfrastructureProvider(t, dbSession, "Test Infrastructure Provider", org, ipu)
 	st := common.TestBuildSite(t, dbSession, ip, "Test Site", ipu)
 
-	it := common.TestBuildInstanceType(t, dbSession, "x2.large", cdb.GetUUIDPtr(uuid.New()), st, ipu)
-	it2 := common.TestBuildInstanceType(t, dbSession, "x2.large", cdb.GetUUIDPtr(uuid.New()), st, ipu)
-	it3 := common.TestBuildInstanceType(t, dbSession, "x1.large", cdb.GetUUIDPtr(uuid.New()), st, ipu)
+	it := common.TestBuildInstanceType(t, dbSession, "x2.large", cdb.GetUUIDPtr(uuid.New()), st, map[string]string{
+		"name":        "x2.large",
+		"description": "X2 Large Instance Type",
+	}, ipu)
+	it2 := common.TestBuildInstanceType(t, dbSession, "x2.large", cdb.GetUUIDPtr(uuid.New()), st, map[string]string{
+		"name":        "x2.large",
+		"description": "X2 Large Instance Type",
+	}, ipu)
+	it3 := common.TestBuildInstanceType(t, dbSession, "x1.large", cdb.GetUUIDPtr(uuid.New()), st, map[string]string{
+		"name":        "x1.large",
+		"description": "X1 Large Instance Type",
+	}, ipu)
 	icap1 := common.TestCommonBuildMachineCapability(t, dbSession, nil, &it3.ID, cdbm.MachineCapabilityTypeCPU, "AMD Opteron Series x10", cdb.GetStrPtr("3.0Hz"), cdb.GetStrPtr("32GB"), nil, cdb.GetIntPtr(4), nil, nil)
 	assert.NotNil(t, icap1)
 
@@ -331,7 +340,10 @@ func TestGetAllMachineInstanceTypeHandler_Handle(t *testing.T) {
 
 	st := common.TestBuildSite(t, dbSession, ip, "Test Site", ipu)
 
-	it := common.TestBuildInstanceType(t, dbSession, "x2.large", cdb.GetUUIDPtr(uuid.New()), st, ipu)
+	it := common.TestBuildInstanceType(t, dbSession, "x2.large", cdb.GetUUIDPtr(uuid.New()), st, map[string]string{
+		"name":        "x2.large",
+		"description": "X2 Large Instance Type",
+	}, ipu)
 
 	totalCount := 30
 
@@ -515,10 +527,22 @@ func TestDeleteMachineInstanceTypeHandler_Handle(t *testing.T) {
 	ip := common.TestBuildInfrastructureProvider(t, dbSession, "Test Infrastructure Provider", org, ipu)
 	st := common.TestBuildSite(t, dbSession, ip, "Test Site", ipu)
 
-	it := common.TestBuildInstanceType(t, dbSession, "x2.large", cdb.GetUUIDPtr(uuid.New()), st, ipu)
-	it2 := common.TestBuildInstanceType(t, dbSession, "x3.large", cdb.GetUUIDPtr(uuid.New()), st, ipu)
-	it3 := common.TestBuildInstanceType(t, dbSession, "x4.large", cdb.GetUUIDPtr(uuid.New()), st, ipu)
-	it4 := common.TestBuildInstanceType(t, dbSession, "x5.large", cdb.GetUUIDPtr(uuid.New()), st, ipu)
+	it := common.TestBuildInstanceType(t, dbSession, "x2.large", cdb.GetUUIDPtr(uuid.New()), st, map[string]string{
+		"name":        "x2.large",
+		"description": "X2 Large Instance Type",
+	}, ipu)
+	it2 := common.TestBuildInstanceType(t, dbSession, "x3.large", cdb.GetUUIDPtr(uuid.New()), st, map[string]string{
+		"name":        "x3.large",
+		"description": "X3 Large Instance Type",
+	}, ipu)
+	it3 := common.TestBuildInstanceType(t, dbSession, "x4.large", cdb.GetUUIDPtr(uuid.New()), st, map[string]string{
+		"name":        "x4.large",
+		"description": "X4 Large Instance Type",
+	}, ipu)
+	it4 := common.TestBuildInstanceType(t, dbSession, "x5.large", cdb.GetUUIDPtr(uuid.New()), st, map[string]string{
+		"name":        "x5.large",
+		"description": "X5 Large Instance Type",
+	}, ipu)
 
 	m := common.TestBuildMachine(t, dbSession, ip, st, &it.ID, cdb.GetStrPtr("test-controller-machine-type"), cdbm.MachineStatusReady)
 	m2 := common.TestBuildMachine(t, dbSession, ip, st, &it2.ID, cdb.GetStrPtr("test-controller-machine-type"), cdbm.MachineStatusReady)

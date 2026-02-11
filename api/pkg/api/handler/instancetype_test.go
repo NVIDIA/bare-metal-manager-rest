@@ -175,8 +175,14 @@ func TestCreateInstanceTypeHandler_Handle(t *testing.T) {
 		SiteID: uuid.New().String(),
 	}
 
-	common.TestBuildInstanceType(t, dbSession, "test-it-name-1", nil, st, ipu)
-	common.TestBuildInstanceType(t, dbSession, "test-it-name-2", nil, st, ipu)
+	common.TestBuildInstanceType(t, dbSession, "test-it-name-1", nil, st, map[string]string{
+		"name":        "test-instance-type-1",
+		"description": "Test Instance Type 1 Description",
+	}, ipu)
+	common.TestBuildInstanceType(t, dbSession, "test-it-name-2", nil, st, map[string]string{
+		"name":        "test-instance-type-2",
+		"description": "Test Instance Type 2 Description",
+	}, ipu)
 
 	itcrDupicateName := &model.APIInstanceTypeCreateRequest{
 		Name:                  "test-it-name-1",
@@ -556,7 +562,10 @@ func TestGetAllInstanceTypeHandler_Handle(t *testing.T) {
 	ipu2 := common.TestBuildUser(t, dbSession, "test-starfleet-id-456", ipOrg, ipRoles)
 	ip2 := common.TestBuildInfrastructureProvider(t, dbSession, "Test Infrastructure Provider 2", ipOrg2, ipu2)
 	st3 := common.TestBuildSite(t, dbSession, ip2, "Test Site 3", ipu2)
-	ip2it := common.TestBuildInstanceType(t, dbSession, fmt.Sprintf("test-instance-type-ip2"), cdb.GetUUIDPtr(uuid.New()), st3, ipu2)
+	ip2it := common.TestBuildInstanceType(t, dbSession, fmt.Sprintf("test-instance-type-ip2"), cdb.GetUUIDPtr(uuid.New()), st3, map[string]string{
+		"name":        "test-instance-type-ip2",
+		"description": "Test Instance Type IP2 Description",
+	}, ipu2)
 	common.TestBuildMachineCapability(t, dbSession, nil, &ip2it.ID, cdbm.MachineCapabilityTypeCPU, "Intel Xeon E5-2650v2", cdb.GetStrPtr("3.0Hz"), nil, nil, cdb.GetIntPtr(2), nil, nil)
 
 	tnOrg1 := "test-tenant-org-1"
@@ -580,7 +589,10 @@ func TestGetAllInstanceTypeHandler_Handle(t *testing.T) {
 		if i >= totalCount {
 			tmpSite = st2
 		}
-		it := common.TestBuildInstanceType(t, dbSession, fmt.Sprintf("test-instance-type-%02d", i), cdb.GetUUIDPtr(uuid.New()), tmpSite, ipu)
+		it := common.TestBuildInstanceType(t, dbSession, fmt.Sprintf("test-instance-type-%02d", i), cdb.GetUUIDPtr(uuid.New()), tmpSite, map[string]string{
+			"name":        fmt.Sprintf("test-instance-type-%02d", i),
+			"description": fmt.Sprintf("Test Instance Type %02d Description", i),
+		}, ipu)
 		common.TestBuildMachineCapability(t, dbSession, nil, &it.ID, cdbm.MachineCapabilityTypeCPU, "Intel Xeon E5-2650v2", cdb.GetStrPtr("3.0Hz"), nil, nil, cdb.GetIntPtr(2), cdb.GetStrPtr(""), nil)
 		its = append(its, *it)
 	}
@@ -1220,7 +1232,10 @@ func TestGetInstanceTypeHandler_Handle(t *testing.T) {
 	tnu3 := common.TestBuildUser(t, dbSession, "test-starfleet-id-101112", tnOrg3, tnRoles)
 	tn3 := common.TestBuildTenant(t, dbSession, "Test Tenant 3", tnOrg3, tnu2)
 
-	it := common.TestBuildInstanceType(t, dbSession, "test-instance-type-1", cdb.GetUUIDPtr(uuid.New()), st, ipu)
+	it := common.TestBuildInstanceType(t, dbSession, "test-instance-type-1", cdb.GetUUIDPtr(uuid.New()), st, map[string]string{
+		"name":        "test-instance-type-1",
+		"description": "Test Instance Type 1 Description",
+	}, ipu)
 
 	al1 := common.TestBuildAllocation(t, dbSession, st, tn1, "Test Allocation", ipu)
 	alc1 := common.TestBuildAllocationConstraint(t, dbSession, al1, it, nil, 8, ipu)
@@ -1576,9 +1591,15 @@ func TestUpdateInstanceTypeHandler_Handle(t *testing.T) {
 	ip := common.TestBuildInfrastructureProvider(t, dbSession, "Test Infrastructure Provider", org, ipu)
 	st := common.TestBuildSite(t, dbSession, ip, "Test Site", ipu)
 
-	it := common.TestBuildInstanceType(t, dbSession, "test-instance-type-1", cdb.GetUUIDPtr(uuid.New()), st, ipu)
+	it := common.TestBuildInstanceType(t, dbSession, "test-instance-type-1", cdb.GetUUIDPtr(uuid.New()), st, map[string]string{
+		"name":        "test-instance-type-1",
+		"description": "Test Instance Type 1 Description",
+	}, ipu)
 
-	it2 := common.TestBuildInstanceType(t, dbSession, "test-instance-type-2", cdb.GetUUIDPtr(uuid.New()), st, ipu)
+	it2 := common.TestBuildInstanceType(t, dbSession, "test-instance-type-2", cdb.GetUUIDPtr(uuid.New()), st, map[string]string{
+		"name":        "test-instance-type-2",
+		"description": "Test Instance Type 2 Description",
+	}, ipu)
 	assert.NotNil(t, it2)
 	cfg := common.GetTestConfig()
 
@@ -1708,6 +1729,7 @@ func TestUpdateInstanceTypeHandler_Handle(t *testing.T) {
 				reqData: &model.APIInstanceTypeUpdateRequest{
 					Name:        cdb.GetStrPtr("x2.large"),
 					Description: cdb.GetStrPtr("Test Site Description"),
+					Labels:      map[string]string{"updated-test-key": "updated-test-value"},
 				},
 			},
 			wantRespCode:       http.StatusOK,
@@ -2010,6 +2032,10 @@ func TestUpdateInstanceTypeHandler_Handle(t *testing.T) {
 				assert.Equal(t, *rst.Description, *tt.args.reqData.Description)
 			}
 
+			if tt.args.reqData.Labels != nil {
+				assert.Equal(t, tt.args.reqData.Labels, rst.Labels)
+			}
+
 			assert.NotEqual(t, rst.Updated.String(), it.Updated.String())
 
 			if tt.verifyChildSpanner {
@@ -2034,11 +2060,26 @@ func TestDeleteInstanceTypeHandler_Handle(t *testing.T) {
 	ip := common.TestBuildInfrastructureProvider(t, dbSession, "Test Infrastructure Provider", org, ipu)
 	st := common.TestBuildSite(t, dbSession, ip, "Test Site", ipu)
 
-	it := common.TestBuildInstanceType(t, dbSession, "test-instance-type-1", cdb.GetUUIDPtr(uuid.New()), st, ipu)
-	it2 := common.TestBuildInstanceType(t, dbSession, "test-instance-type-2", cdb.GetUUIDPtr(uuid.New()), st, ipu)
-	it3 := common.TestBuildInstanceType(t, dbSession, "test-instance-type-3", cdb.GetUUIDPtr(uuid.New()), st, ipu)
-	it4 := common.TestBuildInstanceType(t, dbSession, "test-instance-type-4", cdb.GetUUIDPtr(uuid.New()), st, ipu)
-	it5 := common.TestBuildInstanceType(t, dbSession, "test-instance-type-5", cdb.GetUUIDPtr(uuid.New()), st, ipu)
+	it := common.TestBuildInstanceType(t, dbSession, "test-instance-type-1", cdb.GetUUIDPtr(uuid.New()), st, map[string]string{
+		"name":        "test-instance-type-1",
+		"description": "Test Instance Type 1 Description",
+	}, ipu)
+	it2 := common.TestBuildInstanceType(t, dbSession, "test-instance-type-2", cdb.GetUUIDPtr(uuid.New()), st, map[string]string{
+		"name":        "test-instance-type-2",
+		"description": "Test Instance Type 2 Description",
+	}, ipu)
+	it3 := common.TestBuildInstanceType(t, dbSession, "test-instance-type-3", cdb.GetUUIDPtr(uuid.New()), st, map[string]string{
+		"name":        "test-instance-type-3",
+		"description": "Test Instance Type 3 Description",
+	}, ipu)
+	it4 := common.TestBuildInstanceType(t, dbSession, "test-instance-type-4", cdb.GetUUIDPtr(uuid.New()), st, map[string]string{
+		"name":        "test-instance-type-4",
+		"description": "Test Instance Type 4 Description",
+	}, ipu)
+	it5 := common.TestBuildInstanceType(t, dbSession, "test-instance-type-5", cdb.GetUUIDPtr(uuid.New()), st, map[string]string{
+		"name":        "test-instance-type-5",
+		"description": "Test Instance Type 5 Description",
+	}, ipu)
 
 	tnOrg := "test-tenant-org"
 	tnRoles := []string{"FORGE_TENANT_ADMIN"}
