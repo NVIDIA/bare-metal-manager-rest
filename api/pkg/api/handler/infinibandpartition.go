@@ -207,6 +207,7 @@ func (cibph CreateInfiniBandPartitionHandler) Handle(c echo.Context) error {
 		nil,
 		cdbm.InfiniBandPartitionFilterInput{
 			Names:     []string{apiRequest.Name},
+			SiteIDs:   []uuid.UUID{site.ID},
 			TenantIDs: []uuid.UUID{orgTenant.ID},
 		},
 		paginator.PageInput{},

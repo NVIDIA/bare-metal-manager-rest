@@ -136,11 +136,18 @@ func TestInfiniBandPartitionHandler_Create(t *testing.T) {
 	ts3 := testBuildTenantSiteAssociation(t, dbSession, tnOrg1, tn1.ID, site3.ID, tnu1.ID)
 	assert.NotNil(t, ts3)
 
+	site4 := testFabricBuildSite(t, dbSession, ip1, "testSite4", nil, nil)
+	ts4 := testBuildTenantSiteAssociation(t, dbSession, tnOrg1, tn1.ID, site4.ID, tnu1.ID)
+	assert.NotNil(t, ts4)
+
 	al := testBuildAllocation(t, dbSession, site1, tn1, "test-allocation", tnu1)
 	assert.NotNil(t, al)
 
 	al2 := testBuildAllocation(t, dbSession, site3, tn1, "test-allocation-2", tnu1)
 	assert.NotNil(t, al2)
+
+	al3 := testBuildAllocation(t, dbSession, site4, tn1, "test-allocation-3", tnu1)
+	assert.NotNil(t, al3)
 
 	ibpObj := model.APIInfiniBandPartitionCreateRequest{Name: "test-ibp-1", Description: cdb.GetStrPtr("test"), SiteID: site1.ID.String(), Labels: map[string]string{"test-label-1": "test-value-1"}}
 	okBody, err := json.Marshal(ibpObj)
@@ -162,10 +169,16 @@ func TestInfiniBandPartitionHandler_Create(t *testing.T) {
 	okBody2, err := json.Marshal(ibpObj6)
 	assert.Nil(t, err)
 
+	ibpObj7 := model.APIInfiniBandPartitionCreateRequest{Name: "test-ibp-1", Description: cdb.GetStrPtr("test"), SiteID: site4.ID.String()}
+	assert.Nil(t, err)
+
 	errBodyNameClash, err := json.Marshal(ibpObj)
 	assert.Nil(t, err)
 
 	errBodyDoesntValidate, err := json.Marshal(struct{ Name string }{Name: "test"})
+	assert.Nil(t, err)
+
+	noNameClashBody, err := json.Marshal(ibpObj7)
 	assert.Nil(t, err)
 
 	// OTEL Spanner configuration
@@ -180,6 +193,9 @@ func TestInfiniBandPartitionHandler_Create(t *testing.T) {
 	// Mock per-Site client for site2
 	tsc2 := &tmocks.Client{}
 
+	// Mock per-Site client for site4
+	tsc4 := &tmocks.Client{}
+
 	// Prepare client pool for sync calls
 	// to site(s).
 	tcfg, _ := cfg.GetTemporalConfig()
@@ -187,16 +203,26 @@ func TestInfiniBandPartitionHandler_Create(t *testing.T) {
 	scp.IDClientMap[site1.ID.String()] = tsc
 	scp.IDClientMap[site2.ID.String()] = tsc
 	scp.IDClientMap[site3.ID.String()] = tsc2
+	scp.IDClientMap[site4.ID.String()] = tsc4
 
 	wid := "test-workflow-id"
 	wrun := &tmocks.WorkflowRun{}
 	wrun.On("GetID").Return(wid)
+
+	wrun4 := &tmocks.WorkflowRun{}
+	wrun4.On("GetID").Return(wid)
 
 	// Mock create call for CreateInfiniBandPartitionV2 workflow
 	tsc.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
 		"CreateInfiniBandPartitionV2", mock.Anything).Return(wrun, nil)
 
 	wrun.Mock.On("Get", mock.Anything, mock.Anything).Return(nil)
+
+	// Mock create call for CreateInfiniBandPartitionV2 workflow
+	tsc4.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
+		"CreateInfiniBandPartitionV2", mock.Anything).Return(wrun4, nil)
+
+	wrun4.Mock.On("Get", mock.Anything, mock.Anything).Return(nil)
 
 	// Mock timeout error for timeout test case
 	wruntimeout := &tmocks.WorkflowRun{}
@@ -367,11 +393,25 @@ func TestInfiniBandPartitionHandler_Create(t *testing.T) {
 				tc:        tsc,
 				cfg:       cfg,
 			},
-			name:           "error due to name clash",
+			name:           "error due to name clash in same site",
 			reqOrgName:     tnOrg1,
 			reqBody:        string(errBodyNameClash),
 			user:           tnu1,
 			expectedStatus: http.StatusConflict,
+		},
+		{
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tsc4,
+				cfg:       cfg,
+			},
+			name:               "partition created successfully with same name with different site",
+			reqOrgName:         tnOrg1,
+			reqBody:            string(noNameClashBody),
+			reqBodyModel:       &ibpObj7,
+			user:               tnu1,
+			expectedStatus:     http.StatusCreated,
+			verifyChildSpanner: true,
 		},
 	}
 
