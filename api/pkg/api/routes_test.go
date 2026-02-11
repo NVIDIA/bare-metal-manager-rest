@@ -1,13 +1,18 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  *
- * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
- * property and proprietary rights in and to this material, related
- * documentation and any modifications thereto. Any use, reproduction,
- * disclosure or distribution of this material and related documentation
- * without an express license agreement from NVIDIA CORPORATION or
- * its affiliates is strictly prohibited.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package api
@@ -15,11 +20,11 @@ package api
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/nvidia/carbide-rest/api/internal/config"
 	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
 	sc "github.com/nvidia/carbide-rest/api/pkg/client/site"
 	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
+	"github.com/stretchr/testify/assert"
 
 	temporalClient "go.temporal.io/sdk/client"
 	tmocks "go.temporal.io/sdk/mocks"
@@ -54,7 +59,7 @@ func TestNewAPIRoutes(t *testing.T) {
 		"instance":                8,
 		"interface":               1,
 		"infiniband-partition":    5,
-		"nvlinklogical-partition": 5,
+		"nvlink-interface":        5,
 		"expected-machine":        5,
 		"instance-type":           5,
 		"machine":                 5,
@@ -71,6 +76,7 @@ func TestNewAPIRoutes(t *testing.T) {
 		"machine-validation":      11,
 		"dpu-extension-service":   7,
 		"sku":                     2,
+		"rack":                    2,
 	}
 
 	totalRouteCount := 0

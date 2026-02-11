@@ -1,12 +1,19 @@
-// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
-//
-// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-// property and proprietary rights in and to this material, related
-// documentation and any modifications thereto. Any use, reproduction,
-// disclosure or distribution of this material and related documentation
-// without an express license agreement from NVIDIA CORPORATION or
-// its affiliates is strictly prohibited.
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package server
 
@@ -445,9 +452,9 @@ func (r *RlaServerImpl) UpgradeFirmware(ctx context.Context, req *rlav1.UpgradeF
 	}, nil
 }
 
-// GetExpectedComponents implements interface RLAServer
-func (r *RlaServerImpl) GetExpectedComponents(ctx context.Context, req *rlav1.GetExpectedComponentsRequest) (*rlav1.GetExpectedComponentsResponse, error) {
-	if req == nil || req.TargetSpec == nil {
+// GetComponents implements interface RLAServer
+func (r *RlaServerImpl) GetComponents(ctx context.Context, req *rlav1.GetComponentsRequest) (*rlav1.GetComponentsResponse, error) {
+	if req == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
 	}
 
@@ -456,21 +463,30 @@ func (r *RlaServerImpl) GetExpectedComponents(ctx context.Context, req *rlav1.Ge
 		components = append(components, comp)
 	}
 
-	return &rlav1.GetExpectedComponentsResponse{
+	return &rlav1.GetComponentsResponse{
 		Components: components,
 		Total:      int32(len(components)),
 	}, nil
 }
 
-// GetActualComponents implements interface RLAServer
-func (r *RlaServerImpl) GetActualComponents(ctx context.Context, req *rlav1.GetActualComponentsRequest) (*rlav1.GetActualComponentsResponse, error) {
+// ValidateComponents implements interface RLAServer
+func (r *RlaServerImpl) ValidateComponents(ctx context.Context, req *rlav1.ValidateComponentsRequest) (*rlav1.ValidateComponentsResponse, error) {
 	if req == nil || req.TargetSpec == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
 	}
 
-	// Convert expected components to actual components
-	var actualComponents []*rlav1.ActualComponent
-	for _, comp := range r.components {
+	// Get components
+	componentsResp, err := r.GetComponents(ctx, &rlav1.GetComponentsRequest{
+		TargetSpec: req.TargetSpec,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// For validation, we treat the components as both expected and actual
+	// Convert components to actual components for comparison
+	actualComponents := make([]*rlav1.ActualComponent, 0, len(componentsResp.Components))
+	for _, comp := range componentsResp.Components {
 		actualComp := &rlav1.ActualComponent{
 			Type:            comp.Type,
 			Info:            comp.Info,
@@ -487,44 +503,16 @@ func (r *RlaServerImpl) GetActualComponents(ctx context.Context, req *rlav1.GetA
 		actualComponents = append(actualComponents, actualComp)
 	}
 
-	return &rlav1.GetActualComponentsResponse{
-		Components: actualComponents,
-		Total:      int32(len(actualComponents)),
-	}, nil
-}
-
-// ValidateComponents implements interface RLAServer
-func (r *RlaServerImpl) ValidateComponents(ctx context.Context, req *rlav1.ValidateComponentsRequest) (*rlav1.ValidateComponentsResponse, error) {
-	if req == nil || req.TargetSpec == nil {
-		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
-	}
-
-	// Get expected components
-	expectedResp, err := r.GetExpectedComponents(ctx, &rlav1.GetExpectedComponentsRequest{
-		TargetSpec: req.TargetSpec,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Get actual components
-	actualResp, err := r.GetActualComponents(ctx, &rlav1.GetActualComponentsRequest{
-		TargetSpec: req.TargetSpec,
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	// Build maps for comparison
 	expectedMap := make(map[string]*rlav1.Component)
-	for _, comp := range expectedResp.Components {
+	for _, comp := range componentsResp.Components {
 		if comp.ComponentId != "" {
 			expectedMap[comp.ComponentId] = comp
 		}
 	}
 
 	actualMap := make(map[string]*rlav1.ActualComponent)
-	for _, comp := range actualResp.Components {
+	for _, comp := range actualComponents {
 		if comp.ComponentId != "" {
 			actualMap[comp.ComponentId] = comp
 		}

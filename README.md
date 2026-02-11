@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # NVIDIA Bare Metal Manager REST API
 
 A collection of microservices that comprise the management backend for NVIDIA Bare Metal Manager, exposed as a REST API.
@@ -134,7 +139,7 @@ az acr login --name myregistry
 2. Build and push:
 
 ```bash
-REGISTRY=my-registry.example.com/carbide
+REGISTRY=my-registry.example.com/bare-metal-manager-rest
 TAG=v1.0.0
 
 make docker-build IMAGE_REGISTRY=$REGISTRY IMAGE_TAG=$TAG

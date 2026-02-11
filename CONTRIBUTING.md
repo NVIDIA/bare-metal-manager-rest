@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Contributing to NVIDIA Bare Metal Manager
 
 Thank you for your interest in contributing to NVIDIA Bare Metal Manager! We welcome contributions from the community.
@@ -100,18 +105,18 @@ All pull requests are automatically checked for DCO compliance via DCO bot. Pull
 
 ## Fork and Setup
 
-Developers must first fork the upstream [NVIDIA Bare Metal Manager REST repository](https://github.com/NVIDIA/carbide-rest).
+Developers must first fork the upstream [NVIDIA Bare Metal Manager REST repository](https://github.com/NVIDIA/bare-metal-manager-rest).
 
 ### 1. Fork the Repository
 
-1. Navigate to the [NVIDIA Bare Metal Manager REST repository](https://github.com/NVIDIA/carbide-rest) on GitHub.
+1. Navigate to the [NVIDIA Bare Metal Manager REST repository](https://github.com/NVIDIA/bare-metal-manager-rest) on GitHub.
 2. Click the **Fork** button in the upper right corner.
 3. Select your GitHub account as the destination.
 
 ### 2. Clone Your Fork
 
 ```bash
-git clone https://github.com/<your-username>/carbide-rest.git
+git clone https://github.com/<your-username>/bare-metal-manager-rest.git
 cd carbide-rest
 ```
 
@@ -120,7 +125,7 @@ cd carbide-rest
 Add the original repository as an upstream remote to keep your fork in sync:
 
 ```bash
-git remote add upstream https://github.com/NVIDIA/carbide-rest.git
+git remote add upstream https://github.com/NVIDIA/bare-metal-manager-rest.git
 git remote -v  # Verify remotes
 ```
 
@@ -142,9 +147,9 @@ git merge upstream/main
 git push origin main
 ```
 
-### 5. Create a Feature Branch
+### 5. Create a Fork
 
-Always create a new branch for your changes:
+Create a fork of the repo and a branch with appropriate name:
 
 ```bash
 git checkout -b feature/your-feature-name

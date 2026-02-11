@@ -1,6 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 .PHONY: test postgres-up postgres-down ensure-postgres postgres-wait clean
 .PHONY: build docker-build docker-build-local
 .PHONY: test-ipam test-site-agent test-site-manager test-workflow test-db test-api test-auth test-common test-cert-manager test-site-workflow migrate carbide-mock-server-build carbide-mock-server-start carbide-mock-server-stop rla-mock-server-build rla-mock-server-start rla-mock-server-stop
+.PHONY: validate-openapi preview-openapi
 .PHONY: pre-commit-install pre-commit-run pre-commit-update
 
 # Build configuration
@@ -122,9 +138,9 @@ rla-mock-server-stop:
 	-kill $$(cat build/rlaserver.pid) 2>/dev/null
 	-rm -f build/rlaserver.pid
 
-test-site-agent: carbide-mock-server-start
+test-site-agent: carbide-mock-server-start rla-mock-server-start
 	cd site-agent/pkg/components && CGO_ENABLED=1 go test -race -p 1 ./... -count=1 ; \
-	ret=$$? ; cd ../../.. && $(MAKE) carbide-mock-server-stop ; exit $$ret
+	ret=$$? ; cd ../../.. && $(MAKE) carbide-mock-server-stop rla-mock-server-stop ; exit $$ret
 
 test-api:
 	$(MAKE) ensure-postgres
@@ -351,12 +367,12 @@ kind-reset:
 		--tls-cert-path /var/secrets/temporal/certs/server-interservice/tls.crt \
 		--tls-key-path /var/secrets/temporal/certs/server-interservice/tls.key \
 		--tls-ca-path /var/secrets/temporal/certs/server-interservice/ca.crt \
-		--tls-server-name interservice.server.temporal.nvidia.com || true
+		--tls-server-name interservice.server.temporal.local || true
 	kubectl -n temporal exec deploy/temporal-admintools -- temporal operator namespace create site --address temporal-frontend:7233 \
 		--tls-cert-path /var/secrets/temporal/certs/server-interservice/tls.crt \
 		--tls-key-path /var/secrets/temporal/certs/server-interservice/tls.key \
 		--tls-ca-path /var/secrets/temporal/certs/server-interservice/ca.crt \
-		--tls-server-name interservice.server.temporal.nvidia.com || true
+		--tls-server-name interservice.server.temporal.local || true
 	@echo "Temporal Helm deployment ready"
 	kubectl -n carbide wait --for=condition=ready pod -l app=keycloak --timeout=360s
 	kubectl -n carbide wait --for=condition=complete job/db-migrations --timeout=240s
@@ -407,6 +423,19 @@ test-pki:
 # Run Temporal mTLS and rotation tests
 test-temporal-e2e:
 	./scripts/test-temporal.sh all
+
+# =============================================================================
+# OpenAPI Spec Validation
+# =============================================================================
+
+# Validate OpenAPI spec using Redocly CLI (Docker)
+lint-openapi:
+	docker run --rm -v ./openapi:/spec redocly/cli lint /spec/spec.yaml
+
+# Preview OpenAPI spec in Redoc UI (Docker)
+preview-openapi:
+	@echo "Starting Redoc UI at http://localhost:8090"
+	docker run -it --rm -p 8090:80 -v ./openapi/spec.yaml:/usr/share/nginx/html/openapi.yaml -e SPEC_URL=openapi.yaml redocly/redoc
 
 # =============================================================================
 # Pre-commit Hooks (TruffleHog Secret Detection)

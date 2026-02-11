@@ -1,13 +1,18 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  *
- * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
- * property and proprietary rights in and to this material, related
- * documentation and any modifications thereto. Any use, reproduction,
- * disclosure or distribution of this material and related documentation
- * without an express license agreement from NVIDIA CORPORATION or
- * its affiliates is strictly prohibited.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package handler
@@ -29,10 +34,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/labstack/echo/v4"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
-	"github.com/uptrace/bun/extra/bundebug"
 	"github.com/nvidia/carbide-rest/api/internal/config"
 	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
 	"github.com/nvidia/carbide-rest/api/pkg/api/model"
@@ -44,6 +45,10 @@ import (
 	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
 	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
 	csmtypes "github.com/nvidia/carbide-rest/site-manager/pkg/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun/extra/bundebug"
 	oteltrace "go.opentelemetry.io/otel/trace"
 
 	tOperatorv1 "go.temporal.io/api/operatorservice/v1"
@@ -1379,8 +1384,8 @@ func TestGetAllSiteHandler_Handle(t *testing.T) {
 	stDAO.Update(ctx, nil, cdbm.SiteUpdateInput{Config: &cdbm.SiteConfigUpdateInput{NetworkSecurityGroup: cdb.GetBoolPtr(true)}, SiteID: sts[2].ID})
 	stDAO.Update(ctx, nil, cdbm.SiteUpdateInput{Config: &cdbm.SiteConfigUpdateInput{NetworkSecurityGroup: cdb.GetBoolPtr(true)}, SiteID: sts[3].ID})
 
-	stDAO.Update(ctx, nil, cdbm.SiteUpdateInput{Config: &cdbm.SiteConfigUpdateInput{NativeNetworking: cdb.GetBoolPtr(true), NetworkSecurityGroup: cdb.GetBoolPtr(true)}, SiteID: sts[4].ID})
-	stDAO.Update(ctx, nil, cdbm.SiteUpdateInput{Config: &cdbm.SiteConfigUpdateInput{NativeNetworking: cdb.GetBoolPtr(true), NetworkSecurityGroup: cdb.GetBoolPtr(true)}, SiteID: sts[5].ID})
+	stDAO.Update(ctx, nil, cdbm.SiteUpdateInput{Config: &cdbm.SiteConfigUpdateInput{NativeNetworking: cdb.GetBoolPtr(true), NetworkSecurityGroup: cdb.GetBoolPtr(true), NVLinkPartition: cdb.GetBoolPtr(true)}, SiteID: sts[4].ID})
+	stDAO.Update(ctx, nil, cdbm.SiteUpdateInput{Config: &cdbm.SiteConfigUpdateInput{NativeNetworking: cdb.GetBoolPtr(true), NetworkSecurityGroup: cdb.GetBoolPtr(true), NVLinkPartition: cdb.GetBoolPtr(true)}, SiteID: sts[5].ID})
 
 	// Setup echo server/context
 	e := echo.New()
@@ -1467,6 +1472,44 @@ func TestGetAllSiteHandler_Handle(t *testing.T) {
 				org: ipOrg,
 				query: url.Values{
 					"isNativeNetworkingEnabled": []string{"True"},
+				},
+				user: ipu1,
+			},
+			wantCount:          4,
+			wantTotalCount:     4,
+			wantRespCode:       http.StatusOK,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "get all Sites by Provider admin with NVLink partition enabled success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        &tmocks.Client{},
+				cfg:       cfg,
+			},
+			args: args{
+				org: ipOrg,
+				query: url.Values{
+					"isNVLinkPartitionEnabled": []string{"True"},
+				},
+				user: ipu1,
+			},
+			wantCount:          2,
+			wantTotalCount:     2,
+			wantRespCode:       http.StatusOK,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "get all Sites by Provider admin with network security group enabled success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        &tmocks.Client{},
+				cfg:       cfg,
+			},
+			args: args{
+				org: ipOrg,
+				query: url.Values{
+					"isNetworkSecurityGroupEnabled": []string{"True"},
 				},
 				user: ipu1,
 			},

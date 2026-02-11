@@ -1,12 +1,19 @@
-// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
-//
-// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-// property and proprietary rights in and to this material, related
-// documentation and any modifications thereto. Any use, reproduction,
-// disclosure or distribution of this material and related documentation
-// without an express license agreement from NVIDIA CORPORATION or
-// its affiliates is strictly prohibited.
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package handler
 
@@ -272,6 +279,11 @@ func (cibph CreateNVLinkLogicalPartitionHandler) Handle(c echo.Context) error {
 			},
 			TenantOrganizationId: orgTenant.Org,
 		},
+	}
+
+	// Include description if it is present
+	if nvllp.Description != nil {
+		createRequest.Config.Metadata.Description = *nvllp.Description
 	}
 
 	workflowOptions := temporalClient.StartWorkflowOptions{
@@ -1016,6 +1028,30 @@ func (uibph UpdateNVLinkLogicalPartitionHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "NVLink Logical Partition is not owned by current org's Tenant", nil)
 	}
 
+	needsUpdate := false
+	if apiRequest.Name != nil && *apiRequest.Name != nvllp.Name {
+		needsUpdate = true
+	}
+
+	if apiRequest.Description != nil && (nvllp.Description == nil || *apiRequest.Description != *nvllp.Description) {
+		needsUpdate = true
+	}
+
+	// get status details for the response
+	sdDAO := cdbm.NewStatusDetailDAO(uibph.dbSession)
+	ssds, _, err := sdDAO.GetAllByEntityID(ctx, nil, nvllp.ID.String(), nil, cdb.GetIntPtr(pagination.MaxPageSize), nil)
+	if err != nil {
+		logger.Error().Err(err).Msg("error retrieving Status Details for NVLink Logical Partition from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Status Details for NVLink Logical Partition", nil)
+	}
+
+	if !needsUpdate {
+		// no updates needed, send response
+		apiNvllp := model.NewAPINVLinkLogicalPartition(nvllp, nil, nil, ssds)
+		logger.Info().Msg("finishing API handler")
+		return c.JSON(http.StatusOK, apiNvllp)
+	}
+
 	// check for name uniqueness for the tenant, ie, tenant cannot have another NVLink Logical Partition with same name
 	if apiRequest.Name != nil && *apiRequest.Name != nvllp.Name {
 		nvllps, tot, serr := nvllpDAO.GetAll(
@@ -1063,14 +1099,6 @@ func (uibph UpdateNVLinkLogicalPartitionHandler) Handle(c echo.Context) error {
 	}
 	logger.Info().Msg("done updating NVLink Logical Partition in DB")
 
-	// get status details for the response
-	sdDAO := cdbm.NewStatusDetailDAO(uibph.dbSession)
-	ssds, _, err := sdDAO.GetAllByEntityID(ctx, tx, unvllp.ID.String(), nil, cdb.GetIntPtr(pagination.MaxPageSize), nil)
-	if err != nil {
-		logger.Error().Err(err).Msg("error retrieving Status Details for NVLink Logical Partition from DB")
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Status Details for NVLink Logical Partition", nil)
-	}
-
 	// Get the Temporal client for the site we are working with
 	stc, err := uibph.scp.GetClientByID(unvllp.SiteID)
 	if err != nil {
@@ -1081,10 +1109,19 @@ func (uibph UpdateNVLinkLogicalPartitionHandler) Handle(c echo.Context) error {
 	updateRequest := &cwssaws.NVLinkLogicalPartitionUpdateRequest{
 		Id: &cwssaws.NVLinkLogicalPartitionId{Value: unvllp.ID.String()},
 		Config: &cwssaws.NVLinkLogicalPartitionConfig{
-			Metadata: &cwssaws.Metadata{
-				Name: unvllp.Name,
-			},
+			TenantOrganizationId: orgTenant.Org,
+			Metadata:             &cwssaws.Metadata{},
 		},
+	}
+
+	// Include name if it is present
+	if apiRequest.Name != nil {
+		updateRequest.Config.Metadata.Name = unvllp.Name
+	}
+
+	// Include description if it is present
+	if apiRequest.Description != nil {
+		updateRequest.Config.Metadata.Description = *unvllp.Description
 	}
 
 	workflowOptions := temporalClient.StartWorkflowOptions{

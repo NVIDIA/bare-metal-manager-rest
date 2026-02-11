@@ -1,12 +1,19 @@
-// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
-//
-// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-// property and proprietary rights in and to this material, related
-// documentation and any modifications thereto. Any use, reproduction,
-// disclosure or distribution of this material and related documentation
-// without an express license agreement from NVIDIA CORPORATION or
-// its affiliates is strictly prohibited.
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package handler
 
@@ -24,9 +31,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 	"github.com/nvidia/carbide-rest/api/internal/config"
 	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
 	"github.com/nvidia/carbide-rest/api/pkg/api/model"
@@ -36,6 +40,10 @@ import (
 	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
 	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
 	swe "github.com/nvidia/carbide-rest/site-workflow/pkg/error"
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	oteltrace "go.opentelemetry.io/otel/trace"
 	"go.temporal.io/api/enums/v1"
 	temporalClient "go.temporal.io/sdk/client"
@@ -43,14 +51,14 @@ import (
 	tp "go.temporal.io/sdk/temporal"
 )
 
-func testBuildNVLinkLogicalPartition(t *testing.T, dbSession *cdb.Session, name string, org string, site *cdbm.Site, tenant *cdbm.Tenant, status *string, isMissingOnSite bool) *cdbm.NVLinkLogicalPartition {
+func testBuildNVLinkLogicalPartition(t *testing.T, dbSession *cdb.Session, name string, description *string, org string, site *cdbm.Site, tenant *cdbm.Tenant, status *string, isMissingOnSite bool) *cdbm.NVLinkLogicalPartition {
 	if status == nil {
 		status = cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady)
 	}
 	nvllp := &cdbm.NVLinkLogicalPartition{
 		ID:              uuid.New(),
 		Name:            name,
-		Description:     cdb.GetStrPtr("Test NVLinkLogical Partition"),
+		Description:     description,
 		Org:             org,
 		SiteID:          site.ID,
 		TenantID:        tenant.ID,
@@ -366,7 +374,19 @@ func TestNVLinkLogicalPartitionHandler_Create(t *testing.T) {
 				// validate response fields
 				assert.Equal(t, len(rsp.StatusHistory), 1)
 				assert.Equal(t, rsp.Name, tc.reqBodyModel.Name)
+				if tc.reqBodyModel.Description != nil {
+					assert.Equal(t, *tc.reqBodyModel.Description, *rsp.Description)
+				}
 				assert.Equal(t, rsp.Status, cdbm.NVLinkLogicalPartitionStatusPending)
+
+				if len(tsc.Calls) > 0 {
+					req := tsc.Calls[0].Arguments[3].(*cwssaws.NVLinkLogicalPartitionCreationRequest)
+					assert.Equal(t, req.Config.Metadata.Name, tc.reqBodyModel.Name)
+					if tc.reqBodyModel.Description != nil {
+						assert.Equal(t, *tc.reqBodyModel.Description, req.Config.Metadata.Description)
+					}
+					assert.Equal(t, req.Config.TenantOrganizationId, tc.reqOrgName)
+				}
 			}
 			if tc.verifyChildSpanner {
 				span := oteltrace.SpanFromContext(ec.Request().Context())
@@ -425,17 +445,21 @@ func TestNVLinkLogicalPartitionHandler_Update(t *testing.T) {
 	ts3 := testBuildTenantSiteAssociation(t, dbSession, tnOrg1, tn1.ID, site3.ID, tnu1.ID)
 	assert.NotNil(t, ts3)
 
-	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", tnOrg1, site1, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusPending), false)
+	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", cdb.GetStrPtr("Test NVLink Logical Partition"), tnOrg1, site1, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusPending), false)
 	assert.NotNil(t, nvllp1)
 
-	nvllp2 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-2", tnOrg1, site2, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusPending), false)
+	nvllp2 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-2", cdb.GetStrPtr("Test NVLink Logical Partition"), tnOrg1, site2, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusPending), false)
 	assert.NotNil(t, nvllp2)
 
-	nvllp3 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-3", tnOrg2, site1, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusPending), false)
+	nvllp3 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-3", cdb.GetStrPtr("Test NVLink Logical Partition"), tnOrg2, site1, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusPending), false)
 	assert.NotNil(t, nvllp3)
 
-	nvllp4 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-4", tnOrg1, site3, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusPending), false)
+	nvllp4 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-4", cdb.GetStrPtr("Test NVLink Logical Partition"), tnOrg1, site3, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusPending), false)
 	assert.NotNil(t, nvllp4)
+
+	noupdateObj := model.APINVLinkLogicalPartitionUpdateRequest{Name: cdb.GetStrPtr("test-nvllp-1"), Description: cdb.GetStrPtr("Test NVLink Logical Partition")}
+	noupdateBody, err := json.Marshal(noupdateObj)
+	assert.Nil(t, err)
 
 	nvllpObj := model.APINVLinkLogicalPartitionUpdateRequest{Name: cdb.GetStrPtr("test-nvllp-updated-1"), Description: cdb.GetStrPtr("testdescription")}
 	okBody, err := json.Marshal(nvllpObj)
@@ -603,6 +627,21 @@ func TestNVLinkLogicalPartitionHandler_Update(t *testing.T) {
 				tc:        tsc,
 				cfg:       cfg,
 			},
+			name:               "success case with UpdateNVLinkLogicalPartition workflow when there is no change",
+			nvllpID:            nvllp1.ID.String(),
+			reqOrgName:         tnOrg1,
+			reqBody:            string(noupdateBody),
+			reqBodyModel:       &noupdateObj,
+			user:               tnu1,
+			expectedStatus:     http.StatusOK,
+			verifyChildSpanner: true,
+		},
+		{
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tsc,
+				cfg:       cfg,
+			},
 			name:               "success case with UpdateNVLinkLogicalPartition workflow",
 			nvllpID:            nvllp1.ID.String(),
 			reqOrgName:         tnOrg1,
@@ -666,6 +705,21 @@ func TestNVLinkLogicalPartitionHandler_Update(t *testing.T) {
 				if tc.reqBodyModel.Name != nil {
 					assert.Equal(t, *tc.reqBodyModel.Name, rsp.Name)
 				}
+				if tc.reqBodyModel.Description != nil {
+					assert.Equal(t, *tc.reqBodyModel.Description, *rsp.Description)
+				}
+
+				if len(tsc.Calls) > 0 && (tc.reqBodyModel.Description != nil || tc.reqBodyModel.Name != nil) {
+					req := tsc.Calls[0].Arguments[3].(*cwssaws.NVLinkLogicalPartitionUpdateRequest)
+					if tc.reqBodyModel.Name != nil {
+						assert.Equal(t, *tc.reqBodyModel.Name, req.Config.Metadata.Name)
+					}
+					if tc.reqBodyModel.Description != nil {
+						assert.Equal(t, *tc.reqBodyModel.Description, req.Config.Metadata.Description)
+					}
+					assert.Equal(t, req.Config.TenantOrganizationId, tc.reqOrgName)
+				}
+
 			}
 			if tc.verifyChildSpanner {
 				span := oteltrace.SpanFromContext(ec.Request().Context())
@@ -776,13 +830,13 @@ func TestNVLinkLogicalPartitionHandler_GetAll(t *testing.T) {
 
 	//Site 2
 
-	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1-site2", tnOrg4, site2, tn2, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1-site2", cdb.GetStrPtr("Test NVLink Logical Partition"), tnOrg4, site2, tn2, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 	assert.NotNil(t, nvllp1)
 
 	common.TestBuildStatusDetail(t, dbSession, nvllp1.ID.String(), cdbm.NVLinkLogicalPartitionStatusPending, cdb.GetStrPtr("request received, pending processing"))
 	common.TestBuildStatusDetail(t, dbSession, nvllp1.ID.String(), cdbm.NVLinkLogicalPartitionStatusReady, cdb.GetStrPtr("NVLinkLogical Partition is now ready for use"))
 
-	nvllp2 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-2-site2", tnOrg4, site2, tn2, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	nvllp2 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-2-site2", cdb.GetStrPtr("Test NVLink Logical Partition"), tnOrg4, site2, tn2, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 	assert.NotNil(t, nvllp2)
 
 	common.TestBuildStatusDetail(t, dbSession, nvllp2.ID.String(), cdbm.NVLinkLogicalPartitionStatusPending, cdb.GetStrPtr("request received, pending processing"))
@@ -799,22 +853,22 @@ func TestNVLinkLogicalPartitionHandler_GetAll(t *testing.T) {
 
 	// Create NVLinkInterface records for each NVLinkLogicalPartition
 
-	nvlifc1 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, site1.ID, inst1.ID, nvllps[0].ID, cdb.GetStrPtr("NVIDIA GB200"), 0, cdbm.NVLinkInterfaceStatusReady)
+	nvlifc1 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, site1.ID, inst1.ID, nvllps[0].ID, cdb.GetUUIDPtr(uuid.New()), cdb.GetStrPtr("NVIDIA GB200"), 0, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, nvlifc1)
 
-	nvlifc2 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, site2.ID, inst2.ID, nvllp1.ID, cdb.GetStrPtr("NVIDIA GB200"), 1, cdbm.NVLinkInterfaceStatusReady)
+	nvlifc2 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, site2.ID, inst2.ID, nvllp1.ID, cdb.GetUUIDPtr(uuid.New()), cdb.GetStrPtr("NVIDIA GB200"), 1, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, nvlifc2)
 
-	nvlifc3 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, site1.ID, inst1.ID, nvllps[0].ID, cdb.GetStrPtr("NVIDIA GB200"), 2, cdbm.NVLinkInterfaceStatusReady)
+	nvlifc3 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, site1.ID, inst1.ID, nvllps[0].ID, cdb.GetUUIDPtr(uuid.New()), cdb.GetStrPtr("NVIDIA GB200"), 2, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, nvlifc3)
 
-	nvlifc4 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, site2.ID, inst2.ID, nvllp2.ID, cdb.GetStrPtr("NVIDIA GB200"), 3, cdbm.NVLinkInterfaceStatusReady)
+	nvlifc4 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, site2.ID, inst2.ID, nvllp2.ID, cdb.GetUUIDPtr(uuid.New()), cdb.GetStrPtr("NVIDIA GB200"), 3, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, nvlifc4)
 
-	nvlifc5 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, site1.ID, inst1.ID, nvllps[0].ID, cdb.GetStrPtr("NVIDIA GB200"), 2, cdbm.NVLinkInterfaceStatusReady)
+	nvlifc5 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, site1.ID, inst1.ID, nvllps[0].ID, cdb.GetUUIDPtr(uuid.New()), cdb.GetStrPtr("NVIDIA GB200"), 2, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, nvlifc5)
 
-	nvlifc6 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, site2.ID, inst2.ID, nvllp2.ID, cdb.GetStrPtr("NVIDIA GB200"), 0, cdbm.NVLinkInterfaceStatusReady)
+	nvlifc6 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, site2.ID, inst2.ID, nvllp2.ID, cdb.GetUUIDPtr(uuid.New()), cdb.GetStrPtr("NVIDIA GB200"), 0, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, nvlifc6)
 
 	// OTEL Spanner configuration
@@ -1205,10 +1259,10 @@ func TestNVLinkLogicalPartitionHandler_GetByID(t *testing.T) {
 	os1 := testInstanceBuildOperatingSystem(t, dbSession, "test-operating-system-1", tn1, cdbm.OperatingSystemTypeImage, false, nil, false, cdbm.OperatingSystemStatusReady, tnu1)
 	assert.NotNil(t, os1)
 
-	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", tnOrg1, site1, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", cdb.GetStrPtr("Test NVLink Logical Partition"), tnOrg1, site1, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 	assert.NotNil(t, nvllp1)
 
-	nvllp2 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-2", tnOrg2, site2, tn2, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	nvllp2 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-2", cdb.GetStrPtr("Test NVLink Logical Partition"), tnOrg2, site2, tn2, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 	assert.NotNil(t, nvllp2)
 
 	vpc1 := testInstanceBuildVPC(t, dbSession, "test-vpc-1", ip1, tn1, site1, cdb.GetUUIDPtr(uuid.New()), nil, cdb.GetStrPtr(cdbm.VpcEthernetVirtualizer), cdb.GetUUIDPtr(nvllp1.ID), cdbm.VpcStatusReady, tnu1)
@@ -1223,10 +1277,10 @@ func TestNVLinkLogicalPartitionHandler_GetByID(t *testing.T) {
 	inst2 := testInstanceBuildInstance(t, dbSession, "test-instance-2", al1.ID, alc1.ID, tn1.ID, ip1.ID, site2.ID, &ist1.ID, vpc2.ID, cdb.GetStrPtr(mc1.ID), &os1.ID, nil, cdbm.InstanceStatusReady)
 	assert.NotNil(t, inst2)
 
-	nvlifc1 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, site1.ID, inst1.ID, nvllp1.ID, cdb.GetStrPtr("NVIDIA GB200"), 0, cdbm.NVLinkInterfaceStatusReady)
+	nvlifc1 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, site1.ID, inst1.ID, nvllp1.ID, cdb.GetUUIDPtr(uuid.New()), cdb.GetStrPtr("NVIDIA GB200"), 0, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, nvlifc1)
 
-	nvlifc2 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, site2.ID, inst2.ID, nvllp2.ID, cdb.GetStrPtr("NVIDIA GB200"), 1, cdbm.NVLinkInterfaceStatusReady)
+	nvlifc2 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, site2.ID, inst2.ID, nvllp2.ID, cdb.GetUUIDPtr(uuid.New()), cdb.GetStrPtr("NVIDIA GB200"), 1, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, nvlifc2)
 
 	// OTEL Spanner configuration
@@ -1495,13 +1549,13 @@ func TestNVLinkLogicalPartitionHandler_Delete(t *testing.T) {
 	ts4 := testBuildTenantSiteAssociation(t, dbSession, tnOrg4, tn4.ID, site2.ID, tnu4.ID)
 	assert.NotNil(t, ts4)
 
-	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", tnOrg1, site1, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", cdb.GetStrPtr("Test NVLink Logical Partition"), tnOrg1, site1, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 	assert.NotNil(t, nvllp1)
 
-	nvllp3 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-3", tnOrg3, site2, tn3, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	nvllp3 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-3", cdb.GetStrPtr("Test NVLink Logical Partition"), tnOrg3, site2, tn3, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 	assert.NotNil(t, nvllp3)
 
-	nvllp4 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-4", tnOrg4, site2, tn4, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	nvllp4 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-4", cdb.GetStrPtr("Test NVLink Logical Partition"), tnOrg4, site2, tn4, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 	assert.NotNil(t, nvllp4)
 
 	// OTEL Spanner configuration

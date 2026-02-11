@@ -1,13 +1,18 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  *
- * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
- * property and proprietary rights in and to this material, related
- * documentation and any modifications thereto. Any use, reproduction,
- * disclosure or distribution of this material and related documentation
- * without an express license agreement from NVIDIA CORPORATION or
- * its affiliates is strictly prohibited.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package handler
@@ -763,6 +768,8 @@ func NewGetAllSiteHandler(dbSession *cdb.Session, tc tClient.Client, cfg *config
 // @Security ApiKeyAuth
 // @Param org path string true "Name of NGC organization"
 // @Param isNativeNetworkingEnabled query boolean false "Filter by native networking enabled flag"
+// @Param isNetworkSecurityGroupEnabled query boolean false "Filter by network security group enabled flag"
+// @Param isNVLinkPartitionEnabled query boolean false "Filter by NVLink partition enabled flag"
 // @Param query query string false "Query input for full text search"
 // @Param status query string false "Query input for status"
 // @Param includeRelation query string false "Related entities to include in response e.g. 'InfrastructureProvider'"
@@ -895,6 +902,18 @@ func (gash GetAllSiteHandler) Handle(c echo.Context) error {
 		isNetworkSecurityGroupEnabled = &isEnabled
 	}
 	filter.Config.NetworkSecurityGroup = isNetworkSecurityGroupEnabled
+
+	// Check `isNVLinkPartitionEnabled` in query
+	var isNVLinkPartitionEnabled *bool
+	qinlpe := c.QueryParam("isNVLinkPartitionEnabled")
+	if qinlpe != "" {
+		isEnabled, err := strconv.ParseBool(qinlpe)
+		if err != nil {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid value specified for `isNVLinkPartitionEnabled` query param", nil)
+		}
+		isNVLinkPartitionEnabled = &isEnabled
+	}
+	filter.Config.NVLinkPartition = isNVLinkPartitionEnabled
 
 	// Get machine stats if requested
 	var machineStats map[uuid.UUID]*model.APISiteMachineStats
