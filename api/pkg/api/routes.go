@@ -96,6 +96,12 @@ func NewAPIRoutes(dbSession *cdb.Session, tc tClient.Client, tnc tClient.Namespa
 			Method:  http.MethodGet,
 			Handler: apiHandler.NewGetCurrentTenantStatsHandler(dbSession, tc, cfg),
 		},
+		// Tenant Instance Type Stats endpoint
+		{
+			Path:    apiPathPrefix + "/tenant/instance-type/stats",
+			Method:  http.MethodGet,
+			Handler: apiHandler.NewGetTenantInstanceTypeStatsHandler(dbSession, cfg),
+		},
 		// TenantAccount endpoints
 		{
 			Path:    apiPathPrefix + "/tenant/account",
@@ -421,6 +427,24 @@ func NewAPIRoutes(dbSession *cdb.Session, tc tClient.Client, tnc tClient.Namespa
 			Path:    apiPathPrefix + "/machine/:id/status-history",
 			Method:  http.MethodGet,
 			Handler: apiHandler.NewGetMachineStatusDetailsHandler(dbSession),
+		},
+		// Machine GPU Stats endpoint
+		{
+			Path:    apiPathPrefix + "/machine/gpu/stats",
+			Method:  http.MethodGet,
+			Handler: apiHandler.NewGetMachineGPUStatsHandler(dbSession, cfg),
+		},
+		// Machine Instance Type Stats Summary endpoint
+		{
+			Path:    apiPathPrefix + "/machine/instance-type/stats/summary",
+			Method:  http.MethodGet,
+			Handler: apiHandler.NewGetMachineInstanceTypeSummaryHandler(dbSession, cfg),
+		},
+		// Machine Instance Type Stats endpoint
+		{
+			Path:    apiPathPrefix + "/machine/instance-type/stats",
+			Method:  http.MethodGet,
+			Handler: apiHandler.NewGetMachineInstanceTypeStatsHandler(dbSession, cfg),
 		},
 		// Machine/Instance Type association endpoints
 		{
