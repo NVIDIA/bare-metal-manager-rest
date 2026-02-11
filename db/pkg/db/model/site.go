@@ -147,7 +147,7 @@ type SiteCreateInput struct {
 type SiteConfigUpdateInput struct {
 	NetworkSecurityGroup             *bool `json:"network_security_group,omitempty"`
 	NativeNetworking                 *bool `json:"native_networking,omitempty"`
-	NVLinkPartition                  *bool `json:"nvlink_logical_partition,omitempty"`
+	NVLinkPartition                  *bool `json:"nvlink_partition,omitempty"`
 	MaxNetworkSecurityGroupRuleCount *int  `json:"max_network_security_group_rule_count,omitempty"`
 }
 

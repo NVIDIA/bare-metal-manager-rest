@@ -722,6 +722,11 @@ paths:
         - schema:
             type: boolean
           in: query
+          name: isNVLinkPartitionEnabled
+          description: Filter Sites by NVLink partitioning enabled flag. Requires Provider Admin role.
+        - schema:
+            type: boolean
+          in: query
           name: includeMachineStats
           description: Include a breakdown of Machine counts by life-cycle status and health. Requires Provider Admin role.
         - schema:
