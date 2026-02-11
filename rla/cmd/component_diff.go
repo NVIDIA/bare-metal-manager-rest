@@ -1,19 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package cmd
 
 import (
@@ -26,8 +10,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 
-	pb "github.com/nvidia/carbide-rest/rla/internal/proto/v1"
 	"github.com/nvidia/carbide-rest/rla/pkg/client"
+	"github.com/nvidia/carbide-rest/rla/pkg/types"
 )
 
 var (
@@ -116,8 +100,8 @@ func doDiffComponents() {
 	}
 
 	// Parse and validate component type
-	componentType := parseComponentType(diffComponentType)
-	if componentType != pb.ComponentType_COMPONENT_TYPE_COMPUTE {
+	componentType := parseComponentTypeToTypes(diffComponentType)
+	if componentType != types.ComponentTypeCompute {
 		log.Fatal().Msg("Only 'compute' component type is supported for diff")
 	}
 
@@ -177,12 +161,12 @@ func doDiffComponents() {
 
 func outputDiffJSON(result *client.ValidateComponentsResult) {
 	output := struct {
-		TotalDiffs          int                 `json:"total_diffs"`
-		OnlyInExpectedCount int                 `json:"only_in_expected_count"`
-		OnlyInActualCount   int                 `json:"only_in_actual_count"`
-		DriftCount          int                 `json:"drift_count"`
-		MatchCount          int                 `json:"match_count"`
-		Diffs               []*pb.ComponentDiff `json:"diffs"`
+		TotalDiffs          int                    `json:"total_diffs"`
+		OnlyInExpectedCount int                    `json:"only_in_expected_count"`
+		OnlyInActualCount   int                    `json:"only_in_actual_count"`
+		DriftCount          int                    `json:"drift_count"`
+		MatchCount          int                    `json:"match_count"`
+		Diffs               []*types.ComponentDiff `json:"diffs"`
 	}{
 		TotalDiffs:          result.TotalDiffs,
 		OnlyInExpectedCount: result.OnlyInExpectedCount,
@@ -225,13 +209,13 @@ func outputDiffTable(result *client.ValidateComponentsResult) {
 		details := ""
 
 		switch diff.Type {
-		case pb.DiffType_DIFF_TYPE_ONLY_IN_EXPECTED:
+		case types.DiffTypeOnlyInExpected:
 			diffType = "ONLY_IN_EXPECTED"
 			details = "Missing from source system"
-		case pb.DiffType_DIFF_TYPE_ONLY_IN_ACTUAL:
+		case types.DiffTypeOnlyInActual:
 			diffType = "ONLY_IN_ACTUAL"
 			details = "Not in local DB"
-		case pb.DiffType_DIFF_TYPE_DRIFT:
+		case types.DiffTypeDrift:
 			diffType = "DRIFT"
 			var fieldStrs []string
 			for _, fd := range diff.FieldDiffs {
@@ -241,7 +225,7 @@ func outputDiffTable(result *client.ValidateComponentsResult) {
 			details = strings.Join(fieldStrs, ", ")
 		}
 
-		fmt.Printf("%-20s %-30s %s\n", diffType, diff.ComponentId, details)
+		fmt.Printf("%-20s %-30s %s\n", diffType, diff.ComponentID, details)
 	}
 	fmt.Println(strings.Repeat("-", 100))
 }

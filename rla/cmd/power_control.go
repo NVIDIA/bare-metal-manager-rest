@@ -1,19 +1,3 @@
-/*
- * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package cmd
 
 import (
@@ -23,8 +7,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 
-	pb "github.com/nvidia/carbide-rest/rla/internal/proto/v1"
 	"github.com/nvidia/carbide-rest/rla/pkg/client"
+	"github.com/nvidia/carbide-rest/rla/pkg/types"
 )
 
 var (
@@ -101,30 +85,30 @@ func init() {
 	powerControlCmd.MarkFlagRequired("op") //nolint
 }
 
-func parsePowerOp(op string) pb.PowerControlOp {
+func parsePowerOpToTypes(op string) types.PowerControlOp {
 	switch strings.ToLower(op) {
 	// Power On
 	case "on":
-		return pb.PowerControlOp_POWER_CONTROL_OP_ON
+		return types.PowerControlOpOn
 	case "force-on", "forceon":
-		return pb.PowerControlOp_POWER_CONTROL_OP_FORCE_ON
+		return types.PowerControlOpForceOn
 	// Power Off
 	case "off":
-		return pb.PowerControlOp_POWER_CONTROL_OP_OFF
+		return types.PowerControlOpOff
 	case "force-off", "forceoff":
-		return pb.PowerControlOp_POWER_CONTROL_OP_FORCE_OFF
+		return types.PowerControlOpForceOff
 	// Restart (OS level)
 	case "restart":
-		return pb.PowerControlOp_POWER_CONTROL_OP_RESTART
+		return types.PowerControlOpRestart
 	case "force-restart", "forcerestart":
-		return pb.PowerControlOp_POWER_CONTROL_OP_FORCE_RESTART
+		return types.PowerControlOpForceRestart
 	// Reset (hardware level)
 	case "warm-reset", "warmreset":
-		return pb.PowerControlOp_POWER_CONTROL_OP_WARM_RESET
+		return types.PowerControlOpWarmReset
 	case "cold-reset", "coldreset":
-		return pb.PowerControlOp_POWER_CONTROL_OP_COLD_RESET
+		return types.PowerControlOpColdReset
 	default:
-		return pb.PowerControlOp_POWER_CONTROL_OP_UNKNOWN
+		return ""
 	}
 }
 
@@ -154,14 +138,14 @@ func doPowerControl() {
 	}
 
 	// Parse and validate component type (required for rack-ids/rack-names)
-	componentType := parseComponentType(powerControlComponentType)
-	if (hasRackIDs || hasRackNames) && componentType == pb.ComponentType_COMPONENT_TYPE_UNKNOWN {
+	componentType := parseComponentTypeToTypes(powerControlComponentType)
+	if (hasRackIDs || hasRackNames) && componentType == types.ComponentTypeUnknown {
 		log.Fatal().Msg("--type is required when using --rack-ids or --rack-names (compute, nvlswitch, powershelf)")
 	}
 
 	// Parse power operation
-	op := parsePowerOp(powerControlOp)
-	if op == pb.PowerControlOp_POWER_CONTROL_OP_UNKNOWN {
+	op := parsePowerOpToTypes(powerControlOp)
+	if op == "" {
 		log.Fatal().Msgf("Invalid power operation: %s. Valid options: on, force-on, off, force-off, restart, force-restart, warm-reset, cold-reset", powerControlOp)
 	}
 
