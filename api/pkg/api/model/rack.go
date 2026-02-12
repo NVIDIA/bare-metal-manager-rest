@@ -184,3 +184,126 @@ func (arc *APIRackComponent) FromProto(protoComponent *rlav1.Component) {
 		arc.Position = protoComponent.GetPosition().GetSlotId()
 	}
 }
+
+// ========== Rack Validation API Models ==========
+
+// APIRackValidationResult is the API representation of a rack validation result
+type APIRackValidationResult struct {
+	Diffs               []*APIComponentDiff `json:"diffs"`
+	TotalDiffs          int32               `json:"totalDiffs"`
+	OnlyInExpectedCount int32               `json:"onlyInExpectedCount"`
+	OnlyInActualCount   int32               `json:"onlyInActualCount"`
+	DriftCount          int32               `json:"driftCount"`
+	MatchCount          int32               `json:"matchCount"`
+}
+
+// APIComponentDiff represents a single component difference found during validation
+type APIComponentDiff struct {
+	Type        string          `json:"type"`
+	ComponentID string          `json:"componentId"`
+	Expected    *APIRackComponent `json:"expected,omitempty"`
+	Actual      *APIActualComponent `json:"actual,omitempty"`
+	FieldDiffs  []*APIFieldDiff `json:"fieldDiffs,omitempty"`
+}
+
+// APIActualComponent represents a component's actual state from external systems
+type APIActualComponent struct {
+	ID              string `json:"id"`
+	ComponentID     string `json:"componentId"`
+	Type            string `json:"type"`
+	Name            string `json:"name"`
+	SerialNumber    string `json:"serialNumber"`
+	Manufacturer    string `json:"manufacturer"`
+	FirmwareVersion string `json:"firmwareVersion"`
+	Position        int32  `json:"position"`
+	PowerState      string `json:"powerState"`
+	HealthStatus    string `json:"healthStatus"`
+	Source          string `json:"source"`
+}
+
+// FromProto converts a proto ActualComponent to an APIActualComponent
+func (aac *APIActualComponent) FromProto(protoActual *rlav1.ActualComponent) {
+	if protoActual == nil {
+		return
+	}
+	aac.Type = protoActual.GetType().String()
+	aac.FirmwareVersion = protoActual.GetFirmwareVersion()
+	aac.ComponentID = protoActual.GetComponentId()
+	aac.PowerState = protoActual.GetPowerState()
+	aac.HealthStatus = protoActual.GetHealthStatus()
+	aac.Source = protoActual.GetSource()
+
+	if protoActual.GetInfo() != nil {
+		compInfo := protoActual.GetInfo()
+		if compInfo.GetId() != nil {
+			aac.ID = compInfo.GetId().GetId()
+		}
+		aac.Name = compInfo.GetName()
+		aac.SerialNumber = compInfo.GetSerialNumber()
+		aac.Manufacturer = compInfo.GetManufacturer()
+	}
+
+	if protoActual.GetPosition() != nil {
+		aac.Position = protoActual.GetPosition().GetSlotId()
+	}
+}
+
+// APIFieldDiff represents a single field difference
+type APIFieldDiff struct {
+	FieldName     string `json:"fieldName"`
+	ExpectedValue string `json:"expectedValue"`
+	ActualValue   string `json:"actualValue"`
+}
+
+// NewAPIRackValidationResult creates an APIRackValidationResult from the RLA protobuf response
+func NewAPIRackValidationResult(protoResp *rlav1.ValidateComponentsResponse) *APIRackValidationResult {
+	if protoResp == nil {
+		return nil
+	}
+
+	result := &APIRackValidationResult{
+		TotalDiffs:          protoResp.GetTotalDiffs(),
+		OnlyInExpectedCount: protoResp.GetOnlyInExpectedCount(),
+		OnlyInActualCount:   protoResp.GetOnlyInActualCount(),
+		DriftCount:          protoResp.GetDriftCount(),
+		MatchCount:          protoResp.GetMatchCount(),
+	}
+
+	result.Diffs = make([]*APIComponentDiff, 0, len(protoResp.GetDiffs()))
+	for _, diff := range protoResp.GetDiffs() {
+		apiDiff := &APIComponentDiff{
+			Type:        diff.GetType().String(),
+			ComponentID: diff.GetComponentId(),
+		}
+
+		// Convert expected component
+		if diff.GetExpected() != nil {
+			apiComp := &APIRackComponent{}
+			apiComp.FromProto(diff.GetExpected())
+			apiDiff.Expected = apiComp
+		}
+
+		// Convert actual component
+		if diff.GetActual() != nil {
+			apiActual := &APIActualComponent{}
+			apiActual.FromProto(diff.GetActual())
+			apiDiff.Actual = apiActual
+		}
+
+		// Convert field diffs
+		if len(diff.GetFieldDiffs()) > 0 {
+			apiDiff.FieldDiffs = make([]*APIFieldDiff, 0, len(diff.GetFieldDiffs()))
+			for _, fd := range diff.GetFieldDiffs() {
+				apiDiff.FieldDiffs = append(apiDiff.FieldDiffs, &APIFieldDiff{
+					FieldName:     fd.GetFieldName(),
+					ExpectedValue: fd.GetExpectedValue(),
+					ActualValue:   fd.GetActualValue(),
+				})
+			}
+		}
+
+		result.Diffs = append(result.Diffs, apiDiff)
+	}
+
+	return result
+}

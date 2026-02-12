@@ -401,3 +401,352 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, apiRacks)
 }
+
+// ~~~~~ Validate Racks Handler ~~~~~ //
+
+// ValidateRacksHandler is the API Handler for validating racks' components with optional filters
+type ValidateRacksHandler struct {
+	dbSession  *cdb.Session
+	tc         tClient.Client
+	scp        *sc.ClientPool
+	cfg        *config.Config
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewValidateRacksHandler initializes and returns a new handler for validating Racks
+func NewValidateRacksHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) ValidateRacksHandler {
+	return ValidateRacksHandler{
+		dbSession:  dbSession,
+		tc:         tc,
+		scp:        scp,
+		cfg:        cfg,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Validate Racks
+// @Description Validate racks' components by comparing expected vs actual state via RLA. If no filter is specified, validates all racks in the Site.
+// @Tags rack
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param org path string true "Name of NGC organization"
+// @Param siteId query string true "ID of the Site"
+// @Param name query string false "Filter by rack name"
+// @Param manufacturer query string false "Filter by manufacturer"
+// @Param model query string false "Filter by model"
+// @Success 200 {object} model.APIRackValidationResult
+// @Router /v2/org/{org}/carbide/rack/validate [get]
+func (vrsh ValidateRacksHandler) Handle(c echo.Context) error {
+	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "ValidateAll", c, vrsh.tracerSpan)
+	if handlerSpan != nil {
+		defer handlerSpan.End()
+	}
+
+	// Is DB user missing?
+	if dbUser == nil {
+		logger.Error().Msg("invalid User object found in request context")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// Validate org membership
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Validate role, only Provider Admins are allowed to access Rack data
+	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Provider Admin role, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Provider Admin role with org", nil)
+	}
+
+	// Get Infrastructure Provider for org
+	infrastructureProvider, err := common.GetInfrastructureProviderForOrg(ctx, nil, vrsh.dbSession, org)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error getting infrastructure provider for org")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
+	}
+
+	// Get site ID from query param (required)
+	siteStrID := c.QueryParam("siteId")
+	if siteStrID == "" {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
+	}
+
+	// Validate the site
+	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, vrsh.dbSession)
+	if err != nil {
+		if errors.Is(err, cdb.ErrDoesNotExist) {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
+		}
+		logger.Error().Err(err).Msg("error retrieving Site from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site specified in request due to DB error", nil)
+	}
+
+	// Verify site belongs to the org's Infrastructure Provider
+	if site.InfrastructureProviderID != infrastructureProvider.ID {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
+	}
+
+	// Get the temporal client for the site
+	stc, err := vrsh.scp.GetClientByID(site.ID)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Temporal client for Site")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
+	}
+
+	// Build filters from query params
+	var filters []*rlav1.Filter
+	qParams := c.QueryParams()
+	for field := range model.RackFilterFieldMap {
+		if value := qParams.Get(field); value != "" {
+			if f := model.GetProtoRackFilterFromQueryParam(field, value); f != nil {
+				filters = append(filters, f)
+			}
+		}
+	}
+
+	// Step 1: Get all racks matching filters
+	getRacksRequest := &rlav1.GetListOfRacksRequest{
+		Filters: filters,
+	}
+
+	getRacksOptions := tClient.StartWorkflowOptions{
+		ID:                       "ValidateRacks-GetRacks",
+		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		TaskQueue:                queue.SiteTaskQueue,
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
+	defer cancel()
+
+	we, err := stc.ExecuteWorkflow(ctx, getRacksOptions, "GetRacks", getRacksRequest)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to execute GetRacks workflow for validation")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Racks for validation", nil)
+	}
+
+	var getRacksResponse rlav1.GetListOfRacksResponse
+	err = we.Get(ctx, &getRacksResponse)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to get result from GetRacks workflow")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Racks for validation", nil)
+	}
+
+	// Build rack targets from retrieved racks
+	racks := getRacksResponse.GetRacks()
+	if len(racks) == 0 {
+		logger.Info().Msg("no racks found matching filters, returning empty validation result")
+		return c.JSON(http.StatusOK, &model.APIRackValidationResult{
+			Diffs: []*model.APIComponentDiff{},
+		})
+	}
+
+	rackTargets := make([]*rlav1.RackTarget, 0, len(racks))
+	for _, rack := range racks {
+		if rack.GetInfo() != nil && rack.GetInfo().GetId() != nil {
+			rackTargets = append(rackTargets, &rlav1.RackTarget{
+				Identifier: &rlav1.RackTarget_Id{
+					Id: rack.GetInfo().GetId(),
+				},
+			})
+		}
+	}
+
+	// Step 2: Validate all matched racks
+	validateRequest := &rlav1.ValidateComponentsRequest{
+		TargetSpec: &rlav1.OperationTargetSpec{
+			Targets: &rlav1.OperationTargetSpec_Racks{
+				Racks: &rlav1.RackTargets{
+					Targets: rackTargets,
+				},
+			},
+		},
+	}
+
+	validateOptions := tClient.StartWorkflowOptions{
+		ID:                       "ValidateRacks",
+		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		TaskQueue:                queue.SiteTaskQueue,
+	}
+
+	we, err = stc.ExecuteWorkflow(ctx, validateOptions, "ValidateRack", validateRequest)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to execute ValidateRack workflow")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to validate Racks", nil)
+	}
+
+	var validateResponse rlav1.ValidateComponentsResponse
+	err = we.Get(ctx, &validateResponse)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to get result from ValidateRack workflow")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to validate Racks", nil)
+	}
+
+	// Convert to API model
+	apiResult := model.NewAPIRackValidationResult(&validateResponse)
+
+	logger.Info().Int("rackCount", len(racks)).Int32("totalDiffs", validateResponse.GetTotalDiffs()).Msg("finishing API handler")
+
+	return c.JSON(http.StatusOK, apiResult)
+}
+
+// ~~~~~ Validate Rack Handler ~~~~~ //
+
+// ValidateRackHandler is the API Handler for validating a Rack's components
+type ValidateRackHandler struct {
+	dbSession  *cdb.Session
+	tc         tClient.Client
+	scp        *sc.ClientPool
+	cfg        *config.Config
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewValidateRackHandler initializes and returns a new handler for validating a Rack
+func NewValidateRackHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) ValidateRackHandler {
+	return ValidateRackHandler{
+		dbSession:  dbSession,
+		tc:         tc,
+		scp:        scp,
+		cfg:        cfg,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Validate a Rack
+// @Description Validate a Rack's components by comparing expected vs actual state via RLA
+// @Tags rack
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param org path string true "Name of NGC organization"
+// @Param id path string true "ID of the Rack"
+// @Param siteId query string true "ID of the Site"
+// @Success 200 {object} model.APIRackValidationResult
+// @Router /v2/org/{org}/carbide/rack/{id}/validate [get]
+func (vrh ValidateRackHandler) Handle(c echo.Context) error {
+	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "Validate", c, vrh.tracerSpan)
+	if handlerSpan != nil {
+		defer handlerSpan.End()
+	}
+
+	// Is DB user missing?
+	if dbUser == nil {
+		logger.Error().Msg("invalid User object found in request context")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// Validate org membership
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Validate role, only Provider Admins are allowed to access Rack data
+	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Provider Admin role, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Provider Admin role with org", nil)
+	}
+
+	// Get Infrastructure Provider for org
+	infrastructureProvider, err := common.GetInfrastructureProviderForOrg(ctx, nil, vrh.dbSession, org)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error getting infrastructure provider for org")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
+	}
+
+	// Get rack ID from URL param
+	rackStrID := c.Param("id")
+	vrh.tracerSpan.SetAttribute(handlerSpan, attribute.String("rack_id", rackStrID), logger)
+
+	// Get site ID from query param (required)
+	siteStrID := c.QueryParam("siteId")
+	if siteStrID == "" {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
+	}
+
+	// Validate the site
+	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, vrh.dbSession)
+	if err != nil {
+		if errors.Is(err, cdb.ErrDoesNotExist) {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
+		}
+		logger.Error().Err(err).Msg("error retrieving Site from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site specified in request due to DB error", nil)
+	}
+
+	// Verify site belongs to the org's Infrastructure Provider
+	if site.InfrastructureProviderID != infrastructureProvider.ID {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
+	}
+
+	// Get the temporal client for the site
+	stc, err := vrh.scp.GetClientByID(site.ID)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Temporal client for Site")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
+	}
+
+	// Build RLA request - target the specific rack by ID
+	rlaRequest := &rlav1.ValidateComponentsRequest{
+		TargetSpec: &rlav1.OperationTargetSpec{
+			Targets: &rlav1.OperationTargetSpec_Racks{
+				Racks: &rlav1.RackTargets{
+					Targets: []*rlav1.RackTarget{
+						{
+							Identifier: &rlav1.RackTarget_Id{
+								Id: &rlav1.UUID{Id: rackStrID},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Execute workflow
+	workflowOptions := tClient.StartWorkflowOptions{
+		ID:                       fmt.Sprintf("ValidateRack-%s", rackStrID),
+		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		TaskQueue:                queue.SiteTaskQueue,
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
+	defer cancel()
+
+	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "ValidateRack", rlaRequest)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to execute ValidateRack workflow")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to validate Rack", nil)
+	}
+
+	// Get workflow result
+	var rlaResponse rlav1.ValidateComponentsResponse
+	err = we.Get(ctx, &rlaResponse)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to get result from ValidateRack workflow")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to validate Rack", nil)
+	}
+
+	// Convert to API model
+	apiResult := model.NewAPIRackValidationResult(&rlaResponse)
+
+	logger.Info().Int32("totalDiffs", rlaResponse.GetTotalDiffs()).Msg("finishing API handler")
+
+	return c.JSON(http.StatusOK, apiResult)
+}
