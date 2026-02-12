@@ -275,7 +275,7 @@ configure_site_agent() {
     kubectl -n $NAMESPACE get configmap carbide-rest-site-agent-config -o yaml | \
         sed "s/CLUSTER_ID: .*/CLUSTER_ID: \"$site_id\"/" | \
         sed "s/TEMPORAL_SUBSCRIBE_NAMESPACE: .*/TEMPORAL_SUBSCRIBE_NAMESPACE: \"$site_id\"/" | \
-        sed "s/TEMPORAL_SUBSCRIBE_QUEUE: .*/TEMPORAL_SUBSCRIBE_QUEUE: \"$site_id\"/" | \
+        sed "s/TEMPORAL_SUBSCRIBE_QUEUE: .*/TEMPORAL_SUBSCRIBE_QUEUE: \"site\"/" | \
         kubectl apply -f -
 
     kubectl -n $NAMESPACE get secret site-registration -o yaml 2>/dev/null | \
@@ -291,6 +291,71 @@ configure_site_agent() {
     kubectl -n $NAMESPACE rollout status deployment/carbide-rest-site-agent --timeout=240s
 }
 
+setup_dev_data() {
+    local site_id=$1
+
+    echo "Setting site to Registered state for local dev..."
+    kubectl exec -n $NAMESPACE postgres-0 -- psql -U forge -d forge -c \
+        "UPDATE site SET status = 'Registered' WHERE id = '$site_id';" 2>/dev/null
+
+    echo "Creating dev allocation..."
+    kubectl exec -n $NAMESPACE postgres-0 -- psql -U forge -d forge -c \
+        "INSERT INTO allocation (id, name, description, infrastructure_provider_id, tenant_id, site_id, status, created_by)
+         SELECT gen_random_uuid(), 'dev-allocation', 'Local dev allocation',
+                ip.id, t.id, '$site_id', 'Active', u.id
+         FROM infrastructure_provider ip, tenant t, \"user\" u
+         LIMIT 1
+         ON CONFLICT DO NOTHING;" 2>/dev/null
+
+    echo "Creating tenant-site association..."
+    kubectl exec -n $NAMESPACE postgres-0 -- psql -U forge -d forge -c \
+        "INSERT INTO tenant_site (id, tenant_id, tenant_org, site_id, enable_serial_console, created_by)
+         SELECT gen_random_uuid(), t.id, t.org, '$site_id', false, u.id
+         FROM tenant t, \"user\" u
+         LIMIT 1
+         ON CONFLICT DO NOTHING;" 2>/dev/null
+
+    echo "Creating dev IP block..."
+    kubectl exec -n $NAMESPACE postgres-0 -- psql -U forge -d forge -c \
+        "INSERT INTO ip_block (id, name, description, site_id, infrastructure_provider_id, tenant_id, routing_type, prefix, prefix_length, protocol_version, full_grant, status, created_by)
+         SELECT gen_random_uuid(), 'dev-ip-block', 'Local dev IP block', '$site_id', ip.id, t.id, 'DatacenterOnly', '10.0.0.0', 16, 'IPv4', false, 'Ready', u.id
+         FROM infrastructure_provider ip, tenant t, \"user\" u
+         LIMIT 1
+         ON CONFLICT DO NOTHING;" 2>/dev/null
+
+    echo "Creating dev instance type..."
+    kubectl exec -n $NAMESPACE postgres-0 -- psql -U forge -d forge -c \
+        "INSERT INTO instance_type (id, name, description, site_id, infrastructure_provider_id, controller_machine_type, status, created_by, version)
+         SELECT gen_random_uuid(), 'dev-instance-type', 'Local dev instance type', '$site_id', ip.id, 'DGX', 'Ready', u.id, '1.0'
+         FROM infrastructure_provider ip, \"user\" u
+         LIMIT 1
+         ON CONFLICT DO NOTHING;" 2>/dev/null
+
+    echo "Creating dev allocation constraint..."
+    kubectl exec -n $NAMESPACE postgres-0 -- psql -U forge -d forge -c \
+        "INSERT INTO allocation_constraint (id, allocation_id, resource_type, resource_type_id, constraint_type, constraint_value, created_by)
+         SELECT gen_random_uuid(), a.id, 'InstanceType', it.id, 'Reserved', '10', u.id
+         FROM allocation a, instance_type it, \"user\" u
+         LIMIT 1
+         ON CONFLICT DO NOTHING;" 2>/dev/null
+
+    echo "Creating mock machines..."
+    kubectl exec -n $NAMESPACE postgres-0 -- psql -U forge -d forge -c \
+        "INSERT INTO machine (id, infrastructure_provider_id, site_id, instance_type_id, controller_machine_id, controller_machine_type, vendor, product_name, serial_number, is_in_maintenance, is_usable_by_tenant, is_network_degraded, is_assigned, status, is_missing_on_site)
+         SELECT 'mock-machine-' || n, ip.id, '$site_id', it.id, 'ctrl-machine-' || n, 'DGX', 'NVIDIA', 'DGX A100', 'SN-MOCK-' || n, false, true, false, false, 'Ready', false
+         FROM infrastructure_provider ip, instance_type it, generate_series(1, 2) AS n
+         ON CONFLICT DO NOTHING;" 2>/dev/null
+
+    echo "Linking machines to instance types..."
+    kubectl exec -n $NAMESPACE postgres-0 -- psql -U forge -d forge -c \
+        "INSERT INTO machine_instance_type (id, machine_id, instance_type_id)
+         SELECT gen_random_uuid(), m.id, m.instance_type_id
+         FROM machine m WHERE m.instance_type_id IS NOT NULL
+         ON CONFLICT DO NOTHING;" 2>/dev/null
+
+    echo "Dev data configured."
+}
+
 setup_site_agent() {
     echo "Setting up site-agent..."
     wait_for_services
@@ -304,6 +369,9 @@ setup_site_agent() {
     
     echo "Configuring site-agent..."
     configure_site_agent "$SITE_ID"
+
+    echo "Setting up dev data..."
+    setup_dev_data "$SITE_ID"
     
     kubectl -n $NAMESPACE get pods -l app=carbide-rest-site-agent
     echo "Site-agent setup complete."

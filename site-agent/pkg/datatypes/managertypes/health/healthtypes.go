@@ -55,7 +55,18 @@ type HealthCache struct {
 	Availabilty      HighAvailability
 }
 
-// NewHealthCache - initialize site agent health cache
+// NewHealthCache - initialize site agent health cache.
+// States default to UP; they will be set to DOWN/ERROR if problems are detected.
 func NewHealthCache() *HealthCache {
-	return &HealthCache{}
+	return &HealthCache{
+		Inventory: SiteInventoryHealth{
+			State: wflows.HealthState_UP,
+		},
+		CarbideInterface: SiteControllerConnection{
+			State: wflows.HealthState_UP,
+		},
+		Availabilty: HighAvailability{
+			State: wflows.HealthState_UP,
+		},
+	}
 }

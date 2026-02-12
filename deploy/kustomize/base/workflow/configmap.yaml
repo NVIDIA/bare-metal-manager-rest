@@ -51,7 +51,8 @@ data:
 
     ngc:
       api:
-        baseUrl: ""
+        # Placeholder for local dev; not used in disconnected mode but required by config validation
+        baseUrl: "https://api.ngc.nvidia.com"
 
     notifications:
       slack:
