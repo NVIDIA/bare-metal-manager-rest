@@ -31,6 +31,9 @@ import (
 
 	temporalEnums "go.temporal.io/api/enums/v1"
 
+	tp "go.temporal.io/sdk/temporal"
+
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/handler/util/common"
 	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
 	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 	cdbp "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
@@ -182,11 +185,69 @@ func (mskg ManageSSHKeyGroup) SyncSSHKeyGroupViaSiteAgent(ctx context.Context, s
 		}
 
 		// Execute the site workflow to create the SSH Key Group
-		we, err = stc.ExecuteWorkflow(ctx, workflowOptions, "CreateSSHKeyGroupV2", createSSHKeyGroupRequest)
+		// Add context deadlines
+		ctx, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
+		defer cancel()
+
+		// Trigger Site workflow
+		we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "CreateSSHKeyGroupV2", createSSHKeyGroupRequest)
 		if err != nil {
 			status = cdbm.SSHKeyGroupSiteAssociationStatusError
 			statusMessage = "failed to initiate SSHKeyGroup syncing for create via Site Agent"
 		}
+
+		wid := we.GetID()
+		logger.Info().Str("Workflow ID", wid).Msg("executed synchronous create SSHKeyGroup workflow")
+
+		// Block until the workflow has completed and returned success/error.
+		err = we.Get(ctx, nil)
+		if err != nil {
+			var timeoutErr *tp.TimeoutError
+			if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded {
+
+				logger.Error().Err(err).Msg("failed to create SSHKeyGroup, timeout occurred executing workflow on Site.")
+
+				// Create a new context deadlines
+				newctx, newcancel := context.WithTimeout(context.Background(), common.WorkflowContextNewAfterTimeout)
+				defer newcancel()
+
+				// Initiate termination workflow
+				serr := stc.TerminateWorkflow(newctx, wid, "", "timeout occurred executing create SSHKeyGroup workflow")
+				if serr != nil {
+					logger.Error().Err(serr).Msg("failed to execute terminate Temporal workflow for creating SSHKeyGroup")
+				}
+				logger.Info().Str("Workflow ID", wid).Msg("initiated terminate synchronous create SSHKeyGroup workflow successfully")
+			} else if err.Error() != "" && strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
+
+				logger.Info().Msg("SSHKeyGroup already exists on Site, attempting to update it instead of creating a new one")
+
+				// Set the workflow ID and KeysetIdentifier for the update request asynchronously
+				workflowOptions.ID = "site-ssh-key-group-update-" + sshKeyGroupID.String() + "-" + *skgsa.Version
+				updateSSHKeyGroupRequest := &cwssaws.UpdateTenantKeysetRequest{
+					KeysetIdentifier: keysetIdentifier,
+					KeysetContent:    keysetContent,
+					Version:          *skgsa.Version,
+				}
+
+				// Execute the site workflow to update the SSH Key Group
+				we, err = stc.ExecuteWorkflow(ctx, workflowOptions, "UpdateSSHKeyGroupV2", updateSSHKeyGroupRequest)
+
+				statusMessage = MsgSSHKeyGroupUpdateInitiated
+				if err != nil {
+					status = cdbm.SSHKeyGroupSiteAssociationStatusError
+					statusMessage = "failed to initiate SSH Key Group syncing for update via Site Agent"
+				}
+			}
+			if err != nil {
+				status = cdbm.SSHKeyGroupSiteAssociationStatusError
+				statusMessage = "failed to initiate SSHKeyGroup syncing for create via Site Agent"
+			} else {
+				logger.Info().Str("Workflow ID", wid).Msg("completed synchronous create SSHKeyGroup workflow")
+			}
+		}
+
+		logger.Info().Str("Workflow ID", wid).Msg("completed synchronous create SSHKeyGroup workflow")
+
 	} else {
 		// Set the workflow ID and KeysetIdentifier for the update request
 		workflowOptions.ID = "site-ssh-key-group-update-" + sshKeyGroupID.String() + "-" + *skgsa.Version
