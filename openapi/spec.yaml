@@ -15,15 +15,15 @@
 
 openapi: 3.1.0
 info:
-  title: Carbide REST API
+  title: NVIDIA Bare Metal Manager REST API
   version: 1.0.2
-  summary: Carbide REST API is the centralize RESTful gateway to access Carbide service
-  description: 'Carbide REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all Carbide Sites.'
+  summary: NVIDIA Bare Metal Manager REST API is the centralize RESTful gateway to access NVIDIA Bare Metal Manager service
+  description: 'NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to asSites.'
   license:
     name: Apache-2.0
     url: 'https://www.apache.org/licenses/LICENSE-2.0'
   contact:
-    name: Carbide Dev Team
+    name: NVIDIA Bare Metal Manager Dev Team
     email: carbide-dev@exchange.nvidia.com
 servers:
   - url: 'https://carbide-rest-api.carbide.svc.cluster.local'
@@ -51,7 +51,7 @@ tags:
       - `POST /org/:orgName/carbide/tenant` endpoint was deprecated and was removed on August 17th, 2023 0:00 UTC. Tenants are automatically created when retrieved by a Tenant Admin.
       - `PATCH /org/:orgName/carbide/tenant/current` endpoint was deprecated and was removed on August 17th, 2023 0:00 UTC. Tenant details are populated from Org information and cannot be updated by user.
   - name: Tenant Account
-    description: Tenant Account connects a Carbide Tenant with a Carbide Infrastructure Provider. It represent/contains any information pertaining to their relationship.
+    description: Tenant Account connects a Tenant with an Infrastructure Provider. It represent/contains any information pertaining to their relationship.
   - name: Site
     description: Site operations
   - name: Allocation
@@ -60,12 +60,12 @@ tags:
     description: VPC operations
   - name: VPC Prefix
     description: |-
-      VPC Prefixes are networking constructs that connect a set of Carbide baremetal machines.
+      VPC Prefixes are networking constructs that connect a set of bare metal machines.
 
       They are defined by a prefix and prefix length and can be a slice or the whole part of an IP Block allocated to a Tenant.
   - name: Subnet
     description: |-
-      Subnets are networking constructs that connect a set of Carbide baremetal machines.
+      Subnets are networking constructs that connect a set of bare metal machines.
 
       They are defined by a prefix and prefix length and can be a slice or the whole part of an IP Block allocated to a Tenant.
 
@@ -128,7 +128,7 @@ tags:
   - name: SSH Key Group
     description: SSH Key Groups allow binding several SSH Keys together so they can be applied to Sites or other entities as a unit
   - name: SSH Key
-    description: SSH Key allows access to Carbide Serial Console
+    description: SSH Key allows access to Serial Console
   - name: User
     description: User operations
   - name: Audit
@@ -3376,16 +3376,7 @@ paths:
               minItems: 1
               maxItems: 100
               items:
-                allOf:
-                  - $ref: '#/components/schemas/ExpectedMachineUpdateRequest'
-                  - type: object
-                    required:
-                      - id
-                    properties:
-                      id:
-                        type: string
-                        format: uuid
-                        description: ID of the Expected Machine to update (required for batch operations)
+                $ref: '#/components/schemas/ExpectedMachineUpdateRequest'
             examples:
               example-1:
                 value:
@@ -9691,7 +9682,7 @@ components:
         id:
           type: string
           format: uuid
-          description: Carbide issued ID of the Tenant
+          description: Unique ID of the Tenant
           readOnly: true
         org:
           type: string
@@ -9931,7 +9922,7 @@ components:
     Site:
       title: Site
       type: object
-      description: Site is a datacenter that is running Carbide Controller
+      description: Site is a datacenter that is running NVIDIA Bare Metal Manager services
       examples:
         - id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
           name: San Jose Central 4
@@ -10571,9 +10562,6 @@ components:
             - 'null'
           description: ID of the Network Security Group attached to the VPC
         networkSecurityGroupPropagationDetails:
-          type:
-            - 'null'
-            - object
           $ref: '#/components/schemas/NetworkSecurityGroupPropagationDetails'
           description: Propagation details for the attached Network Security Group
         nvLinkLogicalPartitionId:
@@ -12373,10 +12361,8 @@ components:
             - string
             - 'null'
         networkSecurityGroupPropagationDetails:
-          type:
-            - 'null'
-            - object
           $ref: '#/components/schemas/NetworkSecurityGroupPropagationDetails'
+          description: Propagation details for the attached Network Security Group
         networkSecurityGroupInherited:
           type: boolean
           description: Indicates if the Network Security Group is inherited from VPC
@@ -13538,7 +13524,7 @@ components:
           description: Unique identifier of the component in RLA
         componentId:
           type: string
-          description: ID of the component in its source system (e.g. Carbide machine ID for compute nodes)
+          description: ID of the component in its source system (e.g. Machine ID for compute nodes)
         type:
           type: string
           description: Type of the component (e.g. COMPONENT_TYPE_COMPUTE, COMPONENT_TYPE_SWITCH)
@@ -13766,7 +13752,7 @@ components:
       properties:
         id:
           type: string
-          description: Unique ID of Machine across Carbide Cloud & Site
+          description: Unique ID of Machine
           readOnly: true
         controllerMachineId:
           type: string
@@ -14421,7 +14407,7 @@ components:
           description: |-
             ID of the Expected Machine to update.
 
-            Optional for single updates (ignored if provided, URL path ID is used).
+            Optional for individual Expected Machine update (ignored if provided, ID from URL path is used).
 
             Required for batch update operations.
         bmcMacAddress:
@@ -15805,7 +15791,7 @@ components:
     User:
       title: User
       type: object
-      description: Details of the user as collected by Carbide backend
+      description: Details of the user collected from authentication tokens
       examples:
         - id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
           email: janed@nvidia.com
@@ -15909,9 +15895,6 @@ components:
           format: uuid
           description: User ID that executed the API call
         user:
-          type:
-            - object
-            - 'null'
           $ref: '#/components/schemas/User'
           description: User that executed the API call
         orgName:
@@ -15949,7 +15932,7 @@ components:
     Deprecation:
       title: Deprecation
       type: object
-      description: Details of a particular deprecation in Carbide API
+      description: Details of a particular deprecation in NVIDIA Bare Metal Manager API
       examples:
         - attribute: blockSize
           replacedBy: prefixLength
@@ -15980,7 +15963,7 @@ components:
     CarbideAPIError:
       title: CarbideAPIError
       type: object
-      description: Describes the error response from Carbide API
+      description: Describes the error response from NVIDIA Bare Metal Manager REST API
       properties:
         source:
           type: string

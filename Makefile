@@ -185,14 +185,14 @@ docker-build:
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) -f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-cert-manager .
 
 carbide-proto:
-	if [ -d "bare-metal-manager-core" ]; then cd bare-metal-manager-core && git pull; else git clone ssh://git@github.com/nvidia/bare-metal-manager-core.git; fi
-	ls bare-metal-manager-core/rpc/proto
-	@for file in bare-metal-manager-core/rpc/proto/*.proto; do \
+	if [ -d "carbide-core" ]; then cd carbide-core && git pull; else git clone ssh://git@github.com/nvidia/carbide-core.git; fi
+	ls carbide-core/rpc/proto
+	@for file in carbide-core/rpc/proto/*.proto; do \
 		cp "$$file" "workflow-schema/site-agent/workflows/v1/$$(basename "$$file" .proto)_carbide.proto"; \
 		echo "Copied: $$file"; \
 		./workflow-schema/scripts/add-go-package-option.sh "workflow-schema/site-agent/workflows/v1/$$(basename "$$file" .proto)_carbide.proto" "github.com/nvidia/bare-metal-manager-rest/workflow-schema/proto"; \
 	done
-	rm -rf bare-metal-manager-core
+	rm -rf carbide-core
 
 carbide-protogen:
 	echo "Generating protobuf for Carbide"
@@ -435,12 +435,15 @@ test-temporal-e2e:
 
 # Validate OpenAPI spec using Redocly CLI (Docker)
 lint-openapi:
-	docker run --rm -v ./openapi:/spec redocly/cli lint /spec/spec.yaml
+	npx @redocly/cli lint ./openapi/spec.yaml
 
 # Preview OpenAPI spec in Redoc UI (Docker)
 preview-openapi:
 	@echo "Starting Redoc UI at http://127.0.0.1:8090"
 	docker run -it --rm -p 8090:80 -v ./openapi/spec.yaml:/usr/share/nginx/html/openapi.yaml -e SPEC_URL=openapi.yaml redocly/redoc
+
+publish-openapi:
+	npx @redocly/cli build-docs ./openapi/spec.yaml -o ./docs/index.html
 
 # =============================================================================
 # Pre-commit Hooks (TruffleHog Secret Detection)
