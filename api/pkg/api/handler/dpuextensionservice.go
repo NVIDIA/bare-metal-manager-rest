@@ -1483,18 +1483,6 @@ func (ddesvh DeleteDpuExtensionServiceVersionHandler) Handle(c echo.Context) err
 			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to update active versions after DPU Extension Service version deletion, DB error", nil)
 		}
 
-		// Clear version info
-		if dpuExtensionService.VersionInfo != nil {
-			_, err = desDAO.Clear(ctx, nil, cdbm.DpuExtensionServiceClearInput{
-				DpuExtensionServiceID: dpuExtensionService.ID,
-				VersionInfo:           true,
-			})
-			if err != nil {
-				logger.Error().Err(err).Msg("error clearing version info after DPU Extension Service version deletion")
-				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to clear version info for deleted version, DB error", nil)
-			}
-		}
-
 		// If latest version is not equal to the remaining latest version, then fetch the latest remaining version
 		if *dpuExtensionService.Version != remainingVersions[0] {
 			fetchLatestRemainingVersion = true
@@ -1502,6 +1490,18 @@ func (ddesvh DeleteDpuExtensionServiceVersionHandler) Handle(c echo.Context) err
 	} else {
 		// DPU Extension Service doesn't have version field populated, so we need to fetch the latest remaining version
 		fetchLatestRemainingVersion = true
+	}
+
+	if fetchLatestRemainingVersion && dpuExtensionService.VersionInfo != nil {
+		// Clear version info since latest version was deleted and latest version info is now incorrect
+		_, err = desDAO.Clear(ctx, nil, cdbm.DpuExtensionServiceClearInput{
+			DpuExtensionServiceID: dpuExtensionService.ID,
+			VersionInfo:           true,
+		})
+		if err != nil {
+			logger.Error().Err(err).Msg("error clearing version info after DPU Extension Service version deletion")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to clear version info for deleted version, DB error", nil)
+		}
 	}
 
 	// Trigger workflow to delete DPU Extension Service version
@@ -1618,5 +1618,5 @@ func (ddesvh DeleteDpuExtensionServiceVersionHandler) Handle(c echo.Context) err
 
 	logger.Info().Msg("finishing API handler")
 
-	return c.String(http.StatusAccepted, "Deletion request was accepted")
+	return c.NoContent(http.StatusNoContent)
 }
