@@ -1466,14 +1466,14 @@ func (ddesvh DeleteDpuExtensionServiceVersionHandler) Handle(c echo.Context) err
 	if len(remainingVersions) == 0 {
 		logger.Info().Msg("since deleted version was the last version, deleting DPU Extension Service from DB")
 		// Delete the DPU Extension Service record from DB
-		err := desDAO.Delete(ctx, nil, dpuExtensionService.ID)
+		err := desDAO.Delete(ctx, tx, dpuExtensionService.ID)
 		if err != nil {
 			logger.Error().Err(err).Msg("error deleting DPU Extension Service from DB")
 			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to delete DPU Extension Service version, error deleting parent DPU Extension Service", nil)
 		}
 	} else if dpuExtensionService.Version != nil {
 		// Update active versions
-		_, err = desDAO.Update(ctx, nil, cdbm.DpuExtensionServiceUpdateInput{
+		_, err = desDAO.Update(ctx, tx, cdbm.DpuExtensionServiceUpdateInput{
 			DpuExtensionServiceID: dpuExtensionService.ID,
 			ActiveVersions:        remainingVersions,
 			Status:                cdb.GetStrPtr(cdbm.DpuExtensionServiceStatusReady),
@@ -1494,7 +1494,7 @@ func (ddesvh DeleteDpuExtensionServiceVersionHandler) Handle(c echo.Context) err
 
 	if fetchLatestRemainingVersion && dpuExtensionService.VersionInfo != nil {
 		// Clear version info since latest version was deleted and latest version info is now incorrect
-		_, err = desDAO.Clear(ctx, nil, cdbm.DpuExtensionServiceClearInput{
+		_, err = desDAO.Clear(ctx, tx, cdbm.DpuExtensionServiceClearInput{
 			DpuExtensionServiceID: dpuExtensionService.ID,
 			VersionInfo:           true,
 		})
