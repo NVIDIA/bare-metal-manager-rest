@@ -1,3 +1,18 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 syntax = "proto3";
 
 package v1;
@@ -5,7 +20,7 @@ package v1;
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/nvidia/carbide-rest/workflow-schema/rla";
+option go_package = "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla";
 
 service RLA {
     // What version of RLA is this service running?
@@ -24,10 +39,10 @@ service RLA {
     rpc GetListOfNVLDomains(GetListOfNVLDomainsRequest) returns (GetListOfNVLDomainsResponse);
     rpc GetRacksForNVLDomain(GetRacksForNVLDomainRequest) returns (GetRacksForNVLDomainResponse);
     rpc UpgradeFirmware(UpgradeFirmwareRequest) returns (SubmitTaskResponse);
-    
+
     // Components APIs
-    rpc GetExpectedComponents(GetExpectedComponentsRequest) returns (GetExpectedComponentsResponse);
-    rpc GetActualComponents(GetActualComponentsRequest) returns (GetActualComponentsResponse);
+    rpc GetComponents(GetComponentsRequest) returns (GetComponentsResponse);
+    // rpc GetActualComponents(GetActualComponentsRequest) returns (GetActualComponentsResponse);  // Temporarily disabled
     rpc ValidateComponents(ValidateComponentsRequest) returns (ValidateComponentsResponse);
 
     // Power control a rack or a rack's specified components
@@ -82,7 +97,7 @@ message BMCInfo {
 message RackPosition {
     int32 slot_id = 1;
     int32 tray_idx = 2;
-    int32 host_id = 3; 
+    int32 host_id = 3;
 }
 
 enum ComponentType {
@@ -93,6 +108,40 @@ enum ComponentType {
     COMPONENT_TYPE_TORSWITCH = 4;
     COMPONENT_TYPE_UMS = 5;
     COMPONENT_TYPE_CDU = 6;
+}
+
+// RackFilterField represents the supported filter field types for rack queries
+enum RackFilterField {
+    RACK_FILTER_FIELD_UNSPECIFIED = 0;
+    RACK_FILTER_FIELD_NAME = 1;           // Filter by rack name
+    RACK_FILTER_FIELD_MANUFACTURER = 2;   // Filter by manufacturer
+    RACK_FILTER_FIELD_MODEL = 3;          // Filter by model (stored in description JSONB)
+}
+
+// ComponentFilterField represents the supported filter field types for component queries
+enum ComponentFilterField {
+    COMPONENT_FILTER_FIELD_UNSPECIFIED = 0;
+    COMPONENT_FILTER_FIELD_NAME = 1;           // Filter by component name
+    COMPONENT_FILTER_FIELD_MANUFACTURER = 2;   // Filter by manufacturer
+    COMPONENT_FILTER_FIELD_MODEL = 3;          // Filter by model (stored in description JSONB)
+    COMPONENT_FILTER_FIELD_TYPE = 4;           // Filter by component type (use ComponentType enum string values in StringQueryInfo)
+}
+
+// ComponentOrderByField represents the supported order by field types for component queries
+enum ComponentOrderByField {
+    COMPONENT_ORDER_BY_FIELD_UNSPECIFIED = 0;
+    COMPONENT_ORDER_BY_FIELD_NAME = 1;         // Order by component name
+    COMPONENT_ORDER_BY_FIELD_MANUFACTURER = 2; // Order by manufacturer
+    COMPONENT_ORDER_BY_FIELD_MODEL = 3;        // Order by model
+    COMPONENT_ORDER_BY_FIELD_TYPE = 4;         // Order by component type
+}
+
+// RackOrderByField represents the supported order by field types for rack queries
+enum RackOrderByField {
+    RACK_ORDER_BY_FIELD_UNSPECIFIED = 0;
+    RACK_ORDER_BY_FIELD_NAME = 1;              // Order by rack name
+    RACK_ORDER_BY_FIELD_MANUFACTURER = 2;      // Order by manufacturer
+    RACK_ORDER_BY_FIELD_MODEL = 3;             // Order by model
 }
 
 enum PowerControlOp {
@@ -143,7 +192,7 @@ message ActualComponent {
     repeated BMCInfo bmcs = 5;
     string component_id = 6;    // Component's own ID from its source system
     UUID rack_id = 7;           // Looked up from local DB using component_id
-    
+
     // Actual-specific fields
     google.protobuf.Timestamp last_seen = 8;    // When this component was last observed
     string power_state = 9;                      // Current power state
@@ -223,6 +272,24 @@ message StringQueryInfo {
     bool use_or = 3;
 }
 
+// Filter represents a single filter condition
+message Filter {
+    oneof field {
+        RackFilterField rack_field = 1;           // For rack queries
+        ComponentFilterField component_field = 2;  // For component queries
+    }
+    StringQueryInfo query_info = 3;
+}
+
+// OrderBy represents ordering specification
+message OrderBy {
+    oneof field {
+        RackOrderByField rack_field = 1;           // For rack queries
+        ComponentOrderByField component_field = 2; // For component queries
+    }
+    string direction = 3;  // ASC or DESC
+}
+
 message Task {
     UUID id = 1;
     string operation = 2;
@@ -281,9 +348,10 @@ message GetComponentInfoResponse {
 }
 
 message GetListOfRacksRequest {
-    StringQueryInfo info = 1;
+    repeated Filter filters = 1;  // Filter conditions for rack queries
     bool with_components = 2;
     optional Pagination pagination = 3;
+    optional OrderBy order_by = 4;
 }
 
 message GetListOfRacksResponse {
@@ -334,17 +402,20 @@ message UpgradeFirmwareRequest {
     string description = 5;                          // optional: task description
 }
 
-// GetExpectedComponents - retrieves expected components from local database
-message GetExpectedComponentsRequest {
-    OperationTargetSpec target_spec = 1;   // Flexible targeting: rack(s) with optional type filter, or specific components
-    optional Pagination pagination = 2;
+// GetComponents - retrieves components from local database
+message GetComponentsRequest {
+    optional OperationTargetSpec target_spec = 1;   // Optional: Flexible targeting: rack(s) with optional type filter, or specific components. If not provided, queries all components.
+    repeated Filter filters = 2;  // Filter conditions for component queries
+    optional Pagination pagination = 3;
+    optional OrderBy order_by = 4;
 }
 
-message GetExpectedComponentsResponse {
+message GetComponentsResponse {
     repeated Component components = 1;
     int32 total = 2;
 }
 
+// GetActualComponents is temporarily disabled, but message definitions are kept for future use
 message GetActualComponentsRequest {
     OperationTargetSpec target_spec = 1;   // Flexible targeting: rack(s) with optional type filter, or specific components
     optional Pagination pagination = 2;
@@ -362,7 +433,7 @@ message ValidateComponentsRequest {
 message ValidateComponentsResponse {
     repeated ComponentDiff diffs = 1;
     int32 total_diffs = 2;
-    
+
     // Summary counts
     int32 only_in_expected_count = 3;
     int32 only_in_actual_count = 4;
@@ -380,13 +451,13 @@ enum DiffType {
 message ComponentDiff {
     DiffType type = 1;
     string component_id = 2;
-    
+
     // Populated when type is ONLY_IN_EXPECTED
     Component expected = 3;
-    
+
     // Populated when type is ONLY_IN_ACTUAL
     ActualComponent actual = 4;
-    
+
     // Populated when type is DRIFT - lists the fields that differ
     repeated FieldDiff field_diffs = 5;
 }

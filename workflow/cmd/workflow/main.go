@@ -1,12 +1,19 @@
-// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
-//
-// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-// property and proprietary rights in and to this material, related
-// documentation and any modifications thereto. Any use, reproduction,
-// disclosure or distribution of this material and related documentation
-// without an express license agreement from NVIDIA CORPORATION or
-// its affiliates is strictly prohibited.
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package main
 
@@ -36,69 +43,69 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
 
-	"github.com/nvidia/carbide-rest/workflow/internal/config"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/internal/config"
 
-	cwm "github.com/nvidia/carbide-rest/workflow/internal/metrics"
-	cwfh "github.com/nvidia/carbide-rest/workflow/pkg/health"
-	cwfn "github.com/nvidia/carbide-rest/workflow/pkg/namespace"
+	cwm "github.com/nvidia/bare-metal-manager-rest/workflow/internal/metrics"
+	cwfh "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/health"
+	cwfn "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/namespace"
 
-	sc "github.com/nvidia/carbide-rest/workflow/pkg/client/site"
+	sc "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/client/site"
 
-	machineActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/machine"
-	machineWorkflow "github.com/nvidia/carbide-rest/workflow/pkg/workflow/machine"
+	machineActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/machine"
+	machineWorkflow "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/workflow/machine"
 
-	vpcActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/vpc"
-	vpcWorkflow "github.com/nvidia/carbide-rest/workflow/pkg/workflow/vpc"
+	vpcActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/vpc"
+	vpcWorkflow "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/workflow/vpc"
 
-	subnetActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/subnet"
-	subnetWorkflow "github.com/nvidia/carbide-rest/workflow/pkg/workflow/subnet"
+	subnetActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/subnet"
+	subnetWorkflow "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/workflow/subnet"
 
-	instanceActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/instance"
-	instanceWorkflow "github.com/nvidia/carbide-rest/workflow/pkg/workflow/instance"
+	instanceActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/instance"
+	instanceWorkflow "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/workflow/instance"
 
-	userActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/user"
-	userWorkflow "github.com/nvidia/carbide-rest/workflow/pkg/workflow/user"
+	userActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/user"
+	userWorkflow "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/workflow/user"
 
-	siteActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/site"
-	siteWorkflow "github.com/nvidia/carbide-rest/workflow/pkg/workflow/site"
+	siteActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/site"
+	siteWorkflow "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/workflow/site"
 
-	sshKeyGroupActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/sshkeygroup"
-	sshKeyGroupWorkflow "github.com/nvidia/carbide-rest/workflow/pkg/workflow/sshkeygroup"
+	sshKeyGroupActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/sshkeygroup"
+	sshKeyGroupWorkflow "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/workflow/sshkeygroup"
 
-	ibpActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/infinibandpartition"
-	ibpWorkflow "github.com/nvidia/carbide-rest/workflow/pkg/workflow/infinibandpartition"
+	ibpActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/infinibandpartition"
+	ibpWorkflow "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/workflow/infinibandpartition"
 
-	expectedMachineActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/expectedmachine"
-	expectedMachineWorkflow "github.com/nvidia/carbide-rest/workflow/pkg/workflow/expectedmachine"
+	expectedMachineActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/expectedmachine"
+	expectedMachineWorkflow "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/workflow/expectedmachine"
 
-	tenantActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/tenant"
-	tenantWorkflow "github.com/nvidia/carbide-rest/workflow/pkg/workflow/tenant"
+	tenantActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/tenant"
+	tenantWorkflow "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/workflow/tenant"
 
-	instanceTypeActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/instancetype"
-	instanceTypeWorkflow "github.com/nvidia/carbide-rest/workflow/pkg/workflow/instancetype"
+	instanceTypeActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/instancetype"
+	instanceTypeWorkflow "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/workflow/instancetype"
 
-	networkSecurityGroupActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/networksecuritygroup"
-	networkSecurityGroupWorkflow "github.com/nvidia/carbide-rest/workflow/pkg/workflow/networksecuritygroup"
+	networkSecurityGroupActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/networksecuritygroup"
+	networkSecurityGroupWorkflow "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/workflow/networksecuritygroup"
 
-	osImageActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/operatingsystem"
-	osImageWorkflow "github.com/nvidia/carbide-rest/workflow/pkg/workflow/operatingsystem"
+	osImageActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/operatingsystem"
+	osImageWorkflow "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/workflow/operatingsystem"
 
-	skuActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/sku"
-	skuWorkflow "github.com/nvidia/carbide-rest/workflow/pkg/workflow/sku"
+	skuActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/sku"
+	skuWorkflow "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/workflow/sku"
 
-	vpcPrefixActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/vpcprefix"
-	vpcPrefixWorkflow "github.com/nvidia/carbide-rest/workflow/pkg/workflow/vpcprefix"
+	vpcPrefixActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/vpcprefix"
+	vpcPrefixWorkflow "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/workflow/vpcprefix"
 
-	vpcPeeringActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/vpcpeering"
-	vpcPeeringWorkflow "github.com/nvidia/carbide-rest/workflow/pkg/workflow/vpcpeering"
+	vpcPeeringActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/vpcpeering"
+	vpcPeeringWorkflow "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/workflow/vpcpeering"
 
-	dpuExtensionServiceActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/dpuextensionservice"
-	dpuExtensionServiceWorkflow "github.com/nvidia/carbide-rest/workflow/pkg/workflow/dpuextensionservice"
+	dpuExtensionServiceActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/dpuextensionservice"
+	dpuExtensionServiceWorkflow "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/workflow/dpuextensionservice"
 
-	nvLinkLogicalPartitionActivity "github.com/nvidia/carbide-rest/workflow/pkg/activity/nvlinklogicalpartition"
-	nvLinkLogicalPartitionWorkflow "github.com/nvidia/carbide-rest/workflow/pkg/workflow/nvlinklogicalpartition"
+	nvLinkLogicalPartitionActivity "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/activity/nvlinklogicalpartition"
+	nvLinkLogicalPartitionWorkflow "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/workflow/nvlinklogicalpartition"
 )
 
 const (

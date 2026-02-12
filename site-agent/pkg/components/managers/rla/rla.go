@@ -1,19 +1,26 @@
-// SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-// SPDX-License-Identifier: LicenseRef-NvidiaProprietary
-//
-// NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-// property and proprietary rights in and to this material, related
-// documentation and any modifications thereto. Any use, reproduction,
-// disclosure or distribution of this material and related documentation
-// without an express license agreement from NVIDIA CORPORATION or
-// its affiliates is strictly prohibited.
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 package rla
 
 import (
 	"fmt"
 
-	computils "github.com/nvidia/carbide-rest/site-agent/pkg/components/utils"
+	computils "github.com/nvidia/bare-metal-manager-rest/site-agent/pkg/components/utils"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -24,6 +31,12 @@ const (
 
 // Init - initialize RLA manager
 func (rla *API) Init() {
+	// Check if RLA is enabled via environment variable
+	if !ManagerAccess.Conf.EB.RLA.Enabled {
+		ManagerAccess.Data.EB.Log.Info().Msg("RLA: RLA is disabled, skipping initialization")
+		return
+	}
+
 	ManagerAccess.Data.EB.Log.Info().Msg("RLA: Initializing RLA manager")
 
 	prometheus.MustRegister(
@@ -53,7 +66,7 @@ func (rla *API) Start() {
 
 	// Create the client here
 	// Each workflow will check and reinitialize the client if needed
-	if err := rla.CreateGrpcClient(); err != nil {
+	if err := rla.CreateGRPCClient(); err != nil {
 		ManagerAccess.Data.EB.Log.Error().Msgf("RLA: failed to create GRPC client: %v", err)
 	}
 }
@@ -70,7 +83,7 @@ func (rla *API) GetState() []string {
 	return strs
 }
 
-// GetGRPCClientVersion returns the current version of the GRPC client
+// GetGrpcClientVersion returns the current version of the GRPC client
 func (rla *API) GetGRPCClientVersion() int64 {
 	return ManagerAccess.Data.EB.Managers.RLA.Client.Version()
 }

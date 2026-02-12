@@ -1,15 +1,19 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  *
- * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
- * property and proprietary rights in and to this material, related
- * documentation and any modifications thereto. Any use, reproduction,
- * disclosure or distribution of this material and related documentation
- * without an express license agreement from NVIDIA CORPORATION or
- * its affiliates is strictly prohibited.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
-
 
 package handler
 
@@ -20,18 +24,18 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	"github.com/nvidia/bare-metal-manager-rest/api/internal/config"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/handler/util/common"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model"
+	sc "github.com/nvidia/bare-metal-manager-rest/api/pkg/client/site"
+	auth "github.com/nvidia/bare-metal-manager-rest/auth/pkg/authorization"
+	cerr "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
+	sutil "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/nvidia/carbide-rest/api/internal/config"
-	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
-	"github.com/nvidia/carbide-rest/api/pkg/api/model"
-	sc "github.com/nvidia/carbide-rest/api/pkg/client/site"
-	auth "github.com/nvidia/carbide-rest/auth/pkg/authorization"
-	cerr "github.com/nvidia/carbide-rest/common/pkg/util"
-	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
-	"github.com/nvidia/carbide-rest/workflow/pkg/queue"
 	"go.opentelemetry.io/otel/attribute"
 	tclient "go.temporal.io/sdk/client"
 	tp "go.temporal.io/sdk/temporal"

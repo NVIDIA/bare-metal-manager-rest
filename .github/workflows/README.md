@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # GitHub Actions Workflows for Docker Build and Push
 
 This directory contains GitHub Actions workflows for building and pushing Docker images to NVIDIA Container Registry (NVCR).

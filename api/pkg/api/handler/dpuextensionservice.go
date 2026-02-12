@@ -1,13 +1,18 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  *
- * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
- * property and proprietary rights in and to this material, related
- * documentation and any modifications thereto. Any use, reproduction,
- * disclosure or distribution of this material and related documentation
- * without an express license agreement from NVIDIA CORPORATION or
- * its affiliates is strictly prohibited.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package handler
@@ -27,20 +32,20 @@ import (
 	tclient "go.temporal.io/sdk/client"
 	tp "go.temporal.io/sdk/temporal"
 
-	"github.com/nvidia/carbide-rest/api/internal/config"
-	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
-	"github.com/nvidia/carbide-rest/api/pkg/api/model"
-	"github.com/nvidia/carbide-rest/api/pkg/api/pagination"
-	sc "github.com/nvidia/carbide-rest/api/pkg/client/site"
-	auth "github.com/nvidia/carbide-rest/auth/pkg/authorization"
-	cerr "github.com/nvidia/carbide-rest/common/pkg/util"
-	sutil "github.com/nvidia/carbide-rest/common/pkg/util"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
-	"github.com/nvidia/carbide-rest/workflow/pkg/queue"
+	"github.com/nvidia/bare-metal-manager-rest/api/internal/config"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/handler/util/common"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/pagination"
+	sc "github.com/nvidia/bare-metal-manager-rest/api/pkg/client/site"
+	auth "github.com/nvidia/bare-metal-manager-rest/auth/pkg/authorization"
+	cerr "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
+	sutil "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
 
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 // ~~~~~ Create Handler ~~~~~ //
@@ -213,7 +218,7 @@ func (cdesh CreateDpuExtensionServiceHandler) Handle(c echo.Context) error {
 	// Create a status detail record for the DPU Extension Service
 	sdDAO := cdbm.NewStatusDetailDAO(cdesh.dbSession)
 	statusDetail, err := sdDAO.CreateFromParams(ctx, tx, dpuExtensionService.ID.String(), cdbm.DpuExtensionServiceStatusPending,
-		cdb.GetStrPtr("received DPU Extension Service creation request, pending processing"))
+		cdb.GetStrPtr("Received DPU Extension Service creation request, pending processing"))
 	if err != nil {
 		logger.Error().Err(err).Msg("error creating Status Detail DB entry")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Status Detail for DPU Extension Service", nil)
@@ -985,7 +990,7 @@ func NewDeleteDpuExtensionServiceHandler(dbSession *cdb.Session, tc tclient.Clie
 // @Security ApiKeyAuth
 // @Param org path string true "Name of NGC organization"
 // @Param dpuExtensionServiceId path string true "ID of DPU Extension Service"
-// @Success 202 "Accepted"
+// @Success 204 "No Content"
 // @Router /v2/org/{org}/carbide/dpu-extension-service/{dpuExtensionServiceId} [delete]
 func (ddesh DeleteDpuExtensionServiceHandler) Handle(c echo.Context) error {
 	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Delete", "DpuExtensionService", c, ddesh.tracerSpan)
@@ -1083,6 +1088,13 @@ func (ddesh DeleteDpuExtensionServiceHandler) Handle(c echo.Context) error {
 	)
 	if err != nil {
 		logger.Error().Err(err).Msg("unable to update DPU Extension Service status to Deleting")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to update DPU Extension Service status to Deleting, DB error", nil)
+	}
+
+	// Delete the DPU Extension Service
+	err = desDAO.Delete(ctx, tx, dpuExtensionService.ID)
+	if err != nil {
+		logger.Error().Err(err).Msg("unable to delete DPU Extension Service")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to delete DPU Extension Service, DB error", nil)
 	}
 
@@ -1120,7 +1132,7 @@ func (ddesh DeleteDpuExtensionServiceHandler) Handle(c echo.Context) error {
 
 	logger.Info().Msg("finishing API handler")
 
-	return c.String(http.StatusAccepted, "Deletion request was accepted")
+	return c.NoContent(http.StatusNoContent)
 }
 
 // ~~~~~ Get Version Handler ~~~~~ //
@@ -1432,6 +1444,66 @@ func (ddesvh DeleteDpuExtensionServiceVersionHandler) Handle(c echo.Context) err
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Cannot delete version with active deployments", nil)
 	}
 
+	// Start a db tx
+	tx, err := cdb.BeginTx(ctx, ddesvh.dbSession, &sql.TxOptions{})
+	if err != nil {
+		logger.Error().Err(err).Msg("unable to start transaction")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to delete DPU Extension Service version, DB transaction error", nil)
+	}
+	txCommitted := false
+	defer common.RollbackTx(ctx, tx, &txCommitted)
+
+	remainingVersions := []string{}
+	for _, version := range dpuExtensionService.ActiveVersions {
+		if version != versionID {
+			remainingVersions = append(remainingVersions, version)
+		}
+	}
+
+	fetchLatestRemainingVersion := false
+
+	// Check if this was the last version
+	if len(remainingVersions) == 0 {
+		logger.Info().Msg("since deleted version was the last version, deleting DPU Extension Service from DB")
+		// Delete the DPU Extension Service record from DB
+		err := desDAO.Delete(ctx, tx, dpuExtensionService.ID)
+		if err != nil {
+			logger.Error().Err(err).Msg("error deleting DPU Extension Service from DB")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to delete DPU Extension Service version, error deleting parent DPU Extension Service", nil)
+		}
+	} else if dpuExtensionService.Version != nil {
+		// Update active versions
+		_, err = desDAO.Update(ctx, tx, cdbm.DpuExtensionServiceUpdateInput{
+			DpuExtensionServiceID: dpuExtensionService.ID,
+			ActiveVersions:        remainingVersions,
+			Status:                cdb.GetStrPtr(cdbm.DpuExtensionServiceStatusReady),
+		})
+		if err != nil {
+			logger.Error().Err(err).Msg("error updating DPU Extension Service record in DB after deleting individual version")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to update active versions after DPU Extension Service version deletion, DB error", nil)
+		}
+
+		// If latest version is not equal to the remaining latest version, then fetch the latest remaining version
+		if *dpuExtensionService.Version != remainingVersions[0] {
+			fetchLatestRemainingVersion = true
+		}
+	} else {
+		// DPU Extension Service doesn't have version field populated, so we need to fetch the latest remaining version
+		fetchLatestRemainingVersion = true
+	}
+
+	if fetchLatestRemainingVersion && dpuExtensionService.VersionInfo != nil {
+		// Clear version info since latest version was deleted and latest version info is now incorrect
+		_, err = desDAO.Clear(ctx, tx, cdbm.DpuExtensionServiceClearInput{
+			DpuExtensionServiceID: dpuExtensionService.ID,
+			VersionInfo:           true,
+		})
+		if err != nil {
+			logger.Error().Err(err).Msg("error clearing version info after DPU Extension Service version deletion")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to clear version info for deleted version, DB error", nil)
+		}
+	}
+
 	// Trigger workflow to delete DPU Extension Service version
 	deleteDpuExtensionServiceVersionRequest := &cwssaws.DeleteDpuExtensionServiceRequest{
 		ServiceId: dpuExtensionService.ID.String(),
@@ -1457,7 +1529,94 @@ func (ddesvh DeleteDpuExtensionServiceVersionHandler) Handle(c echo.Context) err
 		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, apiErr.Data)
 	}
 
+	// Commit transaction
+	err = tx.Commit()
+	if err != nil {
+		logger.Error().Err(err).Msg("error committing DPU Extension Service transaction to DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to delete DPU Extension Service version, DB transaction error", nil)
+	}
+	txCommitted = true
+
+	// Best effort to update the DPU Extension Service record in REST layer with the latest remaining version
+	if fetchLatestRemainingVersion {
+		workflowOptions := tclient.StartWorkflowOptions{
+			ID:                       "dpu-extension-service-get-versions-info-" + dpuExtensionService.ID.String() + "-" + remainingVersions[0],
+			WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+			TaskQueue:                queue.SiteTaskQueue,
+		}
+
+		// Trigger Site workflow
+		// Add context deadlines
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
+		defer cancel()
+
+		getDpuVersionInfoRequest := &cwssaws.GetDpuExtensionServiceVersionsInfoRequest{
+			ServiceId: dpuExtensionService.ID.String(),
+			Versions:  []string{remainingVersions[0]},
+		}
+
+		// Trigger Site workflow
+		workflowRun, err := stc.ExecuteWorkflow(ctxWithTimeout, workflowOptions, "GetDpuExtensionServiceVersionsInfo", getDpuVersionInfoRequest)
+		if err != nil {
+			logger.Error().Err(err).Msg("failed to schedule DPU Extension Service version info retrieval workflow on Site")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to schedule DPU Extension Service version info retrieval workflow", nil)
+		}
+
+		workflowID := workflowRun.GetID()
+
+		logger = logger.With().Str("Workflow ID", workflowID).Logger()
+
+		logger.Info().Msg("executing sync Temporal workflow on Site")
+
+		// Execute sync workflow on Site
+		var controllerVersionInfos *cwssaws.DpuExtensionServiceVersionInfoList
+		err = workflowRun.Get(ctxWithTimeout, &controllerVersionInfos)
+		if err != nil {
+			var timeoutErr *tp.TimeoutError
+			if errors.As(err, &timeoutErr) {
+				logger.Error().Err(err).Msg("timed out executing DPU Extension Service version info retrieval workflow on Site")
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Timed out executing DPU Extension Service version info retrieval workflow on Site: %s", err), nil)
+			}
+
+			code, uwerr := common.UnwrapWorkflowError(err)
+			logger.Error().Err(uwerr).Msg("failed to execute DPU Extension Service version info retrieval workflow on Site")
+			return cerr.NewAPIErrorResponse(c, code, fmt.Sprintf("Failed to execute DPU Extension Service version info retrieval workflow on Site: %s", uwerr), nil)
+		}
+
+		if len(controllerVersionInfos.VersionInfos) == 0 {
+			return cerr.NewAPIErrorResponse(c, http.StatusNotFound, "Could not find latest remaining version details for DPU Extension Service", nil)
+		}
+
+		controllerVersionInfo := controllerVersionInfos.VersionInfos[0]
+
+		if controllerVersionInfo != nil {
+			created, err := time.Parse(model.DpuExtensionServiceTimeFormat, controllerVersionInfo.Created)
+			if err != nil {
+				// NOTE: This is not accurate but without a timestamp, this is the best approximation
+				created = dpuExtensionService.Updated
+			}
+
+			versionInfo := &cdbm.DpuExtensionServiceVersionInfo{
+				Version:        remainingVersions[0],
+				Data:           controllerVersionInfo.Data,
+				HasCredentials: controllerVersionInfo.HasCredential,
+				Created:        created,
+			}
+
+			_, err = desDAO.Update(ctx, nil, cdbm.DpuExtensionServiceUpdateInput{
+				DpuExtensionServiceID: dpuExtensionService.ID,
+				Version:               &remainingVersions[0],
+				VersionInfo:           versionInfo,
+				ActiveVersions:        remainingVersions,
+				Status:                cdb.GetStrPtr(cdbm.DpuExtensionServiceStatusReady),
+			})
+			if err != nil {
+				logger.Error().Err(err).Msg("error updating DPU Extension Service record in DB after deleting individual version")
+			}
+		}
+	}
+
 	logger.Info().Msg("finishing API handler")
 
-	return c.String(http.StatusAccepted, "Deletion request was accepted")
+	return c.NoContent(http.StatusNoContent)
 }

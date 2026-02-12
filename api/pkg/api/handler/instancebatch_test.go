@@ -1,13 +1,18 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  *
- * NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
- * property and proprietary rights in and to this material, related
- * documentation and any modifications thereto. Any use, reproduction,
- * disclosure or distribution of this material and related documentation
- * without an express license agreement from NVIDIA CORPORATION or
- * its affiliates is strictly prohibited.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package handler
@@ -23,17 +28,17 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+	"github.com/nvidia/bare-metal-manager-rest/api/internal/config"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/handler/util/common"
+	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model"
+	sc "github.com/nvidia/bare-metal-manager-rest/api/pkg/client/site"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+	cdbu "github.com/nvidia/bare-metal-manager-rest/db/pkg/util"
+	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/uptrace/bun/extra/bundebug"
-	"github.com/nvidia/carbide-rest/api/internal/config"
-	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
-	"github.com/nvidia/carbide-rest/api/pkg/api/model"
-	sc "github.com/nvidia/carbide-rest/api/pkg/client/site"
-	cdb "github.com/nvidia/carbide-rest/db/pkg/db"
-	cdbm "github.com/nvidia/carbide-rest/db/pkg/db/model"
-	cdbu "github.com/nvidia/carbide-rest/db/pkg/util"
-	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
 	tmocks "go.temporal.io/sdk/mocks"
 )
 
@@ -131,7 +136,7 @@ func TestBatchCreateInstanceHandler_Handle(t *testing.T) {
 	assert.NotNil(t, ibp1)
 
 	// NVLink Logical Partition for testing NVLink Interfaces
-	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", tnOrg, st1, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
+	nvllp1 := testBuildNVLinkLogicalPartition(t, dbSession, "test-nvllp-1", cdb.GetStrPtr("Test NVLink Logical Partition"), tnOrg, st1, tn1, cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), false)
 	assert.NotNil(t, nvllp1)
 
 	// Add NVLink GPU capability to Instance Type 1 for NVLink interface tests
@@ -643,9 +648,9 @@ func TestBatchCreateInstanceHandler_Handle(t *testing.T) {
 			},
 			args: args{
 				reqData: &model.APIBatchInstanceCreateRequest{
-					NamePrefix:     "test-batch-with-dpu-multi-version",
-					Count:          2,
-					TenantID:       tn1.ID.String(),
+					NamePrefix: "test-batch-with-dpu-multi-version",
+					Count:      2,
+					TenantID:   tn1.ID.String(),
 					// Use ist2 to avoid consuming ist1 quota needed by later OS tests.
 					InstanceTypeID: ist2.ID.String(),
 					VpcID:          vpc1.ID.String(),

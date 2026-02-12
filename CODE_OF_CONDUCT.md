@@ -1,8 +1,13 @@
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Contributor Covenant Code of Conduct
 
 ## Overview
 
-Define the code of conduct followed and enforced for Carbide.
+Define the code of conduct followed and enforced for NVIDIA Bare Metal Manager.
 
 ### Intended audience
 

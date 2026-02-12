@@ -1,6 +1,15 @@
-# Carbide REST API
+<!--
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+-->
 
-A collection of microservices that comprise the management backend for Carbide, exposed as a REST API.
+# NVIDIA Bare Metal Manager REST API
+
+A collection of microservices that comprise the management backend for NVIDIA Bare Metal Manager, exposed as a REST API.
+
+In deployments, NVIDIA Bare Metal Manager REST requires [NVIDIA Bare Metal Manager Core](github.com/NVIDIA/bare-metal-manager-core) to function.
+
+The REST layer can be deployed in the datacenter with Bare Metal Manager Core, or deployed anywhere in Cloud and allow Site Agent to connect from the datacenter. Multiple Bare Metal Manager Cores running in different datacenters can also connect to Bare Metal Manager REST through respective Site Agents.
 
 ## Prerequisites
 
@@ -38,6 +47,7 @@ This command:
 3. Deploys all services (PostgreSQL, Temporal, Keycloak, cert-manager, etc.)
 4. Runs database migrations
 5. Configures PKI and site-agent
+6. Deploys a mock Bare Metal Manager Core
 
 Once complete, services are available at:
 
@@ -134,7 +144,7 @@ az acr login --name myregistry
 2. Build and push:
 
 ```bash
-REGISTRY=my-registry.example.com/carbide
+REGISTRY=my-registry.example.com/bare-metal-manager-rest
 TAG=v1.0.0
 
 make docker-build IMAGE_REGISTRY=$REGISTRY IMAGE_TAG=$TAG
@@ -225,4 +235,3 @@ in non-critical environments first.
 ## License
 
 See [LICENSE](LICENSE) for details.
-
