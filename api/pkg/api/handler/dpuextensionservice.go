@@ -218,7 +218,7 @@ func (cdesh CreateDpuExtensionServiceHandler) Handle(c echo.Context) error {
 	// Create a status detail record for the DPU Extension Service
 	sdDAO := cdbm.NewStatusDetailDAO(cdesh.dbSession)
 	statusDetail, err := sdDAO.CreateFromParams(ctx, tx, dpuExtensionService.ID.String(), cdbm.DpuExtensionServiceStatusPending,
-		cdb.GetStrPtr("received DPU Extension Service creation request, pending processing"))
+		cdb.GetStrPtr("Received DPU Extension Service creation request, pending processing"))
 	if err != nil {
 		logger.Error().Err(err).Msg("error creating Status Detail DB entry")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Status Detail for DPU Extension Service", nil)
@@ -990,7 +990,7 @@ func NewDeleteDpuExtensionServiceHandler(dbSession *cdb.Session, tc tclient.Clie
 // @Security ApiKeyAuth
 // @Param org path string true "Name of NGC organization"
 // @Param dpuExtensionServiceId path string true "ID of DPU Extension Service"
-// @Success 202 "Accepted"
+// @Success 204 "No Content"
 // @Router /v2/org/{org}/carbide/dpu-extension-service/{dpuExtensionServiceId} [delete]
 func (ddesh DeleteDpuExtensionServiceHandler) Handle(c echo.Context) error {
 	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Delete", "DpuExtensionService", c, ddesh.tracerSpan)
@@ -1088,6 +1088,13 @@ func (ddesh DeleteDpuExtensionServiceHandler) Handle(c echo.Context) error {
 	)
 	if err != nil {
 		logger.Error().Err(err).Msg("unable to update DPU Extension Service status to Deleting")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to update DPU Extension Service status to Deleting, DB error", nil)
+	}
+
+	// Delete the DPU Extension Service
+	err = desDAO.Delete(ctx, tx, dpuExtensionService.ID)
+	if err != nil {
+		logger.Error().Err(err).Msg("unable to delete DPU Extension Service")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to delete DPU Extension Service, DB error", nil)
 	}
 
@@ -1125,7 +1132,7 @@ func (ddesh DeleteDpuExtensionServiceHandler) Handle(c echo.Context) error {
 
 	logger.Info().Msg("finishing API handler")
 
-	return c.String(http.StatusAccepted, "Deletion request was accepted")
+	return c.NoContent(http.StatusNoContent)
 }
 
 // ~~~~~ Get Version Handler ~~~~~ //

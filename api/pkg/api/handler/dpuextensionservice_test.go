@@ -913,7 +913,7 @@ func TestDeleteDpuExtensionServiceHandler_Handle(t *testing.T) {
 			dpuExtensionServiceID: des1.ID.String(),
 			user:                  tnu1,
 			expectedErr:           false,
-			expectedStatus:        http.StatusAccepted,
+			expectedStatus:        http.StatusNoContent,
 		},
 	}
 
@@ -946,12 +946,12 @@ func TestDeleteDpuExtensionServiceHandler_Handle(t *testing.T) {
 
 			require.Equal(t, tt.expectedStatus, rec.Code)
 
-			if !tt.expectedErr && rec.Code == http.StatusAccepted {
+			if !tt.expectedErr && rec.Code == http.StatusNoContent {
 				// Verify the service status is updated to Deleting
 				desDAO := cdbm.NewDpuExtensionServiceDAO(dbSession)
-				updatedDES, err := desDAO.GetByID(context.Background(), nil, uuid.MustParse(tt.dpuExtensionServiceID), nil)
-				require.NoError(t, err)
-				assert.Equal(t, cdbm.DpuExtensionServiceStatusDeleting, updatedDES.Status)
+				_, err = desDAO.GetByID(context.Background(), nil, uuid.MustParse(tt.dpuExtensionServiceID), nil)
+				require.Error(t, err)
+				assert.ErrorIs(t, err, cdb.ErrDoesNotExist)
 			}
 		})
 	}
