@@ -9,6 +9,8 @@ A collection of microservices that comprise the management backend for NVIDIA Ba
 
 In deployments, NVIDIA Bare Metal Manager REST requires [NVIDIA Bare Metal Manager Core](github.com/NVIDIA/bare-metal-manager-core) to function.
 
+The REST layer can be deployed in the datacenter with Bare Metal Manager Core, or deployed anywhere in Cloud and allow Site Agent to connect from the datacenter. Multiple Bare Metal Manager Cores running in different datacenters can also connect to Bare Metal Manager REST through respective Site Agents.
+
 ## Prerequisites
 
 - Go 1.25.4 or later
