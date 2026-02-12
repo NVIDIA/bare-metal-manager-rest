@@ -902,6 +902,7 @@ func (uibph UpdateInfiniBandPartitionHandler) Handle(c echo.Context) error {
 			nil,
 			cdbm.InfiniBandPartitionFilterInput{
 				Names:     []string{*apiRequest.Name},
+				SiteIDs:   []uuid.UUID{ibp.SiteID},
 				TenantIDs: []uuid.UUID{orgTenant.ID},
 			},
 			paginator.PageInput{},
