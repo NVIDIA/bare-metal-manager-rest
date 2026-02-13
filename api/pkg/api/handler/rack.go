@@ -14,6 +14,7 @@ package handler
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/otel/attribute"
+	temporalEnums "go.temporal.io/api/enums/v1"
 	tClient "go.temporal.io/sdk/client"
 
 	"github.com/nvidia/bare-metal-manager-rest/api/internal/config"
@@ -159,6 +161,8 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 	// Execute workflow
 	workflowOptions := tClient.StartWorkflowOptions{
 		ID:                       fmt.Sprintf("rack-get-%s", rackStrID),
+		WorkflowIDReusePolicy:    temporalEnums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+		WorkflowIDConflictPolicy: temporalEnums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
 		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
 	}
@@ -349,9 +353,24 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 		OrderBy:        orderBy,
 	}
 
+	// Build a deterministic workflow ID from query params for dedup
+	// Sort query params to ensure consistent hash regardless of parameter order
+	sortedParams := make([]string, 0, len(c.QueryParams()))
+	for k, v := range c.QueryParams() {
+		slices.Sort(v)
+		for _, val := range v {
+			sortedParams = append(sortedParams, k+"="+val)
+		}
+	}
+	slices.Sort(sortedParams)
+	queryHash := fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(sortedParams, "&"))))[:12]
+	workflowID := fmt.Sprintf("rack-get-all-%s", queryHash)
+
 	// Execute workflow
 	workflowOptions := tClient.StartWorkflowOptions{
-		ID:                       "rack-get-all",
+		ID:                       workflowID,
+		WorkflowIDReusePolicy:    temporalEnums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+		WorkflowIDConflictPolicy: temporalEnums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
 		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
 	}
@@ -525,6 +544,8 @@ func (vrh ValidateRackHandler) Handle(c echo.Context) error {
 	// Execute workflow
 	workflowOptions := tClient.StartWorkflowOptions{
 		ID:                       fmt.Sprintf("rack-validate-%s", rackStrID),
+		WorkflowIDReusePolicy:    temporalEnums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+		WorkflowIDConflictPolicy: temporalEnums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
 		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
 	}
