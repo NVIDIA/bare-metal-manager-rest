@@ -46,7 +46,7 @@ COPY ipam/ ./ipam/
 
 # Build the migrations binary
 WORKDIR /workspace/db
-RUN VERSION=$(cat /workspace/VERSION 2>/dev/null || echo "dev") && \
+RUN VERSION=$(grep -v '^#' /workspace/VERSION | tr -d '[:space:]' 2>/dev/null || echo "dev") && \
     BUILD_TIME=$(date +"%Y-%m-%d %H:%M:%S") && \
     go build \
         -ldflags "-extldflags '-static' -w -s" \
@@ -66,4 +66,3 @@ USER nvs
 
 # Run migrations
 CMD ["/app/migrations", "db", "init_migrate"]
-

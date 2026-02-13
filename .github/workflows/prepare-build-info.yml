@@ -80,7 +80,7 @@ jobs:
         run: |
           # Read semantic version from VERSION file
           if [ -f "VERSION" ]; then
-            SEMANTIC_VERSION=$(cat VERSION | tr -d '[:space:]')
+            SEMANTIC_VERSION=$(grep -v '^#' VERSION | tr -d '[:space:]')
           else
             echo "ERROR: VERSION file not found in repository root"
             exit 1
