@@ -13811,9 +13811,13 @@ components:
         componentId:
           type: string
           description: ID of the component in its source system (e.g. Carbide machine ID for compute nodes)
+        rackId:
+          type: string
+          format: uuid
+          description: ID of the rack this component belongs to
         type:
           type: string
-          description: Type of the component (e.g. COMPONENT_TYPE_COMPUTE, COMPONENT_TYPE_SWITCH)
+          description: Type of the component (e.g. COMPONENT_TYPE_COMPUTE, COMPONENT_TYPE_NVLSWITCH)
         name:
           type: string
           description: Name of the component
@@ -13823,15 +13827,53 @@ components:
         manufacturer:
           type: string
           description: Manufacturer of the component
+        model:
+          type: string
+          description: Model of the component
+        description:
+          type: string
+          description: Description of the component (JSON string)
         firmwareVersion:
           type: string
           description: Firmware version of the component
         position:
-          type: integer
-          description: Slot position of the component within the rack
+          $ref: '#/components/schemas/RackPosition'
+        bmcs:
+          type: array
+          description: BMC (Baseboard Management Controller) entries for the component
+          items:
+            $ref: '#/components/schemas/BMCInfo'
         powerState:
           type: string
           description: Current power state of the component (synced from external system)
+    RackPosition:
+      title: RackPosition
+      type: object
+      description: Position of a component within a rack
+      properties:
+        slotId:
+          type: integer
+          description: Slot ID within the rack
+        trayIdx:
+          type: integer
+          description: Tray index
+        hostId:
+          type: integer
+          description: Host ID
+    BMCInfo:
+      title: BMCInfo
+      type: object
+      description: BMC (Baseboard Management Controller) information
+      properties:
+        type:
+          type: string
+          description: BMC type (e.g. BMC_TYPE_HOST, BMC_TYPE_DPU)
+        macAddress:
+          type: string
+          description: MAC address of the BMC
+        ipAddress:
+          type: string
+          description: IP address of the BMC
     Machine:
       title: Machine
       type: object

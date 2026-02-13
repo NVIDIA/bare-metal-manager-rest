@@ -149,15 +149,33 @@ func (arl *APIRackLocation) FromProto(protoLocation *rlav1.Location) {
 
 // APIRackComponent represents a component within a rack
 type APIRackComponent struct {
-	ID              string `json:"id"`
-	ComponentID     string `json:"componentId"`
-	Type            string `json:"type"`
-	Name            string `json:"name"`
-	SerialNumber    string `json:"serialNumber"`
-	Manufacturer    string `json:"manufacturer"`
-	FirmwareVersion string `json:"firmwareVersion"`
-	Position        int32  `json:"position"`
-	PowerState      string `json:"powerState"`
+	ID              string          `json:"id"`
+	ComponentID     string          `json:"componentId"`
+	RackID          string          `json:"rackId,omitempty"`
+	Type            string          `json:"type"`
+	Name            string          `json:"name"`
+	SerialNumber    string          `json:"serialNumber"`
+	Manufacturer    string          `json:"manufacturer"`
+	Model           string          `json:"model,omitempty"`
+	Description     string          `json:"description,omitempty"`
+	FirmwareVersion string          `json:"firmwareVersion"`
+	Position        *APIRackPosition `json:"position,omitempty"`
+	BMCs            []*APIBMC       `json:"bmcs,omitempty"`
+	PowerState      string          `json:"powerState"`
+}
+
+// APIRackPosition represents a component's position within a rack
+type APIRackPosition struct {
+	SlotID  int32 `json:"slotId"`
+	TrayIdx int32 `json:"trayIdx"`
+	HostID  int32 `json:"hostId"`
+}
+
+// APIBMC represents a BMC (Baseboard Management Controller) entry
+type APIBMC struct {
+	Type       string `json:"type"`
+	MACAddress string `json:"macAddress"`
+	IPAddress  string `json:"ipAddress,omitempty"`
 }
 
 // FromProto converts a proto Component to an APIRackComponent
@@ -168,6 +186,12 @@ func (arc *APIRackComponent) FromProto(protoComponent *rlav1.Component) {
 	arc.Type = protoComponent.GetType().String()
 	arc.FirmwareVersion = protoComponent.GetFirmwareVersion()
 	arc.ComponentID = protoComponent.GetComponentId()
+	arc.PowerState = protoComponent.GetPowerState()
+
+	// Get rack ID
+	if protoComponent.GetRackId() != nil {
+		arc.RackID = protoComponent.GetRackId().GetId()
+	}
 
 	// Get component info
 	if protoComponent.GetInfo() != nil {
@@ -178,14 +202,30 @@ func (arc *APIRackComponent) FromProto(protoComponent *rlav1.Component) {
 		arc.Name = compInfo.GetName()
 		arc.SerialNumber = compInfo.GetSerialNumber()
 		arc.Manufacturer = compInfo.GetManufacturer()
+		arc.Model = compInfo.GetModel()
+		arc.Description = compInfo.GetDescription()
 	}
 
 	// Get position
 	if protoComponent.GetPosition() != nil {
-		arc.Position = protoComponent.GetPosition().GetSlotId()
+		arc.Position = &APIRackPosition{
+			SlotID:  protoComponent.GetPosition().GetSlotId(),
+			TrayIdx: protoComponent.GetPosition().GetTrayIdx(),
+			HostID:  protoComponent.GetPosition().GetHostId(),
+		}
 	}
 
-	arc.PowerState = protoComponent.GetPowerState()
+	// Get BMCs
+	if len(protoComponent.GetBmcs()) > 0 {
+		arc.BMCs = make([]*APIBMC, 0, len(protoComponent.GetBmcs()))
+		for _, bmc := range protoComponent.GetBmcs() {
+			arc.BMCs = append(arc.BMCs, &APIBMC{
+				Type:       bmc.GetType().String(),
+				MACAddress: bmc.GetMacAddress(),
+				IPAddress:  bmc.GetIpAddress(),
+			})
+		}
+	}
 }
 
 // ========== Rack Validation API Models ==========
