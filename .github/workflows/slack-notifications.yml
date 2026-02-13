@@ -23,7 +23,7 @@ jobs:
   notify-slack:
     runs-on: ubuntu-latest
     steps:
-      - name: Check for Secret availability
+      - name: Check for Secret Availability
         id: slack-webhook-url-check
         # perform secret check & put boolean result as an output
         shell: bash
@@ -34,7 +34,7 @@ jobs:
             echo "available=false" >> $GITHUB_OUTPUT;
           fi
       - name: Send Slack Notification
-        if: steps.slack-webhook-url-check.outputs.slack_webhook_url_available == 'true'
+        if: steps.slack-webhook-url-check.outputs.available == 'true'
         uses: slackapi/slack-github-action@v2.1.1 # Use a pre-existing action
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
