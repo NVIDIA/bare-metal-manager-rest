@@ -162,7 +162,7 @@ type APIRackComponent struct {
 	SlotID          int32     `json:"slotId"`
 	TrayIdx         int32     `json:"trayIdx"`
 	HostID          int32     `json:"hostId"`
-	BMCs            []*APIBMC `json:"bmcs,omitempty"`
+	BMCs            []*APIBMC `json:"bmcs"`
 	PowerState      string    `json:"powerState"`
 }
 
