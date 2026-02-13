@@ -169,7 +169,7 @@ type APIRackComponent struct {
 // APIBMC represents a BMC (Baseboard Management Controller) entry
 type APIBMC struct {
 	Type       string `json:"type"`
-	MACAddress string `json:"macAddress"`
+	MacAddress string `json:"macAddress"`
 	IPAddress  string `json:"ipAddress,omitempty"`
 }
 
@@ -214,7 +214,7 @@ func (arc *APIRackComponent) FromProto(protoComponent *rlav1.Component) {
 		for _, bmc := range protoComponent.GetBmcs() {
 			arc.BMCs = append(arc.BMCs, &APIBMC{
 				Type:       bmc.GetType().String(),
-				MACAddress: bmc.GetMacAddress(),
+				MacAddress: bmc.GetMacAddress(),
 				IPAddress:  bmc.GetIpAddress(),
 			})
 		}
