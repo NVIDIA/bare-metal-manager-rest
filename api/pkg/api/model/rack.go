@@ -151,13 +151,13 @@ func (arl *APIRackLocation) FromProto(protoLocation *rlav1.Location) {
 type APIRackComponent struct {
 	ID              string    `json:"id"`
 	ComponentID     string    `json:"componentId"`
-	RackID          string    `json:"rackId,omitempty"`
+	RackID          string    `json:"rackId"`
 	Type            string    `json:"type"`
 	Name            string    `json:"name"`
 	SerialNumber    string    `json:"serialNumber"`
 	Manufacturer    string    `json:"manufacturer"`
-	Model           string    `json:"model,omitempty"`
-	Description     string    `json:"description,omitempty"`
+	Model           string    `json:"model"`
+	Description     string    `json:"description"`
 	FirmwareVersion string    `json:"firmwareVersion"`
 	SlotID          int32     `json:"slotId"`
 	TrayIdx         int32     `json:"trayIdx"`
@@ -170,7 +170,7 @@ type APIRackComponent struct {
 type APIBMC struct {
 	Type       string `json:"type"`
 	MacAddress string `json:"macAddress"`
-	IPAddress  string `json:"ipAddress,omitempty"`
+	IPAddress  string `json:"ipAddress"`
 }
 
 // FromProto converts a proto Component to an APIRackComponent
