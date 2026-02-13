@@ -92,3 +92,37 @@ func (mr *ManageRack) GetRacks(ctx context.Context, request *rlav1.GetListOfRack
 
 	return response, nil
 }
+
+// ValidateRack validates a rack's components by comparing expected vs actual state via RLA
+func (mr *ManageRack) ValidateRack(ctx context.Context, request *rlav1.ValidateComponentsRequest) (*rlav1.ValidateComponentsResponse, error) {
+	logger := log.With().Str("Activity", "ValidateRack").Logger()
+	logger.Info().Msg("Starting activity")
+
+	var err error
+
+	// Validate request
+	switch {
+	case request == nil:
+		err = errors.New("received empty validate rack request")
+	case request.TargetSpec == nil:
+		err = errors.New("received validate rack request without target spec")
+	}
+
+	if err != nil {
+		return nil, temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
+	}
+
+	// Call RLA gRPC endpoint
+	rlaClient := mr.RlaAtomicClient.GetClient()
+	rla := rlaClient.Rla()
+
+	response, err := rla.ValidateComponents(ctx, request)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to validate rack components using RLA API")
+		return nil, swe.WrapErr(err)
+	}
+
+	logger.Info().Int32("TotalDiffs", response.GetTotalDiffs()).Msg("Completed activity")
+
+	return response, nil
+}

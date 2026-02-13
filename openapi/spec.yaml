@@ -8193,6 +8193,86 @@ paths:
           $ref: '#/components/responses/NotFoundError'
       tags:
         - Rack
+  '/v2/org/{org}/carbide/rack/{id}/validate':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+        name: id
+        in: path
+        required: true
+        description: ID of the Rack
+    get:
+      summary: Validate a Rack
+      operationId: validate-rack
+      description: |-
+        Validate a Rack's components by comparing expected vs actual state.
+
+        Compares the rack's expected component configuration (stored in RLA) against the actual state from external systems (e.g., Carbide, PSM). Returns a detailed diff report showing missing, extra, and drifted components.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RackValidationResult'
+              examples:
+                example-no-diffs:
+                  value:
+                    diffs: []
+                    totalDiffs: 0
+                    onlyInExpectedCount: 0
+                    onlyInActualCount: 0
+                    driftCount: 0
+                    matchCount: 5
+                example-with-diffs:
+                  value:
+                    diffs:
+                      - type: DIFF_TYPE_ONLY_IN_EXPECTED
+                        componentId: comp-1
+                        expected:
+                          id: 660e8400-e29b-41d4-a716-446655440001
+                          componentId: comp-1
+                          type: COMPONENT_TYPE_COMPUTE
+                          name: Server-01
+                          serialNumber: SN-SRV-001
+                          manufacturer: Dell
+                          firmwareVersion: 2.1.0
+                          position: 1
+                      - type: DIFF_TYPE_DRIFT
+                        componentId: comp-2
+                        fieldDiffs:
+                          - fieldName: firmware_version
+                            expectedValue: '1.0.0'
+                            actualValue: '2.0.0'
+                    totalDiffs: 2
+                    onlyInExpectedCount: 1
+                    onlyInActualCount: 0
+                    driftCount: 1
+                    matchCount: 3
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+      tags:
+        - Rack
   '/v2/org/{org}/carbide/network-security-group':
     parameters:
       - schema:
@@ -13527,10 +13607,60 @@ components:
         position:
           type: string
           description: Position of the rack within the room
-    RackComponent:
-      title: RackComponent
+    RackValidationResult:
+      title: RackValidationResult
       type: object
-      description: A component within a Rack (e.g. compute node, switch, PDU)
+      description: Result of validating a rack's components by comparing expected vs actual state
+      properties:
+        diffs:
+          type: array
+          description: List of component differences found during validation
+          items:
+            $ref: '#/components/schemas/ComponentDiff'
+        totalDiffs:
+          type: integer
+          description: Total number of component differences found
+        onlyInExpectedCount:
+          type: integer
+          description: Number of components only in expected configuration (missing from actual)
+        onlyInActualCount:
+          type: integer
+          description: Number of components only in actual state (not in expected configuration)
+        driftCount:
+          type: integer
+          description: Number of components present in both but with field differences
+        matchCount:
+          type: integer
+          description: Number of components that match between expected and actual
+    ComponentDiff:
+      title: ComponentDiff
+      type: object
+      description: A single component difference found during rack validation
+      properties:
+        type:
+          type: string
+          description: 'Type of difference: DIFF_TYPE_ONLY_IN_EXPECTED, DIFF_TYPE_ONLY_IN_ACTUAL, or DIFF_TYPE_DRIFT'
+          enum:
+            - DIFF_TYPE_UNKNOWN
+            - DIFF_TYPE_ONLY_IN_EXPECTED
+            - DIFF_TYPE_ONLY_IN_ACTUAL
+            - DIFF_TYPE_DRIFT
+        componentId:
+          type: string
+          description: ID of the component in its source system
+        expected:
+          $ref: '#/components/schemas/RackComponent'
+        actual:
+          $ref: '#/components/schemas/ActualComponent'
+        fieldDiffs:
+          type: array
+          description: List of field differences (populated when type is DIFF_TYPE_DRIFT)
+          items:
+            $ref: '#/components/schemas/FieldDiff'
+    ActualComponent:
+      title: ActualComponent
+      type: object
+      description: A component's actual state from external systems (e.g. Carbide, PSM)
       properties:
         id:
           type: string
@@ -13538,10 +13668,10 @@ components:
           description: Unique identifier of the component in RLA
         componentId:
           type: string
-          description: ID of the component in its source system (e.g. Carbide machine ID for compute nodes)
+          description: ID of the component in its source system
         type:
           type: string
-          description: Type of the component (e.g. COMPONENT_TYPE_COMPUTE, COMPONENT_TYPE_SWITCH)
+          description: Type of the component
         name:
           type: string
           description: Name of the component
@@ -13557,6 +13687,97 @@ components:
         position:
           type: integer
           description: Slot position of the component within the rack
+        powerState:
+          type: string
+          description: Current power state of the component
+        healthStatus:
+          type: string
+          description: Health status from the source system
+        source:
+          type: string
+          description: 'Data source (e.g. carbide, psm)'
+    FieldDiff:
+      title: FieldDiff
+      type: object
+      description: A single field difference between expected and actual component state
+      properties:
+        fieldName:
+          type: string
+          description: 'Name of the field that differs (e.g. firmware_version, position.slot_id)'
+        expectedValue:
+          type: string
+          description: Expected value of the field
+        actualValue:
+          type: string
+          description: Actual value of the field
+    RackComponent:
+      title: RackComponent
+      type: object
+      description: A component within a Rack (e.g. compute node, switch, PDU)
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identifier of the component in RLA
+        componentId:
+          type: string
+          description: ID of the component in its source system (e.g. Carbide machine ID for compute nodes)
+        rackId:
+          type: string
+          format: uuid
+          description: ID of the rack this component belongs to
+        type:
+          type: string
+          description: Type of the component (e.g. COMPONENT_TYPE_COMPUTE, COMPONENT_TYPE_NVLSWITCH)
+        name:
+          type: string
+          description: Name of the component
+        serialNumber:
+          type: string
+          description: Serial number of the component
+        manufacturer:
+          type: string
+          description: Manufacturer of the component
+        model:
+          type: string
+          description: Model of the component
+        description:
+          type: string
+          description: Description of the component (JSON string)
+        firmwareVersion:
+          type: string
+          description: Firmware version of the component
+        slotId:
+          type: integer
+          description: Slot ID of the component within the rack
+        trayIdx:
+          type: integer
+          description: Tray index of the component
+        hostId:
+          type: integer
+          description: Host ID of the component
+        bmcs:
+          type: array
+          description: BMC (Baseboard Management Controller) entries for the component
+          items:
+            $ref: '#/components/schemas/BMCInfo'
+        powerState:
+          type: string
+          description: Current power state of the component (synced from external system)
+    BMCInfo:
+      title: BMCInfo
+      type: object
+      description: BMC (Baseboard Management Controller) information
+      properties:
+        type:
+          type: string
+          description: BMC type (e.g. BMC_TYPE_HOST, BMC_TYPE_DPU)
+        macAddress:
+          type: string
+          description: MAC address of the BMC
+        ipAddress:
+          type: string
+          description: IP address of the BMC
     Machine:
       title: Machine
       type: object

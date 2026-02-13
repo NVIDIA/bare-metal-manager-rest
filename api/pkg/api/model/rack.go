@@ -149,14 +149,28 @@ func (arl *APIRackLocation) FromProto(protoLocation *rlav1.Location) {
 
 // APIRackComponent represents a component within a rack
 type APIRackComponent struct {
-	ID              string `json:"id"`
-	ComponentID     string `json:"componentId"`
-	Type            string `json:"type"`
-	Name            string `json:"name"`
-	SerialNumber    string `json:"serialNumber"`
-	Manufacturer    string `json:"manufacturer"`
-	FirmwareVersion string `json:"firmwareVersion"`
-	Position        int32  `json:"position"`
+	ID              string    `json:"id"`
+	ComponentID     string    `json:"componentId"`
+	RackID          string    `json:"rackId,omitempty"`
+	Type            string    `json:"type"`
+	Name            string    `json:"name"`
+	SerialNumber    string    `json:"serialNumber"`
+	Manufacturer    string    `json:"manufacturer"`
+	Model           string    `json:"model,omitempty"`
+	Description     string    `json:"description,omitempty"`
+	FirmwareVersion string    `json:"firmwareVersion"`
+	SlotID          int32     `json:"slotId"`
+	TrayIdx         int32     `json:"trayIdx"`
+	HostID          int32     `json:"hostId"`
+	BMCs            []*APIBMC `json:"bmcs,omitempty"`
+	PowerState      string    `json:"powerState"`
+}
+
+// APIBMC represents a BMC (Baseboard Management Controller) entry
+type APIBMC struct {
+	Type       string `json:"type"`
+	MacAddress string `json:"macAddress"`
+	IPAddress  string `json:"ipAddress,omitempty"`
 }
 
 // FromProto converts a proto Component to an APIRackComponent
@@ -167,6 +181,12 @@ func (arc *APIRackComponent) FromProto(protoComponent *rlav1.Component) {
 	arc.Type = protoComponent.GetType().String()
 	arc.FirmwareVersion = protoComponent.GetFirmwareVersion()
 	arc.ComponentID = protoComponent.GetComponentId()
+	arc.PowerState = protoComponent.GetPowerState()
+
+	// Get rack ID
+	if protoComponent.GetRackId() != nil {
+		arc.RackID = protoComponent.GetRackId().GetId()
+	}
 
 	// Get component info
 	if protoComponent.GetInfo() != nil {
@@ -177,10 +197,107 @@ func (arc *APIRackComponent) FromProto(protoComponent *rlav1.Component) {
 		arc.Name = compInfo.GetName()
 		arc.SerialNumber = compInfo.GetSerialNumber()
 		arc.Manufacturer = compInfo.GetManufacturer()
+		arc.Model = compInfo.GetModel()
+		arc.Description = compInfo.GetDescription()
 	}
 
 	// Get position
 	if protoComponent.GetPosition() != nil {
-		arc.Position = protoComponent.GetPosition().GetSlotId()
+		arc.SlotID = protoComponent.GetPosition().GetSlotId()
+		arc.TrayIdx = protoComponent.GetPosition().GetTrayIdx()
+		arc.HostID = protoComponent.GetPosition().GetHostId()
 	}
+
+	// Get BMCs
+	if len(protoComponent.GetBmcs()) > 0 {
+		arc.BMCs = make([]*APIBMC, 0, len(protoComponent.GetBmcs()))
+		for _, bmc := range protoComponent.GetBmcs() {
+			arc.BMCs = append(arc.BMCs, &APIBMC{
+				Type:       bmc.GetType().String(),
+				MacAddress: bmc.GetMacAddress(),
+				IPAddress:  bmc.GetIpAddress(),
+			})
+		}
+	}
+}
+
+// ========== Rack Validation API Models ==========
+
+// APIRackValidationResult is the API representation of a rack validation result
+type APIRackValidationResult struct {
+	Diffs               []*APIComponentDiff `json:"diffs"`
+	TotalDiffs          int32               `json:"totalDiffs"`
+	OnlyInExpectedCount int32               `json:"onlyInExpectedCount"`
+	OnlyInActualCount   int32               `json:"onlyInActualCount"`
+	DriftCount          int32               `json:"driftCount"`
+	MatchCount          int32               `json:"matchCount"`
+}
+
+// APIComponentDiff represents a single component difference found during validation
+type APIComponentDiff struct {
+	Type        string            `json:"type"`
+	ComponentID string            `json:"componentId"`
+	Expected    *APIRackComponent `json:"expected,omitempty"`
+	Actual      *APIRackComponent `json:"actual,omitempty"`
+	FieldDiffs  []*APIFieldDiff   `json:"fieldDiffs,omitempty"`
+}
+
+// APIFieldDiff represents a single field difference
+type APIFieldDiff struct {
+	FieldName     string `json:"fieldName"`
+	ExpectedValue string `json:"expectedValue"`
+	ActualValue   string `json:"actualValue"`
+}
+
+// NewAPIRackValidationResult creates an APIRackValidationResult from the RLA protobuf response
+func NewAPIRackValidationResult(protoResp *rlav1.ValidateComponentsResponse) *APIRackValidationResult {
+	if protoResp == nil {
+		return nil
+	}
+
+	result := &APIRackValidationResult{
+		TotalDiffs:          protoResp.GetTotalDiffs(),
+		OnlyInExpectedCount: protoResp.GetOnlyInExpectedCount(),
+		OnlyInActualCount:   protoResp.GetOnlyInActualCount(),
+		DriftCount:          protoResp.GetDriftCount(),
+		MatchCount:          protoResp.GetMatchCount(),
+	}
+
+	result.Diffs = make([]*APIComponentDiff, 0, len(protoResp.GetDiffs()))
+	for _, diff := range protoResp.GetDiffs() {
+		apiDiff := &APIComponentDiff{
+			Type:        diff.GetType().String(),
+			ComponentID: diff.GetComponentId(),
+		}
+
+		// Convert expected component
+		if diff.GetExpected() != nil {
+			apiComp := &APIRackComponent{}
+			apiComp.FromProto(diff.GetExpected())
+			apiDiff.Expected = apiComp
+		}
+
+		// Convert actual component
+		if diff.GetActual() != nil {
+			apiActual := &APIRackComponent{}
+			apiActual.FromProto(diff.GetActual())
+			apiDiff.Actual = apiActual
+		}
+
+		// Convert field diffs
+		if len(diff.GetFieldDiffs()) > 0 {
+			apiDiff.FieldDiffs = make([]*APIFieldDiff, 0, len(diff.GetFieldDiffs()))
+			for _, fd := range diff.GetFieldDiffs() {
+				apiDiff.FieldDiffs = append(apiDiff.FieldDiffs, &APIFieldDiff{
+					FieldName:     fd.GetFieldName(),
+					ExpectedValue: fd.GetExpectedValue(),
+					ActualValue:   fd.GetActualValue(),
+				})
+			}
+		}
+
+		result.Diffs = append(result.Diffs, apiDiff)
+	}
+
+	return result
 }

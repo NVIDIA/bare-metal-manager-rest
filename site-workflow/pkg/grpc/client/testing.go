@@ -1366,6 +1366,16 @@ func (c *MockRLAClient) GetComponents(ctx context.Context, in *rlav1.GetComponen
 }
 
 func (c *MockRLAClient) ValidateComponents(ctx context.Context, in *rlav1.ValidateComponentsRequest, opts ...grpc.CallOption) (*rlav1.ValidateComponentsResponse, error) {
+	// Check for error injection via context
+	if err, ok := ctx.Value("wantError").(error); ok {
+		return nil, err
+	}
+
+	// Check for custom response via context
+	if resp, ok := ctx.Value("wantResponse").(*rlav1.ValidateComponentsResponse); ok {
+		return resp, nil
+	}
+
 	out := &rlav1.ValidateComponentsResponse{
 		Diffs:               []*rlav1.ComponentDiff{},
 		TotalDiffs:          0,

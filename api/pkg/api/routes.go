@@ -736,6 +736,11 @@ func NewAPIRoutes(dbSession *cdb.Session, tc tClient.Client, tnc tClient.Namespa
 			Method:  http.MethodGet,
 			Handler: apiHandler.NewGetRackHandler(dbSession, tc, scp, cfg),
 		},
+		{
+			Path:    apiPathPrefix + "/rack/:id/validate",
+			Method:  http.MethodGet,
+			Handler: apiHandler.NewValidateRackHandler(dbSession, tc, scp, cfg),
+		},
 	}
 
 	return apiRoutes
