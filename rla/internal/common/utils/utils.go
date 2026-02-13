@@ -20,9 +20,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/nvidia/carbide-rest/rla/internal/db"
-	"github.com/nvidia/carbide-rest/rla/internal/db/migrations"
-	"github.com/nvidia/carbide-rest/rla/internal/db/postgres"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/db"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/db/migrations"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/db/postgres"
 	"github.com/rs/zerolog/log"
 )
 

@@ -20,7 +20,7 @@ managed:
   enabled: true
   override:
     - file_option: go_package_prefix
-      value: github.com/nvidia/carbide-rest/rla/internal/carbideapigrpc
+      value: github.com/nvidia/bare-metal-manager-rest/rla/internal/carbideapigrpc
 plugins:
   - remote: buf.build/protocolbuffers/go
     out: gen

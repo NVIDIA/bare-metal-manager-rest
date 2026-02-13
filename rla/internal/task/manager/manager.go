@@ -25,15 +25,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/rack"
-	inventorystore "github.com/nvidia/carbide-rest/rla/internal/inventory/store"
-	"github.com/nvidia/carbide-rest/rla/internal/operation"
-	taskcommon "github.com/nvidia/carbide-rest/rla/internal/task/common"
-	"github.com/nvidia/carbide-rest/rla/internal/task/executor"
-	"github.com/nvidia/carbide-rest/rla/internal/task/executor/temporalworkflow/activity"
-	"github.com/nvidia/carbide-rest/rla/internal/task/operations"
-	taskstore "github.com/nvidia/carbide-rest/rla/internal/task/store"
-	taskdef "github.com/nvidia/carbide-rest/rla/internal/task/task"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/rack"
+	inventorystore "github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/store"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/operation"
+	taskcommon "github.com/nvidia/bare-metal-manager-rest/rla/internal/task/common"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/executor"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/executor/temporalworkflow/activity"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/operations"
+	taskstore "github.com/nvidia/bare-metal-manager-rest/rla/internal/task/store"
+	taskdef "github.com/nvidia/bare-metal-manager-rest/rla/internal/task/task"
 )
 
 // Config holds the configuration for the task manager.

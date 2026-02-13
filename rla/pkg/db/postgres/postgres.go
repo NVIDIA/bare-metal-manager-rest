@@ -30,7 +30,7 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 
-	"github.com/nvidia/carbide-rest/rla/pkg/db"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db"
 )
 
 type Postgres struct {

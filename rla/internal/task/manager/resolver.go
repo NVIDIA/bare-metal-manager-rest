@@ -22,11 +22,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/component"
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/rack"
-	"github.com/nvidia/carbide-rest/rla/internal/operation"
-	identifier "github.com/nvidia/carbide-rest/rla/pkg/common/Identifier"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/devicetypes"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/component"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/rack"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/operation"
+	identifier "github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/Identifier"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"
 )
 
 // TargetFetcher provides the methods needed to fetch racks and components for target resolution.

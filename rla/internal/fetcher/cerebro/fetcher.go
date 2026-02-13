@@ -25,15 +25,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
-	"github.com/nvidia/carbide-rest/rla/internal/clients/cerebro"
-	"github.com/nvidia/carbide-rest/rla/internal/dumper"
-	"github.com/nvidia/carbide-rest/rla/internal/fetcher/processor"
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/nvldomain"
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/rack"
-	"github.com/nvidia/carbide-rest/rla/pkg/client"
-	identifier "github.com/nvidia/carbide-rest/rla/pkg/common/Identifier"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/devicetypes"
-	"github.com/nvidia/carbide-rest/rla/pkg/workerpool"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/clients/cerebro"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/dumper"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/fetcher/processor"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/nvldomain"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/rack"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/client"
+	identifier "github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/Identifier"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/workerpool"
 )
 
 type Config struct {

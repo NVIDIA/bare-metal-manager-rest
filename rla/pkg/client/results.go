@@ -19,7 +19,7 @@ package client
 import (
 	"github.com/google/uuid"
 
-	"github.com/nvidia/carbide-rest/rla/pkg/types"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/types"
 )
 
 // UpgradeFirmwareResult represents the result of a firmware upgrade operation.

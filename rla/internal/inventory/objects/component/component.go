@@ -21,9 +21,9 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/bmc"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/deviceinfo"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/devicetypes"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/bmc"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/deviceinfo"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"
 )
 
 // Component represents a hardware component with various properties and

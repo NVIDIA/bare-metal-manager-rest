@@ -19,8 +19,8 @@ package processor
 import (
 	"context"
 
-	"github.com/nvidia/carbide-rest/rla/internal/dumper"
-	"github.com/nvidia/carbide-rest/rla/pkg/client"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/dumper"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/client"
 )
 
 type Type string

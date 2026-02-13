@@ -25,9 +25,9 @@ import (
 	"go.temporal.io/api/enums/v1"
 	temporalclient "go.temporal.io/sdk/client"
 
-	taskcommon "github.com/nvidia/carbide-rest/rla/internal/task/common"
-	"github.com/nvidia/carbide-rest/rla/internal/task/executor/temporalworkflow/common"
-	"github.com/nvidia/carbide-rest/rla/internal/task/task"
+	taskcommon "github.com/nvidia/bare-metal-manager-rest/rla/internal/task/common"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/executor/temporalworkflow/common"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/task"
 )
 
 var (

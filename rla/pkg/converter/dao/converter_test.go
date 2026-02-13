@@ -23,15 +23,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/bmc"
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/component"
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/rack"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/credential"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/deviceinfo"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/devicetypes"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/location"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/utils"
-	"github.com/nvidia/carbide-rest/rla/pkg/db/model"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/bmc"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/component"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/rack"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/credential"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/deviceinfo"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/location"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/utils"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db/model"
 )
 
 func TestBMCConversion(t *testing.T) {

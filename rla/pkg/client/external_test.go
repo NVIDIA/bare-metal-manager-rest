@@ -28,8 +28,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/nvidia/carbide-rest/rla/pkg/client"
-	"github.com/nvidia/carbide-rest/rla/pkg/types"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/client"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/types"
 )
 
 // TestExternalUsability verifies that all public types and functions are

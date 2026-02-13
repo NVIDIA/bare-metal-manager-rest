@@ -26,8 +26,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"github.com/nvidia/carbide-rest/rla/internal/certs"
-	pb "github.com/nvidia/carbide-rest/rla/internal/psmapi/gen"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/certs"
+	pb "github.com/nvidia/bare-metal-manager-rest/rla/internal/psmapi/gen"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )

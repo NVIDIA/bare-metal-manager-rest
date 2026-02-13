@@ -16,7 +16,7 @@
  */
 package main
 
-import "github.com/nvidia/carbide-rest/rla/cmd"
+import "github.com/nvidia/bare-metal-manager-rest/rla/cmd"
 
 func main() {
 	cmd.Execute()

@@ -25,9 +25,9 @@ import (
 	"testing"
 
 	"github.com/rs/zerolog/log"
-	"github.com/nvidia/carbide-rest/rla/pkg/db"
-	"github.com/nvidia/carbide-rest/rla/pkg/db/migrations"
-	"github.com/nvidia/carbide-rest/rla/pkg/db/postgres"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db/migrations"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db/postgres"
 )
 
 const (

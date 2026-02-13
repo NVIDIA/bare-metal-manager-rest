@@ -20,7 +20,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/nvidia/carbide-rest/rla/pkg/common/secretstring"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/secretstring"
 )
 
 // Credential holds authentication information with password protection

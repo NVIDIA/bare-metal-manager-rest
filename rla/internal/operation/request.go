@@ -22,9 +22,9 @@ import (
 
 	"github.com/google/uuid"
 
-	taskcommon "github.com/nvidia/carbide-rest/rla/internal/task/common"
-	identifier "github.com/nvidia/carbide-rest/rla/pkg/common/Identifier"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/devicetypes"
+	taskcommon "github.com/nvidia/bare-metal-manager-rest/rla/internal/task/common"
+	identifier "github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/Identifier"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"
 )
 
 // Wrapper wraps the operation type and its serialized information.

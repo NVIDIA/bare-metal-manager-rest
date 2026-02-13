@@ -21,8 +21,8 @@ import (
 
 	"github.com/google/uuid"
 
-	pb "github.com/nvidia/carbide-rest/rla/pkg/proto/v1"
-	"github.com/nvidia/carbide-rest/rla/pkg/types"
+	pb "github.com/nvidia/bare-metal-manager-rest/rla/pkg/proto/v1"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/types"
 )
 
 // Proto to types conversions

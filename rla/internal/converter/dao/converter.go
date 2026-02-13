@@ -21,19 +21,19 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/nvidia/carbide-rest/rla/internal/db/model"
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/bmc"
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/component"
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/nvldomain"
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/rack"
-	"github.com/nvidia/carbide-rest/rla/internal/operation"
-	taskdef "github.com/nvidia/carbide-rest/rla/internal/task/task"
-	identifier "github.com/nvidia/carbide-rest/rla/pkg/common/Identifier"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/credential"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/deviceinfo"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/devicetypes"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/location"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/utils"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/db/model"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/bmc"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/component"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/nvldomain"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/rack"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/operation"
+	taskdef "github.com/nvidia/bare-metal-manager-rest/rla/internal/task/task"
+	identifier "github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/Identifier"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/credential"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/deviceinfo"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/location"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/utils"
 )
 
 // BMCTypeFrom converts BMC type from DAO model to internal model.

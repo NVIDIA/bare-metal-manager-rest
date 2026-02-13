@@ -23,7 +23,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/nvidia/carbide-rest/rla/internal/task/componentmanager"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/componentmanager"
 	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
 )

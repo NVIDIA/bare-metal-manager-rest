@@ -24,11 +24,11 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/xuri/excelize/v2"
 
-	"github.com/nvidia/carbide-rest/rla/internal/dumper"
-	"github.com/nvidia/carbide-rest/rla/internal/fetcher/processor"
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/component"
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/rack"
-	"github.com/nvidia/carbide-rest/rla/pkg/client"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/dumper"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/fetcher/processor"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/component"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/rack"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/client"
 )
 
 type Info struct {

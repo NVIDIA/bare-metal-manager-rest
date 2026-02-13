@@ -23,8 +23,8 @@ import (
 
 	"github.com/go-resty/resty/v2"
 	"github.com/google/uuid"
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/rack"
-	identifier "github.com/nvidia/carbide-rest/rla/pkg/common/Identifier"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/rack"
+	identifier "github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/Identifier"
 )
 
 type Client struct {

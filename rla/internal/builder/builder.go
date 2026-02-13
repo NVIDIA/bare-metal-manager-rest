@@ -22,10 +22,10 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/nvidia/carbide-rest/rla/internal/dumper"
-	"github.com/nvidia/carbide-rest/rla/internal/fetcher/processor"
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/nvldomain"
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/rack"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/dumper"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/fetcher/processor"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/nvldomain"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/rack"
 )
 
 // Builder is responsible for building the rack inventory from the given

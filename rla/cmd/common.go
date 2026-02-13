@@ -19,7 +19,7 @@ package cmd
 import (
 	"strings"
 
-	pb "github.com/nvidia/carbide-rest/rla/internal/proto/v1"
+	pb "github.com/nvidia/bare-metal-manager-rest/rla/internal/proto/v1"
 )
 
 // parseComponentType parses a user-friendly string into a protobuf ComponentType.

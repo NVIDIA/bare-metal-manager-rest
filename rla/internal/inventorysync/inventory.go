@@ -26,13 +26,13 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/uptrace/bun"
 
-	"github.com/nvidia/carbide-rest/rla/internal/carbideapi"
-	"github.com/nvidia/carbide-rest/rla/internal/config"
-	"github.com/nvidia/carbide-rest/rla/internal/psmapi"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/devicetypes"
-	"github.com/nvidia/carbide-rest/rla/pkg/db"
-	"github.com/nvidia/carbide-rest/rla/pkg/db/model"
-	"github.com/nvidia/carbide-rest/rla/pkg/db/postgres"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/carbideapi"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/config"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/psmapi"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db/model"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db/postgres"
 )
 
 // RunInventory will loop and handle various inventory monitoring tasks

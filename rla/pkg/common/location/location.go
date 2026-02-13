@@ -20,7 +20,7 @@ import (
 	"encoding/json"
 
 	"github.com/rs/zerolog/log"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/utils"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/utils"
 )
 
 // Location represents location information for devices

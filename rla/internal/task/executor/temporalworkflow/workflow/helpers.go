@@ -23,10 +23,10 @@ import (
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/workflow"
 
-	taskcommon "github.com/nvidia/carbide-rest/rla/internal/task/common"
-	"github.com/nvidia/carbide-rest/rla/internal/task/executor/temporalworkflow/common"
-	"github.com/nvidia/carbide-rest/rla/internal/task/task"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/devicetypes"
+	taskcommon "github.com/nvidia/bare-metal-manager-rest/rla/internal/task/common"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/executor/temporalworkflow/common"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/task"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"
 )
 
 func updateRunningTaskStatus(

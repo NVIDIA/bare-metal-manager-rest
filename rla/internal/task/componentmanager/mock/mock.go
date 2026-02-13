@@ -22,10 +22,10 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/nvidia/carbide-rest/rla/internal/task/componentmanager"
-	"github.com/nvidia/carbide-rest/rla/internal/task/executor/temporalworkflow/common"
-	"github.com/nvidia/carbide-rest/rla/internal/task/operations"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/devicetypes"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/componentmanager"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/executor/temporalworkflow/common"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/operations"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"
 )
 
 const (

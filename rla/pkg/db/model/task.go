@@ -25,8 +25,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 
-	taskcommon "github.com/nvidia/carbide-rest/rla/internal/task/common"
-	dbquery "github.com/nvidia/carbide-rest/rla/pkg/db/query"
+	taskcommon "github.com/nvidia/bare-metal-manager-rest/rla/internal/task/common"
+	dbquery "github.com/nvidia/bare-metal-manager-rest/rla/pkg/db/query"
 )
 
 var defaultTaskPagination = dbquery.Pagination{

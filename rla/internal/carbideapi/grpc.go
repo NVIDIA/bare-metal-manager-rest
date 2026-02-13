@@ -26,8 +26,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	pb "github.com/nvidia/carbide-rest/rla/internal/carbideapi/gen"
-	"github.com/nvidia/carbide-rest/rla/internal/certs"
+	pb "github.com/nvidia/bare-metal-manager-rest/rla/internal/carbideapi/gen"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/certs"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/types/known/timestamppb"

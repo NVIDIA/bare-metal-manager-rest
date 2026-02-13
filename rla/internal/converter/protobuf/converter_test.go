@@ -23,15 +23,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 
-	dbquery "github.com/nvidia/carbide-rest/rla/internal/db/query"
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/bmc"
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/component"
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/rack"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/credential"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/deviceinfo"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/devicetypes"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/location"
-	pb "github.com/nvidia/carbide-rest/rla/pkg/proto/v1"
+	dbquery "github.com/nvidia/bare-metal-manager-rest/rla/internal/db/query"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/bmc"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/component"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/rack"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/credential"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/deviceinfo"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/location"
+	pb "github.com/nvidia/bare-metal-manager-rest/rla/pkg/proto/v1"
 )
 
 func TestUUIDFrom(t *testing.T) {

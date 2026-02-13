@@ -21,12 +21,12 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/nvidia/carbide-rest/rla/internal/carbideapi"
-	"github.com/nvidia/carbide-rest/rla/internal/clients/temporal"
-	"github.com/nvidia/carbide-rest/rla/internal/psmapi"
-	"github.com/nvidia/carbide-rest/rla/internal/task/executor"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/endpoint"
-	"github.com/nvidia/carbide-rest/rla/pkg/db"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/carbideapi"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/clients/temporal"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/psmapi"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/executor"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/endpoint"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db"
 )
 
 const (

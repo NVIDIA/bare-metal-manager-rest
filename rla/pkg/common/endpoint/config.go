@@ -20,7 +20,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/nvidia/carbide-rest/rla/pkg/common/credential"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/credential"
 )
 
 type Config struct {

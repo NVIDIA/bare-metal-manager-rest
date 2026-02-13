@@ -32,7 +32,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/uptrace/bun"
 
-	"github.com/nvidia/carbide-rest/rla/internal/db/postgres"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/db/postgres"
 )
 
 //go:embed *.sql

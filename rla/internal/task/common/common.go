@@ -20,8 +20,8 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/deviceinfo"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/devicetypes"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/deviceinfo"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"
 )
 
 type TaskType string

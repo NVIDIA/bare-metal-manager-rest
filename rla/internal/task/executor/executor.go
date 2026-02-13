@@ -19,9 +19,9 @@ package executor
 import (
 	"context"
 
-	"github.com/nvidia/carbide-rest/rla/internal/task/common"
-	"github.com/nvidia/carbide-rest/rla/internal/task/operations"
-	"github.com/nvidia/carbide-rest/rla/internal/task/task"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/common"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/operations"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/task"
 )
 
 type Executor interface {

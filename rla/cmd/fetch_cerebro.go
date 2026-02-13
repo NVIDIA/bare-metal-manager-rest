@@ -23,10 +23,10 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 
-	"github.com/nvidia/carbide-rest/rla/internal/clients/cerebro"
-	"github.com/nvidia/carbide-rest/rla/internal/dumper"
-	cerebrofetcher "github.com/nvidia/carbide-rest/rla/internal/fetcher/cerebro"
-	"github.com/nvidia/carbide-rest/rla/pkg/client"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/clients/cerebro"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/dumper"
+	cerebrofetcher "github.com/nvidia/bare-metal-manager-rest/rla/internal/fetcher/cerebro"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/client"
 )
 
 var (

@@ -24,8 +24,8 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/nvldomain"
-	"github.com/nvidia/carbide-rest/rla/internal/inventory/objects/rack"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/nvldomain"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/rack"
 )
 
 type Dumper struct {

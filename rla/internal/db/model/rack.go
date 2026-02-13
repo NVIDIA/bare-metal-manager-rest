@@ -23,9 +23,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 
-	dbquery "github.com/nvidia/carbide-rest/rla/internal/db/query"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/deviceinfo"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/utils"
+	dbquery "github.com/nvidia/bare-metal-manager-rest/rla/internal/db/query"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/deviceinfo"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/utils"
 )
 
 var defaultRackPagination = dbquery.Pagination{

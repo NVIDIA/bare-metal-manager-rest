@@ -22,7 +22,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/uptrace/bun"
-	dbquery "github.com/nvidia/carbide-rest/rla/pkg/db/query"
+	dbquery "github.com/nvidia/bare-metal-manager-rest/rla/pkg/db/query"
 )
 
 var defaultNVLDomainPagination = dbquery.Pagination{

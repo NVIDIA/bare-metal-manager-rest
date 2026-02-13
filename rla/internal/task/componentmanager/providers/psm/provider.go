@@ -21,7 +21,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/nvidia/carbide-rest/rla/internal/psmapi"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/psmapi"
 )
 
 const (

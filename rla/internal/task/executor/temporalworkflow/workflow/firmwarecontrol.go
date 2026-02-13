@@ -23,8 +23,8 @@ import (
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 
-	"github.com/nvidia/carbide-rest/rla/internal/task/operations"
-	"github.com/nvidia/carbide-rest/rla/internal/task/task"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/operations"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/task"
 )
 
 var firmwareControlActivityOptions = workflow.ActivityOptions{

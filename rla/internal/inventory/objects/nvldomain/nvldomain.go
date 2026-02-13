@@ -20,7 +20,7 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
-	identifier "github.com/nvidia/carbide-rest/rla/pkg/common/Identifier"
+	identifier "github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/Identifier"
 )
 
 type NVLDomain struct {

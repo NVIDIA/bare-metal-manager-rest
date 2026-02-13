@@ -19,7 +19,7 @@ package builder
 import (
 	"fmt"
 
-	"github.com/nvidia/carbide-rest/rla/pkg/client"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/client"
 )
 
 const (

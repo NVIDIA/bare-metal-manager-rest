@@ -24,9 +24,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/nvidia/carbide-rest/rla/internal/task/componentmanager/providers/carbide"
-	"github.com/nvidia/carbide-rest/rla/internal/task/componentmanager/providers/psm"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/devicetypes"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/componentmanager/providers/carbide"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/componentmanager/providers/psm"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"
 )
 
 // ProviderConfig holds the configuration for API providers.

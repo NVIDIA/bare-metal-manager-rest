@@ -24,15 +24,15 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.temporal.io/sdk/worker"
 
-	"github.com/nvidia/carbide-rest/rla/internal/clients/temporal"
-	taskcommon "github.com/nvidia/carbide-rest/rla/internal/task/common"
-	"github.com/nvidia/carbide-rest/rla/internal/task/componentmanager"
-	"github.com/nvidia/carbide-rest/rla/internal/task/executor"
-	"github.com/nvidia/carbide-rest/rla/internal/task/executor/temporalworkflow/activity"
-	"github.com/nvidia/carbide-rest/rla/internal/task/executor/temporalworkflow/common"
-	"github.com/nvidia/carbide-rest/rla/internal/task/executor/temporalworkflow/workflow"
-	"github.com/nvidia/carbide-rest/rla/internal/task/operations"
-	"github.com/nvidia/carbide-rest/rla/internal/task/task"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/clients/temporal"
+	taskcommon "github.com/nvidia/bare-metal-manager-rest/rla/internal/task/common"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/componentmanager"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/executor"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/executor/temporalworkflow/activity"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/executor/temporalworkflow/common"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/executor/temporalworkflow/workflow"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/operations"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/task"
 )
 
 const (

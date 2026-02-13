@@ -20,7 +20,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/nvidia/carbide-rest/rla/pkg/common/endpoint"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/endpoint"
 )
 
 // Config represents the configuration needed to connect to a database.

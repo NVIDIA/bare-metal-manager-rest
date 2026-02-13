@@ -19,7 +19,7 @@ package carbideapi
 import (
 	"time"
 
-	pb "github.com/nvidia/carbide-rest/rla/internal/carbideapi/gen"
+	pb "github.com/nvidia/bare-metal-manager-rest/rla/internal/carbideapi/gen"
 )
 
 // model.go abstracts the raw grpc definitions away.  Don't bother implementing fields you don't think you'll use.

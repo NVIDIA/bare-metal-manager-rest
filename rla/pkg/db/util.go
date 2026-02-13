@@ -22,8 +22,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/nvidia/carbide-rest/rla/pkg/common/credential"
-	"github.com/nvidia/carbide-rest/rla/pkg/common/endpoint"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/credential"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/endpoint"
 )
 
 func CurTime() time.Time {

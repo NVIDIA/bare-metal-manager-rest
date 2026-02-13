@@ -16,7 +16,7 @@
 #
 
 version: v1
-name: github.com/nvidia/carbide-rest/rla
+name: github.com/nvidia/bare-metal-manager-rest/rla
 lint:
   use:
     - DEFAULT

@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"time"
 
-	pb "github.com/nvidia/carbide-rest/rla/internal/psmapi/gen"
+	pb "github.com/nvidia/bare-metal-manager-rest/rla/internal/psmapi/gen"
 )
 
 // PMCVendor enumerates supported PMC vendors.

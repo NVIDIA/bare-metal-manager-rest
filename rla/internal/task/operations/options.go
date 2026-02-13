@@ -19,7 +19,7 @@ package operations
 import (
 	"time"
 
-	taskcommon "github.com/nvidia/carbide-rest/rla/internal/task/common"
+	taskcommon "github.com/nvidia/bare-metal-manager-rest/rla/internal/task/common"
 )
 
 type OperationOptions struct {

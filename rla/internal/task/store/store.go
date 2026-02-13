@@ -23,9 +23,9 @@ import (
 
 	"github.com/google/uuid"
 
-	taskcommon "github.com/nvidia/carbide-rest/rla/internal/task/common"
-	taskdef "github.com/nvidia/carbide-rest/rla/internal/task/task"
-	dbquery "github.com/nvidia/carbide-rest/rla/pkg/db/query"
+	taskcommon "github.com/nvidia/bare-metal-manager-rest/rla/internal/task/common"
+	taskdef "github.com/nvidia/bare-metal-manager-rest/rla/internal/task/task"
+	dbquery "github.com/nvidia/bare-metal-manager-rest/rla/pkg/db/query"
 )
 
 // Store defines the interface for task data persistence.

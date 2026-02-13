@@ -31,8 +31,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	pb "github.com/nvidia/carbide-rest/rla/pkg/proto/v1"
-	"github.com/nvidia/carbide-rest/rla/pkg/types"
+	pb "github.com/nvidia/bare-metal-manager-rest/rla/pkg/proto/v1"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/types"
 )
 
 // Client is the gRPC client for interacting with the RLA service.
