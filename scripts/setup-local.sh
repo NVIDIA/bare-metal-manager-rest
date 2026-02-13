@@ -126,17 +126,6 @@ setup_pki() {
 # ============================================================================
 
 wait_for_services() {
-    echo "Waiting for API..."
-    for i in {1..60}; do
-        if curl -sf "$API_URL/healthz" > /dev/null 2>&1; then
-            break
-        fi
-        if [ $i -eq 60 ]; then
-            echo "ERROR: API not ready"
-            exit 1
-        fi
-    done
-
     echo "Waiting for Keycloak..."
     for i in {1..30}; do
         if curl -sf "$KEYCLOAK_URL/realms/carbide-dev" > /dev/null 2>&1; then
@@ -147,6 +136,16 @@ wait_for_services() {
             exit 1
         fi
     done
+
+    # Once Keycloak is ready we need to restart the API server because if Keycloak wasn't ready
+    # when it started it would have failed to fetch the JWKS, and therefore it will automatically
+    # disable Keycloak support.
+    echo "Waiting for API ..."
+    kubectl -n $NAMESPACE rollout restart deployment carbide-rest-api
+    if ! kubectl -n $NAMESPACE rollout status deployment carbide-rest-api --timeout=240s; then
+        echo "ERROR: Failed to restart API"
+        exit 1
+    fi
 
     echo "Waiting for site-manager..."
     if ! kubectl -n $NAMESPACE wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=360s; then
