@@ -44,7 +44,7 @@ COPY cert-manager/ ./cert-manager/
 
 # Build the credentials manager
 WORKDIR /workspace/cert-manager
-RUN VERSION=$(cat /workspace/VERSION 2>/dev/null || echo "dev") && \
+RUN VERSION=$(grep -v '^#' /workspace/VERSION | tr -d '[:space:]' 2>/dev/null || echo "dev") && \
     BUILD_TIME=$(date +"%Y-%m-%d %H:%M:%S") && \
     go build \
         -ldflags "-extldflags '-static' -w -s" \
@@ -67,4 +67,3 @@ EXPOSE 8080
 
 # Run the application
 ENTRYPOINT ["/app/credsmgr"]
-
