@@ -157,6 +157,7 @@ type APIRackComponent struct {
 	Manufacturer    string `json:"manufacturer"`
 	FirmwareVersion string `json:"firmwareVersion"`
 	Position        int32  `json:"position"`
+	PowerState      string `json:"powerState"`
 }
 
 // FromProto converts a proto Component to an APIRackComponent
@@ -183,6 +184,8 @@ func (arc *APIRackComponent) FromProto(protoComponent *rlav1.Component) {
 	if protoComponent.GetPosition() != nil {
 		arc.Position = protoComponent.GetPosition().GetSlotId()
 	}
+
+	arc.PowerState = protoComponent.GetPowerState()
 }
 
 // ========== Rack Validation API Models ==========

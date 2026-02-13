@@ -13829,6 +13829,9 @@ components:
         position:
           type: integer
           description: Slot position of the component within the rack
+        powerState:
+          type: string
+          description: Current power state of the component (synced from external system)
     Machine:
       title: Machine
       type: object
