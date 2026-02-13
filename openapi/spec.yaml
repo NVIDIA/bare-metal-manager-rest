@@ -13836,8 +13836,15 @@ components:
         firmwareVersion:
           type: string
           description: Firmware version of the component
-        position:
-          $ref: '#/components/schemas/RackPosition'
+        slotId:
+          type: integer
+          description: Slot ID of the component within the rack
+        trayIdx:
+          type: integer
+          description: Tray index of the component
+        hostId:
+          type: integer
+          description: Host ID of the component
         bmcs:
           type: array
           description: BMC (Baseboard Management Controller) entries for the component
@@ -13846,20 +13853,6 @@ components:
         powerState:
           type: string
           description: Current power state of the component (synced from external system)
-    RackPosition:
-      title: RackPosition
-      type: object
-      description: Position of a component within a rack
-      properties:
-        slotId:
-          type: integer
-          description: Slot ID within the rack
-        trayIdx:
-          type: integer
-          description: Tray index
-        hostId:
-          type: integer
-          description: Host ID
     BMCInfo:
       title: BMCInfo
       type: object

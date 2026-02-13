@@ -149,26 +149,21 @@ func (arl *APIRackLocation) FromProto(protoLocation *rlav1.Location) {
 
 // APIRackComponent represents a component within a rack
 type APIRackComponent struct {
-	ID              string          `json:"id"`
-	ComponentID     string          `json:"componentId"`
-	RackID          string          `json:"rackId,omitempty"`
-	Type            string          `json:"type"`
-	Name            string          `json:"name"`
-	SerialNumber    string          `json:"serialNumber"`
-	Manufacturer    string          `json:"manufacturer"`
-	Model           string          `json:"model,omitempty"`
-	Description     string          `json:"description,omitempty"`
-	FirmwareVersion string          `json:"firmwareVersion"`
-	Position        *APIRackPosition `json:"position,omitempty"`
-	BMCs            []*APIBMC       `json:"bmcs,omitempty"`
-	PowerState      string          `json:"powerState"`
-}
-
-// APIRackPosition represents a component's position within a rack
-type APIRackPosition struct {
-	SlotID  int32 `json:"slotId"`
-	TrayIdx int32 `json:"trayIdx"`
-	HostID  int32 `json:"hostId"`
+	ID              string    `json:"id"`
+	ComponentID     string    `json:"componentId"`
+	RackID          string    `json:"rackId,omitempty"`
+	Type            string    `json:"type"`
+	Name            string    `json:"name"`
+	SerialNumber    string    `json:"serialNumber"`
+	Manufacturer    string    `json:"manufacturer"`
+	Model           string    `json:"model,omitempty"`
+	Description     string    `json:"description,omitempty"`
+	FirmwareVersion string    `json:"firmwareVersion"`
+	SlotID          int32     `json:"slotId"`
+	TrayIdx         int32     `json:"trayIdx"`
+	HostID          int32     `json:"hostId"`
+	BMCs            []*APIBMC `json:"bmcs,omitempty"`
+	PowerState      string    `json:"powerState"`
 }
 
 // APIBMC represents a BMC (Baseboard Management Controller) entry
@@ -208,11 +203,9 @@ func (arc *APIRackComponent) FromProto(protoComponent *rlav1.Component) {
 
 	// Get position
 	if protoComponent.GetPosition() != nil {
-		arc.Position = &APIRackPosition{
-			SlotID:  protoComponent.GetPosition().GetSlotId(),
-			TrayIdx: protoComponent.GetPosition().GetTrayIdx(),
-			HostID:  protoComponent.GetPosition().GetHostId(),
-		}
+		arc.SlotID = protoComponent.GetPosition().GetSlotId()
+		arc.TrayIdx = protoComponent.GetPosition().GetTrayIdx()
+		arc.HostID = protoComponent.GetPosition().GetHostId()
 	}
 
 	// Get BMCs
