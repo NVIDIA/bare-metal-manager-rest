@@ -199,53 +199,11 @@ type APIRackValidationResult struct {
 
 // APIComponentDiff represents a single component difference found during validation
 type APIComponentDiff struct {
-	Type        string          `json:"type"`
-	ComponentID string          `json:"componentId"`
+	Type        string            `json:"type"`
+	ComponentID string            `json:"componentId"`
 	Expected    *APIRackComponent `json:"expected,omitempty"`
-	Actual      *APIActualComponent `json:"actual,omitempty"`
-	FieldDiffs  []*APIFieldDiff `json:"fieldDiffs,omitempty"`
-}
-
-// APIActualComponent represents a component's actual state from external systems
-type APIActualComponent struct {
-	ID              string `json:"id"`
-	ComponentID     string `json:"componentId"`
-	Type            string `json:"type"`
-	Name            string `json:"name"`
-	SerialNumber    string `json:"serialNumber"`
-	Manufacturer    string `json:"manufacturer"`
-	FirmwareVersion string `json:"firmwareVersion"`
-	Position        int32  `json:"position"`
-	PowerState      string `json:"powerState"`
-	HealthStatus    string `json:"healthStatus"`
-	Source          string `json:"source"`
-}
-
-// FromProto converts a proto ActualComponent to an APIActualComponent
-func (aac *APIActualComponent) FromProto(protoActual *rlav1.ActualComponent) {
-	if protoActual == nil {
-		return
-	}
-	aac.Type = protoActual.GetType().String()
-	aac.FirmwareVersion = protoActual.GetFirmwareVersion()
-	aac.ComponentID = protoActual.GetComponentId()
-	aac.PowerState = protoActual.GetPowerState()
-	aac.HealthStatus = protoActual.GetHealthStatus()
-	aac.Source = protoActual.GetSource()
-
-	if protoActual.GetInfo() != nil {
-		compInfo := protoActual.GetInfo()
-		if compInfo.GetId() != nil {
-			aac.ID = compInfo.GetId().GetId()
-		}
-		aac.Name = compInfo.GetName()
-		aac.SerialNumber = compInfo.GetSerialNumber()
-		aac.Manufacturer = compInfo.GetManufacturer()
-	}
-
-	if protoActual.GetPosition() != nil {
-		aac.Position = protoActual.GetPosition().GetSlotId()
-	}
+	Actual      *APIRackComponent `json:"actual,omitempty"`
+	FieldDiffs  []*APIFieldDiff   `json:"fieldDiffs,omitempty"`
 }
 
 // APIFieldDiff represents a single field difference
@@ -285,7 +243,7 @@ func NewAPIRackValidationResult(protoResp *rlav1.ValidateComponentsResponse) *AP
 
 		// Convert actual component
 		if diff.GetActual() != nil {
-			apiActual := &APIActualComponent{}
+			apiActual := &APIRackComponent{}
 			apiActual.FromProto(diff.GetActual())
 			apiDiff.Actual = apiActual
 		}

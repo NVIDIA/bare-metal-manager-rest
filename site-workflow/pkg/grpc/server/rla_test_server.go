@@ -29,7 +29,7 @@ import (
 	"google.golang.org/grpc/reflection"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
-	"google.golang.org/protobuf/types/known/timestamppb"
+
 
 	"github.com/rs/zerolog/log"
 
@@ -484,10 +484,10 @@ func (r *RlaServerImpl) ValidateComponents(ctx context.Context, req *rlav1.Valid
 	}
 
 	// For validation, we treat the components as both expected and actual
-	// Convert components to actual components for comparison
-	actualComponents := make([]*rlav1.ActualComponent, 0, len(componentsResp.Components))
+	// In the new proto, actual is also a Component (ActualComponent was removed)
+	actualComponents := make([]*rlav1.Component, 0, len(componentsResp.Components))
 	for _, comp := range componentsResp.Components {
-		actualComp := &rlav1.ActualComponent{
+		actualComp := &rlav1.Component{
 			Type:            comp.Type,
 			Info:            comp.Info,
 			FirmwareVersion: comp.FirmwareVersion,
@@ -495,10 +495,7 @@ func (r *RlaServerImpl) ValidateComponents(ctx context.Context, req *rlav1.Valid
 			Bmcs:            comp.Bmcs,
 			ComponentId:     comp.ComponentId,
 			RackId:          comp.RackId,
-			LastSeen:        timestamppb.Now(),
 			PowerState:      "on",
-			HealthStatus:    "healthy",
-			Source:          "mock",
 		}
 		actualComponents = append(actualComponents, actualComp)
 	}
@@ -511,7 +508,7 @@ func (r *RlaServerImpl) ValidateComponents(ctx context.Context, req *rlav1.Valid
 		}
 	}
 
-	actualMap := make(map[string]*rlav1.ActualComponent)
+	actualMap := make(map[string]*rlav1.Component)
 	for _, comp := range actualComponents {
 		if comp.ComponentId != "" {
 			actualMap[comp.ComponentId] = comp
