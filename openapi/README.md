@@ -3,14 +3,34 @@ SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All 
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# Cabide REST OpenAPI Schema
+# NVIDIA Bare Metal REST OpenAPI Schema
 
-This repo contains OpenAPI schema for Cabide REST endpoints.
+This repo contains OpenAPI schema for NVIDIA Bare Metal REST endpoints. Redoc rendered latest version can be viewed at https://nvidia.github.io/bare-metal-manager-rest/
 
-To view a rendered/browsable version of the schema, please ensure docker is available and run the following command from project root:
+# Development
+
+OpenAPI schema must be updated whenever the API endpoints are added/updated.
+
+Please ensure that the following tools are installed:
+ - Docker
+ - npm
+
+To lint schema after making changes, run:
+
+    make lint-openapi
+
+To view a rendered/browsable version of the schema locally, run:
 
     make preview-openapi
 
 Then access the schema at:
 
     http://127.0.0.1:8090
+
+# Updating Github Pages
+
+In order to update the Github pages to reflect schema changes, you must include rendered HTML changes in your PR.
+
+To modify the rendered HTML, run:
+
+    make publish-openapi
