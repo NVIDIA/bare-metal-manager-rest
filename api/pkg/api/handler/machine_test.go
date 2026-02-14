@@ -30,12 +30,21 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
+<<<<<<< HEAD
 	"github.com/nvidia/bare-metal-manager-rest/api/internal/config"
 	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/handler/util/common"
 	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model"
 	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/pagination"
 	"github.com/nvidia/bare-metal-manager-rest/common/pkg/otelecho"
 	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
+=======
+	"github.com/nvidia/carbide-rest/api/internal/config"
+	"github.com/nvidia/carbide-rest/api/pkg/api/handler/util/common"
+	"github.com/nvidia/carbide-rest/api/pkg/api/model"
+	"github.com/nvidia/carbide-rest/api/pkg/api/pagination"
+	"github.com/nvidia/carbide-rest/common/pkg/otelecho"
+	cwssaws "github.com/nvidia/carbide-rest/workflow-schema/schema/site-agent/workflows/v1"
+>>>>>>> 96c2c25 (Updated test cases and spec for labels info)
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -722,8 +731,14 @@ func TestMachineHandler_GetAll(t *testing.T) {
 	_ = testMachineUpdateTenantCapability(t, dbSession, tenant2)
 	_ = common.TestBuildTenantAccount(t, dbSession, ipt2, &tenant2.ID, tnOrg2, cdbm.TenantAccountStatusReady, tnu2)
 
-	it1 := common.TestBuildInstanceType(t, dbSession, "test-instance-1", cdb.GetUUIDPtr(uuid.New()), site, ipu)
-	it2 := common.TestBuildInstanceType(t, dbSession, "test-instance-2", cdb.GetUUIDPtr(uuid.New()), site, ipu)
+	it1 := common.TestBuildInstanceType(t, dbSession, "test-instance-1", cdb.GetUUIDPtr(uuid.New()), site, map[string]string{
+		"name":        "test-instance-type-1",
+		"description": "Test Instance Type 1 Description",
+	}, ipu)
+	it2 := common.TestBuildInstanceType(t, dbSession, "test-instance-2", cdb.GetUUIDPtr(uuid.New()), site, map[string]string{
+		"name":        "test-instance-type-2",
+		"description": "Test Instance Type 2 Description",
+	}, ipu)
 	alc := testInstanceSiteBuildAllocationContraints(t, dbSession, al, cdbm.AllocationResourceTypeInstanceType, it1.ID, cdbm.AllocationConstraintTypeReserved, 20, ipu)
 
 	os := testMachineBuildOperatingSystem(t, dbSession, "test-os", tenant.ID, tnu)

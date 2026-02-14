@@ -827,7 +827,10 @@ func TestDeleteDpuExtensionServiceHandler_Handle(t *testing.T) {
 	assert.NotNil(t, des2)
 
 	al1 := common.TestBuildAllocation(t, dbSession, st1, tn1, "test-allocation-1", ipu)
-	it1 := common.TestBuildInstanceType(t, dbSession, "test-instance-type-1", nil, st1, tnu1)
+	it1 := common.TestBuildInstanceType(t, dbSession, "test-instance-type-1", nil, st1, map[string]string{
+		"name":        "test-instance-type-1",
+		"description": "Test Instance Type 1 Description",
+	}, tnu1)
 	alc1 := common.TestBuildAllocationConstraint(t, dbSession, al1, it1, nil, 5, tnu1)
 	m1 := common.TestBuildMachine(t, dbSession, ip, st1, &it1.ID, nil, cdbm.MachineStatusReady)
 	_ = common.TestBuildMachineInstanceType(t, dbSession, m1, it1)
@@ -1191,7 +1194,10 @@ func TestDeleteDpuExtensionServiceVersionHandler_Handle(t *testing.T) {
 
 	// Prep objects to attach deployment
 	al1 := common.TestBuildAllocation(t, dbSession, st1, tn1, "test-allocation-1", ipu)
-	it1 := common.TestBuildInstanceType(t, dbSession, "test-instance-type-1", nil, st1, tnu1)
+	it1 := common.TestBuildInstanceType(t, dbSession, "test-instance-type-1", nil, st1, map[string]string{
+		"name":        "test-instance-type-1",
+		"description": "Test Instance Type 1 Description",
+	}, tnu1)
 	alc1 := common.TestBuildAllocationConstraint(t, dbSession, al1, it1, nil, 5, tnu1)
 	m1 := common.TestBuildMachine(t, dbSession, ip, st1, &it1.ID, nil, cdbm.MachineStatusReady)
 	_ = common.TestBuildMachineInstanceType(t, dbSession, m1, it1)

@@ -75,8 +75,14 @@ func TestAllocationConstraintHandler_Update(t *testing.T) {
 	ipamStorage := ipam.NewIpamStorage(dbSession.DB, nil)
 
 	// Setup Instance Types
-	it1 := common.TestBuildInstanceType(t, dbSession, "testIT", cdb.GetUUIDPtr(uuid.New()), site, ipu)
-	it2 := common.TestBuildInstanceType(t, dbSession, "testIT2", cdb.GetUUIDPtr(uuid.New()), site, ipu)
+	it1 := common.TestBuildInstanceType(t, dbSession, "testIT", cdb.GetUUIDPtr(uuid.New()), site, map[string]string{
+		"name":        "test-instance-type-1",
+		"description": "Test Instance Type 1 Description",
+	}, ipu)
+	it2 := common.TestBuildInstanceType(t, dbSession, "testIT2", cdb.GetUUIDPtr(uuid.New()), site, map[string]string{
+		"name":        "test-instance-type-2",
+		"description": "Test Instance Type 2 Description",
+	}, ipu)
 
 	// build some machines, and map the machines to the instancetypes
 	for i := 1; i <= 25; i++ {

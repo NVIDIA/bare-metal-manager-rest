@@ -2030,7 +2030,10 @@ func TestDeleteSiteHandler_Handle(t *testing.T) {
 	common.TestBuildIPBlock(t, dbSession, "Test IP Block", st5, nil, cdbm.IPBlockRoutingTypeDatacenterOnly, "10.180.124.192", 28, cdbm.IPBlockProtocolVersionV4, ipu)
 
 	st6 := testSiteBuildSite(t, dbSession, ip, "Test Site 6", cdbm.SiteStatusRegistered, ipu, nil, nil)
-	common.TestBuildInstanceType(t, dbSession, "Test Instance Type", cdb.GetUUIDPtr(uuid.New()), st6, ipu)
+	common.TestBuildInstanceType(t, dbSession, "Test Instance Type", cdb.GetUUIDPtr(uuid.New()), st6, map[string]string{
+		"name":        "Test Instance Type",
+		"description": "Test Instance Type Description",
+	}, ipu)
 
 	st7 := testSiteBuildSite(t, dbSession, ip, "Test Site 7", cdbm.SiteStatusRegistered, ipu, nil, nil)
 

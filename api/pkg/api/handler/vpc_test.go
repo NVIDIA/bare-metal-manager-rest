@@ -2352,7 +2352,10 @@ func TestDeleteVPCHandler_Handle(t *testing.T) {
 	os := common.TestBuildOperatingSystem(t, dbSession, "test-os", tn1, cdbm.OperatingSystemStatusReady, tnu1)
 	assert.NotNil(t, os)
 
-	it := common.TestBuildInstanceType(t, dbSession, "testIT", cdb.GetUUIDPtr(uuid.New()), st, ipu)
+	it := common.TestBuildInstanceType(t, dbSession, "testIT", cdb.GetUUIDPtr(uuid.New()), st, map[string]string{
+		"name":        "test-instance-type-1",
+		"description": "Test Instance Type 1 Description",
+	}, ipu)
 	assert.NotNil(t, it)
 
 	machine := common.TestBuildMachine(t, dbSession, ip, st, &it.ID, cdb.GetStrPtr("test-controller-machine-type"), cdbm.MachineStatusReady)
