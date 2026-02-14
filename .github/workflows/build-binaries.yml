@@ -55,6 +55,8 @@ jobs:
             path: ./site-agent/cmd/elektraserver
           - name: credsmgr
             path: ./cert-manager/cmd/credsmgr
+          - name: rla
+            path: ./rla
 
     steps:
       - name: Checkout code

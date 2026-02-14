@@ -33,6 +33,7 @@ This directory contains multi-stage Dockerfiles optimized for production deploym
 4. **Dockerfile.carbide-rest-site-manager** - Site Manager service
 5. **Dockerfile.carbide-rest-cert-manager** - Certificate Manager
 6. **Dockerfile.carbide-rest-site-agent** - Site Agent
+7. **Dockerfile.carbide-rla** - Rack Level Abstraction
 
 ## Building Images
 

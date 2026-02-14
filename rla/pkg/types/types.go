@@ -1,0 +1,139 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package types
+
+import (
+	"net"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// DeviceInfo contains device identification information.
+type DeviceInfo struct {
+	ID           uuid.UUID
+	Name         string
+	Manufacturer string
+	Model        string
+	SerialNumber string
+	Description  string
+}
+
+// Location represents physical location of a rack.
+type Location struct {
+	Region     string
+	Datacenter string
+	Room       string
+	Position   string
+}
+
+// InRackPosition represents a component's position within a rack.
+type InRackPosition struct {
+	SlotID    int
+	TrayIndex int
+	HostID    int
+}
+
+// BMC represents BMC (Baseboard Management Controller) information.
+type BMC struct {
+	Type     BMCType
+	MAC      net.HardwareAddr
+	IP       net.IP
+	User     string
+	Password string
+}
+
+// Component represents a rack component (compute node, switch, etc.).
+type Component struct {
+	Type            ComponentType
+	Info            DeviceInfo
+	FirmwareVersion string
+	Position        InRackPosition
+	BMCs            []BMC
+	ComponentID     string // External system ID (e.g., Carbide machine_id)
+	RackID          uuid.UUID
+}
+
+// Rack represents a physical rack containing components.
+type Rack struct {
+	Info       DeviceInfo
+	Location   Location
+	Components []Component
+}
+
+// NVLDomain represents an NVL domain (a group of related racks).
+type NVLDomain struct {
+	ID   uuid.UUID
+	Name string
+}
+
+// Identifier can identify a resource by ID or Name.
+type Identifier struct {
+	ID   uuid.UUID
+	Name string
+}
+
+// Pagination for list requests.
+type Pagination struct {
+	Offset int
+	Limit  int
+}
+
+// StringQueryInfo for filtering list requests.
+type StringQueryInfo struct {
+	Patterns   []string
+	IsWildcard bool
+	UseOR      bool
+}
+
+// Task represents an async operation task.
+type Task struct {
+	ID           uuid.UUID
+	Operation    string
+	RackID       uuid.UUID
+	ComponentIDs []uuid.UUID
+	Description  string
+	ExecutorType TaskExecutorType
+	ExecutionID  string
+	Status       TaskStatus
+	Message      string
+}
+
+// ActualComponent represents a component's actual state from external systems.
+type ActualComponent struct {
+	Component
+	LastSeen     time.Time
+	PowerState   string
+	HealthStatus string
+	Source       string // Data source (e.g., "carbide", "psm")
+}
+
+// ComponentDiff represents a difference found during validation.
+type ComponentDiff struct {
+	Type        DiffType
+	ComponentID string
+	Expected    *Component
+	Actual      *ActualComponent
+	FieldDiffs  []FieldDiff
+}
+
+// FieldDiff represents a single field difference.
+type FieldDiff struct {
+	FieldName     string
+	ExpectedValue string
+	ActualValue   string
+}
