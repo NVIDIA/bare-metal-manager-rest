@@ -1338,6 +1338,16 @@ func (c *MockRLAClient) GetListOfRacks(ctx context.Context, in *rlav1.GetListOfR
 
 /* Component mock methods */
 func (c *MockRLAClient) GetComponentInfoByID(ctx context.Context, in *rlav1.GetComponentInfoByIDRequest, opts ...grpc.CallOption) (*rlav1.GetComponentInfoResponse, error) {
+	// Check for error injection via context
+	if err, ok := ctx.Value("wantError").(error); ok {
+		return nil, err
+	}
+
+	// Check for custom response via context
+	if resp, ok := ctx.Value("wantResponse").(*rlav1.GetComponentInfoResponse); ok {
+		return resp, nil
+	}
+
 	out := &rlav1.GetComponentInfoResponse{
 		Component: &rlav1.Component{
 			ComponentId: in.GetId().GetId(),
@@ -1358,6 +1368,16 @@ func (c *MockRLAClient) GetComponentInfoBySerial(ctx context.Context, in *rlav1.
 }
 
 func (c *MockRLAClient) GetComponents(ctx context.Context, in *rlav1.GetComponentsRequest, opts ...grpc.CallOption) (*rlav1.GetComponentsResponse, error) {
+	// Check for error injection via context
+	if err, ok := ctx.Value("wantError").(error); ok {
+		return nil, err
+	}
+
+	// Check for custom response via context
+	if resp, ok := ctx.Value("wantResponse").(*rlav1.GetComponentsResponse); ok {
+		return resp, nil
+	}
+
 	out := &rlav1.GetComponentsResponse{
 		Components: []*rlav1.Component{},
 		Total:      0,
