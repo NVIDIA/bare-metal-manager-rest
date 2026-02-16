@@ -3427,6 +3427,22 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 	instnvlifc4 := testInstanceBuildInstanceNVLinkInterface(t, dbSession, st3.ID, inst13.ID, nvllp1.ID, cdb.GetUUIDPtr(uuid.New()), cdb.GetStrPtr("NVIDIA GB200"), 3, cdbm.NVLinkInterfaceStatusReady)
 	assert.NotNil(t, instnvlifc4)
 
+	mc6 := testInstanceBuildMachine(t, dbSession, ip.ID, st2.ID, cdb.GetBoolPtr(false), nil)
+	assert.NotNil(t, mc6)
+
+	mcinst6 := testInstanceBuildMachineInstanceType(t, dbSession, mc6, ist2)
+	assert.NotNil(t, mcinst6)
+
+	inst14 := testInstanceBuildInstance(t, dbSession, "test-instance-14", al2.ID, alc2.ID, tn2.ID, ip.ID, st2.ID, &ist2.ID, vpc2.ID, cdb.GetStrPtr(mc6.ID), &os4.ID, nil, cdbm.InstanceStatusError)
+	assert.NotNil(t, inst14)
+
+	insDAO := cdbm.NewInstanceDAO(dbSession)
+	_, err := insDAO.Update(context.Background(), nil, cdbm.InstanceUpdateInput{
+		InstanceID:      inst14.ID,
+		IsMissingOnSite: cdb.GetBoolPtr(true),
+	})
+	assert.NoError(t, err)
+
 	// Fixtures for NSG-specific testing
 
 	// Associate tenant 1 with site 2
@@ -3545,7 +3561,6 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 	// OTEL Spanner configuration
 	tracer, _, ctx := common.TestCommonTraceProviderSetup(t, ctx)
 
-	insDAO := cdbm.NewInstanceDAO(dbSession)
 	ifcDAO := cdbm.NewInterfaceDAO(dbSession)
 
 	type fields struct {
@@ -4755,6 +4770,27 @@ func TestUpdateInstanceHandler_Handle(t *testing.T) {
 			wantErr:                     false,
 			verifySiteControllerRequest: true,
 			verifyChildSpanner:          true,
+		},
+		{
+			name: "test Instance update API endpoint failure, Instance is missing on site",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				scp:       scp,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIInstanceUpdateRequest{
+					Name:       cdb.GetStrPtr("Test Instance"),
+					IpxeScript: cdb.GetStrPtr(common.DefaultIpxeScript),
+				},
+				reqInstance: inst14.ID.String(),
+				reqOrg:      tnOrg1,
+				reqUser:     tnu1,
+				respCode:    http.StatusConflict,
+				respMessage: cdb.GetStrPtr("Instance is missing on site and cannot be updated"),
+			},
+			wantErr: false,
 		},
 	}
 	for _, tt := range tests {
@@ -7643,7 +7679,7 @@ func TestInstanceHandler_GetStatusDetails(t *testing.T) {
 	vpc1 := testInstanceBuildVPC(t, dbSession, "test-vpc-1", ip, tn1, st1, cdb.GetUUIDPtr(uuid.New()), nil, cdb.GetStrPtr(cdbm.VpcEthernetVirtualizer), nil, cdbm.VpcStatusReady, tnu1)
 	assert.NotNil(t, vpc1)
 
-	inst1 := testInstanceBuildInstance(t, dbSession, "test-instance-2", al1.ID, alc1.ID, tn1.ID, ip.ID, st1.ID, &ist1.ID, vpc1.ID, cdb.GetStrPtr(mc1.ID), &os1.ID, nil, cdbm.InstanceStatusReady)
+	inst1 := testInstanceBuildInstance(t, dbSession, "test-instance-1", al1.ID, alc1.ID, tn1.ID, ip.ID, st1.ID, &ist1.ID, vpc1.ID, cdb.GetStrPtr(mc1.ID), &os1.ID, nil, cdbm.InstanceStatusReady)
 	assert.NotNil(t, inst1)
 
 	// add status details objects

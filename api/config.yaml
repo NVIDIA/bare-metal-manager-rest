@@ -24,6 +24,11 @@ log:
   sentry:
     dsn: ""
 
+api:
+  name: carbide
+  route:
+    version: v2
+
 db:
   host: localhost
   port: 30432

@@ -454,12 +454,15 @@ generate-client:
 
 # Validate OpenAPI spec using Redocly CLI (Docker)
 lint-openapi:
-	docker run --rm -v ./openapi:/spec redocly/cli lint /spec/spec.yaml
+	npx @redocly/cli lint ./openapi/spec.yaml
 
 # Preview OpenAPI spec in Redoc UI (Docker)
 preview-openapi:
 	@echo "Starting Redoc UI at http://127.0.0.1:8090"
 	docker run -it --rm -p 8090:80 -v ./openapi/spec.yaml:/usr/share/nginx/html/openapi.yaml -e SPEC_URL=openapi.yaml redocly/redoc
+
+publish-openapi:
+	npx @redocly/cli build-docs ./openapi/spec.yaml -o ./docs/index.html
 
 # =============================================================================
 # Pre-commit Hooks (TruffleHog Secret Detection)

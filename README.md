@@ -7,6 +7,12 @@ SPDX-License-Identifier: Apache-2.0
 
 A collection of microservices that comprise the management backend for NVIDIA Bare Metal Manager, exposed as a REST API.
 
+In deployments, NVIDIA Bare Metal Manager REST requires [NVIDIA Bare Metal Manager Core](github.com/NVIDIA/bare-metal-manager-core) to function.
+
+The REST layer can be deployed in the datacenter with Bare Metal Manager Core, or deployed anywhere in Cloud and allow Site Agent to connect from the datacenter. Multiple Bare Metal Manager Cores running in different datacenters can also connect to Bare Metal Manager REST through respective Site Agents.
+
+View latest OpenAPI schema on [Github pages](https://nvidia.github.io/bare-metal-manager-rest/).
+
 ## Prerequisites
 
 - Go 1.25.4 or later
@@ -43,6 +49,7 @@ This command:
 3. Deploys all services (PostgreSQL, Temporal, Keycloak, cert-manager, etc.)
 4. Runs database migrations
 5. Configures PKI and site-agent
+6. Deploys a mock Bare Metal Manager Core
 
 Once complete, services are available at:
 
@@ -161,7 +168,6 @@ done
 | `carbide-rest-cert-manager` | Native PKI certificate manager |
 
 
-
 ## Architecture
 
 | Service | Binary | Description |
@@ -177,6 +183,10 @@ Supporting modules:
 - **common** - Shared utilities and configurations
 - **auth** - Authentication and authorization
 - **ipam** - IP Address Management
+
+## OpenAPI Schema Development
+
+OpenAPI schema must be updated whenever the API endpoints are added/updated. Please view instructions at [OpenAPI README](openapi/README.md)
 
 ## Pre-commit Hooks
 
