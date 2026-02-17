@@ -2068,6 +2068,10 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusConflict, "Instance is terminating and cannot be updated", nil)
 	}
 
+	if instance.IsMissingOnSite {
+		return cerr.NewAPIErrorResponse(c, http.StatusConflict, "Instance is missing on site and cannot be updated", nil)
+	}
+
 	// check for name uniqueness for the tenant, ie, tenant cannot have another instance with same name at the site
 	if apiRequest.Name != nil && *apiRequest.Name != instance.Name {
 		ins, tot, serr := instanceDAO.GetAll(ctx, nil,
