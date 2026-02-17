@@ -23,13 +23,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-<<<<<<< HEAD
 	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
 	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
-=======
-	"github.com/nvidia/carbide-rest/db/pkg/db"
-	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
->>>>>>> 806686c (feat: Add labels support in InstanceType)
 	"github.com/pkg/errors"
 
 	"github.com/uptrace/bun"

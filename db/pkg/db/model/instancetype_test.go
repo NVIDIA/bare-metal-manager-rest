@@ -27,17 +27,10 @@ import (
 	otrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/google/uuid"
-<<<<<<< HEAD
 	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
 	"github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
 	stracer "github.com/nvidia/bare-metal-manager-rest/db/pkg/tracer"
 	"github.com/nvidia/bare-metal-manager-rest/db/pkg/util"
-=======
-	"github.com/nvidia/carbide-rest/db/pkg/db"
-	"github.com/nvidia/carbide-rest/db/pkg/db/paginator"
-	stracer "github.com/nvidia/carbide-rest/db/pkg/tracer"
-	"github.com/nvidia/carbide-rest/db/pkg/util"
->>>>>>> 806686c (feat: Add labels support in InstanceType)
 	"github.com/uptrace/bun/extra/bundebug"
 )
 

@@ -111,8 +111,6 @@ type APIInfiniBandPartitionUpdateRequest struct {
 	Name *string `json:"name"`
 	// Description is the description of the InfiniBand Partition
 	Description *string `json:"description"`
-	// Labels is the labels of the InfiniBand Partition
-	Labels map[string]string `json:"labels"`
 }
 
 // Validate ensure the values passed in request are acceptable
