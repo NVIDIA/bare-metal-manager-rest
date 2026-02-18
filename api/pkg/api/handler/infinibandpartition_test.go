@@ -136,11 +136,18 @@ func TestInfiniBandPartitionHandler_Create(t *testing.T) {
 	ts3 := testBuildTenantSiteAssociation(t, dbSession, tnOrg1, tn1.ID, site3.ID, tnu1.ID)
 	assert.NotNil(t, ts3)
 
+	site4 := testFabricBuildSite(t, dbSession, ip1, "testSite4", nil, nil)
+	ts4 := testBuildTenantSiteAssociation(t, dbSession, tnOrg1, tn1.ID, site4.ID, tnu1.ID)
+	assert.NotNil(t, ts4)
+
 	al := testBuildAllocation(t, dbSession, site1, tn1, "test-allocation", tnu1)
 	assert.NotNil(t, al)
 
 	al2 := testBuildAllocation(t, dbSession, site3, tn1, "test-allocation-2", tnu1)
 	assert.NotNil(t, al2)
+
+	al3 := testBuildAllocation(t, dbSession, site4, tn1, "test-allocation-3", tnu1)
+	assert.NotNil(t, al3)
 
 	ibpObj := model.APIInfiniBandPartitionCreateRequest{Name: "test-ibp-1", Description: cdb.GetStrPtr("test"), SiteID: site1.ID.String(), Labels: map[string]string{"test-label-1": "test-value-1"}}
 	okBody, err := json.Marshal(ibpObj)
@@ -162,10 +169,16 @@ func TestInfiniBandPartitionHandler_Create(t *testing.T) {
 	okBody2, err := json.Marshal(ibpObj6)
 	assert.Nil(t, err)
 
+	ibpObj7 := model.APIInfiniBandPartitionCreateRequest{Name: "test-ibp-1", Description: cdb.GetStrPtr("test"), SiteID: site4.ID.String()}
+	assert.Nil(t, err)
+
 	errBodyNameClash, err := json.Marshal(ibpObj)
 	assert.Nil(t, err)
 
 	errBodyDoesntValidate, err := json.Marshal(struct{ Name string }{Name: "test"})
+	assert.Nil(t, err)
+
+	noNameClashBody, err := json.Marshal(ibpObj7)
 	assert.Nil(t, err)
 
 	// OTEL Spanner configuration
@@ -180,6 +193,9 @@ func TestInfiniBandPartitionHandler_Create(t *testing.T) {
 	// Mock per-Site client for site2
 	tsc2 := &tmocks.Client{}
 
+	// Mock per-Site client for site4
+	tsc4 := &tmocks.Client{}
+
 	// Prepare client pool for sync calls
 	// to site(s).
 	tcfg, _ := cfg.GetTemporalConfig()
@@ -187,16 +203,26 @@ func TestInfiniBandPartitionHandler_Create(t *testing.T) {
 	scp.IDClientMap[site1.ID.String()] = tsc
 	scp.IDClientMap[site2.ID.String()] = tsc
 	scp.IDClientMap[site3.ID.String()] = tsc2
+	scp.IDClientMap[site4.ID.String()] = tsc4
 
 	wid := "test-workflow-id"
 	wrun := &tmocks.WorkflowRun{}
 	wrun.On("GetID").Return(wid)
+
+	wrun4 := &tmocks.WorkflowRun{}
+	wrun4.On("GetID").Return(wid)
 
 	// Mock create call for CreateInfiniBandPartitionV2 workflow
 	tsc.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
 		"CreateInfiniBandPartitionV2", mock.Anything).Return(wrun, nil)
 
 	wrun.Mock.On("Get", mock.Anything, mock.Anything).Return(nil)
+
+	// Mock create call for CreateInfiniBandPartitionV2 workflow
+	tsc4.Mock.On("ExecuteWorkflow", mock.Anything, mock.AnythingOfType("internal.StartWorkflowOptions"),
+		"CreateInfiniBandPartitionV2", mock.Anything).Return(wrun4, nil)
+
+	wrun4.Mock.On("Get", mock.Anything, mock.Anything).Return(nil)
 
 	// Mock timeout error for timeout test case
 	wruntimeout := &tmocks.WorkflowRun{}
@@ -367,11 +393,25 @@ func TestInfiniBandPartitionHandler_Create(t *testing.T) {
 				tc:        tsc,
 				cfg:       cfg,
 			},
-			name:           "error due to name clash",
+			name:           "error due to name clash in same site",
 			reqOrgName:     tnOrg1,
 			reqBody:        string(errBodyNameClash),
 			user:           tnu1,
 			expectedStatus: http.StatusConflict,
+		},
+		{
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tsc4,
+				cfg:       cfg,
+			},
+			name:               "partition created successfully with same name with different site",
+			reqOrgName:         tnOrg1,
+			reqBody:            string(noNameClashBody),
+			reqBodyModel:       &ibpObj7,
+			user:               tnu1,
+			expectedStatus:     http.StatusCreated,
+			verifyChildSpanner: true,
 		},
 	}
 
@@ -1039,6 +1079,8 @@ func TestInfiniBandPartitionHandle_Update(t *testing.T) {
 	tnOrg2 := "test-tn-org-2"
 	tnOrg3 := "test-tn-org-3"
 	tnOrg4 := "test-tn-org-4"
+	tnOrg5 := "test-tn-org-5"
+
 	tnRoles1 := []string{"FORGE_TENANT_ADMIN"}
 	tnRoles2 := []string{"FORGE_TENANT_NONADMIN"}
 
@@ -1047,6 +1089,7 @@ func TestInfiniBandPartitionHandle_Update(t *testing.T) {
 	tnu3 := testFabricBuildUser(t, dbSession, uuid.NewString(), []string{tnOrg3}, tnRoles1)
 	tnu4 := testFabricBuildUser(t, dbSession, uuid.NewString(), []string{tnOrg4}, tnRoles1)
 	tnu5 := testFabricBuildUser(t, dbSession, uuid.NewString(), []string{tnOrg4}, tnRoles1)
+	tnu6 := testFabricBuildUser(t, dbSession, uuid.NewString(), []string{tnOrg5}, tnRoles1)
 
 	ip1 := testFabricBuildInfrastructureProvider(t, dbSession, ipOrg1, "infraProvider1")
 	site1 := testFabricBuildSite(t, dbSession, ip1, "testSite1", nil, nil)
@@ -1056,6 +1099,7 @@ func TestInfiniBandPartitionHandle_Update(t *testing.T) {
 	// creation and updates fail when a tenant has no allocations
 	// at a site.
 	site3 := testFabricBuildSite(t, dbSession, ip1, "testSite2", nil, nil)
+	site4 := testFabricBuildSite(t, dbSession, ip1, "testSite4", nil, nil)
 
 	tn1 := testFabricBuildTenant(t, dbSession, tnOrg1, "testTenant1")
 	assert.NotNil(t, tn1)
@@ -1072,15 +1116,24 @@ func TestInfiniBandPartitionHandle_Update(t *testing.T) {
 	tn3 := testFabricBuildTenant(t, dbSession, tnOrg1, "testTenant3")
 	assert.NotNil(t, tn3)
 
+	tn4 := testFabricBuildTenant(t, dbSession, tnOrg5, "testTenant4")
+	assert.NotNil(t, tn4)
+
 	// For testing a site with no allocations for tenant
 	ts3 := testBuildTenantSiteAssociation(t, dbSession, tnOrg4, tn3.ID, site3.ID, tnu5.ID)
 	assert.NotNil(t, ts3)
+
+	ts4 := testBuildTenantSiteAssociation(t, dbSession, tnOrg5, tn4.ID, site4.ID, tnu6.ID)
+	assert.NotNil(t, ts4)
 
 	al := testBuildAllocation(t, dbSession, site1, tn1, "test-allocation", tnu1)
 	assert.NotNil(t, al)
 
 	al2 := testBuildAllocation(t, dbSession, site2, tn2, "test-allocation", tnu4)
 	assert.NotNil(t, al2)
+
+	al3 := testBuildAllocation(t, dbSession, site4, tn4, "test-allocation", tnu6)
+	assert.NotNil(t, al3)
 
 	cfg := common.GetTestConfig()
 
@@ -1097,6 +1150,9 @@ func TestInfiniBandPartitionHandle_Update(t *testing.T) {
 	ibp4 := testBuildIBPartition(t, dbSession, "test-ibp-3", tnOrg1, site3, tn3, nil, nil, false)
 	assert.NotNil(t, ibp4)
 
+	ibp5 := testBuildIBPartition(t, dbSession, "test-ibp-5", tnOrg5, site4, tn4, nil, nil, false)
+	assert.NotNil(t, ibp5)
+
 	// Populate request data
 	errBody1, _ := json.Marshal(model.APIInfiniBandPartitionUpdateRequest{Name: cdb.GetStrPtr("a")})
 	assert.NotNil(t, errBody1)
@@ -1108,14 +1164,20 @@ func TestInfiniBandPartitionHandle_Update(t *testing.T) {
 	assert.Nil(t, err)
 
 	// only name update
-	okNameUpdateBody1, _ := json.Marshal(model.APISSHKeyGroupUpdateRequest{Name: cdb.GetStrPtr("test-ipb-updated")})
+	okNameUpdateBody1, _ := json.Marshal(model.APIInfiniBandPartitionUpdateRequest{Name: cdb.GetStrPtr("test-ipb-updated")})
 	assert.NotNil(t, okNameUpdateBody1)
 
-	okNameUpdateBody2, _ := json.Marshal(model.APISSHKeyGroupUpdateRequest{Name: cdb.GetStrPtr("test-ipb-updated-new")})
+	okNameUpdateBody1DifferentSite, _ := json.Marshal(model.APIInfiniBandPartitionUpdateRequest{Name: cdb.GetStrPtr("test-ibp-1")})
+	assert.NotNil(t, okNameUpdateBody1DifferentSite)
+
+	okNameUpdateBody2, _ := json.Marshal(model.APIInfiniBandPartitionUpdateRequest{Name: cdb.GetStrPtr("test-ipb-updated-new")})
 	assert.NotNil(t, okNameUpdateBody2)
 
-	okNameUpdateBody3, _ := json.Marshal(model.APISSHKeyGroupUpdateRequest{Name: cdb.GetStrPtr("test-ipb-updated-1"), Description: db.GetStrPtr("testdescription")})
+	okNameUpdateBody3, _ := json.Marshal(model.APIInfiniBandPartitionUpdateRequest{Name: cdb.GetStrPtr("test-ipb-updated-1"), Description: db.GetStrPtr("testdescription")})
 	assert.NotNil(t, okNameUpdateBody3)
+
+	okNameUpdateBody5, _ := json.Marshal(model.APIInfiniBandPartitionUpdateRequest{Name: cdb.GetStrPtr("test-ibp-1")})
+	assert.NotNil(t, okNameUpdateBody5)
 
 	// OTEL Spanner configuration
 	tmc := &tmocks.Client{}
@@ -1208,6 +1270,16 @@ func TestInfiniBandPartitionHandle_Update(t *testing.T) {
 			expectedStatus:     http.StatusOK,
 			verifyChildSpanner: true,
 			expectedName:       cdb.GetStrPtr("test-ipb-updated"),
+		},
+		{
+			name:               "success case when same name updated but exists on different site",
+			reqOrgName:         tnOrg5,
+			reqBody:            string(okNameUpdateBody1DifferentSite),
+			user:               tnu6,
+			ibpID:              ibp5.ID.String(),
+			expectedStatus:     http.StatusOK,
+			verifyChildSpanner: true,
+			expectedName:       cdb.GetStrPtr("test-ibp-1"),
 		},
 		{
 			name:               "success case when name and description updated",

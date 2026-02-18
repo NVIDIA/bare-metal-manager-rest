@@ -15,15 +15,15 @@
 
 openapi: 3.1.0
 info:
-  title: Carbide REST API
-  version: 1.0.2
-  summary: Carbide REST API is the centralize RESTful gateway to access Carbide service
-  description: 'Carbide REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all Carbide Sites.'
+  title: NVIDIA Bare Metal Manager REST API
+  version: 1.0.4
+  summary: NVIDIA Bare Metal Manager REST API is the centralize RESTful gateway to access NVIDIA Bare Metal Manager service
+  description: 'NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to asSites.'
   license:
     name: Apache-2.0
     url: 'https://www.apache.org/licenses/LICENSE-2.0'
   contact:
-    name: Carbide Dev Team
+    name: NVIDIA Bare Metal Manager Dev Team
     email: carbide-dev@exchange.nvidia.com
 servers:
   - url: 'https://carbide-rest-api.carbide.svc.cluster.local'
@@ -51,7 +51,7 @@ tags:
       - `POST /org/:orgName/carbide/tenant` endpoint was deprecated and was removed on August 17th, 2023 0:00 UTC. Tenants are automatically created when retrieved by a Tenant Admin.
       - `PATCH /org/:orgName/carbide/tenant/current` endpoint was deprecated and was removed on August 17th, 2023 0:00 UTC. Tenant details are populated from Org information and cannot be updated by user.
   - name: Tenant Account
-    description: Tenant Account connects a Carbide Tenant with a Carbide Infrastructure Provider. It represent/contains any information pertaining to their relationship.
+    description: Tenant Account connects a Tenant with an Infrastructure Provider. It represent/contains any information pertaining to their relationship.
   - name: Site
     description: Site operations
   - name: Allocation
@@ -60,12 +60,12 @@ tags:
     description: VPC operations
   - name: VPC Prefix
     description: |-
-      VPC Prefixes are networking constructs that connect a set of Carbide baremetal machines.
+      VPC Prefixes are networking constructs that connect a set of bare metal machines.
 
       They are defined by a prefix and prefix length and can be a slice or the whole part of an IP Block allocated to a Tenant.
   - name: Subnet
     description: |-
-      Subnets are networking constructs that connect a set of Carbide baremetal machines.
+      Subnets are networking constructs that connect a set of bare metal machines.
 
       They are defined by a prefix and prefix length and can be a slice or the whole part of an IP Block allocated to a Tenant.
 
@@ -128,7 +128,7 @@ tags:
   - name: SSH Key Group
     description: SSH Key Groups allow binding several SSH Keys together so they can be applied to Sites or other entities as a unit
   - name: SSH Key
-    description: SSH Key allows access to Carbide Serial Console
+    description: SSH Key allows access to Serial Console
   - name: User
     description: User operations
   - name: Audit
@@ -3376,16 +3376,7 @@ paths:
               minItems: 1
               maxItems: 100
               items:
-                allOf:
-                  - $ref: '#/components/schemas/ExpectedMachineUpdateRequest'
-                  - type: object
-                    required:
-                      - id
-                    properties:
-                      id:
-                        type: string
-                        format: uuid
-                        description: ID of the Expected Machine to update (required for batch operations)
+                $ref: '#/components/schemas/ExpectedMachineUpdateRequest'
             examples:
               example-1:
                 value:
@@ -8193,6 +8184,98 @@ paths:
           $ref: '#/components/responses/NotFoundError'
       tags:
         - Rack
+  '/v2/org/{org}/carbide/rack/validate':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+    get:
+      summary: Validate Racks
+      operationId: validate-racks
+      description: |-
+        Validate Rack components by comparing expected vs actual state.
+
+        If no filter is specified, validates all racks in the Site. Filters can narrow the scope to specific racks by name, manufacturer, or model.
+
+        Compares the expected component configuration (stored in RLA) against the actual state from external systems (e.g., Carbide, PSM). Returns a detailed diff report showing missing, extra, and drifted components.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site
+        - schema:
+            type: string
+          name: name
+          in: query
+          required: false
+          description: Filter racks by name
+        - schema:
+            type: string
+          name: manufacturer
+          in: query
+          required: false
+          description: Filter racks by manufacturer
+        - schema:
+            type: string
+          name: model
+          in: query
+          required: false
+          description: Filter racks by model
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RackValidationResult'
+              examples:
+                example-no-diffs:
+                  value:
+                    diffs: []
+                    totalDiffs: 0
+                    onlyInExpectedCount: 0
+                    onlyInActualCount: 0
+                    driftCount: 0
+                    matchCount: 10
+                example-with-diffs:
+                  value:
+                    diffs:
+                      - type: DIFF_TYPE_ONLY_IN_EXPECTED
+                        componentId: comp-1
+                        expected:
+                          id: 660e8400-e29b-41d4-a716-446655440001
+                          componentId: comp-1
+                          type: COMPONENT_TYPE_COMPUTE
+                          name: Server-01
+                          serialNumber: SN-SRV-001
+                          manufacturer: Dell
+                          firmwareVersion: 2.1.0
+                          position: 1
+                      - type: DIFF_TYPE_DRIFT
+                        componentId: comp-2
+                        fieldDiffs:
+                          - fieldName: firmware_version
+                            expectedValue: '1.0.0'
+                            actualValue: '2.0.0'
+                    totalDiffs: 2
+                    onlyInExpectedCount: 1
+                    onlyInActualCount: 0
+                    driftCount: 1
+                    matchCount: 8
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Rack
   '/v2/org/{org}/carbide/rack/{id}/validate':
     parameters:
       - schema:
@@ -9771,7 +9854,7 @@ components:
         id:
           type: string
           format: uuid
-          description: Carbide issued ID of the Tenant
+          description: Unique ID of the Tenant
           readOnly: true
         org:
           type: string
@@ -10011,7 +10094,7 @@ components:
     Site:
       title: Site
       type: object
-      description: Site is a datacenter that is running Carbide Controller
+      description: Site is a datacenter that is running NVIDIA Bare Metal Manager services
       examples:
         - id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
           name: San Jose Central 4
@@ -10651,9 +10734,6 @@ components:
             - 'null'
           description: ID of the Network Security Group attached to the VPC
         networkSecurityGroupPropagationDetails:
-          type:
-            - 'null'
-            - object
           $ref: '#/components/schemas/NetworkSecurityGroupPropagationDetails'
           description: Propagation details for the attached Network Security Group
         nvLinkLogicalPartitionId:
@@ -12453,10 +12533,8 @@ components:
             - string
             - 'null'
         networkSecurityGroupPropagationDetails:
-          type:
-            - 'null'
-            - object
           $ref: '#/components/schemas/NetworkSecurityGroupPropagationDetails'
+          description: Propagation details for the attached Network Security Group
         networkSecurityGroupInherited:
           type: boolean
           description: Indicates if the Network Security Group is inherited from VPC
@@ -13668,7 +13746,7 @@ components:
           description: Unique identifier of the component in RLA
         componentId:
           type: string
-          description: ID of the component in its source system
+          description: ID of the component in its source system (e.g. Machine ID for compute nodes)
         type:
           type: string
           description: Type of the component
@@ -13987,7 +14065,7 @@ components:
       properties:
         id:
           type: string
-          description: Unique ID of Machine across Carbide Cloud & Site
+          description: Unique ID of Machine
           readOnly: true
         controllerMachineId:
           type: string
@@ -14642,7 +14720,7 @@ components:
           description: |-
             ID of the Expected Machine to update.
 
-            Optional for single updates (ignored if provided, URL path ID is used).
+            Optional for individual Expected Machine update (ignored if provided, ID from URL path is used).
 
             Required for batch update operations.
         bmcMacAddress:
@@ -16026,7 +16104,7 @@ components:
     User:
       title: User
       type: object
-      description: Details of the user as collected by Carbide backend
+      description: Details of the user collected from authentication tokens
       examples:
         - id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
           email: janed@nvidia.com
@@ -16130,9 +16208,6 @@ components:
           format: uuid
           description: User ID that executed the API call
         user:
-          type:
-            - object
-            - 'null'
           $ref: '#/components/schemas/User'
           description: User that executed the API call
         orgName:
@@ -16170,7 +16245,7 @@ components:
     Deprecation:
       title: Deprecation
       type: object
-      description: Details of a particular deprecation in Carbide API
+      description: Details of a particular deprecation in NVIDIA Bare Metal Manager API
       examples:
         - attribute: blockSize
           replacedBy: prefixLength
@@ -16201,7 +16276,7 @@ components:
     CarbideAPIError:
       title: CarbideAPIError
       type: object
-      description: Describes the error response from Carbide API
+      description: Describes the error response from NVIDIA Bare Metal Manager REST API
       properties:
         source:
           type: string

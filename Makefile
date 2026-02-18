@@ -16,7 +16,7 @@
 .PHONY: test postgres-up postgres-down ensure-postgres postgres-wait clean
 .PHONY: build docker-build docker-build-local
 .PHONY: test-ipam test-site-agent test-site-manager test-workflow test-db test-api test-auth test-common test-cert-manager test-site-workflow migrate carbide-mock-server-build carbide-mock-server-start carbide-mock-server-stop rla-mock-server-build rla-mock-server-start rla-mock-server-stop
-.PHONY: validate-openapi preview-openapi
+.PHONY: validate-openapi preview-openapi generate-client
 .PHONY: pre-commit-install pre-commit-run pre-commit-update
 
 # Build configuration
@@ -183,41 +183,30 @@ docker-build:
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-site-agent:$(IMAGE_TAG) -f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-agent .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) -f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-db .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) -f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-cert-manager .
+	docker build -t $(IMAGE_REGISTRY)/carbide-rla:$(IMAGE_TAG) -f $(DOCKERFILE_DIR)/Dockerfile.carbide-rla .
 
 carbide-proto:
-	if [ -d "bare-metal-manager-core" ]; then cd bare-metal-manager-core && git pull; else git clone ssh://git@github.com/nvidia/bare-metal-manager-core.git; fi
-	ls bare-metal-manager-core/rpc/proto
-	@for file in bare-metal-manager-core/rpc/proto/*.proto; do \
+	if [ -d "carbide-core" ]; then cd carbide-core && git pull; else git clone ssh://git@github.com/nvidia/carbide-core.git; fi
+	ls carbide-core/rpc/proto
+	@for file in carbide-core/rpc/proto/*.proto; do \
 		cp "$$file" "workflow-schema/site-agent/workflows/v1/$$(basename "$$file" .proto)_carbide.proto"; \
 		echo "Copied: $$file"; \
 		./workflow-schema/scripts/add-go-package-option.sh "workflow-schema/site-agent/workflows/v1/$$(basename "$$file" .proto)_carbide.proto" "github.com/nvidia/bare-metal-manager-rest/workflow-schema/proto"; \
 	done
-	rm -rf bare-metal-manager-core
+	rm -rf carbide-core
 
 carbide-protogen:
 	echo "Generating protobuf for Carbide"
 	cd workflow-schema && buf generate
 
 rla-proto:
-	@# Support two modes: RLA_REPO_URL (auto-clone) or RLA_REPO_PATH (existing repo)
-	@if [ -n "$${RLA_REPO_URL}" ]; then \
-		echo "Using RLA_REPO_URL: cloning to local 'rla' directory..."; \
-		if [ -d "rla" ]; then cd rla && git pull; else git clone "$${RLA_REPO_URL}" rla; fi; \
-	elif [ -z "$${RLA_REPO_PATH}" ]; then \
-		echo "Error: Set RLA_REPO_PATH (existing repo) or RLA_REPO_URL (to clone)"; exit 1; \
-	elif [ ! -d "$${RLA_REPO_PATH}" ]; then \
-		echo "Error: RLA_REPO_PATH directory not found: $${RLA_REPO_PATH}"; exit 1; \
-	else \
-		cd "$${RLA_REPO_PATH}" && git pull; \
-	fi
-	@if [ -n "$${RLA_REPO_URL}" ]; then RLA_DIR=rla; else RLA_DIR="$${RLA_REPO_PATH}"; fi; \
+	RLA_DIR=rla \
 	ls "$${RLA_DIR}/proto/v1"; \
 	for file in "$${RLA_DIR}"/proto/v1/*.proto; do \
 		cp "$$file" "workflow-schema/rla/proto/v1/"; \
 		echo "Copied: $$file"; \
 		./workflow-schema/scripts/add-go-package-option.sh "workflow-schema/rla/proto/v1/$$(basename "$$file")" "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla"; \
-	done; \
-	if [ -n "$${RLA_REPO_URL}" ]; then rm -rf rla; fi
+	done
 
 rla-protogen:
 	echo "Generating protobuf for RLA"
@@ -430,17 +419,39 @@ test-temporal-e2e:
 	./scripts/test-temporal.sh all
 
 # =============================================================================
+# Generated Go API Client
+# =============================================================================
+
+# Generate Go API client from OpenAPI spec using openapi-generator
+# Requires: brew install openapi-generator
+generate-client:
+	openapi-generator generate \
+		-i openapi/spec.yaml \
+		-g go \
+		-o sdk/standard \
+		--package-name standard \
+		--additional-properties=isGoSubmodule=true,enumClassPrefix=true \
+		--global-property=apis,models,supportingFiles
+	rm -rf sdk/standard/docs sdk/standard/api sdk/standard/README.md sdk/standard/test sdk/standard/.openapi-generator
+	@echo "Client generated in sdk/standard/"
+	go build ./sdk/standard/...
+	@echo "Client compiles successfully"
+
+# =============================================================================
 # OpenAPI Spec Validation
 # =============================================================================
 
 # Validate OpenAPI spec using Redocly CLI (Docker)
 lint-openapi:
-	docker run --rm -v ./openapi:/spec redocly/cli lint /spec/spec.yaml
+	npx @redocly/cli lint ./openapi/spec.yaml
 
 # Preview OpenAPI spec in Redoc UI (Docker)
 preview-openapi:
 	@echo "Starting Redoc UI at http://127.0.0.1:8090"
 	docker run -it --rm -p 8090:80 -v ./openapi/spec.yaml:/usr/share/nginx/html/openapi.yaml -e SPEC_URL=openapi.yaml redocly/redoc
+
+publish-openapi:
+	npx @redocly/cli build-docs ./openapi/spec.yaml -o ./docs/index.html
 
 # =============================================================================
 # Pre-commit Hooks (TruffleHog Secret Detection)

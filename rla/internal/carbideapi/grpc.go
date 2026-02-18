@@ -1,0 +1,258 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package carbideapi
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"sync"
+	"testing"
+	"time"
+
+	pb "github.com/nvidia/bare-metal-manager-rest/rla/internal/carbideapi/gen"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/certs"
+	"github.com/rs/zerolog/log"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+type grpcClient struct {
+	gclient     pb.ForgeClient
+	grpcTimeout time.Duration
+}
+
+var testingMsgOnce sync.Once
+
+// NewClient creates a GRPC connection pool to carbide-api.  Returning success does not mean that we have yet made an actual connection;
+// that happens when making an actual request.
+func NewClient(grpcTimeout time.Duration) (Client, error) {
+	if testing.Testing() {
+		testingMsgOnce.Do(func() {
+			log.Info().Msg("Running unit tests, forcing mock GRPC client")
+		})
+		return NewMockClient(), nil
+	}
+
+	carbideURL := os.Getenv("CARBIDE_API_URL")
+	if carbideURL == "" {
+		return nil, errors.New("CARBIDE_API_URL not set, cannot make connections to carbide-api")
+	}
+
+	tlsConfig, _, err := certs.TLSConfig()
+	if err != nil {
+		if err == certs.ErrNotPresent {
+			return nil, errors.New("Certificates not present, unable to authenticate with carbide-api")
+		}
+		return nil, err
+	}
+
+	conn, err := grpc.NewClient(carbideURL, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
+	if err != nil {
+		return nil, fmt.Errorf("Unable to connect to carbide-api: %v", err)
+	}
+
+	return &grpcClient{gclient: pb.NewForgeClient(conn), grpcTimeout: grpcTimeout}, nil
+}
+
+// GetMachines retrieves all machines known by carbide-api
+func (c *grpcClient) GetMachines(ctx context.Context) (ret []Machine, err error) {
+	ctx, cancel := context.WithTimeout(ctx, c.grpcTimeout)
+	defer cancel()
+
+	machineIDs, err := c.gclient.FindMachineIds(ctx, &pb.MachineSearchConfig{})
+	if err != nil {
+		return nil, err
+	}
+	req := &pb.MachinesByIdsRequest{}
+	for _, machineID := range machineIDs.MachineIds {
+		req.MachineIds = append(req.MachineIds, machineID)
+	}
+
+	if len(req.MachineIds) == 0 {
+		// carbide-api would return an error for this
+		return nil, nil
+	}
+
+	machines, err := c.gclient.FindMachinesByIds(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, machine := range machines.Machines {
+		ret = append(ret, machineFromPb(machine))
+	}
+	return ret, nil
+}
+
+// Version returns the version string of carbide-api, mainly as a "ping"
+func (c *grpcClient) Version(ctx context.Context) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.grpcTimeout)
+	defer cancel()
+
+	res, err := c.gclient.Version(ctx, &pb.VersionRequest{})
+	if err != nil {
+		return "", err
+	}
+	return res.GetBuildVersion(), nil
+}
+
+// GetPowerStates returns the power states of the given machines (all machines if given an empty machineIds)
+func (c *grpcClient) GetPowerStates(ctx context.Context, machineIds []string) (ret []MachinePowerState, err error) {
+	ctx, cancel := context.WithTimeout(ctx, c.grpcTimeout)
+	defer cancel()
+
+	req := &pb.PowerOptionRequest{MachineId: stringsToMachineIds(machineIds)}
+	res, err := c.gclient.GetPowerOptions(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	for _, cur := range res.Response {
+		ret = append(ret, machinePowerStateFromPb(cur))
+	}
+
+	return ret, nil
+}
+
+// SetFirmwareUpdateTimeWindow sets the firmware update time window for the given machines
+func (c *grpcClient) SetFirmwareUpdateTimeWindow(ctx context.Context, machineIds []string, startTime, endTime time.Time) error {
+	ctx, cancel := context.WithTimeout(ctx, c.grpcTimeout)
+	defer cancel()
+
+	req := &pb.SetFirmwareUpdateTimeWindowRequest{
+		MachineIds:     stringsToMachineIds(machineIds),
+		StartTimestamp: timestamppb.New(startTime),
+		EndTimestamp:   timestamppb.New(endTime),
+	}
+
+	_, err := c.gclient.SetFirmwareUpdateTimeWindow(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to set firmware update time window: %w", err)
+	}
+
+	return nil
+}
+
+// AdminPowerControl performs power control operations on a machine
+func (c *grpcClient) AdminPowerControl(ctx context.Context, machineID string, action SystemPowerControl) error {
+	ctx, cancel := context.WithTimeout(ctx, c.grpcTimeout)
+	defer cancel()
+
+	req := &pb.AdminPowerControlRequest{
+		MachineId: &machineID,
+		Action:    action.toPb(),
+	}
+
+	_, err := c.gclient.AdminPowerControl(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to perform power control on machine %s: %w", machineID, err)
+	}
+
+	return nil
+}
+
+// FindInterfaces returns all machine interfaces known by carbide-api, keyed by MAC address
+func (c *grpcClient) FindInterfaces(ctx context.Context) (map[string]MachineInterface, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.grpcTimeout)
+	defer cancel()
+
+	// Empty query returns all interfaces
+	req := &pb.InterfaceSearchQuery{}
+	res, err := c.gclient.FindInterfaces(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	interfaces := make(map[string]MachineInterface)
+	for _, iface := range res.Interfaces {
+		mi := machineInterfaceFromPb(iface)
+		interfaces[mi.MacAddress] = mi
+	}
+	return interfaces, nil
+}
+
+// FindMachinesByIds returns detailed machine information for the given machine IDs
+func (c *grpcClient) FindMachinesByIds(ctx context.Context, machineIds []string) ([]MachineDetail, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.grpcTimeout)
+	defer cancel()
+
+	if len(machineIds) == 0 {
+		return nil, nil
+	}
+
+	req := &pb.MachinesByIdsRequest{
+		MachineIds: stringsToMachineIds(machineIds),
+	}
+
+	res, err := c.gclient.FindMachinesByIds(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find machines by IDs: %w", err)
+	}
+
+	var result []MachineDetail
+	for _, machine := range res.Machines {
+		result = append(result, machineDetailFromPb(machine))
+	}
+	return result, nil
+}
+
+// GetMachinePositionInfo returns position information for the given machine IDs
+func (c *grpcClient) GetMachinePositionInfo(ctx context.Context, machineIds []string) ([]MachinePosition, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.grpcTimeout)
+	defer cancel()
+
+	if len(machineIds) == 0 {
+		return nil, nil
+	}
+
+	req := &pb.MachinePositionQuery{
+		MachineIds: stringsToMachineIds(machineIds),
+	}
+
+	res, err := c.gclient.GetMachinePositionInfo(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get machine position info: %w", err)
+	}
+
+	var result []MachinePosition
+	for _, pos := range res.MachinePositionInfo {
+		result = append(result, machinePositionFromPb(pos))
+	}
+	return result, nil
+}
+
+func (c *grpcClient) AddMachine(machine Machine) {
+	panic("Not a unit test")
+}
+
+func (c *grpcClient) AddPowerState(machineID string, state PowerState) {
+	panic("Not a unit test")
+}
+
+func (c *grpcClient) SetFirmwareUpdateTimeWindowError(err error) {
+	panic("Not a unit test")
+}
+
+func (c *grpcClient) SetAdminPowerControlError(err error) {
+	panic("Not a unit test")
+}
+
+func (c *grpcClient) AddMachineInterface(iface MachineInterface) {
+	panic("Not a unit test")
+}

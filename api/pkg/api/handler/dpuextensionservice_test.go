@@ -913,7 +913,7 @@ func TestDeleteDpuExtensionServiceHandler_Handle(t *testing.T) {
 			dpuExtensionServiceID: des1.ID.String(),
 			user:                  tnu1,
 			expectedErr:           false,
-			expectedStatus:        http.StatusAccepted,
+			expectedStatus:        http.StatusNoContent,
 		},
 	}
 
@@ -946,12 +946,12 @@ func TestDeleteDpuExtensionServiceHandler_Handle(t *testing.T) {
 
 			require.Equal(t, tt.expectedStatus, rec.Code)
 
-			if !tt.expectedErr && rec.Code == http.StatusAccepted {
+			if !tt.expectedErr && rec.Code == http.StatusNoContent {
 				// Verify the service status is updated to Deleting
 				desDAO := cdbm.NewDpuExtensionServiceDAO(dbSession)
-				updatedDES, err := desDAO.GetByID(context.Background(), nil, uuid.MustParse(tt.dpuExtensionServiceID), nil)
-				require.NoError(t, err)
-				assert.Equal(t, cdbm.DpuExtensionServiceStatusDeleting, updatedDES.Status)
+				_, err = desDAO.GetByID(context.Background(), nil, uuid.MustParse(tt.dpuExtensionServiceID), nil)
+				require.Error(t, err)
+				assert.ErrorIs(t, err, cdb.ErrDoesNotExist)
 			}
 		})
 	}
@@ -1146,19 +1146,50 @@ func TestDeleteDpuExtensionServiceVersionHandler_Handle(t *testing.T) {
 	ts1 := common.TestBuildTenantSite(t, dbSession, tn1, st1, tnu1)
 	assert.NotNil(t, ts1)
 
-	des1 := common.TestBuildDpuExtensionService(t, dbSession, "service-1", model.DpuExtensionServiceTypeKubernetesPod, tn1, st1, "V1-T1761856992374052", cdbm.DpuExtensionServiceStatusReady, tnu1)
+	// Service with a single version, has no active deployment
+	des1 := common.TestBuildDpuExtensionService(t, dbSession, "service-1", model.DpuExtensionServiceTypeKubernetesPod, tn1, st1, "V1-T1770858775402975", cdbm.DpuExtensionServiceStatusReady, tnu1)
 	assert.NotNil(t, des1)
-	// Set version for the service
-	des1.Version = cdb.GetStrPtr("v1")
-	_, err := dbSession.DB.NewUpdate().Model(des1).Where("id = ?", des1.ID).Exec(context.Background())
-	assert.Nil(t, err)
 
-	des2 := common.TestBuildDpuExtensionService(t, dbSession, "service-2", model.DpuExtensionServiceTypeKubernetesPod, tn1, st1, "V1-T1761856992374052", cdbm.DpuExtensionServiceStatusReady, tnu1)
+	// Service with two versions, has no active deployment
+	des2 := common.TestBuildDpuExtensionService(t, dbSession, "service-2", model.DpuExtensionServiceTypeKubernetesPod, tn1, st1, "V1-T1770859049413263", cdbm.DpuExtensionServiceStatusReady, tnu1)
 	assert.NotNil(t, des2)
-	des2.Version = cdb.GetStrPtr("v2")
-	_, err = dbSession.DB.NewUpdate().Model(des2).Where("id = ?", des2.ID).Exec(context.Background())
+	// Add a new version to the service
+	des2OldVersion := *des2.Version
+
+	des2.Version = cdb.GetStrPtr("V2-T1770859063836809")
+	des2.VersionInfo = &cdbm.DpuExtensionServiceVersionInfo{
+		Version:        *des2.Version,
+		Data:           "apiVersion: v1\nkind: Pod",
+		HasCredentials: true,
+		Created:        time.Now().UTC().Round(time.Microsecond),
+	}
+	des2.ActiveVersions = []string{*des2.Version, des2OldVersion}
+	_, err := dbSession.DB.NewUpdate().Model(des2).Where("id = ?", des2.ID).Exec(context.Background())
 	assert.Nil(t, err)
 
+	// Another service with two versions, has not active deployment
+	des3 := common.TestBuildDpuExtensionService(t, dbSession, "service-3", model.DpuExtensionServiceTypeKubernetesPod, tn1, st1, "V1-T1770859074000664", cdbm.DpuExtensionServiceStatusReady, tnu1)
+	assert.NotNil(t, des3)
+	// Add a new version to the service
+	des3OldVersion := *des3.Version
+	des3OldVersionInfo := *des3.VersionInfo
+
+	des3.Version = cdb.GetStrPtr("V2-T1770859101840849")
+	des3.VersionInfo = &cdbm.DpuExtensionServiceVersionInfo{
+		Version:        *des3.Version,
+		Data:           "apiVersion: v1\nkind: Pod",
+		HasCredentials: true,
+		Created:        time.Now().UTC().Round(time.Microsecond),
+	}
+	des3.ActiveVersions = []string{*des3.Version, des3OldVersion}
+	_, err = dbSession.DB.NewUpdate().Model(des3).Where("id = ?", des3.ID).Exec(context.Background())
+	assert.Nil(t, err)
+
+	// Service with single version, has active deployment
+	des4 := common.TestBuildDpuExtensionService(t, dbSession, "service-4", model.DpuExtensionServiceTypeKubernetesPod, tn1, st1, "V1-T1770859182030889", cdbm.DpuExtensionServiceStatusReady, tnu1)
+	assert.NotNil(t, des4)
+
+	// Prep objects to attach deployment
 	al1 := common.TestBuildAllocation(t, dbSession, st1, tn1, "test-allocation-1", ipu)
 	it1 := common.TestBuildInstanceType(t, dbSession, "test-instance-type-1", nil, st1, tnu1)
 	alc1 := common.TestBuildAllocationConstraint(t, dbSession, al1, it1, nil, 5, tnu1)
@@ -1170,14 +1201,8 @@ func TestDeleteDpuExtensionServiceVersionHandler_Handle(t *testing.T) {
 	assert.NotNil(t, i1)
 
 	// Create a deployment for des2 to test active deployment check
-	desd := common.TestBuildDpuExtensionServiceDeployment(t, dbSession, des2, i1.ID, "v2", cdbm.DpuExtensionServiceDeploymentStatusRunning, tnu1)
+	desd := common.TestBuildDpuExtensionServiceDeployment(t, dbSession, des4, i1.ID, *des4.Version, cdbm.DpuExtensionServiceDeploymentStatusRunning, tnu1)
 	assert.NotNil(t, desd)
-
-	versions := des1.ActiveVersions
-	versions = append(versions, "V1-T1761856992374053")
-	versions = append(versions, "V1-T1761856992374054")
-	des1 = common.TestBuildDpuExtensionServiceUpdateActiveVersions(t, dbSession, des1, versions)
-	assert.NotNil(t, des1)
 
 	cfg := common.GetTestConfig()
 
@@ -1188,8 +1213,30 @@ func TestDeleteDpuExtensionServiceVersionHandler_Handle(t *testing.T) {
 	mockTC := &tmocks.Client{}
 	mockWorkflowRun := &tmocks.WorkflowRun{}
 	mockWorkflowRun.On("Get", mock.Anything, mock.Anything).Return(nil)
-	mockWorkflowRun.On("GetID").Return("test-workflow-id")
+	mockWorkflowRun.On("GetID").Return("test-workflow-id-1")
 	mockTC.On("ExecuteWorkflow", mock.Anything, mock.Anything, "DeleteDpuExtensionService", mock.Anything).Return(mockWorkflowRun, nil)
+
+	// Mock fetching older version info for des3 version
+	mockVersionInfo := &cwssaws.DpuExtensionServiceVersionInfoList{
+		VersionInfos: []*cwssaws.DpuExtensionServiceVersionInfo{
+			{
+				Version:       des3OldVersionInfo.Version,
+				Data:          des3OldVersionInfo.Data,
+				HasCredential: des3OldVersionInfo.HasCredentials,
+				Created:       des3OldVersionInfo.Created.Format(model.DpuExtensionServiceTimeFormat),
+			},
+		},
+	}
+
+	mockWorkflowRun2 := &tmocks.WorkflowRun{}
+	mockWorkflowRun2.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		arg := args.Get(1)
+		if ptr, ok := arg.(**cwssaws.DpuExtensionServiceVersionInfoList); ok {
+			*ptr = mockVersionInfo
+		}
+	}).Return(nil)
+	mockWorkflowRun2.On("GetID").Return("test-workflow-id-2")
+	mockTC.On("ExecuteWorkflow", mock.Anything, mock.Anything, "GetDpuExtensionServiceVersionsInfo", mock.Anything).Return(mockWorkflowRun2, nil)
 
 	// Mock Site Client Pool
 	mockSCP := &sc.ClientPool{
@@ -1201,35 +1248,37 @@ func TestDeleteDpuExtensionServiceVersionHandler_Handle(t *testing.T) {
 	tests := []struct {
 		name                  string
 		reqOrgName            string
-		dpuExtensionServiceID string
+		dpuExtensionServiceID uuid.UUID
 		versionID             string
 		user                  *cdbm.User
 		expectedErr           bool
 		expectedStatus        int
+		expectedVersion       *string
+		expectServiceDeletion bool
 	}{
 		{
 			name:                  "error when user not found in request context",
 			reqOrgName:            tnOrg,
-			dpuExtensionServiceID: des1.ID.String(),
-			versionID:             "v1",
+			dpuExtensionServiceID: des1.ID,
+			versionID:             *des1.Version,
 			user:                  nil,
 			expectedErr:           true,
 			expectedStatus:        http.StatusInternalServerError,
 		},
 		{
 			name:                  "error when user does not belong to org",
-			reqOrgName:            "SomeOtherOrg",
-			dpuExtensionServiceID: des1.ID.String(),
-			versionID:             "v1",
+			reqOrgName:            "test-invalid-org",
+			dpuExtensionServiceID: des1.ID,
+			versionID:             *des1.Version,
 			user:                  tnu1,
 			expectedErr:           true,
 			expectedStatus:        http.StatusBadRequest,
 		},
 		{
-			name:                  "error when user role is forbidden",
+			name:                  "error when user does not have Tenant Admin role",
 			reqOrgName:            tnOrg,
-			dpuExtensionServiceID: des1.ID.String(),
-			versionID:             "v1",
+			dpuExtensionServiceID: des1.ID,
+			versionID:             *des1.Version,
 			user:                  tnu1Forbidden,
 			expectedErr:           true,
 			expectedStatus:        http.StatusForbidden,
@@ -1237,8 +1286,8 @@ func TestDeleteDpuExtensionServiceVersionHandler_Handle(t *testing.T) {
 		{
 			name:                  "error when DPU Extension Service does not exist",
 			reqOrgName:            tnOrg,
-			dpuExtensionServiceID: uuid.New().String(),
-			versionID:             "v1",
+			dpuExtensionServiceID: uuid.New(),
+			versionID:             "V1-T1770859801962982",
 			user:                  tnu1,
 			expectedErr:           true,
 			expectedStatus:        http.StatusNotFound,
@@ -1246,8 +1295,8 @@ func TestDeleteDpuExtensionServiceVersionHandler_Handle(t *testing.T) {
 		{
 			name:                  "error when version does not exist",
 			reqOrgName:            tnOrg,
-			dpuExtensionServiceID: des1.ID.String(),
-			versionID:             "v99",
+			dpuExtensionServiceID: des1.ID,
+			versionID:             "V2-T1770859822516497",
 			user:                  tnu1,
 			expectedErr:           true,
 			expectedStatus:        http.StatusNotFound,
@@ -1255,8 +1304,8 @@ func TestDeleteDpuExtensionServiceVersionHandler_Handle(t *testing.T) {
 		{
 			name:                  "error when version has active deployments",
 			reqOrgName:            tnOrg,
-			dpuExtensionServiceID: des2.ID.String(),
-			versionID:             "v2",
+			dpuExtensionServiceID: des4.ID,
+			versionID:             *des4.Version,
 			user:                  tnu1,
 			expectedErr:           true,
 			expectedStatus:        http.StatusBadRequest,
@@ -1264,20 +1313,32 @@ func TestDeleteDpuExtensionServiceVersionHandler_Handle(t *testing.T) {
 		{
 			name:                  "success deleting DPU Extension Service version",
 			reqOrgName:            tnOrg,
-			dpuExtensionServiceID: des1.ID.String(),
-			versionID:             "v1",
+			dpuExtensionServiceID: des1.ID,
+			versionID:             *des1.Version,
 			user:                  tnu1,
 			expectedErr:           false,
-			expectedStatus:        http.StatusAccepted,
+			expectedStatus:        http.StatusNoContent,
+			expectServiceDeletion: true,
 		},
 		{
-			name:                  "success deleting DPU Extension Service version in active versions list",
+			name:                  "success deleting DPU Extension Service version when it is not the latest version",
 			reqOrgName:            tnOrg,
-			dpuExtensionServiceID: des1.ID.String(),
-			versionID:             "V1-T1761856992374053",
+			dpuExtensionServiceID: des2.ID,
+			versionID:             des2.ActiveVersions[1],
 			user:                  tnu1,
 			expectedErr:           false,
-			expectedStatus:        http.StatusAccepted,
+			expectedStatus:        http.StatusNoContent,
+			expectedVersion:       cdb.GetStrPtr(des2.ActiveVersions[0]),
+		},
+		{
+			name:                  "success deleting latest DPU Extension Service version",
+			reqOrgName:            tnOrg,
+			dpuExtensionServiceID: des3.ID,
+			versionID:             *des3.Version,
+			user:                  tnu1,
+			expectedErr:           false,
+			expectedStatus:        http.StatusNoContent,
+			expectedVersion:       cdb.GetStrPtr(des3OldVersion),
 		},
 	}
 
@@ -1299,7 +1360,7 @@ func TestDeleteDpuExtensionServiceVersionHandler_Handle(t *testing.T) {
 
 			ec := e.NewContext(req, rec)
 			ec.SetParamNames("orgName", "id", "version")
-			ec.SetParamValues(tt.reqOrgName, tt.dpuExtensionServiceID, tt.versionID)
+			ec.SetParamValues(tt.reqOrgName, tt.dpuExtensionServiceID.String(), tt.versionID)
 			ec.Set("user", tt.user)
 
 			testCtx := context.WithValue(ctx, otelecho.TracerKey, tracer)
@@ -1309,6 +1370,31 @@ func TestDeleteDpuExtensionServiceVersionHandler_Handle(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, tt.expectedStatus, rec.Code)
+
+			if rec.Code != http.StatusNoContent {
+				return
+			}
+
+			desDAO := cdbm.NewDpuExtensionServiceDAO(dbSession)
+
+			// Verify service status
+			des, err := desDAO.GetByID(context.Background(), nil, tt.dpuExtensionServiceID, nil)
+			if tt.expectServiceDeletion {
+				require.Error(t, err)
+				assert.ErrorIs(t, err, cdb.ErrDoesNotExist)
+				return
+			} else {
+				require.NoError(t, err)
+				assert.NotContains(t, des.ActiveVersions, tt.versionID)
+			}
+
+			if tt.expectedVersion != nil {
+				// Verify that latest version matches expected version
+				assert.Equal(t, *tt.expectedVersion, *des.Version)
+				assert.Equal(t, *tt.expectedVersion, des.ActiveVersions[0])
+				require.NotNil(t, des.VersionInfo)
+				assert.Equal(t, *tt.expectedVersion, des.VersionInfo.Version)
+			}
 		})
 	}
 }
