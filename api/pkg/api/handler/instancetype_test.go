@@ -481,7 +481,12 @@ func TestCreateInstanceTypeHandler_Handle(t *testing.T) {
 			require.NotNil(t, rst.Description)
 			assert.Equal(t, *tt.args.reqData.Description, *rst.Description)
 			assert.Equal(t, tt.args.reqData.SiteID, rst.SiteID)
-			assert.Equal(t, tt.args.reqData.Labels, rst.Labels)
+
+			if tt.args.reqData.Labels != nil {
+				assert.Equal(t, tt.args.reqData.Labels, rst.Labels)
+			} else {
+				assert.Equal(t, map[string]string{}, rst.Labels)
+			}
 			assert.Equal(t, cdbm.InstanceTypeStatusReady, rst.Status)
 			assert.Equal(t, len(rst.StatusHistory), 1)
 			assert.Equal(t, cdbm.InstanceTypeStatusReady, rst.StatusHistory[0].Status)

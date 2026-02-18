@@ -186,6 +186,13 @@ func (cith CreateInstanceTypeHandler) Handle(c echo.Context) error {
 		})
 	}
 
+	// Labels support
+	// Initialize labels map to empty map ({}) if no labels are provided
+	labels := make(map[string]string)
+	if apiRequest.Labels != nil {
+		labels = apiRequest.Labels
+	}
+
 	// Begin transaction
 	tx, err := cdb.BeginTx(ctx, cith.dbSession, nil)
 	if err != nil {
@@ -202,7 +209,7 @@ func (cith CreateInstanceTypeHandler) Handle(c echo.Context) error {
 		ControllerMachineType:    apiRequest.ControllerMachineType,
 		InfrastructureProviderID: ip.ID,
 		SiteID:                   &site.ID,
-		Labels:                   apiRequest.Labels,
+		Labels:                   labels,
 		Status:                   cdbm.InstanceTypeStatusReady,
 		CreatedBy:                dbUser.ID,
 	})
