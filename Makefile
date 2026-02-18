@@ -16,7 +16,7 @@
 .PHONY: test postgres-up postgres-down ensure-postgres postgres-wait clean
 .PHONY: build docker-build docker-build-local
 .PHONY: test-ipam test-site-agent test-site-manager test-workflow test-db test-api test-auth test-common test-cert-manager test-site-workflow migrate carbide-mock-server-build carbide-mock-server-start carbide-mock-server-stop rla-mock-server-build rla-mock-server-start rla-mock-server-stop
-.PHONY: validate-openapi preview-openapi
+.PHONY: validate-openapi preview-openapi generate-client
 .PHONY: pre-commit-install pre-commit-run pre-commit-update
 
 # Build configuration
@@ -417,6 +417,25 @@ test-pki:
 # Run Temporal mTLS and rotation tests
 test-temporal-e2e:
 	./scripts/test-temporal.sh all
+
+# =============================================================================
+# Generated Go API Client
+# =============================================================================
+
+# Generate Go API client from OpenAPI spec using openapi-generator
+# Requires: brew install openapi-generator
+generate-client:
+	openapi-generator generate \
+		-i openapi/spec.yaml \
+		-g go \
+		-o sdk/standard \
+		--package-name standard \
+		--additional-properties=isGoSubmodule=true,enumClassPrefix=true \
+		--global-property=apis,models,supportingFiles
+	rm -rf sdk/standard/docs sdk/standard/api sdk/standard/README.md sdk/standard/test sdk/standard/.openapi-generator
+	@echo "Client generated in sdk/standard/"
+	go build ./sdk/standard/...
+	@echo "Client compiles successfully"
 
 # =============================================================================
 # OpenAPI Spec Validation
