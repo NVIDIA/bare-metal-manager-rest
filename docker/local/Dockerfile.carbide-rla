@@ -32,9 +32,9 @@ RUN VERSION=$(cat /workspace/VERSION 2>/dev/null || echo "dev") && \
     BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ") && \
     GIT_COMMIT=${CI_COMMIT_SHORT_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")} && \
     go build -ldflags "-extldflags '-static' \
-    -X 'github.com/nvidia/carbide-rest/rla/pkg/metadata.Version=${VERSION}' \
-    -X 'github.com/nvidia/carbide-rest/rla/pkg/metadata.BuildTime=${BUILD_TIME}' \
-    -X 'github.com/nvidia/carbide-rest/rla/pkg/metadata.GitCommit=${GIT_COMMIT}'" \
+    -X 'github.com/nvidia/bare-metal-manager-rest/rla/pkg/metadata.Version=${VERSION}' \
+    -X 'github.com/nvidia/bare-metal-manager-rest/rla/pkg/metadata.BuildTime=${BUILD_TIME}' \
+    -X 'github.com/nvidia/bare-metal-manager-rest/rla/pkg/metadata.GitCommit=${GIT_COMMIT}'" \
     -o /app/rla \
     .
 
