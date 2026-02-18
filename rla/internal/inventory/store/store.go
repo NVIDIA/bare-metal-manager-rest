@@ -24,11 +24,12 @@ import (
 
 	"github.com/google/uuid"
 
+	dbquery "github.com/nvidia/bare-metal-manager-rest/rla/internal/db/query"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/component"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/nvldomain"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/rack"
 	identifier "github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/Identifier"
-	dbquery "github.com/nvidia/bare-metal-manager-rest/rla/pkg/db/query"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"
 )
 
 // Store defines the interface for inventory data persistence.
@@ -45,13 +46,14 @@ type Store interface {
 	GetRackBySerial(ctx context.Context, manufacturer string, serial string, withComponents bool) (*rack.Rack, error)
 	GetRackByIdentifier(ctx context.Context, identifier identifier.Identifier, withComponents bool) (*rack.Rack, error)
 	PatchRack(ctx context.Context, rack *rack.Rack) (string, error)
-	GetListOfRacks(ctx context.Context, info dbquery.StringQueryInfo, pagination *dbquery.Pagination, withComponents bool) ([]*rack.Rack, int32, error)
+	GetListOfRacks(ctx context.Context, info dbquery.StringQueryInfo, manufacturerFilter *dbquery.StringQueryInfo, modelFilter *dbquery.StringQueryInfo, pagination *dbquery.Pagination, orderBy *dbquery.OrderBy, withComponents bool) ([]*rack.Rack, int32, error)
 
 	// Component operations
 	GetComponentByID(ctx context.Context, id uuid.UUID) (*component.Component, error)
 	GetComponentBySerial(ctx context.Context, manufacturer string, serial string, withRack bool) (*component.Component, error)
 	GetComponentByBMCMAC(ctx context.Context, macAddress string) (*component.Component, error)
 	GetComponentsByExternalIDs(ctx context.Context, externalIDs []string) ([]*component.Component, error)
+	GetListOfComponents(ctx context.Context, info dbquery.StringQueryInfo, manufacturerFilter *dbquery.StringQueryInfo, modelFilter *dbquery.StringQueryInfo, componentTypes []devicetypes.ComponentType, pagination *dbquery.Pagination, orderBy *dbquery.OrderBy) ([]*component.Component, int32, error)
 
 	// NVL Domain operations
 	CreateNVLDomain(ctx context.Context, nvlDomain *nvldomain.NVLDomain) (uuid.UUID, error)

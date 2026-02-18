@@ -27,12 +27,12 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/carbideapi"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/common/utils"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/config"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/db"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/db/model"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/psmapi"
 	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"
-	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/utils"
-	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db"
-	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db/model"
 )
 
 // TestInventory is the main test for the inventory package

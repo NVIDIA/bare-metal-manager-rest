@@ -27,14 +27,14 @@ import (
 	"google.golang.org/grpc/reflection"
 
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/certs"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/db/migrations"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/db/postgres"
 	inventorymanager "github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/manager"
 	inventorystore "github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/store"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventorysync"
-	pb "github.com/nvidia/bare-metal-manager-rest/rla/internal/proto/v1"
 	taskmanager "github.com/nvidia/bare-metal-manager-rest/rla/internal/task/manager"
 	taskstore "github.com/nvidia/bare-metal-manager-rest/rla/internal/task/store"
-	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db/migrations"
-	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db/postgres"
+	pb "github.com/nvidia/bare-metal-manager-rest/rla/pkg/proto/v1"
 )
 
 type Service struct {

@@ -17,17 +17,12 @@
 package utils
 
 import (
-	"context"
 	"encoding/json"
 	"math/rand"
 	"reflect"
 	"strings"
-	"testing"
 
 	"github.com/rs/zerolog/log"
-	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db"
-	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db/migrations"
-	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db/postgres"
 )
 
 const (
@@ -226,18 +221,4 @@ func deepCopyValue(value any) any {
 		// For basic types (string, int, bool, etc.), return as-is since they're copied by value
 		return value
 	}
-}
-
-func UnitTestDB(ctx context.Context, t *testing.T, dbConf db.Config) (*postgres.Postgres, error) {
-	db, err := postgres.UnitTest(ctx, t, dbConf)
-
-	if err != nil {
-		log.Warn().Msgf("Not running unit test due to unable to connect to db: %v", err)
-		t.SkipNow()
-		return nil, err
-	}
-
-	err = migrations.Migrate(ctx, db)
-
-	return db, err
 }

@@ -28,11 +28,11 @@ import (
 
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/carbideapi"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/config"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/db"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/db/model"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/db/postgres"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/psmapi"
 	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"
-	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db"
-	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db/model"
-	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db/postgres"
 )
 
 // RunInventory will loop and handle various inventory monitoring tasks

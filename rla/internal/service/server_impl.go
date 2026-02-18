@@ -25,19 +25,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
+	"sort"
+	"strings"
 
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/carbideapi"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/converter/protobuf"
+	dbquery "github.com/nvidia/bare-metal-manager-rest/rla/internal/db/query"
 	inventorymanager "github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/manager"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/bmc"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/component"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/rack"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/operation"
-	pb "github.com/nvidia/bare-metal-manager-rest/rla/internal/proto/v1"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/psmapi"
 	taskcommon "github.com/nvidia/bare-metal-manager-rest/rla/internal/task/common"
 	taskmanager "github.com/nvidia/bare-metal-manager-rest/rla/internal/task/manager"
@@ -45,8 +47,8 @@ import (
 	taskstore "github.com/nvidia/bare-metal-manager-rest/rla/internal/task/store"
 	identifier "github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/Identifier"
 	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"
-	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/converter/protobuf"
 	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/metadata"
+	pb "github.com/nvidia/bare-metal-manager-rest/rla/pkg/proto/v1"
 )
 
 // RLAServerImpl implements the gRPC RLA server interface.
@@ -290,14 +292,57 @@ func (rs *RLAServerImpl) GetListOfRacks(
 		return nil, fmt.Errorf("invalid pagination information: %v", err)
 	}
 
-	if req.GetInfo() == nil {
-		return nil, errors.New("info is required")
+	var orderBy *dbquery.OrderBy
+	if req.GetOrderBy() != nil {
+		orderBy = protobuf.OrderByFrom(req.GetOrderBy())
+		if err := orderBy.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid order by: %v", err)
+		}
+	}
+
+	// Extract filters from the filters array
+	var infoFilter *dbquery.StringQueryInfo
+	var manufacturerFilter *dbquery.StringQueryInfo
+	var modelFilter *dbquery.StringQueryInfo
+
+	if len(req.GetFilters()) > 0 {
+		for _, filter := range req.GetFilters() {
+			if filter == nil {
+				continue
+			}
+			fieldName, queryInfo, err := protobuf.FilterFrom(filter, true) // true = isRack
+			if err != nil {
+				return nil, fmt.Errorf("invalid filter: %v", err)
+			}
+			if queryInfo == nil {
+				continue
+			}
+
+			switch fieldName {
+			case "name":
+				infoFilter = queryInfo
+			case "manufacturer":
+				manufacturerFilter = queryInfo
+			case "description->>'model'":
+				modelFilter = queryInfo
+			default:
+				return nil, fmt.Errorf("unsupported filter field: %s", fieldName)
+			}
+		}
+	}
+
+	// If info filter is not provided, use empty filter (matches all)
+	if infoFilter == nil {
+		infoFilter = &dbquery.StringQueryInfo{Patterns: []string{}, IsWildcard: false, UseOR: false}
 	}
 
 	racks, total, err := rs.inventoryManager.GetListOfRacks(
 		ctx,
-		*protobuf.StringQueryInfoFrom(req.GetInfo()),
+		*infoFilter,
+		manufacturerFilter,
+		modelFilter,
 		pg,
+		orderBy,
 		req.GetWithComponents(),
 	)
 
@@ -566,9 +611,9 @@ func (rs *RLAServerImpl) convertPbRackTargetToRackTarget(rt *pb.RackTarget) (*op
 
 	switch id := rt.GetIdentifier().(type) {
 	case *pb.RackTarget_Id:
-		parsed, err := uuid.Parse(id.Id)
+		parsed, err := uuid.Parse(id.Id.GetId())
 		if err != nil {
-			return nil, fmt.Errorf("invalid rack id %q: %w", id.Id, err)
+			return nil, fmt.Errorf("invalid rack id %q: %w", id.Id.GetId(), err)
 		}
 		target.Identifier.ID = parsed
 
@@ -596,10 +641,10 @@ func (rs *RLAServerImpl) convertPbComponentTargetToComponentTarget(ct *pb.Compon
 	target := &operation.ComponentTarget{}
 
 	switch id := ct.GetIdentifier().(type) {
-	case *pb.ComponentTarget_Uuid:
-		parsed, err := uuid.Parse(id.Uuid)
+	case *pb.ComponentTarget_Id:
+		parsed, err := uuid.Parse(id.Id.GetId())
 		if err != nil {
-			return nil, fmt.Errorf("invalid component uuid %q: %w", id.Uuid, err)
+			return nil, fmt.Errorf("invalid component uuid %q: %w", id.Id.GetId(), err)
 		}
 		target.UUID = parsed
 
@@ -714,30 +759,138 @@ func (rs *RLAServerImpl) UpgradeFirmware(
 	return &pb.SubmitTaskResponse{TaskIds: protobuf.UUIDsTo(taskIDs)}, nil
 }
 
-// GetExpectedComponents retrieves expected components from local database.
-// It accepts OperationTargetSpec with rack targets (with optional type filter) or component targets.
-func (rs *RLAServerImpl) GetExpectedComponents(
+// GetComponents retrieves components from local database with filtering, pagination, and ordering support.
+// If target_spec is provided, it extracts components from the specified racks or components first,
+// then applies additional filters (name, manufacturer, model, component_types), pagination, and ordering.
+// If target_spec is not provided, it queries all components matching the filters.
+func (rs *RLAServerImpl) GetComponents(
 	ctx context.Context,
-	req *pb.GetExpectedComponentsRequest,
-) (*pb.GetExpectedComponentsResponse, error) {
-	// Extract components using the shared helper
-	components, err := rs.extractComponentsFromTargetSpec(ctx, req.GetTargetSpec())
-	if err != nil {
-		return nil, err
+	req *pb.GetComponentsRequest,
+) (*pb.GetComponentsResponse, error) {
+	pg := protobuf.PaginationFrom(req.GetPagination())
+	if err := pg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid pagination information: %v", err)
 	}
 
-	// Convert to protobuf components
-	pbComponents := make([]*pb.Component, 0, len(components))
-	for _, comp := range components {
-		pbComponents = append(pbComponents, protobuf.ComponentTo(comp))
+	var orderBy *dbquery.OrderBy
+	if req.GetOrderBy() != nil {
+		orderBy = protobuf.OrderByFrom(req.GetOrderBy())
+		if err := orderBy.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid order by: %v", err)
+		}
 	}
 
-	// TODO: Apply pagination if provided
-	// pagination := req.GetPagination()
+	// Extract filters from the filters array
+	var infoFilter *dbquery.StringQueryInfo
+	var manufacturerFilter *dbquery.StringQueryInfo
+	var modelFilter *dbquery.StringQueryInfo
+	var componentTypes []devicetypes.ComponentType
 
-	return &pb.GetExpectedComponentsResponse{
-		Components: pbComponents,
-		Total:      int32(len(pbComponents)),
+	if len(req.GetFilters()) > 0 {
+		for _, filter := range req.GetFilters() {
+			if filter == nil {
+				continue
+			}
+			fieldName, queryInfo, err := protobuf.FilterFrom(filter, false) // false = isComponent
+			if err != nil {
+				return nil, fmt.Errorf("invalid filter: %v", err)
+			}
+			if queryInfo == nil {
+				continue
+			}
+
+			switch fieldName {
+			case "name":
+				infoFilter = queryInfo
+			case "manufacturer":
+				manufacturerFilter = queryInfo
+			case "model":
+				modelFilter = queryInfo
+			case "type":
+				// Convert string patterns to ComponentType enums
+				if len(queryInfo.Patterns) > 0 {
+					componentTypes = make([]devicetypes.ComponentType, 0, len(queryInfo.Patterns))
+					for _, pattern := range queryInfo.Patterns {
+						ct := devicetypes.ComponentTypeFromString(pattern)
+						if ct != devicetypes.ComponentTypeUnknown {
+							componentTypes = append(componentTypes, ct)
+						}
+					}
+				}
+			default:
+				return nil, fmt.Errorf("unsupported filter field: %s", fieldName)
+			}
+		}
+	}
+
+	// If info filter is not provided, use empty filter (matches all)
+	if infoFilter == nil {
+		infoFilter = &dbquery.StringQueryInfo{Patterns: []string{}, IsWildcard: false, UseOR: false}
+	}
+
+	var components []*component.Component
+	var total int32
+
+	// If target_spec is provided, extract components from it first, then apply filters
+	if req.GetTargetSpec() != nil {
+		// Extract components from target_spec (racks or components)
+		targetComponents, err := rs.extractComponentsFromTargetSpec(ctx, req.GetTargetSpec())
+		if err != nil {
+			return nil, fmt.Errorf("failed to extract components from target_spec: %w", err)
+		}
+
+		// Apply additional filters to the extracted components
+		filteredComponents := rs.applyComponentFilters(
+			targetComponents,
+			*infoFilter,
+			manufacturerFilter,
+			modelFilter,
+			componentTypes,
+		)
+
+		// Apply ordering
+		if orderBy != nil {
+			if err := rs.sortComponents(filteredComponents, orderBy); err != nil {
+				return nil, fmt.Errorf("failed to sort components: %w", err)
+			}
+		}
+
+		// Apply pagination
+		total = int32(len(filteredComponents))
+		start := pg.Offset
+		end := start + pg.Limit
+		if start > len(filteredComponents) {
+			components = []*component.Component{}
+		} else if end > len(filteredComponents) {
+			components = filteredComponents[start:]
+		} else {
+			components = filteredComponents[start:end]
+		}
+	} else {
+		// No target_spec provided, query all components matching filters directly from database
+		var err error
+		components, total, err = rs.inventoryManager.GetListOfComponents(
+			ctx,
+			*infoFilter,
+			manufacturerFilter,
+			modelFilter,
+			componentTypes,
+			pg,
+			orderBy,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	results := make([]*pb.Component, 0, len(components))
+	for _, c := range components {
+		results = append(results, protobuf.ComponentTo(c))
+	}
+
+	return &pb.GetComponentsResponse{
+		Components: results,
+		Total:      total,
 	}, nil
 }
 
@@ -745,6 +898,7 @@ func (rs *RLAServerImpl) GetExpectedComponents(
 // Currently supports Compute and Powershelf component types.
 //
 // TODO: Currently finding actual data by component_id. Consider using MAC or serial number instead.
+// NOTE: This method is temporarily disabled in proto (commented out), but implementation remains for future use.
 func (rs *RLAServerImpl) GetActualComponents(
 	ctx context.Context,
 	req *pb.GetActualComponentsRequest,
@@ -1306,18 +1460,185 @@ func getBmcsFromComponent(comp *component.Component) []bmc.BMC {
 	return result
 }
 
-// now returns the current time (extracted for testing)
-var now = time.Now
+// applyComponentFilters applies filters to a list of components in memory.
+// It filters by name, manufacturer, model, and component types.
+func (rs *RLAServerImpl) applyComponentFilters(
+	components []*component.Component,
+	info dbquery.StringQueryInfo,
+	manufacturerFilter *dbquery.StringQueryInfo,
+	modelFilter *dbquery.StringQueryInfo,
+	componentTypes []devicetypes.ComponentType,
+) []*component.Component {
+	var filtered []*component.Component
 
-// extractComponentsByType extracts components of the specified type from a rack
-func extractComponentsByType(r *rack.Rack, compType devicetypes.ComponentType) []*component.Component {
-	var result []*component.Component
-	for i := range r.Components {
-		if r.Components[i].Type == compType {
-			result = append(result, &r.Components[i])
+	for _, comp := range components {
+		// Filter by component type
+		if len(componentTypes) > 0 {
+			found := false
+			for _, ct := range componentTypes {
+				if comp.Type == ct {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
 		}
+
+		// Filter by name
+		if !rs.matchesStringQuery(comp.Info.Name, info) {
+			continue
+		}
+
+		// Filter by manufacturer
+		if manufacturerFilter != nil {
+			if !rs.matchesStringQuery(comp.Info.Manufacturer, *manufacturerFilter) {
+				continue
+			}
+		}
+
+		// Filter by model
+		if modelFilter != nil {
+			if !rs.matchesStringQuery(comp.Info.Model, *modelFilter) {
+				continue
+			}
+		}
+
+		filtered = append(filtered, comp)
 	}
-	return result
+
+	return filtered
+}
+
+// matchesStringQuery checks if a string matches the StringQueryInfo criteria.
+func (rs *RLAServerImpl) matchesStringQuery(value string, query dbquery.StringQueryInfo) bool {
+	if len(query.Patterns) == 0 {
+		return true
+	}
+
+	if query.IsWildcard {
+		// Wildcard matching: check if any pattern matches (using LIKE semantics)
+		for _, pattern := range query.Patterns {
+			normalizedPattern := pattern
+			if len(normalizedPattern) > 0 && normalizedPattern[0] != '%' && normalizedPattern[len(normalizedPattern)-1] != '%' {
+				normalizedPattern = "%" + normalizedPattern + "%"
+			}
+			if rs.matchesWildcard(value, normalizedPattern) {
+				if !query.UseOR {
+					return true
+				}
+			} else {
+				if query.UseOR {
+					continue
+				} else {
+					return false
+				}
+			}
+		}
+		return !query.UseOR
+	} else {
+		// Exact matching: check if value matches any pattern
+		for _, pattern := range query.Patterns {
+			if value == pattern {
+				if !query.UseOR {
+					return true
+				}
+			} else {
+				if query.UseOR {
+					continue
+				} else {
+					return false
+				}
+			}
+		}
+		return !query.UseOR
+	}
+}
+
+// matchesWildcard checks if a string matches a wildcard pattern (simple % matching).
+func (rs *RLAServerImpl) matchesWildcard(value, pattern string) bool {
+	// Simple wildcard matching: convert pattern to regex-like matching
+	// For now, use simple contains check for %pattern% or startsWith/endsWith
+	if len(pattern) == 0 {
+		return true
+	}
+
+	// Remove leading/trailing %
+	trimmed := pattern
+	startMatch := false
+	endMatch := false
+	if len(trimmed) > 0 && trimmed[0] == '%' {
+		startMatch = true
+		trimmed = trimmed[1:]
+	}
+	if len(trimmed) > 0 && trimmed[len(trimmed)-1] == '%' {
+		endMatch = true
+		trimmed = trimmed[:len(trimmed)-1]
+	}
+
+	if len(trimmed) == 0 {
+		return true
+	}
+
+	if startMatch && endMatch {
+		// Contains (case-insensitive)
+		return strings.Contains(strings.ToLower(value), strings.ToLower(trimmed))
+	} else if startMatch {
+		// Ends with
+		return len(value) >= len(trimmed) && strings.HasSuffix(value, trimmed)
+	} else if endMatch {
+		// Starts with
+		return len(value) >= len(trimmed) && strings.HasPrefix(value, trimmed)
+	} else {
+		// Exact match
+		return value == trimmed
+	}
+}
+
+// sortComponents sorts components according to the OrderBy specification.
+func (rs *RLAServerImpl) sortComponents(components []*component.Component, orderBy *dbquery.OrderBy) error {
+	if orderBy == nil {
+		return nil
+	}
+
+	// Support sorting by common fields
+	switch orderBy.Column {
+	case "name":
+		sort.Slice(components, func(i, j int) bool {
+			if orderBy.Direction == dbquery.OrderAscending {
+				return components[i].Info.Name < components[j].Info.Name
+			}
+			return components[i].Info.Name > components[j].Info.Name
+		})
+	case "manufacturer":
+		sort.Slice(components, func(i, j int) bool {
+			if orderBy.Direction == dbquery.OrderAscending {
+				return components[i].Info.Manufacturer < components[j].Info.Manufacturer
+			}
+			return components[i].Info.Manufacturer > components[j].Info.Manufacturer
+		})
+	case "model":
+		sort.Slice(components, func(i, j int) bool {
+			if orderBy.Direction == dbquery.OrderAscending {
+				return components[i].Info.Model < components[j].Info.Model
+			}
+			return components[i].Info.Model > components[j].Info.Model
+		})
+	case "type":
+		sort.Slice(components, func(i, j int) bool {
+			typeI := devicetypes.ComponentTypeToString(components[i].Type)
+			typeJ := devicetypes.ComponentTypeToString(components[j].Type)
+			if orderBy.Direction == dbquery.OrderAscending {
+				return typeI < typeJ
+			}
+			return typeI > typeJ
+		})
+	default:
+		return fmt.Errorf("unsupported order by column: %s", orderBy.Column)
+	}
+
+	return nil
 }
 
 // extractComponentsByTypes extracts components matching any of the specified types from a rack.
@@ -1401,9 +1722,9 @@ func (rs *RLAServerImpl) extractComponentsFromRackTarget(
 
 	switch id := rt.GetIdentifier().(type) {
 	case *pb.RackTarget_Id:
-		rackUUID, parseErr := uuid.Parse(id.Id)
+		rackUUID, parseErr := uuid.Parse(id.Id.GetId())
 		if parseErr != nil {
-			return nil, fmt.Errorf("invalid rack id %q: %w", id.Id, parseErr)
+			return nil, fmt.Errorf("invalid rack id %q: %w", id.Id.GetId(), parseErr)
 		}
 		r, err = rs.inventoryManager.GetRackByID(ctx, rackUUID, true)
 	case *pb.RackTarget_Name:
@@ -1431,14 +1752,14 @@ func (rs *RLAServerImpl) extractComponentsFromComponentTarget(
 	ct *pb.ComponentTarget,
 ) ([]*component.Component, error) {
 	switch id := ct.GetIdentifier().(type) {
-	case *pb.ComponentTarget_Uuid:
-		compUUID, parseErr := uuid.Parse(id.Uuid)
+	case *pb.ComponentTarget_Id:
+		compUUID, parseErr := uuid.Parse(id.Id.GetId())
 		if parseErr != nil {
-			return nil, fmt.Errorf("invalid component uuid %q: %w", id.Uuid, parseErr)
+			return nil, fmt.Errorf("invalid component uuid %q: %w", id.Id.GetId(), parseErr)
 		}
 		comp, err := rs.inventoryManager.GetComponentByID(ctx, compUUID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get component by uuid %s: %w", id.Uuid, err)
+			return nil, fmt.Errorf("failed to get component by uuid %s: %w", id.Id.GetId(), err)
 		}
 		return []*component.Component{comp}, nil
 

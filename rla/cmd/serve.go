@@ -30,6 +30,7 @@ import (
 
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/carbideapi"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/config"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/db"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/psmapi"
 	svc "github.com/nvidia/bare-metal-manager-rest/rla/internal/service"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/componentmanager"
@@ -40,7 +41,6 @@ import (
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/componentmanager/providers/carbide"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/componentmanager/providers/psm"
 	temporalmanager "github.com/nvidia/bare-metal-manager-rest/rla/internal/task/executor/temporalworkflow/manager"
-	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db"
 )
 
 const (
@@ -150,8 +150,8 @@ func loadComponentManagerConfig() (componentmanager.Config, error) {
 		return *globalConfig.ComponentManager, nil
 	}
 
-	log.Info().Msg("No component manager config specified, using default production config")
-	return componentmanager.DefaultProdConfig(), nil
+	log.Info().Msg("No component manager config specified, using default test config")
+	return componentmanager.DefaultTestConfig(), nil
 }
 
 func doServe() {

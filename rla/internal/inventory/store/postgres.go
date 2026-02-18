@@ -24,6 +24,10 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/uptrace/bun"
 
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/converter/dao"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/db/model"
+	"github.com/nvidia/bare-metal-manager-rest/rla/internal/db/postgres"
+	dbquery "github.com/nvidia/bare-metal-manager-rest/rla/internal/db/query"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/component"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/nvldomain"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/rack"
@@ -32,10 +36,6 @@ import (
 	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"
 	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/errors"
 	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/rackopreport"
-	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/converter/dao"
-	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db/model"
-	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/db/postgres"
-	dbquery "github.com/nvidia/bare-metal-manager-rest/rla/pkg/db/query"
 )
 
 // PostgresStore implements the Store interface using PostgreSQL.
@@ -224,6 +224,9 @@ func (s *PostgresStore) GetRackByIdentifier(
 			UseOR:      true,
 		},
 		nil,
+		nil,
+		nil,
+		nil,
 		withComponents,
 	)
 
@@ -279,11 +282,14 @@ func (s *PostgresStore) PatchRack(
 func (s *PostgresStore) GetListOfRacks(
 	ctx context.Context,
 	info dbquery.StringQueryInfo,
+	manufacturerFilter *dbquery.StringQueryInfo,
+	modelFilter *dbquery.StringQueryInfo,
 	pagination *dbquery.Pagination,
+	orderBy *dbquery.OrderBy,
 	withComponents bool,
 ) ([]*rack.Rack, int32, error) {
 	racks, total, err := model.GetListOfRacks(
-		ctx, s.pg.DB(), info, pagination, withComponents,
+		ctx, s.pg.DB(), info, manufacturerFilter, modelFilter, pagination, orderBy, withComponents,
 	)
 	if err != nil {
 		return nil, 0, err
@@ -292,6 +298,31 @@ func (s *PostgresStore) GetListOfRacks(
 	results := make([]*rack.Rack, 0, len(racks))
 	for _, rackDao := range racks {
 		results = append(results, dao.RackFrom(&rackDao))
+	}
+
+	return results, total, nil
+}
+
+// GetListOfComponents lists components matching the given criteria.
+func (s *PostgresStore) GetListOfComponents(
+	ctx context.Context,
+	info dbquery.StringQueryInfo,
+	manufacturerFilter *dbquery.StringQueryInfo,
+	modelFilter *dbquery.StringQueryInfo,
+	componentTypes []devicetypes.ComponentType,
+	pagination *dbquery.Pagination,
+	orderBy *dbquery.OrderBy,
+) ([]*component.Component, int32, error) {
+	components, total, err := model.GetListOfComponents(
+		ctx, s.pg.DB(), info, manufacturerFilter, modelFilter, componentTypes, pagination, orderBy,
+	)
+	if err != nil {
+		return nil, 0, errors.GRPCErrorInternal(err.Error())
+	}
+
+	results := make([]*component.Component, 0, len(components))
+	for _, compDao := range components {
+		results = append(results, dao.ComponentFrom(compDao))
 	}
 
 	return results, total, nil

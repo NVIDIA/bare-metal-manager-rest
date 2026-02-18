@@ -153,16 +153,17 @@ func (m *Manager) FirmwareControl(
 	// TODO: Implement firmware control
 	switch info.Operation {
 	case operations.FirmwareOperationUpgrade:
-		fallthrough
+		// Implement firmware upgrade
+		return fmt.Errorf("firmware upgrade not yet implemented for compute")
 	case operations.FirmwareOperationDowngrade:
 		// Implement firmware downgrade
 		return fmt.Errorf("firmware downgrade not yet implemented for compute")
 	case operations.FirmwareOperationRollback:
 		// Implement firmware rollback
-		return fmt.Errorf("Host firmware can not be rolled back")
+		return fmt.Errorf("firmware rollback not yet implemented for compute")
 	case operations.FirmwareOperationVersion:
 		// Implement firmware version
-		return fmt.Errorf("Nonsensical request")
+		return fmt.Errorf("firmware version not yet implemented for compute")
 	default:
 		return fmt.Errorf("unknown firmware operation: %v", info.Operation)
 	}

@@ -25,12 +25,13 @@ import (
 
 	"github.com/google/uuid"
 
+	dbquery "github.com/nvidia/bare-metal-manager-rest/rla/internal/db/query"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/component"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/nvldomain"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/rack"
 	inventorystore "github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/store"
 	identifier "github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/Identifier"
-	dbquery "github.com/nvidia/bare-metal-manager-rest/rla/pkg/db/query"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"
 )
 
 // Manager defines the interface for inventory management business logic.
@@ -47,13 +48,14 @@ type Manager interface {
 	GetRackBySerial(ctx context.Context, manufacturer string, serial string, withComponents bool) (*rack.Rack, error)
 	GetRackByIdentifier(ctx context.Context, identifier identifier.Identifier, withComponents bool) (*rack.Rack, error)
 	PatchRack(ctx context.Context, rack *rack.Rack) (string, error)
-	GetListOfRacks(ctx context.Context, info dbquery.StringQueryInfo, pagination *dbquery.Pagination, withComponents bool) ([]*rack.Rack, int32, error)
+	GetListOfRacks(ctx context.Context, info dbquery.StringQueryInfo, manufacturerFilter *dbquery.StringQueryInfo, modelFilter *dbquery.StringQueryInfo, pagination *dbquery.Pagination, orderBy *dbquery.OrderBy, withComponents bool) ([]*rack.Rack, int32, error)
 
 	// Component operations
 	GetComponentByID(ctx context.Context, id uuid.UUID) (*component.Component, error)
 	GetComponentBySerial(ctx context.Context, manufacturer string, serial string, withRack bool) (*component.Component, error)
 	GetComponentByBMCMAC(ctx context.Context, macAddress string) (*component.Component, error)
 	GetComponentsByExternalIDs(ctx context.Context, externalIDs []string) ([]*component.Component, error)
+	GetListOfComponents(ctx context.Context, info dbquery.StringQueryInfo, manufacturerFilter *dbquery.StringQueryInfo, modelFilter *dbquery.StringQueryInfo, componentTypes []devicetypes.ComponentType, pagination *dbquery.Pagination, orderBy *dbquery.OrderBy) ([]*component.Component, int32, error)
 
 	// NVL Domain operations
 	CreateNVLDomain(ctx context.Context, nvlDomain *nvldomain.NVLDomain) (uuid.UUID, error)
@@ -129,8 +131,13 @@ func (m *ManagerImpl) PatchRack(ctx context.Context, rack *rack.Rack) (string, e
 }
 
 // GetListOfRacks lists racks matching the given criteria.
-func (m *ManagerImpl) GetListOfRacks(ctx context.Context, info dbquery.StringQueryInfo, pagination *dbquery.Pagination, withComponents bool) ([]*rack.Rack, int32, error) {
-	return m.store.GetListOfRacks(ctx, info, pagination, withComponents)
+func (m *ManagerImpl) GetListOfRacks(ctx context.Context, info dbquery.StringQueryInfo, manufacturerFilter *dbquery.StringQueryInfo, modelFilter *dbquery.StringQueryInfo, pagination *dbquery.Pagination, orderBy *dbquery.OrderBy, withComponents bool) ([]*rack.Rack, int32, error) {
+	return m.store.GetListOfRacks(ctx, info, manufacturerFilter, modelFilter, pagination, orderBy, withComponents)
+}
+
+// GetListOfComponents lists components matching the given criteria.
+func (m *ManagerImpl) GetListOfComponents(ctx context.Context, info dbquery.StringQueryInfo, manufacturerFilter *dbquery.StringQueryInfo, modelFilter *dbquery.StringQueryInfo, componentTypes []devicetypes.ComponentType, pagination *dbquery.Pagination, orderBy *dbquery.OrderBy) ([]*component.Component, int32, error) {
+	return m.store.GetListOfComponents(ctx, info, manufacturerFilter, modelFilter, componentTypes, pagination, orderBy)
 }
 
 // GetComponentByID retrieves a component by its UUID.

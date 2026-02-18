@@ -20,8 +20,8 @@ CURDATE := $(shell date +%s)
 gen-pb: ## Generate protobuf files
 	@echo "Starting generate protobuf"
 	@protoc -I proto/v1 \
-		--go_out=internal/proto/v1 --go_opt=paths=source_relative \
-		--go-grpc_out=internal/proto/v1 --go-grpc_opt=paths=source_relative \
+		--go_out=pkg/proto/v1 --go_opt=paths=source_relative \
+		--go-grpc_out=pkg/proto/v1 --go-grpc_opt=paths=source_relative \
 		proto/v1/*.proto
 	@echo "Successfully generated protobuf"
 
