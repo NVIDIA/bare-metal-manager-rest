@@ -33,10 +33,6 @@ nodes:
       - containerPort: 30233
         hostPort: 8233
         protocol: TCP
-      # Vault UI
-      - containerPort: 30200
-        hostPort: 8200
-        protocol: TCP
       # Adminer (PostgreSQL Admin)
       - containerPort: 30081
         hostPort: 8081
