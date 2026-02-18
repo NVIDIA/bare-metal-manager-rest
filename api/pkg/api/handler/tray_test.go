@@ -546,6 +546,32 @@ func TestGetAllTrayHandler_Handle(t *testing.T) {
 			expectedStatus: http.StatusBadRequest,
 			wantErr:        true,
 		},
+		{
+			name:   "failure - rackId and rackName mutually exclusive",
+			reqOrg: org,
+			user:   providerUser,
+			queryParams: map[string]string{
+				"siteId":   site.ID.String(),
+				"rackId":   rackID,
+				"rackName": "Rack-001",
+			},
+			mockResponse:   nil,
+			expectedStatus: http.StatusBadRequest,
+			wantErr:        true,
+		},
+		{
+			name:   "failure - rackId conflicts with id (rack vs component targeting)",
+			reqOrg: org,
+			user:   providerUser,
+			queryParams: map[string]string{
+				"siteId": site.ID.String(),
+				"rackId": rackID,
+				"id":     uuid.New().String(),
+			},
+			mockResponse:   nil,
+			expectedStatus: http.StatusBadRequest,
+			wantErr:        true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -624,167 +650,6 @@ func TestGetAllTrayHandler_Handle(t *testing.T) {
 	}
 }
 
-func TestBuildTrayFilterInput(t *testing.T) {
-	e := echo.New()
-
-	validRackID := uuid.New().String()
-	validID1 := uuid.New().String()
-	validID2 := uuid.New().String()
-
-	tests := []struct {
-		name        string
-		queryParams map[string]string
-		wantErr     bool
-		validate    func(t *testing.T, filter *model.TrayFilterInput)
-	}{
-		{
-			name:        "empty params - no error",
-			queryParams: map[string]string{},
-			wantErr:     false,
-			validate: func(t *testing.T, filter *model.TrayFilterInput) {
-				assert.Nil(t, filter.RackID)
-				assert.Nil(t, filter.RackName)
-				assert.Nil(t, filter.Type)
-				assert.Empty(t, filter.ComponentIDs)
-				assert.Empty(t, filter.IDs)
-			},
-		},
-		{
-			name: "valid rackId",
-			queryParams: map[string]string{
-				"rackId": validRackID,
-			},
-			wantErr: false,
-			validate: func(t *testing.T, filter *model.TrayFilterInput) {
-				require.NotNil(t, filter.RackID)
-				assert.Equal(t, validRackID, *filter.RackID)
-			},
-		},
-		{
-			name: "invalid rackId",
-			queryParams: map[string]string{
-				"rackId": "not-a-uuid",
-			},
-			wantErr: true,
-		},
-		{
-			name: "valid rackName",
-			queryParams: map[string]string{
-				"rackName": "Rack-001",
-			},
-			wantErr: false,
-			validate: func(t *testing.T, filter *model.TrayFilterInput) {
-				require.NotNil(t, filter.RackName)
-				assert.Equal(t, "Rack-001", *filter.RackName)
-			},
-		},
-		{
-			name: "rackname lowercase alias",
-			queryParams: map[string]string{
-				"rackname": "Rack-002",
-			},
-			wantErr: false,
-			validate: func(t *testing.T, filter *model.TrayFilterInput) {
-				require.NotNil(t, filter.RackName)
-				assert.Equal(t, "Rack-002", *filter.RackName)
-			},
-		},
-		{
-			name: "valid type - compute",
-			queryParams: map[string]string{
-				"type": "compute",
-			},
-			wantErr: false,
-			validate: func(t *testing.T, filter *model.TrayFilterInput) {
-				require.NotNil(t, filter.Type)
-				assert.Equal(t, "compute", *filter.Type)
-			},
-		},
-		{
-			name: "valid type - switch",
-			queryParams: map[string]string{
-				"type": "switch",
-			},
-			wantErr: false,
-			validate: func(t *testing.T, filter *model.TrayFilterInput) {
-				require.NotNil(t, filter.Type)
-				assert.Equal(t, "switch", *filter.Type)
-			},
-		},
-		{
-			name: "invalid type",
-			queryParams: map[string]string{
-				"type": "invalid-type",
-			},
-			wantErr: true,
-		},
-		{
-			name: "valid componentId with type",
-			queryParams: map[string]string{
-				"componentId": "comp-1,comp-2",
-				"type":        "compute",
-			},
-			wantErr: false,
-			validate: func(t *testing.T, filter *model.TrayFilterInput) {
-				assert.Len(t, filter.ComponentIDs, 2)
-				assert.Contains(t, filter.ComponentIDs, "comp-1")
-				assert.Contains(t, filter.ComponentIDs, "comp-2")
-			},
-		},
-		{
-			name: "componentId without type - error",
-			queryParams: map[string]string{
-				"componentId": "comp-1",
-			},
-			wantErr: true,
-		},
-		{
-			name: "valid UUID ids",
-			queryParams: map[string]string{
-				"id": fmt.Sprintf("%s,%s", validID1, validID2),
-			},
-			wantErr: false,
-			validate: func(t *testing.T, filter *model.TrayFilterInput) {
-				assert.Len(t, filter.IDs, 2)
-			},
-		},
-		{
-			name: "invalid UUID id",
-			queryParams: map[string]string{
-				"id": "not-a-uuid",
-			},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			q := url.Values{}
-			for k, v := range tt.queryParams {
-				q.Set(k, v)
-			}
-			path := fmt.Sprintf("/test?%s", q.Encode())
-
-			req := httptest.NewRequest(http.MethodGet, path, nil)
-			rec := httptest.NewRecorder()
-			ec := e.NewContext(req, rec)
-
-			filter, err := buildTrayFilterInput(ec)
-
-			if tt.wantErr {
-				assert.Error(t, err)
-				return
-			}
-
-			assert.NoError(t, err)
-			require.NotNil(t, filter)
-			if tt.validate != nil {
-				tt.validate(t, filter)
-			}
-		})
-	}
-}
-
 func TestBuildRLARequestFromFilter(t *testing.T) {
 	rackID := uuid.New().String()
 	rackName := "Rack-001"
@@ -794,19 +659,23 @@ func TestBuildRLARequestFromFilter(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		filter   *model.TrayFilterInput
+		request  *model.APITrayGetAllRequest
 		validate func(t *testing.T, req *rlav1.GetComponentsRequest)
 	}{
 		{
-			name:   "empty filter - no target spec",
-			filter: &model.TrayFilterInput{},
+			name:    "empty request - defaults to supported types",
+			request: &model.APITrayGetAllRequest{},
 			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
-				assert.Nil(t, req.TargetSpec)
+				require.NotNil(t, req.TargetSpec)
+				rackTargets := req.TargetSpec.GetRacks()
+				require.NotNil(t, rackTargets)
+				require.Len(t, rackTargets.Targets, 1)
+				assert.ElementsMatch(t, model.ValidProtoComponentTypes, rackTargets.Targets[0].ComponentTypes)
 			},
 		},
 		{
-			name: "rackId only - rack-level targeting",
-			filter: &model.TrayFilterInput{
+			name: "rackId only - rack-level targeting with supported types",
+			request: &model.APITrayGetAllRequest{
 				RackID: &rackID,
 			},
 			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
@@ -815,11 +684,12 @@ func TestBuildRLARequestFromFilter(t *testing.T) {
 				require.NotNil(t, rackTargets)
 				require.Len(t, rackTargets.Targets, 1)
 				assert.Equal(t, rackID, rackTargets.Targets[0].GetId().GetId())
+				assert.ElementsMatch(t, model.ValidProtoComponentTypes, rackTargets.Targets[0].ComponentTypes)
 			},
 		},
 		{
-			name: "rackName only - rack-level targeting",
-			filter: &model.TrayFilterInput{
+			name: "rackName only - rack-level targeting with supported types",
+			request: &model.APITrayGetAllRequest{
 				RackName: &rackName,
 			},
 			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
@@ -828,11 +698,12 @@ func TestBuildRLARequestFromFilter(t *testing.T) {
 				require.NotNil(t, rackTargets)
 				require.Len(t, rackTargets.Targets, 1)
 				assert.Equal(t, rackName, rackTargets.Targets[0].GetName())
+				assert.ElementsMatch(t, model.ValidProtoComponentTypes, rackTargets.Targets[0].ComponentTypes)
 			},
 		},
 		{
 			name: "type only - rack-level targeting with component type",
-			filter: &model.TrayFilterInput{
+			request: &model.APITrayGetAllRequest{
 				Type: &trayType,
 			},
 			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
@@ -845,7 +716,7 @@ func TestBuildRLARequestFromFilter(t *testing.T) {
 		},
 		{
 			name: "rackId with type - rack-level targeting with filter",
-			filter: &model.TrayFilterInput{
+			request: &model.APITrayGetAllRequest{
 				RackID: &rackID,
 				Type:   &trayType,
 			},
@@ -860,7 +731,7 @@ func TestBuildRLARequestFromFilter(t *testing.T) {
 		},
 		{
 			name: "IDs - component-level targeting",
-			filter: &model.TrayFilterInput{
+			request: &model.APITrayGetAllRequest{
 				IDs: []string{id1, id2},
 			},
 			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
@@ -874,7 +745,7 @@ func TestBuildRLARequestFromFilter(t *testing.T) {
 		},
 		{
 			name: "componentIDs with type - component-level targeting via ExternalRef",
-			filter: &model.TrayFilterInput{
+			request: &model.APITrayGetAllRequest{
 				ComponentIDs: []string{"comp-1", "comp-2"},
 				Type:         &trayType,
 			},
@@ -883,7 +754,6 @@ func TestBuildRLARequestFromFilter(t *testing.T) {
 				compTargets := req.TargetSpec.GetComponents()
 				require.NotNil(t, compTargets)
 				assert.Len(t, compTargets.Targets, 2)
-				// Verify they are ExternalRef targets
 				for _, target := range compTargets.Targets {
 					ext := target.GetExternal()
 					require.NotNil(t, ext)
@@ -892,23 +762,26 @@ func TestBuildRLARequestFromFilter(t *testing.T) {
 			},
 		},
 		{
-			name: "IDs take priority over rackId (component-level targeting)",
-			filter: &model.TrayFilterInput{
-				IDs:    []string{id1},
-				RackID: &rackID,
+			name: "IDs and componentIDs with type - mixed component-level targeting",
+			request: &model.APITrayGetAllRequest{
+				IDs:          []string{id1},
+				ComponentIDs: []string{"comp-1"},
+				Type:         &trayType,
 			},
 			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
 				require.NotNil(t, req.TargetSpec)
 				compTargets := req.TargetSpec.GetComponents()
-				require.NotNil(t, compTargets, "IDs should produce component-level targeting, not rack-level")
-				assert.Len(t, compTargets.Targets, 1)
+				require.NotNil(t, compTargets)
+				assert.Len(t, compTargets.Targets, 2)
+				assert.Equal(t, id1, compTargets.Targets[0].GetId().GetId())
+				assert.NotNil(t, compTargets.Targets[1].GetExternal())
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := buildRLARequestFromFilter(tt.filter)
+			req := buildRLARequest(tt.request)
 			require.NotNil(t, req)
 			if tt.validate != nil {
 				tt.validate(t, req)

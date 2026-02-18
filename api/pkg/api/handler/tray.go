@@ -28,7 +28,6 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/otel/attribute"
 	tClient "go.temporal.io/sdk/client"
@@ -43,6 +42,7 @@ import (
 	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
+	temporalEnums "go.temporal.io/api/enums/v1"
 )
 
 // ~~~~~ Get Tray Handler ~~~~~ //
@@ -124,8 +124,8 @@ func (gth GetTrayHandler) Handle(c echo.Context) error {
 
 	// Get tray ID from URL param
 	trayStrID := c.Param("id")
-	if trayStrID == "" {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "tray id is required", nil)
+	if _, err := uuid.Parse(trayStrID); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid Tray ID in URL", nil)
 	}
 	gth.tracerSpan.SetAttribute(handlerSpan, attribute.String("tray_id", trayStrID), logger)
 
@@ -146,6 +146,7 @@ func (gth GetTrayHandler) Handle(c echo.Context) error {
 		ID:                       fmt.Sprintf("tray-get-%s", trayStrID),
 		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
+		WorkflowIDReusePolicy:    temporalEnums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
@@ -206,7 +207,7 @@ func NewGetAllTrayHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.Cli
 // @Param siteId query string true "ID of the Site"
 // @Param rackId query string false "Filter by Rack ID"
 // @Param rackName query string false "Filter by Rack name"
-// @Param type query string false "Filter by tray type (compute, switch, powershelf, torswitch, ums, cdu)"
+// @Param type query string false "Filter by tray type (compute, switch, powershelf)"
 // @Param componentId query string false "Filter by component IDs (comma-separated)"
 // @Param id query string false "Filter by tray UUIDs (comma-separated)"
 // @Param orderBy query string false "Order by field (e.g. name_ASC, manufacturer_DESC)"
@@ -257,11 +258,27 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have access to Site", nil)
 	}
 
-	// Build and validate filter input from query params
-	filter, filterErr := buildTrayFilterInput(c)
-	if filterErr != nil {
-		logger.Warn().Err(filterErr).Msg("invalid tray filter query parameters")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid filter parameters", filterErr)
+	// Build and validate tray request from query params
+	qParams := c.QueryParams()
+	apiRequest := model.APITrayGetAllRequest{}
+	if v := c.QueryParam("rackId"); v != "" {
+		apiRequest.RackID = &v
+	}
+	if v := c.QueryParam("rackName"); v != "" {
+		apiRequest.RackName = &v
+	}
+	if v := c.QueryParam("type"); v != "" {
+		apiRequest.Type = &v
+	}
+	if vals := qParams["componentId"]; len(vals) > 0 {
+		apiRequest.ComponentIDs = common.SplitCommaSeparated(vals)
+	}
+	if vals := qParams["id"]; len(vals) > 0 {
+		apiRequest.IDs = common.SplitCommaSeparated(vals)
+	}
+	if verr := apiRequest.Validate(); verr != nil {
+		logger.Warn().Err(verr).Msg("invalid tray request parameters")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate request data", verr)
 	}
 
 	// Validate pagination request (orderBy, pageNumber, pageSize)
@@ -284,8 +301,8 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
 	}
 
-	// Build RLA request with filters
-	rlaRequest := buildRLARequestFromFilter(filter)
+	// Build RLA request from validated API request
+	rlaRequest := buildRLARequest(&apiRequest)
 
 	// Set order and pagination on RLA request
 	var orderBy *rlav1.OrderBy
@@ -302,9 +319,10 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 
 	// Execute workflow
 	workflowOptions := tClient.StartWorkflowOptions{
-		ID:                       fmt.Sprintf("tray-get-all-%s", filter.Hash()),
+		ID:                       fmt.Sprintf("tray-get-all-%s", apiRequest.Hash()),
 		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
+		WorkflowIDReusePolicy:    temporalEnums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
@@ -349,69 +367,19 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 	return c.JSON(http.StatusOK, apiTrays)
 }
 
-// buildTrayFilterInput builds and validates a TrayFilterInput from query parameters.
-// Returns an error if any parameter has an invalid format (e.g., non-integer slot, invalid UUID).
-func buildTrayFilterInput(c echo.Context) (*model.TrayFilterInput, error) {
-	filter := &model.TrayFilterInput{}
-	qParams := c.QueryParams()
-
-	if rackID := c.QueryParam("rackId"); rackID != "" {
-		if _, err := uuid.Parse(rackID); err != nil {
-			return nil, fmt.Errorf("rackId must be a valid UUID: %s", rackID)
-		}
-		filter.RackID = &rackID
-	}
-	if rackName := c.QueryParam("rackName"); rackName != "" {
-		filter.RackName = &rackName
-	}
-	// Support rackname (lowercase) as alias for rackName per API spec
-	if filter.RackName == nil {
-		if rackName := c.QueryParam("rackname"); rackName != "" {
-			filter.RackName = &rackName
-		}
-	}
-	if trayType := c.QueryParam("type"); trayType != "" {
-		if !slices.Contains(model.ValidTrayTypes, trayType) {
-			return nil, fmt.Errorf("type must be one of %v: %s", model.ValidTrayTypes, trayType)
-		}
-		filter.Type = &trayType
-	}
-	// componentId: support comma-separated list (e.g. componentId=id1,id2,id3) and repeated params
-	if componentIDs := qParams["componentId"]; len(componentIDs) > 0 {
-		filter.ComponentIDs = common.SplitCommaSeparated(componentIDs)
-	}
-	// id: support comma-separated list (e.g. id=uuid1,uuid2,uuid3) and repeated params
-	if ids := qParams["id"]; len(ids) > 0 {
-		parsed := common.SplitCommaSeparated(ids)
-		for _, id := range parsed {
-			if _, err := uuid.Parse(id); err != nil {
-				return nil, fmt.Errorf("id must be a valid UUID: %s", id)
-			}
-		}
-		filter.IDs = parsed
-	}
-	// componentId requires type to be specified so the correct source system can be queried
-	if len(filter.ComponentIDs) > 0 && filter.Type == nil {
-		return nil, fmt.Errorf("type is required when componentId is provided")
-	}
-
-	return filter, nil
-}
-
-// buildRLARequestFromFilter builds an RLA GetComponentsRequest from TrayFilterInput.
-// Priority: component-level targeting (IDs, componentIDs+type) > rack-level targeting.
-func buildRLARequestFromFilter(filter *model.TrayFilterInput) *rlav1.GetComponentsRequest {
+// buildRLARequest builds an RLA GetComponentsRequest from a validated APITrayGetAllRequest.
+// The request must have been validated before calling this function.
+func buildRLARequest(req *model.APITrayGetAllRequest) *rlav1.GetComponentsRequest {
 	rlaRequest := &rlav1.GetComponentsRequest{}
 
-	// Check for component-level targeting: UUID-based IDs or componentIDs with type (ExternalRef)
-	hasIDs := len(filter.IDs) > 0
-	hasComponentIDsWithType := len(filter.ComponentIDs) > 0 && filter.Type != nil
+	// Component-level targeting: UUID-based IDs or componentIDs with type (ExternalRef)
+	hasIDs := len(req.IDs) > 0
+	hasComponentIDsWithType := len(req.ComponentIDs) > 0 && req.Type != nil
 
 	if hasIDs || hasComponentIDsWithType {
-		componentTargets := make([]*rlav1.ComponentTarget, 0, len(filter.IDs)+len(filter.ComponentIDs))
+		componentTargets := make([]*rlav1.ComponentTarget, 0, len(req.IDs)+len(req.ComponentIDs))
 
-		// Add UUID-based targets
-		for _, id := range filter.IDs {
+		for _, id := range req.IDs {
 			componentTargets = append(componentTargets, &rlav1.ComponentTarget{
 				Identifier: &rlav1.ComponentTarget_Id{
 					Id: &rlav1.UUID{Id: id},
@@ -419,11 +387,10 @@ func buildRLARequestFromFilter(filter *model.TrayFilterInput) *rlav1.GetComponen
 			})
 		}
 
-		// Add ExternalRef-based targets (componentIDs + type)
 		if hasComponentIDsWithType {
-			if protoName, ok := model.APIToProtoComponentTypeName[*filter.Type]; ok {
+			if protoName, ok := model.APIToProtoComponentTypeName[*req.Type]; ok {
 				protoType := rlav1.ComponentType(rlav1.ComponentType_value[protoName])
-				for _, cid := range filter.ComponentIDs {
+				for _, cid := range req.ComponentIDs {
 					componentTargets = append(componentTargets, &rlav1.ComponentTarget{
 						Identifier: &rlav1.ComponentTarget_External{
 							External: &rlav1.ExternalRef{
@@ -446,36 +413,34 @@ func buildRLARequestFromFilter(filter *model.TrayFilterInput) *rlav1.GetComponen
 		return rlaRequest
 	}
 
-	// Rack-level targeting (only when no component-level targeting applies)
-	if filter.RackID != nil || filter.RackName != nil || filter.Type != nil {
-		rackTarget := &rlav1.RackTarget{}
+	rackTarget := &rlav1.RackTarget{}
 
-		if filter.RackID != nil {
-			rackTarget.Identifier = &rlav1.RackTarget_Id{
-				Id: &rlav1.UUID{Id: *filter.RackID},
-			}
-		} else if filter.RackName != nil {
-			rackTarget.Identifier = &rlav1.RackTarget_Name{
-				Name: *filter.RackName,
+	if req.RackID != nil {
+		rackTarget.Identifier = &rlav1.RackTarget_Id{
+			Id: &rlav1.UUID{Id: *req.RackID},
+		}
+	} else if req.RackName != nil {
+		rackTarget.Identifier = &rlav1.RackTarget_Name{
+			Name: *req.RackName,
+		}
+	}
+
+	if req.Type != nil {
+		if protoName, ok := model.APIToProtoComponentTypeName[*req.Type]; ok {
+			rackTarget.ComponentTypes = []rlav1.ComponentType{
+				rlav1.ComponentType(rlav1.ComponentType_value[protoName]),
 			}
 		}
+	} else {
+		rackTarget.ComponentTypes = model.ValidProtoComponentTypes
+	}
 
-		// Parse component type filter
-		if filter.Type != nil {
-			if protoName, ok := model.APIToProtoComponentTypeName[*filter.Type]; ok {
-				rackTarget.ComponentTypes = []rlav1.ComponentType{
-					rlav1.ComponentType(rlav1.ComponentType_value[protoName]),
-				}
-			}
-		}
-
-		rlaRequest.TargetSpec = &rlav1.OperationTargetSpec{
-			Targets: &rlav1.OperationTargetSpec_Racks{
-				Racks: &rlav1.RackTargets{
-					Targets: []*rlav1.RackTarget{rackTarget},
-				},
+	rlaRequest.TargetSpec = &rlav1.OperationTargetSpec{
+		Targets: &rlav1.OperationTargetSpec_Racks{
+			Racks: &rlav1.RackTargets{
+				Targets: []*rlav1.RackTarget{rackTarget},
 			},
-		}
+		},
 	}
 
 	return rlaRequest

@@ -20,6 +20,7 @@ package model
 import (
 	"testing"
 
+	"github.com/google/uuid"
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 	"github.com/stretchr/testify/assert"
 )
@@ -83,26 +84,6 @@ func TestProtoToAPIComponentTypeName(t *testing.T) {
 			name: "powershelf type",
 			ct:   rlav1.ComponentType_COMPONENT_TYPE_POWERSHELF,
 			want: "powershelf",
-		},
-		{
-			name: "torswitch type",
-			ct:   rlav1.ComponentType_COMPONENT_TYPE_TORSWITCH,
-			want: "torswitch",
-		},
-		{
-			name: "ums type",
-			ct:   rlav1.ComponentType_COMPONENT_TYPE_UMS,
-			want: "ums",
-		},
-		{
-			name: "cdu type",
-			ct:   rlav1.ComponentType_COMPONENT_TYPE_CDU,
-			want: "cdu",
-		},
-		{
-			name: "unknown type",
-			ct:   rlav1.ComponentType_COMPONENT_TYPE_UNKNOWN,
-			want: "unknown",
 		},
 	}
 
@@ -242,27 +223,27 @@ func TestNewAPITray(t *testing.T) {
 		{
 			name: "tray without info",
 			comp: &rlav1.Component{
-				Type:        rlav1.ComponentType_COMPONENT_TYPE_UMS,
-				ComponentId: "ums-component-123",
+				Type:        rlav1.ComponentType_COMPONENT_TYPE_COMPUTE,
+				ComponentId: "compute-component-123",
 			},
 			want: &APITray{
-				Type:        "ums",
-				ComponentID: "ums-component-123",
+				Type:        "compute",
+				ComponentID: "compute-component-123",
 			},
 		},
 		{
 			name: "tray without position",
 			comp: &rlav1.Component{
-				Type: rlav1.ComponentType_COMPONENT_TYPE_CDU,
+				Type: rlav1.ComponentType_COMPONENT_TYPE_NVLSWITCH,
 				Info: &rlav1.DeviceInfo{
-					Id:   &rlav1.UUID{Id: "cdu-tray-id"},
-					Name: "cdu-1",
+					Id:   &rlav1.UUID{Id: "switch-tray-id"},
+					Name: "switch-1",
 				},
 			},
 			want: &APITray{
-				ID:       "cdu-tray-id",
-				Type:     "cdu",
-				Name:     "cdu-1",
+				ID:       "switch-tray-id",
+				Type:     "switch",
+				Name:     "switch-1",
 				Position: nil,
 			},
 		},
@@ -338,6 +319,155 @@ func TestAPITray_FromProto(t *testing.T) {
 
 	at.FromProto(nil) // no-op, fields unchanged
 	assert.Equal(t, "tray-uuid", at.ID)
+}
+
+func TestAPITrayGetAllRequest_Validate(t *testing.T) {
+	validUUID := uuid.New().String()
+	validUUID2 := uuid.New().String()
+	strPtr := func(s string) *string { return &s }
+
+	tests := []struct {
+		name    string
+		req     APITrayGetAllRequest
+		wantErr bool
+		check   func(t *testing.T, req *APITrayGetAllRequest)
+	}{
+		{
+			name:    "empty request is valid",
+			req:     APITrayGetAllRequest{},
+			wantErr: false,
+		},
+		{
+			name:    "valid rackId only",
+			req:     APITrayGetAllRequest{RackID: strPtr(validUUID)},
+			wantErr: false,
+		},
+		{
+			name:    "valid rackName only",
+			req:     APITrayGetAllRequest{RackName: strPtr("Rack-001")},
+			wantErr: false,
+		},
+		{
+			name:    "invalid rackId - not a UUID",
+			req:     APITrayGetAllRequest{RackID: strPtr("not-a-uuid")},
+			wantErr: true,
+		},
+		{
+			name:    "rackId and rackName mutually exclusive",
+			req:     APITrayGetAllRequest{RackID: strPtr(validUUID), RackName: strPtr("Rack-001")},
+			wantErr: true,
+		},
+		{
+			name:    "valid type - compute",
+			req:     APITrayGetAllRequest{Type: strPtr("compute")},
+			wantErr: false,
+		},
+		{
+			name:    "valid type - switch",
+			req:     APITrayGetAllRequest{Type: strPtr("switch")},
+			wantErr: false,
+		},
+		{
+			name:    "valid type - powershelf",
+			req:     APITrayGetAllRequest{Type: strPtr("powershelf")},
+			wantErr: false,
+		},
+		{
+			name:    "invalid type",
+			req:     APITrayGetAllRequest{Type: strPtr("invalid-type")},
+			wantErr: true,
+		},
+		{
+			name:    "unsupported type - torswitch",
+			req:     APITrayGetAllRequest{Type: strPtr("torswitch")},
+			wantErr: true,
+		},
+		{
+			name:    "unsupported type - ums",
+			req:     APITrayGetAllRequest{Type: strPtr("ums")},
+			wantErr: true,
+		},
+		{
+			name:    "unsupported type - cdu",
+			req:     APITrayGetAllRequest{Type: strPtr("cdu")},
+			wantErr: true,
+		},
+		{
+			name:    "valid IDs",
+			req:     APITrayGetAllRequest{IDs: []string{validUUID, validUUID2}},
+			wantErr: false,
+		},
+		{
+			name:    "invalid UUID in IDs",
+			req:     APITrayGetAllRequest{IDs: []string{"not-a-uuid"}},
+			wantErr: true,
+		},
+		{
+			name:    "componentIDs with type is valid",
+			req:     APITrayGetAllRequest{ComponentIDs: []string{"comp-1", "comp-2"}, Type: strPtr("compute")},
+			wantErr: false,
+		},
+		{
+			name:    "componentIDs without type is invalid",
+			req:     APITrayGetAllRequest{ComponentIDs: []string{"comp-1"}},
+			wantErr: true,
+		},
+		{
+			name:    "IDs and componentIDs can coexist (both component-level)",
+			req:     APITrayGetAllRequest{IDs: []string{validUUID}, ComponentIDs: []string{"comp-1"}, Type: strPtr("compute")},
+			wantErr: false,
+		},
+		{
+			name:    "rackId conflicts with IDs",
+			req:     APITrayGetAllRequest{RackID: strPtr(validUUID), IDs: []string{validUUID2}},
+			wantErr: true,
+		},
+		{
+			name:    "rackName conflicts with componentIDs",
+			req:     APITrayGetAllRequest{RackName: strPtr("Rack-001"), ComponentIDs: []string{"comp-1"}, Type: strPtr("compute")},
+			wantErr: true,
+		},
+		{
+			name:    "rackId conflicts with componentIDs",
+			req:     APITrayGetAllRequest{RackID: strPtr(validUUID), ComponentIDs: []string{"comp-1"}, Type: strPtr("compute")},
+			wantErr: true,
+		},
+		{
+			name:    "rackName conflicts with IDs",
+			req:     APITrayGetAllRequest{RackName: strPtr("Rack-001"), IDs: []string{validUUID}},
+			wantErr: true,
+		},
+		{
+			name:    "rackId with type is valid (rack-level)",
+			req:     APITrayGetAllRequest{RackID: strPtr(validUUID), Type: strPtr("compute")},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.req.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			if tt.check != nil {
+				tt.check(t, &tt.req)
+			}
+		})
+	}
+}
+
+func TestAPITrayGetAllRequest_Hash(t *testing.T) {
+	strPtr := func(s string) *string { return &s }
+
+	r1 := &APITrayGetAllRequest{RackID: strPtr("abc")}
+	r2 := &APITrayGetAllRequest{RackID: strPtr("abc")}
+	r3 := &APITrayGetAllRequest{RackName: strPtr("abc")}
+
+	assert.Equal(t, r1.Hash(), r2.Hash(), "same inputs should produce same hash")
+	assert.NotEqual(t, r1.Hash(), r3.Hash(), "different fields should produce different hash")
 }
 
 func TestGetProtoTrayOrderByFromQueryParam(t *testing.T) {

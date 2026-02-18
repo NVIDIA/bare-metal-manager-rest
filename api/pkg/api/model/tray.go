@@ -24,33 +24,37 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/google/uuid"
+
+	validation "github.com/go-ozzo/ozzo-validation/v4"
+	validationis "github.com/go-ozzo/ozzo-validation/v4/is"
+
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 )
 
 // APIToProtoComponentTypeName maps API tray type strings to protobuf ComponentType enum names.
 var APIToProtoComponentTypeName = map[string]string{
-	"unknown":    "COMPONENT_TYPE_UNKNOWN",
 	"compute":    "COMPONENT_TYPE_COMPUTE",
 	"switch":     "COMPONENT_TYPE_NVLSWITCH",
 	"powershelf": "COMPONENT_TYPE_POWERSHELF",
-	"torswitch":  "COMPONENT_TYPE_TORSWITCH",
-	"ums":        "COMPONENT_TYPE_UMS",
-	"cdu":        "COMPONENT_TYPE_CDU",
 }
 
 // ProtoToAPIComponentTypeName maps protobuf ComponentType enum names to API tray type strings.
 var ProtoToAPIComponentTypeName = map[string]string{
-	"COMPONENT_TYPE_UNKNOWN":    "unknown",
 	"COMPONENT_TYPE_COMPUTE":    "compute",
 	"COMPONENT_TYPE_NVLSWITCH":  "switch",
 	"COMPONENT_TYPE_POWERSHELF": "powershelf",
-	"COMPONENT_TYPE_TORSWITCH":  "torswitch",
-	"COMPONENT_TYPE_UMS":        "ums",
-	"COMPONENT_TYPE_CDU":        "cdu",
 }
 
-// ValidTrayTypes contains the valid tray type strings
-var ValidTrayTypes = slices.Collect(maps.Keys(APIToProtoComponentTypeName))
+var validTrayTypesAny, ValidProtoComponentTypes = func() ([]interface{}, []rlav1.ComponentType) {
+	anyTypes := make([]interface{}, 0, len(APIToProtoComponentTypeName))
+	protoTypes := make([]rlav1.ComponentType, 0, len(APIToProtoComponentTypeName))
+	for apiName, protoName := range APIToProtoComponentTypeName {
+		anyTypes = append(anyTypes, apiName)
+		protoTypes = append(protoTypes, rlav1.ComponentType(rlav1.ComponentType_value[protoName]))
+	}
+	return anyTypes, protoTypes
+}()
 
 // TrayOrderByFieldMap maps API field names to RLA protobuf ComponentOrderByField enum
 var TrayOrderByFieldMap = map[string]rlav1.ComponentOrderByField{
@@ -74,47 +78,84 @@ func GetProtoTrayOrderByFromQueryParam(fieldName, direction string) *rlav1.Order
 	}
 }
 
-// TrayFilterInput is the filter structure for querying trays from RLA
-type TrayFilterInput struct {
-	// RackID filters trays by rack UUID
-	RackID *string
-	// RackName filters trays by rack name
-	RackName *string
-	// Type filters trays by type (compute, switch, powershelf, torswitch, ums, cdu)
-	Type *string
-	// ComponentIDs filters trays by component IDs (comma-separated)
+// APITrayGetAllRequest captures query parameters for listing trays from RLA.
+type APITrayGetAllRequest struct {
+	RackID       *string
+	RackName     *string
+	Type         *string
 	ComponentIDs []string
-	// IDs filters trays by UUIDs (comma-separated)
-	IDs []string
+	IDs          []string
 }
 
-// Hash returns a short deterministic hex string representing the filter state.
-// Used to build workflow IDs so that identical filter combinations share a workflow execution.
-func (f *TrayFilterInput) Hash() string {
+// Validate checks field formats and enforces the RLA protobuf oneof constraints:
+//   - rackId must be a valid UUID
+//   - rackId and rackName are mutually exclusive (RackTarget.oneof identifier)
+//   - rackId/rackName cannot be combined with id/componentId (OperationTargetSpec.oneof targets)
+//   - componentId requires type (ExternalRef needs type)
+//   - type must be one of the supported tray types
+//   - each entry in IDs must be a valid UUID
+func (r *APITrayGetAllRequest) Validate() error {
+	err := validation.ValidateStruct(r,
+		validation.Field(&r.RackID,
+			validation.When(r.RackID != nil, validationis.UUID.Error(validationErrorInvalidUUID))),
+		validation.Field(&r.Type,
+			validation.When(r.Type != nil, validation.In(validTrayTypesAny...).Error(
+				fmt.Sprintf("must be one of %v", slices.Collect(maps.Keys(APIToProtoComponentTypeName)))))),
+	)
+	if err != nil {
+		return err
+	}
+
+	for _, id := range r.IDs {
+		if _, parseErr := uuid.Parse(id); parseErr != nil {
+			return validation.Errors{"id": fmt.Errorf("%s: %s", validationErrorInvalidUUID, id)}
+		}
+	}
+
+	if r.RackID != nil && r.RackName != nil {
+		return validation.Errors{"rackId": fmt.Errorf("rackId and rackName are mutually exclusive")}
+	}
+
+	hasRackParams := r.RackID != nil || r.RackName != nil
+	hasComponentParams := len(r.IDs) > 0 || len(r.ComponentIDs) > 0
+	if hasRackParams && hasComponentParams {
+		return validation.Errors{"rackId": fmt.Errorf("rackId/rackName cannot be combined with id/componentId")}
+	}
+
+	if len(r.ComponentIDs) > 0 && r.Type == nil {
+		return validation.Errors{"componentId": fmt.Errorf("type is required when componentId is provided")}
+	}
+
+	return nil
+}
+
+// Hash returns a short deterministic hex string representing the request state.
+func (r *APITrayGetAllRequest) Hash() string {
 	h := sha256.New()
 
-	if f.RackID != nil {
-		fmt.Fprintf(h, "rackId=%s;", *f.RackID)
+	if r.RackID != nil {
+		fmt.Fprintf(h, "rackId=%s;", *r.RackID)
 	}
-	if f.RackName != nil {
-		fmt.Fprintf(h, "rackName=%s;", *f.RackName)
+	if r.RackName != nil {
+		fmt.Fprintf(h, "rackName=%s;", *r.RackName)
 	}
-	if f.Type != nil {
-		fmt.Fprintf(h, "type=%s;", *f.Type)
+	if r.Type != nil {
+		fmt.Fprintf(h, "type=%s;", *r.Type)
 	}
-	if len(f.ComponentIDs) > 0 {
-		sorted := slices.Clone(f.ComponentIDs)
+	if len(r.ComponentIDs) > 0 {
+		sorted := slices.Clone(r.ComponentIDs)
 		slices.Sort(sorted)
 		fmt.Fprintf(h, "componentIds=%s;", strings.Join(sorted, ","))
 	}
-	if len(f.IDs) > 0 {
-		sorted := slices.Clone(f.IDs)
+	if len(r.IDs) > 0 {
+		sorted := slices.Clone(r.IDs)
 		slices.Sort(sorted)
 		fmt.Fprintf(h, "ids=%s;", strings.Join(sorted, ","))
 	}
 
 	return fmt.Sprintf("%x", h.Sum(nil))[:16]
 }
+
 
 // APITray is the API representation of a Tray (Component) from RLA
 type APITray struct {
@@ -127,6 +168,7 @@ type APITray struct {
 	SerialNumber    string           `json:"serialNumber"`
 	Description     string           `json:"description"`
 	FirmwareVersion string           `json:"firmwareVersion"`
+	PowerState      string           `json:"powerState"`
 	Position        *APITrayPosition `json:"position"`
 	RackID          string           `json:"rackId"`
 }
@@ -156,6 +198,7 @@ func (at *APITray) FromProto(comp *rlav1.Component) {
 
 	at.Type = ProtoToAPIComponentTypeName[rlav1.ComponentType_name[int32(comp.GetType())]]
 	at.FirmwareVersion = comp.GetFirmwareVersion()
+	at.PowerState = comp.GetPowerState()
 	at.ComponentID = comp.GetComponentId()
 
 	// Get info from DeviceInfo

@@ -61,9 +61,6 @@ const (
 	// InstanceRelationName is the relation name for the Instance model
 	InstanceRelationName = "Instance"
 
-	// The possible values for the InfinityRCRStatus field are specified here:
-	// https://gitlab-master.nvidia.com/nvmetal/cloud-infinity-client/-/blob/main/pkg/client/async.go#L25
-
 	// names of order by fields
 	instanceOrderByName                        = "name"
 	instanceOrderByStatus                      = "status"
