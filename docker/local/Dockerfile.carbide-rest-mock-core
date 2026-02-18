@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Local development Dockerfile for elektraserver (carbide mock gRPC server)
+# Local development Dockerfile for mock-core (carbide mock gRPC server)
 
 # Build stage
 FROM --platform=$BUILDPLATFORM golang:1.25.4 AS builder
@@ -47,7 +47,7 @@ COPY workflow-schema/ ./workflow-schema/
 COPY site-workflow/ ./site-workflow/
 COPY cert-manager/ ./cert-manager/
 
-# Build elektraserver (carbide mock gRPC server)
+# Build mock-core (carbide mock gRPC server)
 WORKDIR /workspace/site-agent
 RUN VERSION=$(cat /workspace/VERSION 2>/dev/null || echo "dev") && \
     BUILD_TIME=$(date +"%Y-%m-%d %H:%M:%S") && \

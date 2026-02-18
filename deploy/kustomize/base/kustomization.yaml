@@ -52,8 +52,8 @@ resources:
   - api/configmap.yaml
   - workflow/deployment.yaml
   - workflow/configmap.yaml
-  - elektraserver/deployment.yaml
-  - elektraserver/service.yaml
+  - mock-core/deployment.yaml
+  - mock-core/service.yaml
   - site-agent/deployment.yaml
   - site-agent/service.yaml
   - site-agent/configmap.yaml

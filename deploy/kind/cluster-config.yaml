@@ -17,7 +17,7 @@
 # Creates a single-node cluster with port mappings for local access
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
-name: carbide-local
+name: carbide-rest-local
 nodes:
   - role: control-plane
     extraPortMappings:

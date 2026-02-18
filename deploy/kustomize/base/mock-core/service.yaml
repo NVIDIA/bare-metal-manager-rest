@@ -13,13 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# carbide-rest-elektraserver Service
+# carbide-rest-mock-core Service
 apiVersion: v1
 kind: Service
 metadata:
-  name: carbide-rest-elektraserver
+  name: carbide-rest-mock-core
   labels:
-    app: carbide-rest-elektraserver
+    app: carbide-rest-mock-core
 spec:
   type: ClusterIP
   ports:
@@ -27,5 +27,4 @@ spec:
       targetPort: 11079
       name: grpc
   selector:
-    app: carbide-rest-elektraserver
-
+    app: carbide-rest-mock-core
