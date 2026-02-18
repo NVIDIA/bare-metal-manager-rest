@@ -174,6 +174,7 @@ func TestAPIInstanceTypeCreateRequest_Validate(t *testing.T) {
 		Name                  string
 		Description           *string
 		SiteID                string
+		Labels                map[string]string
 		ControllerMachineType *string
 		MachineCapabilities   []APIMachineCapability
 	}
@@ -185,9 +186,13 @@ func TestAPIInstanceTypeCreateRequest_Validate(t *testing.T) {
 		{
 			name: "test valid Instance Type create request",
 			fields: fields{
-				Name:                  "test-name",
-				Description:           cdb.GetStrPtr("test-description"),
-				SiteID:                uuid.New().String(),
+				Name:        "test-name",
+				Description: cdb.GetStrPtr("test-description"),
+				SiteID:      uuid.New().String(),
+				Labels: map[string]string{
+					"name":        "a-nv100-instance",
+					"description": "",
+				},
 				ControllerMachineType: cdb.GetStrPtr("test-controller-machine-type"),
 				MachineCapabilities: []APIMachineCapability{
 					{
@@ -206,6 +211,28 @@ func TestAPIInstanceTypeCreateRequest_Validate(t *testing.T) {
 				Name:                  "test-name",
 				Description:           cdb.GetStrPtr("test-description"),
 				SiteID:                "",
+				ControllerMachineType: cdb.GetStrPtr("test-controller-machine-type"),
+				MachineCapabilities: []APIMachineCapability{
+					{
+						Type:     cdbm.MachineCapabilityTypeCPU,
+						Name:     "AMD Opteron Series x10",
+						Capacity: cdb.GetStrPtr("3.0GHz"),
+						Count:    cdb.GetIntPtr(2),
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "test invalid Instance Type create request - invalid Labels",
+			fields: fields{
+				Name:        "test-name",
+				Description: cdb.GetStrPtr("test-description"),
+				SiteID:      uuid.New().String(),
+				Labels: map[string]string{
+					"name": "a-nv100-instance",
+					"":     "test",
+				},
 				ControllerMachineType: cdb.GetStrPtr("test-controller-machine-type"),
 				MachineCapabilities: []APIMachineCapability{
 					{
@@ -283,6 +310,7 @@ func TestAPIInstanceTypeCreateRequest_Validate(t *testing.T) {
 				Name:                  tt.fields.Name,
 				Description:           tt.fields.Description,
 				SiteID:                tt.fields.SiteID,
+				Labels:                tt.fields.Labels,
 				ControllerMachineType: tt.fields.ControllerMachineType,
 				MachineCapabilities:   tt.fields.MachineCapabilities,
 			}
@@ -300,6 +328,7 @@ func TestAPIInstanceTypeUpdateRequest_Validate(t *testing.T) {
 	type fields struct {
 		Name        *string
 		Description *string
+		Labels      map[string]string
 	}
 	tests := []struct {
 		name    string
@@ -311,6 +340,10 @@ func TestAPIInstanceTypeUpdateRequest_Validate(t *testing.T) {
 			fields: fields{
 				Name:        cdb.GetStrPtr("test-name"),
 				Description: cdb.GetStrPtr("test-description"),
+				Labels: map[string]string{
+					"name":        "a-nv100-instance",
+					"description": "",
+				},
 			},
 			wantErr: false,
 		},
@@ -321,6 +354,7 @@ func TestAPIInstanceTypeUpdateRequest_Validate(t *testing.T) {
 			itur := APIInstanceTypeUpdateRequest{
 				Name:        tt.fields.Name,
 				Description: tt.fields.Description,
+				Labels:      tt.fields.Labels,
 			}
 			err := itur.Validate()
 			if tt.wantErr {

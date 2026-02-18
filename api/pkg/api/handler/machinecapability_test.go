@@ -59,7 +59,10 @@ func TestGetAllMachineCapabilityHandler_Handle(t *testing.T) {
 	st1 := common.TestBuildSite(t, dbSession, ip, "Test Site 1", ipu)
 	st2 := common.TestBuildSite(t, dbSession, ip, "Test Site 2", ipu)
 
-	it := common.TestBuildInstanceType(t, dbSession, "x2.large", cdb.GetUUIDPtr(uuid.New()), st1, ipu)
+	it := common.TestBuildInstanceType(t, dbSession, "x2.large", cdb.GetUUIDPtr(uuid.New()), st1, map[string]string{
+		"name":        "x2.large",
+		"description": "X2 Large Instance Type",
+	}, ipu)
 
 	m1 := common.TestBuildMachine(t, dbSession, ip, st1, nil, nil, cdbm.MachineStatusReady)
 	common.TestBuildMachineCapability(t, dbSession, &m1.ID, nil, cdbm.MachineCapabilityTypeCPU, "Intel Xeon 6345", cdb.GetStrPtr("3.8Ghz"), nil, cdb.GetStrPtr("Genuine Intel"), cdb.GetIntPtr(2), cdb.GetStrPtr(""), nil)

@@ -121,6 +121,7 @@ jobs:
           - common
           - db
           - ipam
+          - rla
           - site-agent
           - site-manager
           - site-workflow

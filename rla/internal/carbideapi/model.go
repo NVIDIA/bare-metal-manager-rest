@@ -1,0 +1,233 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package carbideapi
+
+import (
+	"time"
+
+	pb "github.com/nvidia/bare-metal-manager-rest/rla/internal/carbideapi/gen"
+)
+
+// model.go abstracts the raw grpc definitions away.  Don't bother implementing fields you don't think you'll use.
+
+func stringsToMachineIds(machineIds []string) (ret []*pb.MachineId) {
+	if len(machineIds) == 0 {
+		return nil
+	}
+	for _, cur := range machineIds {
+		ret = append(ret, &pb.MachineId{Id: cur})
+	}
+	return ret
+}
+
+// Machine represents an individual host or DPU (basic info)
+type Machine struct {
+	MachineID     string
+	ChassisSerial *string
+}
+
+// MachineDetail represents detailed machine information from Carbide
+type MachineDetail struct {
+	MachineID           string
+	ChassisSerial       *string
+	State               string
+	MachineType         string
+	BmcIP               string
+	BmcMac              string
+	FirmwareVersion     string
+	HealthStatus        string
+	LastObservationTime *time.Time
+}
+
+// MachinePosition represents machine position information from Carbide
+type MachinePosition struct {
+	MachineID        string
+	PhysicalSlotNum  *int32
+	ComputeTrayIndex *int32
+	TopologyID       *int32
+}
+
+func machineFromPb(machine *pb.Machine) Machine {
+	var chassisSerial *string
+	if machine.DiscoveryInfo != nil && machine.DiscoveryInfo.DmiData != nil {
+		chassisSerialStr := machine.DiscoveryInfo.DmiData.ChassisSerial
+		chassisSerial = &chassisSerialStr
+	} else {
+		chassisSerial = nil
+	}
+	return Machine{MachineID: machine.Id.Id, ChassisSerial: chassisSerial}
+}
+
+func machineDetailFromPb(machine *pb.Machine) MachineDetail {
+	detail := MachineDetail{
+		MachineID:   machine.Id.Id,
+		State:       machine.State,
+		MachineType: machine.MachineType.String(),
+	}
+
+	// Chassis serial
+	if machine.DiscoveryInfo != nil && machine.DiscoveryInfo.DmiData != nil {
+		serial := machine.DiscoveryInfo.DmiData.ChassisSerial
+		detail.ChassisSerial = &serial
+	}
+
+	// BMC info
+	if machine.BmcInfo != nil {
+		if machine.BmcInfo.Ip != nil {
+			detail.BmcIP = *machine.BmcInfo.Ip
+		}
+		if machine.BmcInfo.Mac != nil {
+			detail.BmcMac = *machine.BmcInfo.Mac
+		}
+		if machine.BmcInfo.FirmwareVersion != nil {
+			detail.FirmwareVersion = *machine.BmcInfo.FirmwareVersion
+		}
+	}
+
+	// Health status - derived from alerts
+	if machine.Health != nil {
+		if len(machine.Health.Alerts) > 0 {
+			detail.HealthStatus = "unhealthy"
+		} else {
+			detail.HealthStatus = "healthy"
+		}
+	}
+
+	// Last observation time
+	if machine.LastObservationTime != nil {
+		t := machine.LastObservationTime.AsTime()
+		detail.LastObservationTime = &t
+	}
+
+	return detail
+}
+
+func machinePositionFromPb(pos *pb.MachinePositionInfo) MachinePosition {
+	return MachinePosition{
+		MachineID:        pos.MachineId.Id,
+		PhysicalSlotNum:  pos.PhysicalSlotNumber,
+		ComputeTrayIndex: pos.ComputeTrayIndex,
+		TopologyID:       pos.TopologyId,
+	}
+}
+
+type PowerState int
+
+const (
+	PowerStateUnknown PowerState = iota
+	PowerStateOff
+	PowerStateOn
+	PowerStateDisabled
+)
+
+// MachinePowerState is information about current and desired power states
+type MachinePowerState struct {
+	MachineID  string
+	PowerState PowerState
+}
+
+func machinePowerStateFromPb(state *pb.PowerOptions) MachinePowerState {
+	return MachinePowerState{MachineID: state.HostId.Id, PowerState: powerStateFromPb(state.ActualState)}
+}
+
+func powerStateFromPb(state pb.PowerState) (ret PowerState) {
+	switch state {
+	case pb.PowerState_Off:
+		ret = PowerStateOff
+	case pb.PowerState_On:
+		ret = PowerStateOn
+	case pb.PowerState_PowerManagerDisabled:
+		ret = PowerStateDisabled
+	default:
+		ret = PowerStateUnknown
+	}
+
+	return ret
+}
+
+// SystemPowerControl represents power control actions for AdminPowerControl
+type SystemPowerControl int
+
+const (
+	// Power On
+	PowerControlOn      SystemPowerControl = iota
+	PowerControlForceOn                    // maps to On (Carbide doesn't distinguish)
+	// Power Off
+	PowerControlGracefulShutdown
+	PowerControlForceOff
+	// Restart (OS level)
+	PowerControlGracefulRestart
+	PowerControlForceRestart
+	// Reset (hardware level)
+	PowerControlWarmReset // maps to GracefulRestart
+	PowerControlColdReset // maps to ACPowercycle
+)
+
+func (s SystemPowerControl) String() string {
+	switch s {
+	case PowerControlOn:
+		return "On"
+	case PowerControlForceOn:
+		return "ForceOn"
+	case PowerControlGracefulShutdown:
+		return "GracefulShutdown"
+	case PowerControlForceOff:
+		return "ForceOff"
+	case PowerControlGracefulRestart:
+		return "GracefulRestart"
+	case PowerControlForceRestart:
+		return "ForceRestart"
+	case PowerControlWarmReset:
+		return "WarmReset"
+	case PowerControlColdReset:
+		return "ColdReset"
+	default:
+		return "Unknown"
+	}
+}
+
+func (s SystemPowerControl) toPb() pb.AdminPowerControlRequest_SystemPowerControl {
+	switch s {
+	case PowerControlOn, PowerControlForceOn:
+		return pb.AdminPowerControlRequest_On
+	case PowerControlGracefulShutdown:
+		return pb.AdminPowerControlRequest_GracefulShutdown
+	case PowerControlForceOff:
+		return pb.AdminPowerControlRequest_ForceOff
+	case PowerControlGracefulRestart, PowerControlWarmReset:
+		return pb.AdminPowerControlRequest_GracefulRestart
+	case PowerControlForceRestart:
+		return pb.AdminPowerControlRequest_ForceRestart
+	case PowerControlColdReset:
+		return pb.AdminPowerControlRequest_ACPowercycle
+	default:
+		return pb.AdminPowerControlRequest_On
+	}
+}
+
+// MachineInterface represents a network interface from carbide-api
+type MachineInterface struct {
+	MacAddress string
+	Addresses  []string // IP addresses assigned to this interface
+}
+
+func machineInterfaceFromPb(iface *pb.MachineInterface) MachineInterface {
+	return MachineInterface{
+		MacAddress: iface.MacAddress,
+		Addresses:  iface.Address,
+	}
+}
