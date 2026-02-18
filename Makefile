@@ -271,7 +271,7 @@ kind-apply:
 	@echo "Waiting for Keycloak..."
 	kubectl -n carbide wait --for=condition=ready pod -l app=keycloak --timeout=180s
 	@echo "Running database migrations..."
-	kubectl -n carbide wait --for=condition=complete job/db-migrations --timeout=120s
+	kubectl -n carbide wait --for=condition=complete job/db --timeout=120s
 	@echo "Waiting for API service..."
 	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-api --timeout=120s || true
 	@echo "Waiting for Site Manager..."
@@ -369,7 +369,7 @@ kind-reset:
 		--tls-server-name interservice.server.temporal.local || true
 	@echo "Temporal Helm deployment ready"
 	kubectl -n carbide wait --for=condition=ready pod -l app=keycloak --timeout=360s
-	kubectl -n carbide wait --for=condition=complete job/db-migrations --timeout=240s
+	kubectl -n carbide wait --for=condition=complete job/db --timeout=240s
 	-kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-api --timeout=240s
 	@echo "Waiting for workflow workers..."
 	-kubectl -n carbide wait --for=condition=ready pod -l app=cloud-worker --timeout=240s

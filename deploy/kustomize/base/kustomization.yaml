@@ -44,7 +44,7 @@ resources:
   - secrets/secrets.yaml
   
   # Database migrations (Job)
-  - db-migrations/job.yaml
+  - db/job.yaml
   
   # Application services
   - api/deployment.yaml

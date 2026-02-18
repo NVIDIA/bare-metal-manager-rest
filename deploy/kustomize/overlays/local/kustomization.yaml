@@ -93,10 +93,10 @@ patches:
       - op: add
         path: /spec/template/spec/containers/0/imagePullPolicy
         value: Never
-  # DB Migrations Job
+  # DB migrations Job
   - target:
       kind: Job
-      name: db-migrations
+      name: db
     patch: |-
       - op: add
         path: /spec/template/spec/containers/0/imagePullPolicy

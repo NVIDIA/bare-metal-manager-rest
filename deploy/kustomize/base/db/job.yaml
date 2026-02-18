@@ -17,16 +17,16 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: db-migrations
+  name: db
   labels:
-    app: db-migrations
+    app: db
 spec:
   ttlSecondsAfterFinished: 300
   backoffLimit: 3
   template:
     metadata:
       labels:
-        app: db-migrations
+        app: db
     spec:
       restartPolicy: OnFailure
       initContainers:
@@ -66,4 +66,3 @@ spec:
             limits:
               memory: "128Mi"
               cpu: "100m"
-
