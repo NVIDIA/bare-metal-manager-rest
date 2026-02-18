@@ -223,7 +223,7 @@ func TestManageRack_GetRacks(t *testing.T) {
 	}
 }
 
-func TestManageRack_ValidateRack(t *testing.T) {
+func TestManageRack_ValidateComponents(t *testing.T) {
 	tests := []struct {
 		name        string
 		request     *rlav1.ValidateComponentsRequest
@@ -238,17 +238,7 @@ func TestManageRack_ValidateRack(t *testing.T) {
 			mockResp:    nil,
 			mockErr:     nil,
 			wantErr:     true,
-			errContains: "empty validate rack request",
-		},
-		{
-			name: "request with nil target spec returns error",
-			request: &rlav1.ValidateComponentsRequest{
-				TargetSpec: nil,
-			},
-			mockResp:    nil,
-			mockErr:     nil,
-			wantErr:     true,
-			errContains: "without target spec",
+			errContains: "empty validate components request",
 		},
 		{
 			name: "successful request - no diffs",
@@ -355,7 +345,7 @@ func TestManageRack_ValidateRack(t *testing.T) {
 			if tt.mockResp != nil {
 				ctx = context.WithValue(ctx, "wantResponse", tt.mockResp)
 			}
-			result, err := manageRack.ValidateRack(ctx, tt.request)
+			result, err := manageRack.ValidateComponents(ctx, tt.request)
 
 			if tt.wantErr {
 				assert.Error(t, err)

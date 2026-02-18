@@ -555,7 +555,7 @@ func TestValidateRackHandler_Handle(t *testing.T) {
 					resp.TotalDiffs = 0
 				}).Return(nil)
 			}
-			mockTemporalClient.Mock.On("ExecuteWorkflow", mock.Anything, mock.Anything, "ValidateRack", mock.Anything).Return(mockWorkflowRun, nil)
+			mockTemporalClient.Mock.On("ExecuteWorkflow", mock.Anything, mock.Anything, "ValidateComponents", mock.Anything).Return(mockWorkflowRun, nil)
 			scp.IDClientMap[site.ID.String()] = mockTemporalClient
 
 			// Build query string
@@ -588,6 +588,206 @@ func TestValidateRackHandler_Handle(t *testing.T) {
 			}
 
 			// Verify response
+			var apiResult model.APIRackValidationResult
+			err = json.Unmarshal(rec.Body.Bytes(), &apiResult)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.mockResponse.TotalDiffs, apiResult.TotalDiffs)
+			assert.Equal(t, tt.mockResponse.MatchCount, apiResult.MatchCount)
+			assert.Equal(t, len(tt.mockResponse.Diffs), len(apiResult.Diffs))
+		})
+	}
+}
+
+func TestValidateRacksHandler_Handle(t *testing.T) {
+	// Setup
+	e := echo.New()
+	dbSession := testRackInitDB(t)
+	defer dbSession.Close()
+
+	cfg := common.GetTestConfig()
+	tcfg, _ := cfg.GetTemporalConfig()
+	scp := sc.NewClientPool(tcfg)
+
+	org := "test-org"
+	_, site, _ := testRackSetupTestData(t, dbSession, org)
+
+	providerUser := testRackBuildUser(t, dbSession, "provider-user-validate-racks", org, []string{"FORGE_PROVIDER_ADMIN"})
+	tenantUser := testRackBuildUser(t, dbSession, "tenant-user-validate-racks", org, []string{"FORGE_TENANT_ADMIN"})
+
+	handler := NewValidateRacksHandler(dbSession, nil, scp, cfg)
+
+	tracer := oteltrace.NewNoopTracerProvider().Tracer("test")
+	ctx := context.Background()
+
+	tests := []struct {
+		name           string
+		reqOrg         string
+		user           *cdbm.User
+		queryParams    map[string]string
+		mockResponse   *rlav1.ValidateComponentsResponse
+		expectedStatus int
+	}{
+		{
+			name:   "success - validate all racks (no filter)",
+			reqOrg: org,
+			user:   providerUser,
+			queryParams: map[string]string{
+				"siteId": site.ID.String(),
+			},
+			mockResponse: &rlav1.ValidateComponentsResponse{
+				Diffs:               []*rlav1.ComponentDiff{},
+				TotalDiffs:          0,
+				OnlyInExpectedCount: 0,
+				OnlyInActualCount:   0,
+				DriftCount:          0,
+				MatchCount:          10,
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:   "success - validate with name filter",
+			reqOrg: org,
+			user:   providerUser,
+			queryParams: map[string]string{
+				"siteId": site.ID.String(),
+				"name":   "Rack-001",
+			},
+			mockResponse: &rlav1.ValidateComponentsResponse{
+				Diffs:               []*rlav1.ComponentDiff{},
+				TotalDiffs:          0,
+				OnlyInExpectedCount: 0,
+				OnlyInActualCount:   0,
+				DriftCount:          0,
+				MatchCount:          5,
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:   "success - validate with manufacturer filter",
+			reqOrg: org,
+			user:   providerUser,
+			queryParams: map[string]string{
+				"siteId":       site.ID.String(),
+				"manufacturer": "NVIDIA",
+			},
+			mockResponse: &rlav1.ValidateComponentsResponse{
+				Diffs: []*rlav1.ComponentDiff{
+					{
+						Type:        rlav1.DiffType_DIFF_TYPE_DRIFT,
+						ComponentId: "comp-1",
+						FieldDiffs: []*rlav1.FieldDiff{
+							{
+								FieldName:     "firmware_version",
+								ExpectedValue: "1.0.0",
+								ActualValue:   "2.0.0",
+							},
+						},
+					},
+				},
+				TotalDiffs:          1,
+				OnlyInExpectedCount: 0,
+				OnlyInActualCount:   0,
+				DriftCount:          1,
+				MatchCount:          7,
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:   "success - validate with multiple filters",
+			reqOrg: org,
+			user:   providerUser,
+			queryParams: map[string]string{
+				"siteId":       site.ID.String(),
+				"manufacturer": "NVIDIA",
+				"model":        "NVL72",
+			},
+			mockResponse: &rlav1.ValidateComponentsResponse{
+				Diffs:      []*rlav1.ComponentDiff{},
+				TotalDiffs: 0,
+				MatchCount: 3,
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:   "failure - tenant user forbidden",
+			reqOrg: org,
+			user:   tenantUser,
+			queryParams: map[string]string{
+				"siteId": site.ID.String(),
+			},
+			expectedStatus: http.StatusForbidden,
+		},
+		{
+			name:           "failure - missing siteId",
+			reqOrg:         org,
+			user:           providerUser,
+			queryParams:    map[string]string{},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:   "failure - invalid siteId",
+			reqOrg: org,
+			user:   providerUser,
+			queryParams: map[string]string{
+				"siteId": uuid.NewString(),
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockTemporalClient := &tmocks.Client{}
+			mockWorkflowRun := &tmocks.WorkflowRun{}
+			mockWorkflowRun.On("GetID").Return("test-workflow-id")
+			if tt.mockResponse != nil {
+				mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+					resp := args.Get(1).(*rlav1.ValidateComponentsResponse)
+					resp.Diffs = tt.mockResponse.Diffs
+					resp.TotalDiffs = tt.mockResponse.TotalDiffs
+					resp.OnlyInExpectedCount = tt.mockResponse.OnlyInExpectedCount
+					resp.OnlyInActualCount = tt.mockResponse.OnlyInActualCount
+					resp.DriftCount = tt.mockResponse.DriftCount
+					resp.MatchCount = tt.mockResponse.MatchCount
+				}).Return(nil)
+			} else {
+				mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+					resp := args.Get(1).(*rlav1.ValidateComponentsResponse)
+					resp.Diffs = []*rlav1.ComponentDiff{}
+					resp.TotalDiffs = 0
+				}).Return(nil)
+			}
+			mockTemporalClient.Mock.On("ExecuteWorkflow", mock.Anything, mock.Anything, "ValidateComponents", mock.Anything).Return(mockWorkflowRun, nil)
+			scp.IDClientMap[site.ID.String()] = mockTemporalClient
+
+			q := url.Values{}
+			for k, v := range tt.queryParams {
+				q.Set(k, v)
+			}
+			path := fmt.Sprintf("/v2/org/%s/carbide/rack/validate?%s", tt.reqOrg, q.Encode())
+
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+
+			ec := e.NewContext(req, rec)
+			ec.SetParamNames("orgName")
+			ec.SetParamValues(tt.reqOrg)
+			ec.Set("user", tt.user)
+
+			ctx = context.WithValue(ctx, otelecho.TracerKey, tracer)
+			ec.SetRequest(ec.Request().WithContext(ctx))
+
+			err := handler.Handle(ec)
+			if tt.expectedStatus != rec.Code {
+				t.Errorf("ValidateRacksHandler.Handle() status = %v, want %v, response: %v, err: %v", rec.Code, tt.expectedStatus, rec.Body.String(), err)
+			}
+
+			require.Equal(t, tt.expectedStatus, rec.Code)
+			if tt.expectedStatus != http.StatusOK {
+				return
+			}
+
 			var apiResult model.APIRackValidationResult
 			err = json.Unmarshal(rec.Body.Bytes(), &apiResult)
 			assert.NoError(t, err)

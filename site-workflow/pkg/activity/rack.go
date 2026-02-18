@@ -93,9 +93,10 @@ func (mr *ManageRack) GetRacks(ctx context.Context, request *rlav1.GetListOfRack
 	return response, nil
 }
 
-// ValidateRack validates a rack's components by comparing expected vs actual state via RLA
-func (mr *ManageRack) ValidateRack(ctx context.Context, request *rlav1.ValidateComponentsRequest) (*rlav1.ValidateComponentsResponse, error) {
-	logger := log.With().Str("Activity", "ValidateRack").Logger()
+// ValidateComponents validates components by comparing expected vs actual state via RLA.
+// Supports validating a single rack, multiple racks with filters, or all racks in a site.
+func (mr *ManageRack) ValidateComponents(ctx context.Context, request *rlav1.ValidateComponentsRequest) (*rlav1.ValidateComponentsResponse, error) {
+	logger := log.With().Str("Activity", "ValidateComponents").Logger()
 	logger.Info().Msg("Starting activity")
 
 	var err error
@@ -103,9 +104,7 @@ func (mr *ManageRack) ValidateRack(ctx context.Context, request *rlav1.ValidateC
 	// Validate request
 	switch {
 	case request == nil:
-		err = errors.New("received empty validate rack request")
-	case request.TargetSpec == nil:
-		err = errors.New("received validate rack request without target spec")
+		err = errors.New("received empty validate components request")
 	}
 
 	if err != nil {
@@ -118,7 +117,7 @@ func (mr *ManageRack) ValidateRack(ctx context.Context, request *rlav1.ValidateC
 
 	response, err := rla.ValidateComponents(ctx, request)
 	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to validate rack components using RLA API")
+		logger.Warn().Err(err).Msg("Failed to validate components using RLA API")
 		return nil, swe.WrapErr(err)
 	}
 

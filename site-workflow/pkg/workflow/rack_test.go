@@ -185,23 +185,23 @@ func TestGetRacksTestSuite(t *testing.T) {
 	suite.Run(t, new(GetRacksTestSuite))
 }
 
-// ValidateRackTestSuite tests the ValidateRack workflow
-type ValidateRackTestSuite struct {
+// ValidateComponentsTestSuite tests the ValidateComponents workflow
+type ValidateComponentsTestSuite struct {
 	suite.Suite
 	testsuite.WorkflowTestSuite
 
 	env *testsuite.TestWorkflowEnvironment
 }
 
-func (s *ValidateRackTestSuite) SetupTest() {
+func (s *ValidateComponentsTestSuite) SetupTest() {
 	s.env = s.NewTestWorkflowEnvironment()
 }
 
-func (s *ValidateRackTestSuite) AfterTest(suiteName, testName string) {
+func (s *ValidateComponentsTestSuite) AfterTest(suiteName, testName string) {
 	s.env.AssertExpectations(s.T())
 }
 
-func (s *ValidateRackTestSuite) Test_ValidateRack_Success_NoDiffs() {
+func (s *ValidateComponentsTestSuite) Test_ValidateComponents_Success_NoDiffs() {
 	var rackManager rActivity.ManageRack
 
 	request := &rlav1.ValidateComponentsRequest{
@@ -229,12 +229,12 @@ func (s *ValidateRackTestSuite) Test_ValidateRack_Success_NoDiffs() {
 		MatchCount:          5,
 	}
 
-	// Mock ValidateRack activity
-	s.env.RegisterActivity(rackManager.ValidateRack)
-	s.env.OnActivity(rackManager.ValidateRack, mock.Anything, mock.Anything).Return(expectedResponse, nil)
+	// Mock ValidateComponents activity
+	s.env.RegisterActivity(rackManager.ValidateComponents)
+	s.env.OnActivity(rackManager.ValidateComponents, mock.Anything, mock.Anything).Return(expectedResponse, nil)
 
-	// Execute ValidateRack workflow
-	s.env.ExecuteWorkflow(ValidateRack, request)
+	// Execute ValidateComponents workflow
+	s.env.ExecuteWorkflow(ValidateComponents, request)
 	s.True(s.env.IsWorkflowCompleted())
 	s.NoError(s.env.GetWorkflowError())
 
@@ -246,7 +246,7 @@ func (s *ValidateRackTestSuite) Test_ValidateRack_Success_NoDiffs() {
 	s.Equal(0, len(response.Diffs))
 }
 
-func (s *ValidateRackTestSuite) Test_ValidateRack_Success_WithDiffs() {
+func (s *ValidateComponentsTestSuite) Test_ValidateComponents_Success_WithDiffs() {
 	var rackManager rActivity.ManageRack
 
 	request := &rlav1.ValidateComponentsRequest{
@@ -290,12 +290,12 @@ func (s *ValidateRackTestSuite) Test_ValidateRack_Success_WithDiffs() {
 		MatchCount:          3,
 	}
 
-	// Mock ValidateRack activity
-	s.env.RegisterActivity(rackManager.ValidateRack)
-	s.env.OnActivity(rackManager.ValidateRack, mock.Anything, mock.Anything).Return(expectedResponse, nil)
+	// Mock ValidateComponents activity
+	s.env.RegisterActivity(rackManager.ValidateComponents)
+	s.env.OnActivity(rackManager.ValidateComponents, mock.Anything, mock.Anything).Return(expectedResponse, nil)
 
-	// Execute ValidateRack workflow
-	s.env.ExecuteWorkflow(ValidateRack, request)
+	// Execute ValidateComponents workflow
+	s.env.ExecuteWorkflow(ValidateComponents, request)
 	s.True(s.env.IsWorkflowCompleted())
 	s.NoError(s.env.GetWorkflowError())
 
@@ -309,7 +309,7 @@ func (s *ValidateRackTestSuite) Test_ValidateRack_Success_WithDiffs() {
 	s.Equal(2, len(response.Diffs))
 }
 
-func (s *ValidateRackTestSuite) Test_ValidateRack_ActivityFails() {
+func (s *ValidateComponentsTestSuite) Test_ValidateComponents_ActivityFails() {
 	var rackManager rActivity.ManageRack
 
 	request := &rlav1.ValidateComponentsRequest{
@@ -330,12 +330,12 @@ func (s *ValidateRackTestSuite) Test_ValidateRack_ActivityFails() {
 
 	errMsg := "RLA connection failed"
 
-	// Mock ValidateRack activity failure
-	s.env.RegisterActivity(rackManager.ValidateRack)
-	s.env.OnActivity(rackManager.ValidateRack, mock.Anything, mock.Anything).Return(nil, errors.New(errMsg))
+	// Mock ValidateComponents activity failure
+	s.env.RegisterActivity(rackManager.ValidateComponents)
+	s.env.OnActivity(rackManager.ValidateComponents, mock.Anything, mock.Anything).Return(nil, errors.New(errMsg))
 
-	// Execute ValidateRack workflow
-	s.env.ExecuteWorkflow(ValidateRack, request)
+	// Execute ValidateComponents workflow
+	s.env.ExecuteWorkflow(ValidateComponents, request)
 	s.True(s.env.IsWorkflowCompleted())
 	err := s.env.GetWorkflowError()
 	s.Error(err)
@@ -345,6 +345,6 @@ func (s *ValidateRackTestSuite) Test_ValidateRack_ActivityFails() {
 	s.Equal(errMsg, applicationErr.Error())
 }
 
-func TestValidateRackTestSuite(t *testing.T) {
-	suite.Run(t, new(ValidateRackTestSuite))
+func TestValidateComponentsTestSuite(t *testing.T) {
+	suite.Run(t, new(ValidateComponentsTestSuite))
 }

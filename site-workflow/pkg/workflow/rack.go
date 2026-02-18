@@ -96,9 +96,10 @@ func GetRacks(ctx workflow.Context, request *rlav1.GetListOfRacksRequest) (*rlav
 	return &response, nil
 }
 
-// ValidateRack is a workflow to validate a rack's components by comparing expected vs actual state
-func ValidateRack(ctx workflow.Context, request *rlav1.ValidateComponentsRequest) (*rlav1.ValidateComponentsResponse, error) {
-	logger := log.With().Str("Workflow", "Rack").Str("Action", "Validate").Logger()
+// ValidateComponents is a workflow to validate components by comparing expected vs actual state via RLA.
+// Supports validating a single rack, multiple racks with filters, or all racks in a site.
+func ValidateComponents(ctx workflow.Context, request *rlav1.ValidateComponentsRequest) (*rlav1.ValidateComponentsResponse, error) {
+	logger := log.With().Str("Workflow", "Rack").Str("Action", "ValidateComponents").Logger()
 
 	logger.Info().Msg("Starting workflow")
 
@@ -121,9 +122,9 @@ func ValidateRack(ctx workflow.Context, request *rlav1.ValidateComponentsRequest
 	var rackManager activity.ManageRack
 	var response rlav1.ValidateComponentsResponse
 
-	err := workflow.ExecuteActivity(ctx, rackManager.ValidateRack, request).Get(ctx, &response)
+	err := workflow.ExecuteActivity(ctx, rackManager.ValidateComponents, request).Get(ctx, &response)
 	if err != nil {
-		logger.Error().Err(err).Str("Activity", "ValidateRack").Msg("Failed to execute activity from workflow")
+		logger.Error().Err(err).Str("Activity", "ValidateComponents").Msg("Failed to execute activity from workflow")
 		return nil, err
 	}
 
