@@ -8224,9 +8224,6 @@ paths:
               - compute
               - switch
               - powershelf
-              - torswitch
-              - ums
-              - cdu
           name: type
           in: query
           description: Filter by tray type
@@ -8291,6 +8288,7 @@ paths:
                       serialNumber: TSN001
                       description: Compute tray in slot 1
                       firmwareVersion: 2.1.0
+                      powerState: 'on'
                       position:
                         slotId: 1
                         trayIdx: 0
@@ -8354,6 +8352,7 @@ paths:
                     serialNumber: TSN001
                     description: Compute tray in slot 1
                     firmwareVersion: 2.1.0
+                    powerState: 'on'
                     position:
                       slotId: 1
                       trayIdx: 0
@@ -13727,7 +13726,7 @@ components:
     Tray:
       title: Tray
       type: object
-      description: 'Tray represents a component within a rack (e.g. compute node, NVL switch, power shelf, TOR switch, UMS, CDU)'
+      description: 'Tray represents a component within a rack (e.g. compute node, NVL switch, power shelf)'
       examples:
         - id: 660e8400-e29b-41d4-a716-446655440001
           componentId: fm100ht4v4mce2qstjnl8970nnj3ie6ecek4mtjn27pea4kre5gsa49jg0g
@@ -13738,6 +13737,7 @@ components:
           serialNumber: TSN001
           description: Compute tray in slot 1
           firmwareVersion: 2.1.0
+          powerState: 'on'
           position:
             slotId: 1
             trayIdx: 0
@@ -13757,9 +13757,6 @@ components:
             - compute
             - switch
             - powershelf
-            - torswitch
-            - ums
-            - cdu
           description: Type of the tray
         name:
           type: string
@@ -13779,6 +13776,9 @@ components:
         firmwareVersion:
           type: string
           description: Firmware version of the tray
+        powerState:
+          type: string
+          description: Current power state of the tray
         position:
           $ref: '#/components/schemas/TrayPosition'
         rackId:
