@@ -1464,7 +1464,7 @@ func (dah DeleteAllocationHandler) Handle(c echo.Context) error {
 
 	iDAO := cdbm.NewInstanceDAO(dah.dbSession)
 	sDAO := cdbm.NewSubnetDAO(dah.dbSession)
-	vpsDAO := cdbm.NewVpcPrefixDAO(dah.dbSession)
+	vpDAO := cdbm.NewVpcPrefixDAO(dah.dbSession)
 	ipbDAO := cdbm.NewIPBlockDAO(dah.dbSession)
 
 	imAcDel := []cdbm.AllocationConstraint{}
@@ -1561,7 +1561,7 @@ func (dah DeleteAllocationHandler) Handle(c echo.Context) error {
 					}
 
 					// Get count of Vpc Prefixes for the IP Block
-					_, vpCount, sserr := vpsDAO.GetAll(ctx, tx, vpcPrefixFilter, cdbp.PageInput{Limit: cdb.GetIntPtr(0)}, []string{})
+					_, vpCount, sserr := vpDAO.GetAll(ctx, tx, vpcPrefixFilter, cdbp.PageInput{Limit: cdb.GetIntPtr(0)}, []string{})
 					if sserr != nil {
 						logger.Error().Err(sserr).Str("Constraint ID", ac.DerivedResourceID.String()).Msg("error getting Vpc Prefixes for Allocation Constraint's IP Block")
 						return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Error retrieving Vpc Prefixes for Allocation's IP Block'", nil)
