@@ -329,10 +329,10 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: ctx,
 				filter: SiteFilterInput{
-					Name:                     nil,
-					Org:                      nil,
-					InfrastructureProviderID: &ip.ID,
-					SiteIDs:                  nil,
+					Name:                      nil,
+					Org:                       nil,
+					InfrastructureProviderIDs: []uuid.UUID{ip.ID},
+					SiteIDs:                   nil,
 				},
 				infrastructureProvider: ip,
 				includeRelations:       true,
@@ -350,10 +350,10 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Name:                     db.GetStrPtr("test1"),
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  nil,
+					Name:                      db.GetStrPtr("test1"),
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   nil,
 				},
 				infrastructureProvider: ip,
 				includeRelations:       true,
@@ -370,9 +370,9 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      &ip.Org,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  nil,
+					Org:                       &ip.Org,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   nil,
 				},
 				includeRelations: false,
 			},
@@ -388,9 +388,9 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  []uuid.UUID{sites[0].ID, sites[1].ID},
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   []uuid.UUID{sites[0].ID, sites[1].ID},
 				},
 				includeRelations: false,
 			},
@@ -406,9 +406,9 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					Config:                   &SiteConfigFilterInput{NativeNetworking: db.GetBoolPtr(true)},
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					Config:                    &SiteConfigFilterInput{NativeNetworking: db.GetBoolPtr(true)},
 				},
 				includeRelations: false,
 			},
@@ -424,9 +424,9 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					Config:                   &SiteConfigFilterInput{NVLinkPartition: db.GetBoolPtr(true)},
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					Config:                    &SiteConfigFilterInput{NVLinkPartition: db.GetBoolPtr(true)},
 				},
 				includeRelations: false,
 			},
@@ -442,9 +442,9 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					Config:                   &SiteConfigFilterInput{NetworkSecurityGroup: db.GetBoolPtr(true)},
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					Config:                    &SiteConfigFilterInput{NetworkSecurityGroup: db.GetBoolPtr(true)},
 				},
 				includeRelations: false,
 			},
@@ -460,9 +460,9 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					Config:                   &SiteConfigFilterInput{NetworkSecurityGroup: db.GetBoolPtr(true)},
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					Config:                    &SiteConfigFilterInput{NetworkSecurityGroup: db.GetBoolPtr(true)},
 				},
 				includeRelations: false,
 			},
@@ -478,8 +478,8 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
 					Config: &SiteConfigFilterInput{
 						NetworkSecurityGroup:             db.GetBoolPtr(true),
 						NativeNetworking:                 db.GetBoolPtr(true),
@@ -500,9 +500,9 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  []uuid.UUID{sites[0].ID, sites[1].ID},
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   []uuid.UUID{sites[0].ID, sites[1].ID},
 				},
 				infrastructureProvider: ip,
 				includeRelations:       true,
@@ -519,9 +519,9 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  []uuid.UUID{},
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   []uuid.UUID{},
 				},
 				includeRelations: false,
 			},
@@ -537,8 +537,8 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      &ip.Org,
-					InfrastructureProviderID: nil,
+					Org:                       &ip.Org,
+					InfrastructureProviderIDs: nil,
 				},
 				page: paginator.PageInput{
 					Limit: db.GetIntPtr(10),
@@ -557,8 +557,8 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      &ip.Org,
-					InfrastructureProviderID: nil,
+					Org:                       &ip.Org,
+					InfrastructureProviderIDs: nil,
 				},
 				page: paginator.PageInput{
 					Offset: db.GetIntPtr(20),
@@ -577,8 +577,8 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      &ip.Org,
-					InfrastructureProviderID: nil,
+					Org:                       &ip.Org,
+					InfrastructureProviderIDs: nil,
 				},
 				page: paginator.PageInput{
 					OrderBy: &paginator.OrderBy{Field: "name", Order: paginator.OrderAscending},
@@ -598,10 +598,10 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  nil,
-					SearchQuery:              db.GetStrPtr("test"),
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   nil,
+					SearchQuery:               db.GetStrPtr("test"),
 				},
 				includeRelations: false,
 			},
@@ -617,10 +617,10 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  nil,
-					SearchQuery:              db.GetStrPtr("est"),
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   nil,
+					SearchQuery:               db.GetStrPtr("est"),
 				},
 				includeRelations: false,
 			},
@@ -636,10 +636,10 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  nil,
-					SearchQuery:              db.GetStrPtr("test-description"),
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   nil,
+					SearchQuery:               db.GetStrPtr("test-description"),
 				},
 				includeRelations: false,
 			},
@@ -655,10 +655,10 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  nil,
-					SearchQuery:              db.GetStrPtr(SiteStatusPending),
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   nil,
+					SearchQuery:               db.GetStrPtr(SiteStatusPending),
 				},
 				includeRelations: false,
 			},
@@ -674,10 +674,10 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  nil,
-					SearchQuery:              db.GetStrPtr(""),
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   nil,
+					SearchQuery:               db.GetStrPtr(""),
 				},
 				includeRelations: false,
 			},
@@ -693,10 +693,10 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  nil,
-					Statuses:                 []string{SiteStatusPending},
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   nil,
+					Statuses:                  []string{SiteStatusPending},
 				},
 				includeRelations: false,
 			},
@@ -712,10 +712,10 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  nil,
-					Statuses:                 []string{SiteStatusPending, SiteStatusError},
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   nil,
+					Statuses:                  []string{SiteStatusPending, SiteStatusError},
 				},
 				includeRelations: false,
 			},
@@ -731,8 +731,8 @@ func TestSiteSQLDAO_GetAll(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      &ip.Org,
-					InfrastructureProviderID: nil,
+					Org:                       &ip.Org,
+					InfrastructureProviderIDs: nil,
 				},
 				page: paginator.PageInput{
 					OrderBy: &paginator.OrderBy{Field: "description", Order: paginator.OrderAscending},
@@ -863,10 +863,10 @@ func TestSiteSQLDAO_GetCount(t *testing.T) {
 			args: args{
 				ctx: ctx,
 				filter: SiteFilterInput{
-					Name:                     nil,
-					Org:                      nil,
-					InfrastructureProviderID: &ip.ID,
-					SiteIDs:                  nil,
+					Name:                      nil,
+					Org:                       nil,
+					InfrastructureProviderIDs: []uuid.UUID{ip.ID},
+					SiteIDs:                   nil,
 				},
 			},
 			wantCount:          len(sites),
@@ -881,10 +881,10 @@ func TestSiteSQLDAO_GetCount(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Name:                     db.GetStrPtr("test1"),
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  nil,
+					Name:                      db.GetStrPtr("test1"),
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   nil,
 				},
 			},
 			wantCount: 1,
@@ -898,9 +898,9 @@ func TestSiteSQLDAO_GetCount(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      &ip.Org,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  nil,
+					Org:                       &ip.Org,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   nil,
 				},
 			},
 			wantCount: len(sites),
@@ -914,9 +914,9 @@ func TestSiteSQLDAO_GetCount(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  []uuid.UUID{sites[0].ID, sites[1].ID},
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   []uuid.UUID{sites[0].ID, sites[1].ID},
 				},
 			},
 			wantCount: 2,
@@ -930,9 +930,9 @@ func TestSiteSQLDAO_GetCount(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  []uuid.UUID{},
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   []uuid.UUID{},
 				},
 			},
 			wantCount: 0,
@@ -946,10 +946,10 @@ func TestSiteSQLDAO_GetCount(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  nil,
-					SearchQuery:              db.GetStrPtr("test"),
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   nil,
+					SearchQuery:               db.GetStrPtr("test"),
 				},
 			},
 			wantCount: len(sites),
@@ -963,10 +963,10 @@ func TestSiteSQLDAO_GetCount(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  nil,
-					SearchQuery:              db.GetStrPtr("est"),
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   nil,
+					SearchQuery:               db.GetStrPtr("est"),
 				},
 			},
 			wantCount: len(sites),
@@ -980,10 +980,10 @@ func TestSiteSQLDAO_GetCount(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  nil,
-					SearchQuery:              db.GetStrPtr("test-description"),
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   nil,
+					SearchQuery:               db.GetStrPtr("test-description"),
 				},
 			},
 			wantCount: len(sites),
@@ -997,10 +997,10 @@ func TestSiteSQLDAO_GetCount(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  nil,
-					SearchQuery:              db.GetStrPtr(SiteStatusPending),
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   nil,
+					SearchQuery:               db.GetStrPtr(SiteStatusPending),
 				},
 			},
 			wantCount: len(sites),
@@ -1014,10 +1014,10 @@ func TestSiteSQLDAO_GetCount(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  nil,
-					SearchQuery:              db.GetStrPtr(""),
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   nil,
+					SearchQuery:               db.GetStrPtr(""),
 				},
 			},
 			wantCount: len(sites),
@@ -1031,10 +1031,10 @@ func TestSiteSQLDAO_GetCount(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  nil,
-					Statuses:                 []string{SiteStatusPending},
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   nil,
+					Statuses:                  []string{SiteStatusPending},
 				},
 			},
 			wantCount: len(sites),
@@ -1048,10 +1048,10 @@ func TestSiteSQLDAO_GetCount(t *testing.T) {
 			args: args{
 				ctx: context.Background(),
 				filter: SiteFilterInput{
-					Org:                      nil,
-					InfrastructureProviderID: nil,
-					SiteIDs:                  nil,
-					Statuses:                 []string{SiteStatusPending, SiteStatusError},
+					Org:                       nil,
+					InfrastructureProviderIDs: nil,
+					SiteIDs:                   nil,
+					Statuses:                  []string{SiteStatusPending, SiteStatusError},
 				},
 			},
 			wantCount: len(sites),
