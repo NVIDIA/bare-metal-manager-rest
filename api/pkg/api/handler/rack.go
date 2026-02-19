@@ -555,7 +555,7 @@ func (vrh ValidateRackHandler) Handle(c echo.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
 	defer cancel()
 
-	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "ValidateComponents", rlaRequest)
+	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "ValidateRackComponents", rlaRequest)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to execute ValidateComponents workflow")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to validate Rack", nil)
@@ -567,7 +567,7 @@ func (vrh ValidateRackHandler) Handle(c echo.Context) error {
 	if err != nil {
 		var timeoutErr *tp.TimeoutError
 		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
-			return common.TerminateWorkflowOnTimeOut(c, logger, stc, fmt.Sprintf("rack-validate-%s", rackStrID), err, "Rack", "ValidateComponents")
+			return common.TerminateWorkflowOnTimeOut(c, logger, stc, fmt.Sprintf("rack-validate-%s", rackStrID), err, "Rack", "ValidateRackComponents")
 		}
 		logger.Error().Err(err).Msg("failed to get result from ValidateComponents workflow")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to validate Rack", nil)
@@ -714,7 +714,7 @@ func (vrsh ValidateRacksHandler) Handle(c echo.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
 	defer cancel()
 
-	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "ValidateComponents", rlaRequest)
+	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "ValidateRackComponents", rlaRequest)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to execute ValidateComponents workflow")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to validate Racks", nil)
@@ -726,7 +726,7 @@ func (vrsh ValidateRacksHandler) Handle(c echo.Context) error {
 	if err != nil {
 		var timeoutErr *tp.TimeoutError
 		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
-			return common.TerminateWorkflowOnTimeOut(c, logger, stc, workflowID, err, "Rack", "ValidateComponents")
+			return common.TerminateWorkflowOnTimeOut(c, logger, stc, workflowID, err, "Rack", "ValidateRackComponents")
 		}
 		logger.Error().Err(err).Msg("failed to get result from ValidateComponents workflow")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to validate Racks", nil)

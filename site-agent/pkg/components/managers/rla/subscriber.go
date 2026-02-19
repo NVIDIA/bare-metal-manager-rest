@@ -45,9 +45,9 @@ func (api *API) RegisterSubscriber() error {
 	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterWorkflow(sww.GetRacks)
 	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered GetRacks workflow")
 
-	// ValidateComponents
-	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterWorkflow(sww.ValidateComponents)
-	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered ValidateComponents workflow")
+	// ValidateRackComponents
+	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterWorkflow(sww.ValidateRackComponents)
+	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered ValidateRackComponents workflow")
 
 	/// Register activities
 
@@ -59,9 +59,9 @@ func (api *API) RegisterSubscriber() error {
 	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterActivity(rackManager.GetRacks)
 	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered GetRacks activity")
 
-	// ValidateComponents activity
-	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterActivity(rackManager.ValidateComponents)
-	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered ValidateComponents activity")
+	// ValidateRackComponents activity
+	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterActivity(rackManager.ValidateRackComponents)
+	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered ValidateRackComponents activity")
 
 	return nil
 }

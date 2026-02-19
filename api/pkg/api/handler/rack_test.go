@@ -560,7 +560,7 @@ func TestValidateRackHandler_Handle(t *testing.T) {
 					resp.TotalDiffs = 0
 				}).Return(nil)
 			}
-			mockTemporalClient.Mock.On("ExecuteWorkflow", mock.Anything, mock.Anything, "ValidateComponents", mock.Anything).Return(mockWorkflowRun, nil)
+			mockTemporalClient.Mock.On("ExecuteWorkflow", mock.Anything, mock.Anything, "ValidateRackComponents", mock.Anything).Return(mockWorkflowRun, nil)
 			scp.IDClientMap[site.ID.String()] = mockTemporalClient
 
 			// Build query string
@@ -762,7 +762,7 @@ func TestValidateRacksHandler_Handle(t *testing.T) {
 					resp.TotalDiffs = 0
 				}).Return(nil)
 			}
-			mockTemporalClient.Mock.On("ExecuteWorkflow", mock.Anything, mock.Anything, "ValidateComponents", mock.Anything).Return(mockWorkflowRun, nil)
+			mockTemporalClient.Mock.On("ExecuteWorkflow", mock.Anything, mock.Anything, "ValidateRackComponents", mock.Anything).Return(mockWorkflowRun, nil)
 			scp.IDClientMap[site.ID.String()] = mockTemporalClient
 
 			q := url.Values{}
