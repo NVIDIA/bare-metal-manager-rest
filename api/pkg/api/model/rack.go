@@ -254,55 +254,71 @@ type APIFieldDiff struct {
 	ActualValue   string `json:"actualValue"`
 }
 
+// FromProto converts an RLA protobuf ValidateComponentsResponse to an APIRackValidationResult
+func (r *APIRackValidationResult) FromProto(protoResp *rlav1.ValidateComponentsResponse) {
+	if protoResp == nil {
+		return
+	}
+
+	r.TotalDiffs = protoResp.GetTotalDiffs()
+	r.OnlyInExpectedCount = protoResp.GetOnlyInExpectedCount()
+	r.OnlyInActualCount = protoResp.GetOnlyInActualCount()
+	r.DriftCount = protoResp.GetDriftCount()
+	r.MatchCount = protoResp.GetMatchCount()
+
+	r.Diffs = make([]*APIComponentDiff, 0, len(protoResp.GetDiffs()))
+	for _, diff := range protoResp.GetDiffs() {
+		apiDiff := &APIComponentDiff{}
+		apiDiff.FromProto(diff)
+		r.Diffs = append(r.Diffs, apiDiff)
+	}
+}
+
 // NewAPIRackValidationResult creates an APIRackValidationResult from the RLA protobuf response
 func NewAPIRackValidationResult(protoResp *rlav1.ValidateComponentsResponse) *APIRackValidationResult {
 	if protoResp == nil {
 		return nil
 	}
-
-	result := &APIRackValidationResult{
-		TotalDiffs:          protoResp.GetTotalDiffs(),
-		OnlyInExpectedCount: protoResp.GetOnlyInExpectedCount(),
-		OnlyInActualCount:   protoResp.GetOnlyInActualCount(),
-		DriftCount:          protoResp.GetDriftCount(),
-		MatchCount:          protoResp.GetMatchCount(),
-	}
-
-	result.Diffs = make([]*APIComponentDiff, 0, len(protoResp.GetDiffs()))
-	for _, diff := range protoResp.GetDiffs() {
-		apiDiff := &APIComponentDiff{
-			Type:        diff.GetType().String(),
-			ComponentID: diff.GetComponentId(),
-		}
-
-		// Convert expected component
-		if diff.GetExpected() != nil {
-			apiComp := &APIRackComponent{}
-			apiComp.FromProto(diff.GetExpected())
-			apiDiff.Expected = apiComp
-		}
-
-		// Convert actual component
-		if diff.GetActual() != nil {
-			apiActual := &APIRackComponent{}
-			apiActual.FromProto(diff.GetActual())
-			apiDiff.Actual = apiActual
-		}
-
-		// Convert field diffs
-		if len(diff.GetFieldDiffs()) > 0 {
-			apiDiff.FieldDiffs = make([]*APIFieldDiff, 0, len(diff.GetFieldDiffs()))
-			for _, fd := range diff.GetFieldDiffs() {
-				apiDiff.FieldDiffs = append(apiDiff.FieldDiffs, &APIFieldDiff{
-					FieldName:     fd.GetFieldName(),
-					ExpectedValue: fd.GetExpectedValue(),
-					ActualValue:   fd.GetActualValue(),
-				})
-			}
-		}
-
-		result.Diffs = append(result.Diffs, apiDiff)
-	}
-
+	result := &APIRackValidationResult{}
+	result.FromProto(protoResp)
 	return result
+}
+
+// FromProto converts an RLA protobuf ComponentDiff to an APIComponentDiff
+func (d *APIComponentDiff) FromProto(protoDiff *rlav1.ComponentDiff) {
+	if protoDiff == nil {
+		return
+	}
+
+	d.Type = protoDiff.GetType().String()
+	d.ComponentID = protoDiff.GetComponentId()
+
+	if protoDiff.GetExpected() != nil {
+		d.Expected = &APIRackComponent{}
+		d.Expected.FromProto(protoDiff.GetExpected())
+	}
+
+	if protoDiff.GetActual() != nil {
+		d.Actual = &APIRackComponent{}
+		d.Actual.FromProto(protoDiff.GetActual())
+	}
+
+	if len(protoDiff.GetFieldDiffs()) > 0 {
+		d.FieldDiffs = make([]*APIFieldDiff, 0, len(protoDiff.GetFieldDiffs()))
+		for _, fd := range protoDiff.GetFieldDiffs() {
+			apiFieldDiff := &APIFieldDiff{}
+			apiFieldDiff.FromProto(fd)
+			d.FieldDiffs = append(d.FieldDiffs, apiFieldDiff)
+		}
+	}
+}
+
+// FromProto converts an RLA protobuf FieldDiff to an APIFieldDiff
+func (f *APIFieldDiff) FromProto(protoFieldDiff *rlav1.FieldDiff) {
+	if protoFieldDiff == nil {
+		return
+	}
+	f.FieldName = protoFieldDiff.GetFieldName()
+	f.ExpectedValue = protoFieldDiff.GetExpectedValue()
+	f.ActualValue = protoFieldDiff.GetActualValue()
 }
