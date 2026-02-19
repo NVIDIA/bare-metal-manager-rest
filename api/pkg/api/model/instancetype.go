@@ -37,6 +37,8 @@ type APIInstanceTypeCreateRequest struct {
 	Description *string `json:"description"`
 	// SiteID is the ID of the site
 	SiteID string `json:"siteId"`
+	// Labels is the labels of the Instance Type
+	Labels map[string]string `json:"labels"`
 	// ControllerMachineType is the Site Controller assigned Machine type
 	ControllerMachineType *string `json:"controllerMachineType"`
 	// MachineCapabilities is the list of Machine Capabilities to match
@@ -59,6 +61,48 @@ func (itcr APIInstanceTypeCreateRequest) Validate() error {
 
 	if err != nil {
 		return err
+	}
+
+	// Labels validation
+	if itcr.Labels != nil {
+		if len(itcr.Labels) > util.LabelCountMax {
+			return validation.Errors{
+				"labels": util.ErrValidationLabelCount,
+			}
+		}
+
+		for key, value := range itcr.Labels {
+			if key == "" {
+				return validation.Errors{
+					"labels": util.ErrValidationLabelKeyEmpty,
+				}
+			}
+
+			// Key validation
+			err = validation.Validate(key,
+				validation.Match(util.NotAllWhitespaceRegexp).Error("label key consists only of whitespace"),
+				validation.Length(1, 255).Error(validationErrorMapKeyLabelStringLength),
+			)
+
+			if err != nil {
+				return validation.Errors{
+					"labels": util.ErrValidationLabelKeyLength,
+				}
+			}
+
+			// Value validation
+			err = validation.Validate(value,
+				validation.When(value != "",
+					validation.Length(0, 255).Error(validationErrorMapValueLabelStringLength),
+				),
+			)
+
+			if err != nil {
+				return validation.Errors{
+					"labels": util.ErrValidationLabelValueLength,
+				}
+			}
+		}
 	}
 
 	if itcr.MachineCapabilities != nil {
@@ -106,6 +150,8 @@ type APIInstanceTypeUpdateRequest struct {
 	Name *string `json:"name"`
 	// Description is the description of the Instance Type
 	Description *string `json:"description"`
+	// Labels is the labels of the Instance Type
+	Labels map[string]string `json:"labels"`
 	// MachineCapabilities is the list of Machine Capabilities to match
 	MachineCapabilities []APIMachineCapability `json:"machineCapabilities"`
 }
@@ -121,6 +167,48 @@ func (itur APIInstanceTypeUpdateRequest) Validate() error {
 	)
 	if err != nil {
 		return err
+	}
+
+	// Labels validation
+	if itur.Labels != nil {
+		if len(itur.Labels) > util.LabelCountMax {
+			return validation.Errors{
+				"labels": util.ErrValidationLabelCount,
+			}
+		}
+
+		for key, value := range itur.Labels {
+			if key == "" {
+				return validation.Errors{
+					"labels": util.ErrValidationLabelKeyEmpty,
+				}
+			}
+
+			// Key validation
+			err = validation.Validate(key,
+				validation.Match(util.NotAllWhitespaceRegexp).Error("label key consists only of whitespace"),
+				validation.Length(1, 255).Error(validationErrorMapKeyLabelStringLength),
+			)
+
+			if err != nil {
+				return validation.Errors{
+					"labels": util.ErrValidationLabelKeyLength,
+				}
+			}
+
+			// Value validation
+			err = validation.Validate(value,
+				validation.When(value != "",
+					validation.Length(0, 255).Error(validationErrorMapValueLabelStringLength),
+				),
+			)
+
+			if err != nil {
+				return validation.Errors{
+					"labels": util.ErrValidationLabelValueLength,
+				}
+			}
+		}
 	}
 
 	if itur.MachineCapabilities != nil {
@@ -180,6 +268,8 @@ type APIInstanceType struct {
 	SiteID string `json:"siteId"`
 	// Site is the summary of the Site
 	Site *APISiteSummary `json:"site,omitempty"`
+	// Labels is the labels of the Instance Type
+	Labels map[string]string `json:"labels"`
 	// MachineCapabilities is the list of capabilities that are supported by the Machine's of this Instance Type
 	MachineCapabilities []APIMachineCapability `json:"machineCapabilities"`
 	// MachineInstanceTypes is the list of machines that are associated to this Instance Type
@@ -211,6 +301,7 @@ func NewAPIInstanceType(dbit *cdbm.InstanceType, dbsds []cdbm.StatusDetail, mcs 
 		ControllerMachineType:    dbit.ControllerMachineType,
 		InfrastructureProviderID: dbit.InfrastructureProviderID.String(),
 		SiteID:                   dbit.SiteID.String(),
+		Labels:                   dbit.Labels,
 		Status:                   dbit.Status,
 		Created:                  dbit.Created,
 		Updated:                  dbit.Updated,

@@ -219,7 +219,7 @@ rla-protogen:
 .PHONY: kind-up kind-down kind-deploy kind-load kind-apply kind-redeploy kind-status kind-logs kind-reset kind-verify setup-site-agent
 
 # Kind cluster configuration
-KIND_CLUSTER_NAME := carbide-local
+KIND_CLUSTER_NAME := carbide-rest-local
 KUSTOMIZE_OVERLAY := deploy/kustomize/overlays/local
 LOCAL_DOCKERFILE_DIR := docker/local
 
@@ -232,7 +232,7 @@ docker-build-local:
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-workflow:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-workflow .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-site-manager:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-manager .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-site-agent:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-agent .
-	docker build -t $(IMAGE_REGISTRY)/carbide-rest-elektraserver:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-elektraserver .
+	docker build -t $(IMAGE_REGISTRY)/carbide-rest-mock-core:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-mock-core .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-db .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-cert-manager .
 
@@ -255,7 +255,7 @@ kind-load:
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-workflow:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-site-manager:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-site-agent:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
-	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-elektraserver:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
+	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-mock-core:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 
@@ -271,7 +271,7 @@ kind-apply:
 	@echo "Waiting for Keycloak..."
 	kubectl -n carbide wait --for=condition=ready pod -l app=keycloak --timeout=180s
 	@echo "Running database migrations..."
-	kubectl -n carbide wait --for=condition=complete job/db-migrations --timeout=120s
+	kubectl -n carbide wait --for=condition=complete job/db --timeout=120s
 	@echo "Waiting for API service..."
 	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-api --timeout=120s || true
 	@echo "Waiting for Site Manager..."
@@ -287,7 +287,7 @@ kind-redeploy: docker-build-local kind-load
 	kubectl -n carbide rollout restart deployment/cloud-worker
 	kubectl -n carbide rollout restart deployment/site-worker
 	kubectl -n carbide rollout restart deployment/carbide-rest-site-agent
-	kubectl -n carbide rollout restart deployment/carbide-rest-elektraserver
+	kubectl -n carbide rollout restart deployment/carbide-rest-mock-core
 	kubectl -n carbide rollout restart deployment/carbide-rest-cert-manager
 	kubectl -n carbide rollout restart deployment/carbide-rest-site-manager
 
@@ -314,14 +314,14 @@ kind-reset:
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-workflow:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-workflow .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-site-manager:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-manager .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-site-agent:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-agent .
-	docker build -t $(IMAGE_REGISTRY)/carbide-rest-elektraserver:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-elektraserver .
+	docker build -t $(IMAGE_REGISTRY)/carbide-rest-mock-core:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-mock-core .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-db .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-cert-manager .
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-api:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-workflow:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-site-manager:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-site-agent:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
-	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-elektraserver:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
+	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-mock-core:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	@echo "Setting up PKI secrets for cert-manager..."
@@ -369,7 +369,7 @@ kind-reset:
 		--tls-server-name interservice.server.temporal.local || true
 	@echo "Temporal Helm deployment ready"
 	kubectl -n carbide wait --for=condition=ready pod -l app=keycloak --timeout=360s
-	kubectl -n carbide wait --for=condition=complete job/db-migrations --timeout=240s
+	kubectl -n carbide wait --for=condition=complete job/db --timeout=240s
 	-kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-api --timeout=240s
 	@echo "Waiting for workflow workers..."
 	-kubectl -n carbide wait --for=condition=ready pod -l app=cloud-worker --timeout=240s

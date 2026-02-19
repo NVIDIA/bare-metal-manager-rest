@@ -22,7 +22,7 @@ metadata:
     app: carbide-rest-site-agent
 data:
   ESA_PORT: "8080"
-  CARBIDE_ADDRESS: "carbide-rest-elektraserver:11079"
+  CARBIDE_ADDRESS: "carbide-rest-mock-core:11079"
   CARBIDE_SEC_OPT: "0"
   # Placeholder UUID - updated by setup-local-site-agent.sh with real site ID from API
   CLUSTER_ID: "00000000-0000-4000-8000-000000000001"

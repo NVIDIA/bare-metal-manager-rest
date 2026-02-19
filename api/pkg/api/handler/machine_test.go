@@ -722,8 +722,14 @@ func TestMachineHandler_GetAll(t *testing.T) {
 	_ = testMachineUpdateTenantCapability(t, dbSession, tenant2)
 	_ = common.TestBuildTenantAccount(t, dbSession, ipt2, &tenant2.ID, tnOrg2, cdbm.TenantAccountStatusReady, tnu2)
 
-	it1 := common.TestBuildInstanceType(t, dbSession, "test-instance-1", cdb.GetUUIDPtr(uuid.New()), site, ipu)
-	it2 := common.TestBuildInstanceType(t, dbSession, "test-instance-2", cdb.GetUUIDPtr(uuid.New()), site, ipu)
+	it1 := common.TestBuildInstanceType(t, dbSession, "test-instance-1", cdb.GetUUIDPtr(uuid.New()), site, map[string]string{
+		"name":        "test-instance-type-1",
+		"description": "Test Instance Type 1 Description",
+	}, ipu)
+	it2 := common.TestBuildInstanceType(t, dbSession, "test-instance-2", cdb.GetUUIDPtr(uuid.New()), site, map[string]string{
+		"name":        "test-instance-type-2",
+		"description": "Test Instance Type 2 Description",
+	}, ipu)
 	alc := testInstanceSiteBuildAllocationContraints(t, dbSession, al, cdbm.AllocationResourceTypeInstanceType, it1.ID, cdbm.AllocationConstraintTypeReserved, 20, ipu)
 
 	os := testMachineBuildOperatingSystem(t, dbSession, "test-os", tenant.ID, tnu)
