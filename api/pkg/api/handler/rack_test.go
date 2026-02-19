@@ -568,7 +568,7 @@ func TestValidateRackHandler_Handle(t *testing.T) {
 			for k, v := range tt.queryParams {
 				q.Set(k, v)
 			}
-			path := fmt.Sprintf("/v2/org/%s/carbide/rack/%s/validate?%s", tt.reqOrg, tt.rackID, q.Encode())
+			path := fmt.Sprintf("/v2/org/%s/carbide/rack/%s/validation?%s", tt.reqOrg, tt.rackID, q.Encode())
 
 			req := httptest.NewRequest(http.MethodGet, path, nil)
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
@@ -769,7 +769,7 @@ func TestValidateRacksHandler_Handle(t *testing.T) {
 			for k, v := range tt.queryParams {
 				q.Set(k, v)
 			}
-			path := fmt.Sprintf("/v2/org/%s/carbide/rack/validate?%s", tt.reqOrg, q.Encode())
+			path := fmt.Sprintf("/v2/org/%s/carbide/rack/validation?%s", tt.reqOrg, q.Encode())
 
 			req := httptest.NewRequest(http.MethodGet, path, nil)
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)

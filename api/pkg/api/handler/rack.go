@@ -456,7 +456,7 @@ func NewValidateRackHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.C
 // @Param id path string true "ID of the Rack"
 // @Param siteId query string true "ID of the Site"
 // @Success 200 {object} model.APIRackValidationResult
-// @Router /v2/org/{org}/carbide/rack/{id}/validate [get]
+// @Router /v2/org/{org}/carbide/rack/{id}/validation [get]
 func (vrh ValidateRackHandler) Handle(c echo.Context) error {
 	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "Validate", c, vrh.tracerSpan)
 	if handlerSpan != nil {
@@ -617,7 +617,7 @@ func NewValidateRacksHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.
 // @Param manufacturer query string false "Filter racks by manufacturer"
 // @Param model query string false "Filter racks by model"
 // @Success 200 {object} model.APIRackValidationResult
-// @Router /v2/org/{org}/carbide/rack/validate [get]
+// @Router /v2/org/{org}/carbide/rack/validation [get]
 func (vrsh ValidateRacksHandler) Handle(c echo.Context) error {
 	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "ValidateRacks", c, vrsh.tracerSpan)
 	if handlerSpan != nil {

@@ -732,7 +732,7 @@ func NewAPIRoutes(dbSession *cdb.Session, tc tClient.Client, tnc tClient.Namespa
 			Handler: apiHandler.NewGetAllRackHandler(dbSession, tc, scp, cfg),
 		},
 		{
-			Path:    apiPathPrefix + "/rack/validate",
+			Path:    apiPathPrefix + "/rack/validation",
 			Method:  http.MethodGet,
 			Handler: apiHandler.NewValidateRacksHandler(dbSession, tc, scp, cfg),
 		},
@@ -742,7 +742,7 @@ func NewAPIRoutes(dbSession *cdb.Session, tc tClient.Client, tnc tClient.Namespa
 			Handler: apiHandler.NewGetRackHandler(dbSession, tc, scp, cfg),
 		},
 		{
-			Path:    apiPathPrefix + "/rack/:id/validate",
+			Path:    apiPathPrefix + "/rack/:id/validation",
 			Method:  http.MethodGet,
 			Handler: apiHandler.NewValidateRackHandler(dbSession, tc, scp, cfg),
 		},

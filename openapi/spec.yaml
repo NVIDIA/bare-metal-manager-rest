@@ -8184,7 +8184,7 @@ paths:
           $ref: '#/components/responses/NotFoundError'
       tags:
         - Rack
-  '/v2/org/{org}/carbide/rack/validate':
+  '/v2/org/{org}/carbide/rack/validation':
     parameters:
       - schema:
           type: string
@@ -8276,7 +8276,7 @@ paths:
           $ref: '#/components/responses/ForbiddenError'
       tags:
         - Rack
-  '/v2/org/{org}/carbide/rack/{id}/validate':
+  '/v2/org/{org}/carbide/rack/{id}/validation':
     parameters:
       - schema:
           type: string
