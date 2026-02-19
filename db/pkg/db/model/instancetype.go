@@ -88,6 +88,7 @@ type InstanceType struct {
 	InfinityResourceTypeID   *uuid.UUID              `bun:"infinity_resource_type_id,type:uuid"`
 	SiteID                   *uuid.UUID              `bun:"site_id,type:uuid"`
 	Site                     *Site                   `bun:"rel:belongs-to,join:site_id=id"`
+	Labels                   map[string]string       `bun:"labels,type:jsonb"`
 	Status                   string                  `bun:"status,notnull"`
 	Created                  time.Time               `bun:"created,nullzero,notnull,default:current_timestamp"`
 	Updated                  time.Time               `bun:"updated,nullzero,notnull,default:current_timestamp"`
@@ -130,6 +131,7 @@ type InstanceTypeCreateInput struct {
 	InfrastructureProviderID uuid.UUID
 	InfinityResourceTypeID   *uuid.UUID
 	SiteID                   *uuid.UUID
+	Labels                   map[string]string
 	Status                   string
 	CreatedBy                uuid.UUID
 	Version                  string
@@ -143,6 +145,7 @@ type InstanceTypeUpdateInput struct {
 	Description            *string
 	ControllerMachineType  *string
 	InfinityResourceTypeID *uuid.UUID
+	Labels                 map[string]string
 	SiteID                 *uuid.UUID
 	Status                 *string
 	Version                *string
@@ -160,6 +163,15 @@ type InstanceTypeFilterInput struct {
 	TenantIDs                []uuid.UUID // This implies filtering out any instance types with no allocations for the listed tenants.
 }
 
+// InstanceTypeFilterInput input parameters for Clear method
+type InstanceTypeClearInput struct {
+	InstanceTypeID uuid.UUID
+	DisplayName    bool
+	Description    bool
+	SiteID         bool
+	Labels         bool
+}
+
 // InstanceTypeDAO is an interface for interacting with the InstanceType model
 type InstanceTypeDAO interface {
 	//
@@ -171,7 +183,7 @@ type InstanceTypeDAO interface {
 	//
 	Update(ctx context.Context, tx *db.Tx, input InstanceTypeUpdateInput) (*InstanceType, error)
 	//
-	ClearFromParams(ctx context.Context, tx *db.Tx, id uuid.UUID, displayName, description, siteID bool) (*InstanceType, error)
+	Clear(ctx context.Context, tx *db.Tx, input InstanceTypeClearInput) (*InstanceType, error)
 	//
 	DeleteByID(ctx context.Context, tx *db.Tx, id uuid.UUID) error
 }
@@ -213,6 +225,7 @@ func (itsd InstanceTypeSQLDAO) Create(ctx context.Context, tx *db.Tx, input Inst
 		InfrastructureProviderID: input.InfrastructureProviderID,
 		InfinityResourceTypeID:   input.InfinityResourceTypeID,
 		SiteID:                   input.SiteID,
+		Labels:                   input.Labels,
 		Status:                   input.Status,
 		CreatedBy:                input.CreatedBy,
 		Version:                  input.Version,
@@ -365,10 +378,11 @@ func (itsd InstanceTypeSQLDAO) GetAll(ctx context.Context, tx *db.Tx, filter Ins
 		normalizedTokens := db.GetStrPtr(db.GetStringToTsQuery(*filter.SearchQuery))
 		query = query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
 			return q.
-				Where("to_tsvector('english', (coalesce(it.name, ' ') || ' ' || coalesce(it.display_name, ' ') || ' ' || coalesce(it.description, ' ') || ' ' || coalesce(it.status, ' '))) @@ to_tsquery('english', ?)", *normalizedTokens).
+				Where("to_tsvector('english', (coalesce(it.name, ' ') || ' ' || coalesce(it.display_name, ' ') || ' ' || coalesce(it.description, ' ') || ' ' || coalesce(it.labels::text, ' ') || ' ' || coalesce(it.status, ' '))) @@ to_tsquery('english', ?)", *normalizedTokens).
 				WhereOr("it.name ILIKE ?", "%"+*filter.SearchQuery+"%").
 				WhereOr("it.display_name ILIKE ?", "%"+*filter.SearchQuery+"%").
 				WhereOr("it.description ILIKE ?", "%"+*filter.SearchQuery+"%").
+				WhereOr("it.labels::text ILIKE ?", "%"+*filter.SearchQuery+"%").
 				WhereOr("it.status ILIKE ?", "%"+*filter.SearchQuery+"%")
 		})
 
@@ -456,6 +470,15 @@ func (itsd InstanceTypeSQLDAO) Update(ctx context.Context, tx *db.Tx, input Inst
 		}
 	}
 
+	if input.Labels != nil {
+		it.Labels = input.Labels
+		updatedFields = append(updatedFields, "labels")
+
+		if instanceTypeDAOSpan != nil {
+			itsd.tracerSpan.SetAttribute(instanceTypeDAOSpan, "labels", input.Labels)
+		}
+	}
+
 	if input.Status != nil {
 		it.Status = *input.Status
 		if !db.IsStrInSlice(*input.Status, InstanceTypeStatusChoices) {
@@ -506,40 +529,45 @@ func (itsd InstanceTypeSQLDAO) Update(ctx context.Context, tx *db.Tx, input Inst
 	return nv, nil
 }
 
-// ClearFromParams sets parameters of an existing InstanceType to null values in db
+// Clear sets parameters of an existing InstanceType to null values in db
 // parameters displayName, description, siteID when true, the are set to null in db
 // since there are 2 operations (UPDATE, SELECT), it is required that
 // this must be within a transaction
-func (itsd InstanceTypeSQLDAO) ClearFromParams(ctx context.Context, tx *db.Tx, id uuid.UUID, displayName, description, siteID bool) (*InstanceType, error) {
+func (itsd InstanceTypeSQLDAO) Clear(ctx context.Context, tx *db.Tx, input InstanceTypeClearInput) (*InstanceType, error) {
 	// Create a child span and set the attributes for current request
-	ctx, instanceTypeDAOSpan := itsd.tracerSpan.CreateChildInCurrentContext(ctx, "InstanceTypeDAO.ClearFromParams")
+	ctx, instanceTypeDAOSpan := itsd.tracerSpan.CreateChildInCurrentContext(ctx, "InstanceTypeDAO.Clear")
 	if instanceTypeDAOSpan != nil {
 		defer instanceTypeDAOSpan.End()
 	}
 
 	it := &InstanceType{
-		ID: id,
+		ID: input.InstanceTypeID,
 	}
 
 	updatedFields := []string{}
 
-	if displayName {
+	if input.DisplayName {
 		it.DisplayName = nil
 		updatedFields = append(updatedFields, "display_name")
 	}
-	if description {
+	if input.Description {
 		it.Description = nil
 		updatedFields = append(updatedFields, "description")
 	}
-	if siteID {
+	if input.SiteID {
 		it.SiteID = nil
 		updatedFields = append(updatedFields, "site_id")
+	}
+
+	if input.Labels {
+		it.Labels = nil
+		updatedFields = append(updatedFields, "labels")
 	}
 
 	if len(updatedFields) > 0 {
 		updatedFields = append(updatedFields, "updated")
 
-		_, err := db.GetIDB(tx, itsd.dbSession).NewUpdate().Model(it).Column(updatedFields...).Where("id = ?", id).Exec(ctx)
+		_, err := db.GetIDB(tx, itsd.dbSession).NewUpdate().Model(it).Column(updatedFields...).Where("id = ?", it.ID).Exec(ctx)
 		if err != nil {
 			return nil, err
 		}

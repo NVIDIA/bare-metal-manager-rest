@@ -191,3 +191,167 @@ func (s *GetRacksTestSuite) Test_GetRacks_ActivityFails() {
 func TestGetRacksTestSuite(t *testing.T) {
 	suite.Run(t, new(GetRacksTestSuite))
 }
+
+// ValidateRackComponentsTestSuite tests the ValidateRackComponents workflow
+type ValidateRackComponentsTestSuite struct {
+	suite.Suite
+	testsuite.WorkflowTestSuite
+
+	env *testsuite.TestWorkflowEnvironment
+}
+
+func (s *ValidateRackComponentsTestSuite) SetupTest() {
+	s.env = s.NewTestWorkflowEnvironment()
+}
+
+func (s *ValidateRackComponentsTestSuite) AfterTest(suiteName, testName string) {
+	s.env.AssertExpectations(s.T())
+}
+
+func (s *ValidateRackComponentsTestSuite) Test_ValidateRackComponents_Success_NoDiffs() {
+	var rackManager rActivity.ManageRack
+
+	request := &rlav1.ValidateComponentsRequest{
+		TargetSpec: &rlav1.OperationTargetSpec{
+			Targets: &rlav1.OperationTargetSpec_Racks{
+				Racks: &rlav1.RackTargets{
+					Targets: []*rlav1.RackTarget{
+						{
+							Identifier: &rlav1.RackTarget_Id{
+								Id: &rlav1.UUID{Id: "test-rack-id"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	expectedResponse := &rlav1.ValidateComponentsResponse{
+		Diffs:               []*rlav1.ComponentDiff{},
+		TotalDiffs:          0,
+		OnlyInExpectedCount: 0,
+		OnlyInActualCount:   0,
+		DriftCount:          0,
+		MatchCount:          5,
+	}
+
+	// Mock ValidateRackComponents activity
+	s.env.RegisterActivity(rackManager.ValidateRackComponents)
+	s.env.OnActivity(rackManager.ValidateRackComponents, mock.Anything, mock.Anything).Return(expectedResponse, nil)
+
+	// Execute ValidateRackComponents workflow
+	s.env.ExecuteWorkflow(ValidateRackComponents, request)
+	s.True(s.env.IsWorkflowCompleted())
+	s.NoError(s.env.GetWorkflowError())
+
+	// Verify result
+	var response rlav1.ValidateComponentsResponse
+	s.NoError(s.env.GetWorkflowResult(&response))
+	s.Equal(int32(0), response.TotalDiffs)
+	s.Equal(int32(5), response.MatchCount)
+	s.Equal(0, len(response.Diffs))
+}
+
+func (s *ValidateRackComponentsTestSuite) Test_ValidateRackComponents_Success_WithDiffs() {
+	var rackManager rActivity.ManageRack
+
+	request := &rlav1.ValidateComponentsRequest{
+		TargetSpec: &rlav1.OperationTargetSpec{
+			Targets: &rlav1.OperationTargetSpec_Racks{
+				Racks: &rlav1.RackTargets{
+					Targets: []*rlav1.RackTarget{
+						{
+							Identifier: &rlav1.RackTarget_Id{
+								Id: &rlav1.UUID{Id: "test-rack-id"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	expectedResponse := &rlav1.ValidateComponentsResponse{
+		Diffs: []*rlav1.ComponentDiff{
+			{
+				Type:        rlav1.DiffType_DIFF_TYPE_ONLY_IN_EXPECTED,
+				ComponentId: "comp-1",
+			},
+			{
+				Type:        rlav1.DiffType_DIFF_TYPE_DRIFT,
+				ComponentId: "comp-2",
+				FieldDiffs: []*rlav1.FieldDiff{
+					{
+						FieldName:     "firmware_version",
+						ExpectedValue: "1.0.0",
+						ActualValue:   "2.0.0",
+					},
+				},
+			},
+		},
+		TotalDiffs:          2,
+		OnlyInExpectedCount: 1,
+		OnlyInActualCount:   0,
+		DriftCount:          1,
+		MatchCount:          3,
+	}
+
+	// Mock ValidateRackComponents activity
+	s.env.RegisterActivity(rackManager.ValidateRackComponents)
+	s.env.OnActivity(rackManager.ValidateRackComponents, mock.Anything, mock.Anything).Return(expectedResponse, nil)
+
+	// Execute ValidateRackComponents workflow
+	s.env.ExecuteWorkflow(ValidateRackComponents, request)
+	s.True(s.env.IsWorkflowCompleted())
+	s.NoError(s.env.GetWorkflowError())
+
+	// Verify result
+	var response rlav1.ValidateComponentsResponse
+	s.NoError(s.env.GetWorkflowResult(&response))
+	s.Equal(int32(2), response.TotalDiffs)
+	s.Equal(int32(1), response.OnlyInExpectedCount)
+	s.Equal(int32(1), response.DriftCount)
+	s.Equal(int32(3), response.MatchCount)
+	s.Equal(2, len(response.Diffs))
+}
+
+func (s *ValidateRackComponentsTestSuite) Test_ValidateRackComponents_ActivityFails() {
+	var rackManager rActivity.ManageRack
+
+	request := &rlav1.ValidateComponentsRequest{
+		TargetSpec: &rlav1.OperationTargetSpec{
+			Targets: &rlav1.OperationTargetSpec_Racks{
+				Racks: &rlav1.RackTargets{
+					Targets: []*rlav1.RackTarget{
+						{
+							Identifier: &rlav1.RackTarget_Id{
+								Id: &rlav1.UUID{Id: "test-rack-id"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	errMsg := "RLA connection failed"
+
+	// Mock ValidateRackComponents activity failure
+	s.env.RegisterActivity(rackManager.ValidateRackComponents)
+	s.env.OnActivity(rackManager.ValidateRackComponents, mock.Anything, mock.Anything).Return(nil, errors.New(errMsg))
+
+	// Execute ValidateRackComponents workflow
+	s.env.ExecuteWorkflow(ValidateRackComponents, request)
+	s.True(s.env.IsWorkflowCompleted())
+	err := s.env.GetWorkflowError()
+	s.Error(err)
+
+	var applicationErr *temporal.ApplicationError
+	s.True(errors.As(err, &applicationErr))
+	s.Equal(errMsg, applicationErr.Error())
+}
+
+func TestValidateRackComponentsTestSuite(t *testing.T) {
+	suite.Run(t, new(ValidateRackComponentsTestSuite))
+}

@@ -30,6 +30,7 @@ import (
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 
+
 	"github.com/rs/zerolog/log"
 
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
@@ -483,6 +484,7 @@ func (r *RlaServerImpl) ValidateComponents(ctx context.Context, req *rlav1.Valid
 	}
 
 	// For validation, we treat the components as both expected and actual
+	// In the new proto, actual is also a Component (ActualComponent was removed)
 	actualComponents := make([]*rlav1.Component, 0, len(componentsResp.Components))
 	for _, comp := range componentsResp.Components {
 		actualComp := &rlav1.Component{

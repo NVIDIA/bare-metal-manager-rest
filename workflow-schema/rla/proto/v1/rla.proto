@@ -416,7 +416,10 @@ message GetComponentsResponse {
 }
 
 message ValidateComponentsRequest {
-    OperationTargetSpec target_spec = 1;   // Flexible targeting: rack(s) with optional type filter, or specific components
+    optional OperationTargetSpec target_spec = 1;   // Optional: Flexible targeting: rack(s) with optional type filter, or specific components. If not provided, returns all drifts.
+    repeated Filter filters = 2;           // Filter conditions for component queries
+    optional Pagination pagination = 3;
+    optional OrderBy order_by = 4;
 }
 
 message ValidateComponentsResponse {

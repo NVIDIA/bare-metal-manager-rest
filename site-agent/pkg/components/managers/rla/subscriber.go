@@ -46,6 +46,10 @@ func (api *API) RegisterSubscriber() error {
 	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterWorkflow(sww.GetRacks)
 	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered GetRacks workflow")
 
+	// ValidateRackComponents
+	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterWorkflow(sww.ValidateRackComponents)
+	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered ValidateRackComponents workflow")
+
 	/// Register rack activities
 
 	// GetRack activity
@@ -55,6 +59,10 @@ func (api *API) RegisterSubscriber() error {
 	// GetRacks activity
 	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterActivity(rackManager.GetRacks)
 	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered GetRacks activity")
+
+	// ValidateRackComponents activity
+	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterActivity(rackManager.ValidateRackComponents)
+	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered ValidateRackComponents activity")
 
 	// Register the tray subscribers here
 	ManagerAccess.Data.EB.Log.Info().Msg("RLA: Registering the tray workflows")

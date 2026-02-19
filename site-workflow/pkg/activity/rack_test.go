@@ -229,3 +229,146 @@ func TestManageRack_GetRacks(t *testing.T) {
 		})
 	}
 }
+
+func TestManageRack_ValidateRackComponents(t *testing.T) {
+	tests := []struct {
+		name        string
+		request     *rlav1.ValidateComponentsRequest
+		mockResp    *rlav1.ValidateComponentsResponse
+		mockErr     error
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:        "nil request returns error",
+			request:     nil,
+			mockResp:    nil,
+			mockErr:     nil,
+			wantErr:     true,
+			errContains: "empty validate rack components request",
+		},
+		{
+			name: "successful request - no diffs",
+			request: &rlav1.ValidateComponentsRequest{
+				TargetSpec: &rlav1.OperationTargetSpec{
+					Targets: &rlav1.OperationTargetSpec_Racks{
+						Racks: &rlav1.RackTargets{
+							Targets: []*rlav1.RackTarget{
+								{
+									Identifier: &rlav1.RackTarget_Id{
+										Id: &rlav1.UUID{Id: "test-rack-id"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			mockResp: &rlav1.ValidateComponentsResponse{
+				Diffs:               []*rlav1.ComponentDiff{},
+				TotalDiffs:          0,
+				OnlyInExpectedCount: 0,
+				OnlyInActualCount:   0,
+				DriftCount:          0,
+				MatchCount:          5,
+			},
+			mockErr: nil,
+			wantErr: false,
+		},
+		{
+			name: "successful request - with diffs",
+			request: &rlav1.ValidateComponentsRequest{
+				TargetSpec: &rlav1.OperationTargetSpec{
+					Targets: &rlav1.OperationTargetSpec_Racks{
+						Racks: &rlav1.RackTargets{
+							Targets: []*rlav1.RackTarget{
+								{
+									Identifier: &rlav1.RackTarget_Id{
+										Id: &rlav1.UUID{Id: "test-rack-id"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			mockResp: &rlav1.ValidateComponentsResponse{
+				Diffs: []*rlav1.ComponentDiff{
+					{
+						Type:        rlav1.DiffType_DIFF_TYPE_ONLY_IN_EXPECTED,
+						ComponentId: "comp-1",
+					},
+				},
+				TotalDiffs:          1,
+				OnlyInExpectedCount: 1,
+				OnlyInActualCount:   0,
+				DriftCount:          0,
+				MatchCount:          4,
+			},
+			mockErr: nil,
+			wantErr: false,
+		},
+		{
+			name: "RLA client error",
+			request: &rlav1.ValidateComponentsRequest{
+				TargetSpec: &rlav1.OperationTargetSpec{
+					Targets: &rlav1.OperationTargetSpec_Racks{
+						Racks: &rlav1.RackTargets{
+							Targets: []*rlav1.RackTarget{
+								{
+									Identifier: &rlav1.RackTarget_Id{
+										Id: &rlav1.UUID{Id: "test-rack-id"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			mockResp:    nil,
+			mockErr:     errors.New("connection refused"),
+			wantErr:     true,
+			errContains: "connection refused",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create mock RLA client
+			mockRlaClient := cClient.NewMockRlaClient()
+
+			// Create atomic client and swap with mock
+			rlaAtomicClient := cClient.NewRlaAtomicClient(&cClient.RlaClientConfig{})
+			rlaAtomicClient.SwapClient(mockRlaClient)
+
+			// Create ManageRack instance
+			manageRack := NewManageRack(rlaAtomicClient)
+
+			// Execute activity with context injection
+			ctx := context.Background()
+			if tt.mockErr != nil {
+				ctx = context.WithValue(ctx, "wantError", tt.mockErr)
+			}
+			if tt.mockResp != nil {
+				ctx = context.WithValue(ctx, "wantResponse", tt.mockResp)
+			}
+			result, err := manageRack.ValidateRackComponents(ctx, tt.request)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.NotNil(t, result)
+			if tt.mockResp != nil {
+				assert.Equal(t, tt.mockResp.GetTotalDiffs(), result.GetTotalDiffs())
+				assert.Equal(t, tt.mockResp.GetMatchCount(), result.GetMatchCount())
+				assert.Equal(t, len(tt.mockResp.GetDiffs()), len(result.GetDiffs()))
+			}
+		})
+	}
+}

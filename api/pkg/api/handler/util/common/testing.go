@@ -335,7 +335,7 @@ func TestBuildAllocationConstraint(t *testing.T, dbSession *cdb.Session, al *cdb
 }
 
 // TestBuildInstanceType creates a test Instance Type
-func TestBuildInstanceType(t *testing.T, dbSession *cdb.Session, name string, infinityResourceTypeID *uuid.UUID, st *cdbm.Site, user *cdbm.User) *cdbm.InstanceType {
+func TestBuildInstanceType(t *testing.T, dbSession *cdb.Session, name string, infinityResourceTypeID *uuid.UUID, st *cdbm.Site, labels map[string]string, user *cdbm.User) *cdbm.InstanceType {
 	itDAO := cdbm.NewInstanceTypeDAO(dbSession)
 
 	it, err := itDAO.Create(context.Background(), nil, cdbm.InstanceTypeCreateInput{
@@ -344,6 +344,7 @@ func TestBuildInstanceType(t *testing.T, dbSession *cdb.Session, name string, in
 		InfrastructureProviderID: st.InfrastructureProviderID,
 		InfinityResourceTypeID:   infinityResourceTypeID,
 		SiteID:                   &st.ID,
+		Labels:                   labels,
 		Status:                   cdbm.InstanceTypeStatusPending,
 		CreatedBy:                user.ID,
 	})

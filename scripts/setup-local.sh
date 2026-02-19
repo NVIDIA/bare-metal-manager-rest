@@ -17,8 +17,6 @@
 set -e
 
 NAMESPACE="${NAMESPACE:-carbide}"
-VAULT_ADDR="${VAULT_ADDR:-http://localhost:8200}"
-VAULT_TOKEN="${VAULT_TOKEN:-root}"
 API_URL="${API_URL:-http://localhost:8388}"
 KEYCLOAK_URL="${KEYCLOAK_URL:-http://localhost:8080}"
 ORG="${ORG:-test-org}"
@@ -89,42 +87,6 @@ EOFCNF
     echo "CA secret created in both namespaces"
 }
 
-configure_vault_pki() {
-    echo "Configuring Vault PKI..."
-    
-    if ! curl -sf "$VAULT_ADDR/v1/sys/health" > /dev/null 2>&1; then
-        echo "Vault not accessible, skipping"
-        return 0
-    fi
-    
-    curl -sf -X POST \
-        -H "X-Vault-Token: $VAULT_TOKEN" \
-        "$VAULT_ADDR/v1/sys/mounts/pki" \
-        -d '{"type":"pki"}' 2>/dev/null || true
-    
-    curl -sf -X POST \
-        -H "X-Vault-Token: $VAULT_TOKEN" \
-        "$VAULT_ADDR/v1/sys/mounts/pki/tune" \
-        -d '{"max_lease_ttl":"87600h"}'
-    
-    curl -sf -X POST \
-        -H "X-Vault-Token: $VAULT_TOKEN" \
-        "$VAULT_ADDR/v1/pki/root/generate/internal" \
-        -d '{"common_name":"Carbide Local Dev CA","issuer_name":"root-2024","ttl":"87600h"}' > /dev/null 2>&1 || true
-    
-    curl -sf -X POST \
-        -H "X-Vault-Token: $VAULT_TOKEN" \
-        "$VAULT_ADDR/v1/pki/config/urls" \
-        -d '{"issuing_certificates":["http://vault:8200/v1/pki/ca"],"crl_distribution_points":["http://vault:8200/v1/pki/crl"]}'
-    
-    curl -sf -X POST \
-        -H "X-Vault-Token: $VAULT_TOKEN" \
-        "$VAULT_ADDR/v1/pki/roles/cloud-cert" \
-        -d '{"allowed_domains":"carbide.local,localhost,carbide,svc.cluster.local,carbide.svc.cluster.local,carbide-rest-cert-manager,carbide-rest-site-manager","allow_subdomains":true,"allow_any_name":true,"max_ttl":"720h"}'
-    
-    echo "Vault PKI configured"
-}
-
 create_service_certs() {
     echo "Creating service secrets..."
     
@@ -155,7 +117,6 @@ setup_pki() {
     echo "Setting up local PKI..."
     kubectl get ns "$NAMESPACE" > /dev/null 2>&1 || kubectl create ns "$NAMESPACE"
     generate_ca
-    configure_vault_pki
     create_service_certs
     echo "PKI setup complete."
 }

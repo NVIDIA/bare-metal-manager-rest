@@ -122,13 +122,13 @@ func TestNewAPIRack(t *testing.T) {
 						SerialNumber:    "CSN001",
 						Manufacturer:    "NVIDIA",
 						FirmwareVersion: "1.0.0",
-						Position:        1,
+						SlotID:          1,
 					},
 					{
 						ID:       "comp-2",
 						Type:     "COMPONENT_TYPE_TORSWITCH",
 						Name:     "switch-1",
-						Position: 48,
+						SlotID:   48,
 					},
 				},
 			},
@@ -196,7 +196,7 @@ func TestNewAPIRack(t *testing.T) {
 					assert.Equal(t, wantComp.SerialNumber, gotComp.SerialNumber)
 					assert.Equal(t, wantComp.Manufacturer, gotComp.Manufacturer)
 					assert.Equal(t, wantComp.FirmwareVersion, gotComp.FirmwareVersion)
-					assert.Equal(t, wantComp.Position, gotComp.Position)
+					assert.Equal(t, wantComp.SlotID, gotComp.SlotID)
 				}
 			} else {
 				assert.Nil(t, got.Components)
