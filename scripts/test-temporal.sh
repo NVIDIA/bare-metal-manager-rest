@@ -93,7 +93,7 @@ test_mtls() {
     run_test "server-site-certs exists" \
         "kubectl -n $NAMESPACE get secret server-site-certs"
     run_test "temporal-client-certs exists" \
-        "kubectl -n carbide get secret temporal-client-certs"
+        "kubectl -n carbide-rest get secret temporal-client-certs"
     echo ""
 
     echo "Step 3: Checking cert-manager Certificate status..."
@@ -104,7 +104,7 @@ test_mtls() {
     run_test "server-site-cert Ready" \
         "kubectl -n $NAMESPACE get certificate server-site-cert -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -q True"
     run_test "temporal-client-cert Ready" \
-        "kubectl -n carbide get certificate temporal-client-cert -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -q True"
+        "kubectl -n carbide-rest get certificate temporal-client-cert -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -q True"
     echo ""
 
     echo "Step 4: Checking services..."
@@ -158,14 +158,14 @@ test_rotation() {
     kubectl -n "$NAMESPACE" delete secret server-interservice-certs --ignore-not-found
     kubectl -n "$NAMESPACE" delete secret server-cloud-certs --ignore-not-found
     kubectl -n "$NAMESPACE" delete secret server-site-certs --ignore-not-found
-    kubectl -n carbide delete secret temporal-client-certs --ignore-not-found
+    kubectl -n carbide-rest delete secret temporal-client-certs --ignore-not-found
     echo ""
 
     echo "Step 4: Waiting for cert-manager to reissue certificates..."
     kubectl -n "$NAMESPACE" wait --for=condition=Ready certificate/server-interservice-cert --timeout="${TIMEOUT}s"
     kubectl -n "$NAMESPACE" wait --for=condition=Ready certificate/server-cloud-cert --timeout="${TIMEOUT}s"
     kubectl -n "$NAMESPACE" wait --for=condition=Ready certificate/server-site-cert --timeout="${TIMEOUT}s"
-    kubectl -n carbide wait --for=condition=Ready certificate/temporal-client-cert --timeout="${TIMEOUT}s"
+    kubectl -n carbide-rest wait --for=condition=Ready certificate/temporal-client-cert --timeout="${TIMEOUT}s"
     echo ""
 
     echo "Step 5: Verifying new certificate serial numbers..."

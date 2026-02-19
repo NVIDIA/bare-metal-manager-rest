@@ -16,7 +16,7 @@
 
 set -e
 
-NAMESPACE="${NAMESPACE:-carbide}"
+NAMESPACE="${NAMESPACE:-carbide-rest}"
 API_URL="${API_URL:-http://localhost:8388}"
 KEYCLOAK_URL="${KEYCLOAK_URL:-http://localhost:8080}"
 ORG="${ORG:-test-org}"

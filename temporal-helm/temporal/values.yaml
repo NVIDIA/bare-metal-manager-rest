@@ -154,7 +154,7 @@ server:
 
         sql:
           driver: "postgres12"
-          host: "postgres.carbide.svc.cluster.local"
+          host: "postgres.carbide-rest.svc.cluster.local"
           port: 5432
           database: "temporal"
           user: "temporal"
@@ -167,7 +167,7 @@ server:
 
         sql:
           driver: "postgres12"
-          host: "postgres.carbide.svc.cluster.local"
+          host: "postgres.carbide-rest.svc.cluster.local"
           port: 5432
           database: "temporal_visibility"
           user: "temporal"

@@ -38,8 +38,8 @@ spec:
     - client auth
   dnsNames:
     - carbide-rest-site-manager
-    - carbide-rest-site-manager.carbide
-    - carbide-rest-site-manager.carbide.svc.cluster.local
+    - carbide-rest-site-manager.carbide-rest
+    - carbide-rest-site-manager.carbide-rest.svc.cluster.local
     - localhost
   issuerRef:
     name: carbide-ca-issuer

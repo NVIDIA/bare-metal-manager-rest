@@ -39,7 +39,7 @@ spec:
             - --creds-manager-url=https://carbide-rest-cert-manager:8000
             - --tls-cert-path=/etc/tls/tls.crt
             - --tls-key-path=/etc/tls/tls.key
-            - --namespace=carbide
+            - --namespace=carbide-rest
             - --debug
           ports:
             - containerPort: 8100
