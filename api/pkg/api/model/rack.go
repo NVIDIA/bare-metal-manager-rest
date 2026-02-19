@@ -152,6 +152,13 @@ func (arl *APIRackLocation) FromProto(protoLocation *rlav1.Location) {
 	arl.Position = protoLocation.GetPosition()
 }
 
+// APIBMC represents a BMC (Baseboard Management Controller) entry
+type APIBMC struct {
+	Type       string `json:"type"`
+	MacAddress string `json:"macAddress"`
+	IPAddress  string `json:"ipAddress"`
+}
+
 // APIRackComponent represents a component within a rack
 type APIRackComponent struct {
 	ID              string    `json:"id"`
@@ -169,13 +176,6 @@ type APIRackComponent struct {
 	HostID          int32     `json:"hostId"`
 	BMCs            []*APIBMC `json:"bmcs"`
 	PowerState      string    `json:"powerState"`
-}
-
-// APIBMC represents a BMC (Baseboard Management Controller) entry
-type APIBMC struct {
-	Type       string `json:"type"`
-	MacAddress string `json:"macAddress"`
-	IPAddress  string `json:"ipAddress"`
 }
 
 // FromProto converts a proto Component to an APIRackComponent
@@ -228,14 +228,21 @@ func (arc *APIRackComponent) FromProto(protoComponent *rlav1.Component) {
 
 // ========== Rack Validation API Models ==========
 
-// APIRackValidationResult is the API representation of a rack validation result
-type APIRackValidationResult struct {
-	Diffs               []*APIComponentDiff `json:"diffs"`
-	TotalDiffs          int32               `json:"totalDiffs"`
-	OnlyInExpectedCount int32               `json:"onlyInExpectedCount"`
-	OnlyInActualCount   int32               `json:"onlyInActualCount"`
-	DriftCount          int32               `json:"driftCount"`
-	MatchCount          int32               `json:"matchCount"`
+// APIFieldDiff represents a single field difference
+type APIFieldDiff struct {
+	FieldName     string `json:"fieldName"`
+	ExpectedValue string `json:"expectedValue"`
+	ActualValue   string `json:"actualValue"`
+}
+
+// FromProto converts an RLA protobuf FieldDiff to an APIFieldDiff
+func (f *APIFieldDiff) FromProto(protoFieldDiff *rlav1.FieldDiff) {
+	if protoFieldDiff == nil {
+		return
+	}
+	f.FieldName = protoFieldDiff.GetFieldName()
+	f.ExpectedValue = protoFieldDiff.GetExpectedValue()
+	f.ActualValue = protoFieldDiff.GetActualValue()
 }
 
 // APIComponentDiff represents a single component difference found during validation
@@ -245,43 +252,6 @@ type APIComponentDiff struct {
 	Expected    *APIRackComponent `json:"expected,omitempty"`
 	Actual      *APIRackComponent `json:"actual,omitempty"`
 	FieldDiffs  []*APIFieldDiff   `json:"fieldDiffs,omitempty"`
-}
-
-// APIFieldDiff represents a single field difference
-type APIFieldDiff struct {
-	FieldName     string `json:"fieldName"`
-	ExpectedValue string `json:"expectedValue"`
-	ActualValue   string `json:"actualValue"`
-}
-
-// FromProto converts an RLA protobuf ValidateComponentsResponse to an APIRackValidationResult
-func (r *APIRackValidationResult) FromProto(protoResp *rlav1.ValidateComponentsResponse) {
-	if protoResp == nil {
-		return
-	}
-
-	r.TotalDiffs = protoResp.GetTotalDiffs()
-	r.OnlyInExpectedCount = protoResp.GetOnlyInExpectedCount()
-	r.OnlyInActualCount = protoResp.GetOnlyInActualCount()
-	r.DriftCount = protoResp.GetDriftCount()
-	r.MatchCount = protoResp.GetMatchCount()
-
-	r.Diffs = make([]*APIComponentDiff, 0, len(protoResp.GetDiffs()))
-	for _, diff := range protoResp.GetDiffs() {
-		apiDiff := &APIComponentDiff{}
-		apiDiff.FromProto(diff)
-		r.Diffs = append(r.Diffs, apiDiff)
-	}
-}
-
-// NewAPIRackValidationResult creates an APIRackValidationResult from the RLA protobuf response
-func NewAPIRackValidationResult(protoResp *rlav1.ValidateComponentsResponse) *APIRackValidationResult {
-	if protoResp == nil {
-		return nil
-	}
-	result := &APIRackValidationResult{}
-	result.FromProto(protoResp)
-	return result
 }
 
 // FromProto converts an RLA protobuf ComponentDiff to an APIComponentDiff
@@ -313,12 +283,42 @@ func (d *APIComponentDiff) FromProto(protoDiff *rlav1.ComponentDiff) {
 	}
 }
 
-// FromProto converts an RLA protobuf FieldDiff to an APIFieldDiff
-func (f *APIFieldDiff) FromProto(protoFieldDiff *rlav1.FieldDiff) {
-	if protoFieldDiff == nil {
+// APIRackValidationResult is the API representation of a rack validation result
+type APIRackValidationResult struct {
+	Diffs               []*APIComponentDiff `json:"diffs"`
+	TotalDiffs          int32               `json:"totalDiffs"`
+	OnlyInExpectedCount int32               `json:"onlyInExpectedCount"`
+	OnlyInActualCount   int32               `json:"onlyInActualCount"`
+	DriftCount          int32               `json:"driftCount"`
+	MatchCount          int32               `json:"matchCount"`
+}
+
+// FromProto converts an RLA protobuf ValidateComponentsResponse to an APIRackValidationResult
+func (r *APIRackValidationResult) FromProto(protoResp *rlav1.ValidateComponentsResponse) {
+	if protoResp == nil {
 		return
 	}
-	f.FieldName = protoFieldDiff.GetFieldName()
-	f.ExpectedValue = protoFieldDiff.GetExpectedValue()
-	f.ActualValue = protoFieldDiff.GetActualValue()
+
+	r.TotalDiffs = protoResp.GetTotalDiffs()
+	r.OnlyInExpectedCount = protoResp.GetOnlyInExpectedCount()
+	r.OnlyInActualCount = protoResp.GetOnlyInActualCount()
+	r.DriftCount = protoResp.GetDriftCount()
+	r.MatchCount = protoResp.GetMatchCount()
+
+	r.Diffs = make([]*APIComponentDiff, 0, len(protoResp.GetDiffs()))
+	for _, diff := range protoResp.GetDiffs() {
+		apiDiff := &APIComponentDiff{}
+		apiDiff.FromProto(diff)
+		r.Diffs = append(r.Diffs, apiDiff)
+	}
+}
+
+// NewAPIRackValidationResult creates an APIRackValidationResult from the RLA protobuf response
+func NewAPIRackValidationResult(protoResp *rlav1.ValidateComponentsResponse) *APIRackValidationResult {
+	if protoResp == nil {
+		return nil
+	}
+	result := &APIRackValidationResult{}
+	result.FromProto(protoResp)
+	return result
 }
