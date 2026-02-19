@@ -32,6 +32,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	temporalEnums "go.temporal.io/api/enums/v1"
 	tClient "go.temporal.io/sdk/client"
+	tp "go.temporal.io/sdk/temporal"
 
 	"github.com/nvidia/bare-metal-manager-rest/api/internal/config"
 	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/handler/util/common"
@@ -184,6 +185,10 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 	var rlaResponse rlav1.GetRackInfoResponse
 	err = we.Get(ctx, &rlaResponse)
 	if err != nil {
+		var timeoutErr *tp.TimeoutError
+		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
+			return common.TerminateWorkflowOnTimeOut(c, logger, stc, fmt.Sprintf("rack-get-%s", rackStrID), err, "Rack", "GetRack")
+		}
 		logger.Error().Err(err).Msg("failed to get result from GetRack workflow")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get Rack details", nil)
 	}
@@ -381,6 +386,10 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 	var rlaResponse rlav1.GetListOfRacksResponse
 	err = we.Get(ctx, &rlaResponse)
 	if err != nil {
+		var timeoutErr *tp.TimeoutError
+		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
+			return common.TerminateWorkflowOnTimeOut(c, logger, stc, workflowID, err, "Rack", "GetRacks")
+		}
 		logger.Error().Err(err).Msg("failed to get result from GetRacks workflow")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get Racks", nil)
 	}
@@ -409,7 +418,7 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 	}
 	c.Response().Header().Set(pagination.ResponseHeaderName, string(pageHeader))
 
-	logger.Info().Int("count", len(apiRacks)).Int("total", total).Msg("finishing API handler")
+	logger.Info().Int("Count", len(apiRacks)).Int("Total", total).Msg("finishing API handler")
 
 	return c.JSON(http.StatusOK, apiRacks)
 }
@@ -556,6 +565,10 @@ func (vrh ValidateRackHandler) Handle(c echo.Context) error {
 	var rlaResponse rlav1.ValidateComponentsResponse
 	err = we.Get(ctx, &rlaResponse)
 	if err != nil {
+		var timeoutErr *tp.TimeoutError
+		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
+			return common.TerminateWorkflowOnTimeOut(c, logger, stc, fmt.Sprintf("rack-validate-%s", rackStrID), err, "Rack", "ValidateComponents")
+		}
 		logger.Error().Err(err).Msg("failed to get result from ValidateComponents workflow")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to validate Rack", nil)
 	}
@@ -563,7 +576,7 @@ func (vrh ValidateRackHandler) Handle(c echo.Context) error {
 	// Convert to API model
 	apiResult := model.NewAPIRackValidationResult(&rlaResponse)
 
-	logger.Info().Int32("totalDiffs", rlaResponse.GetTotalDiffs()).Msg("finishing API handler")
+	logger.Info().Int32("TotalDiffs", rlaResponse.GetTotalDiffs()).Msg("finishing API handler")
 
 	return c.JSON(http.StatusOK, apiResult)
 }
@@ -711,6 +724,10 @@ func (vrsh ValidateRacksHandler) Handle(c echo.Context) error {
 	var rlaResponse rlav1.ValidateComponentsResponse
 	err = we.Get(ctx, &rlaResponse)
 	if err != nil {
+		var timeoutErr *tp.TimeoutError
+		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
+			return common.TerminateWorkflowOnTimeOut(c, logger, stc, workflowID, err, "Rack", "ValidateComponents")
+		}
 		logger.Error().Err(err).Msg("failed to get result from ValidateComponents workflow")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to validate Racks", nil)
 	}
@@ -718,7 +735,7 @@ func (vrsh ValidateRacksHandler) Handle(c echo.Context) error {
 	// Convert to API model
 	apiResult := model.NewAPIRackValidationResult(&rlaResponse)
 
-	logger.Info().Int("filterCount", len(filters)).Int32("totalDiffs", rlaResponse.GetTotalDiffs()).Msg("finishing API handler")
+	logger.Info().Int("FilterCount", len(filters)).Int32("TotalDiffs", rlaResponse.GetTotalDiffs()).Msg("finishing API handler")
 
 	return c.JSON(http.StatusOK, apiResult)
 }
