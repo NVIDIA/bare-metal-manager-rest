@@ -1,9 +1,9 @@
 /*
-Carbide REST API
+NVIDIA Bare Metal Manager REST API
 
-Carbide REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all Carbide Sites.
+NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to as Sites.
 
-API version: 1.0.2
+API version: 1.0.4
 Contact: carbide-dev@exchange.nvidia.com
 */
 
@@ -24,7 +24,9 @@ type RackComponent struct {
 	Id *string `json:"id,omitempty"`
 	// ID of the component in its source system (e.g. Carbide machine ID for compute nodes)
 	ComponentId *string `json:"componentId,omitempty"`
-	// Type of the component (e.g. COMPONENT_TYPE_COMPUTE, COMPONENT_TYPE_SWITCH)
+	// ID of the rack this component belongs to
+	RackId *string `json:"rackId,omitempty"`
+	// Type of the component (e.g. COMPONENT_TYPE_COMPUTE, COMPONENT_TYPE_NVLSWITCH)
 	Type *string `json:"type,omitempty"`
 	// Name of the component
 	Name *string `json:"name,omitempty"`
@@ -32,10 +34,22 @@ type RackComponent struct {
 	SerialNumber *string `json:"serialNumber,omitempty"`
 	// Manufacturer of the component
 	Manufacturer *string `json:"manufacturer,omitempty"`
+	// Model of the component
+	Model *string `json:"model,omitempty"`
+	// Description of the component (JSON string)
+	Description *string `json:"description,omitempty"`
 	// Firmware version of the component
 	FirmwareVersion *string `json:"firmwareVersion,omitempty"`
-	// Slot position of the component within the rack
-	Position *int32 `json:"position,omitempty"`
+	// Slot ID of the component within the rack
+	SlotId *int32 `json:"slotId,omitempty"`
+	// Tray index of the component
+	TrayIdx *int32 `json:"trayIdx,omitempty"`
+	// Host ID of the component
+	HostId *int32 `json:"hostId,omitempty"`
+	// BMC (Baseboard Management Controller) entries for the component
+	Bmcs []BMCInfo `json:"bmcs,omitempty"`
+	// Current power state of the component (synced from external system)
+	PowerState *string `json:"powerState,omitempty"`
 }
 
 // NewRackComponent instantiates a new RackComponent object
@@ -117,6 +131,38 @@ func (o *RackComponent) HasComponentId() bool {
 // SetComponentId gets a reference to the given string and assigns it to the ComponentId field.
 func (o *RackComponent) SetComponentId(v string) {
 	o.ComponentId = &v
+}
+
+// GetRackId returns the RackId field value if set, zero value otherwise.
+func (o *RackComponent) GetRackId() string {
+	if o == nil || IsNil(o.RackId) {
+		var ret string
+		return ret
+	}
+	return *o.RackId
+}
+
+// GetRackIdOk returns a tuple with the RackId field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *RackComponent) GetRackIdOk() (*string, bool) {
+	if o == nil || IsNil(o.RackId) {
+		return nil, false
+	}
+	return o.RackId, true
+}
+
+// HasRackId returns a boolean if a field has been set.
+func (o *RackComponent) HasRackId() bool {
+	if o != nil && !IsNil(o.RackId) {
+		return true
+	}
+
+	return false
+}
+
+// SetRackId gets a reference to the given string and assigns it to the RackId field.
+func (o *RackComponent) SetRackId(v string) {
+	o.RackId = &v
 }
 
 // GetType returns the Type field value if set, zero value otherwise.
@@ -247,6 +293,70 @@ func (o *RackComponent) SetManufacturer(v string) {
 	o.Manufacturer = &v
 }
 
+// GetModel returns the Model field value if set, zero value otherwise.
+func (o *RackComponent) GetModel() string {
+	if o == nil || IsNil(o.Model) {
+		var ret string
+		return ret
+	}
+	return *o.Model
+}
+
+// GetModelOk returns a tuple with the Model field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *RackComponent) GetModelOk() (*string, bool) {
+	if o == nil || IsNil(o.Model) {
+		return nil, false
+	}
+	return o.Model, true
+}
+
+// HasModel returns a boolean if a field has been set.
+func (o *RackComponent) HasModel() bool {
+	if o != nil && !IsNil(o.Model) {
+		return true
+	}
+
+	return false
+}
+
+// SetModel gets a reference to the given string and assigns it to the Model field.
+func (o *RackComponent) SetModel(v string) {
+	o.Model = &v
+}
+
+// GetDescription returns the Description field value if set, zero value otherwise.
+func (o *RackComponent) GetDescription() string {
+	if o == nil || IsNil(o.Description) {
+		var ret string
+		return ret
+	}
+	return *o.Description
+}
+
+// GetDescriptionOk returns a tuple with the Description field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *RackComponent) GetDescriptionOk() (*string, bool) {
+	if o == nil || IsNil(o.Description) {
+		return nil, false
+	}
+	return o.Description, true
+}
+
+// HasDescription returns a boolean if a field has been set.
+func (o *RackComponent) HasDescription() bool {
+	if o != nil && !IsNil(o.Description) {
+		return true
+	}
+
+	return false
+}
+
+// SetDescription gets a reference to the given string and assigns it to the Description field.
+func (o *RackComponent) SetDescription(v string) {
+	o.Description = &v
+}
+
 // GetFirmwareVersion returns the FirmwareVersion field value if set, zero value otherwise.
 func (o *RackComponent) GetFirmwareVersion() string {
 	if o == nil || IsNil(o.FirmwareVersion) {
@@ -279,36 +389,164 @@ func (o *RackComponent) SetFirmwareVersion(v string) {
 	o.FirmwareVersion = &v
 }
 
-// GetPosition returns the Position field value if set, zero value otherwise.
-func (o *RackComponent) GetPosition() int32 {
-	if o == nil || IsNil(o.Position) {
+// GetSlotId returns the SlotId field value if set, zero value otherwise.
+func (o *RackComponent) GetSlotId() int32 {
+	if o == nil || IsNil(o.SlotId) {
 		var ret int32
 		return ret
 	}
-	return *o.Position
+	return *o.SlotId
 }
 
-// GetPositionOk returns a tuple with the Position field value if set, nil otherwise
+// GetSlotIdOk returns a tuple with the SlotId field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-func (o *RackComponent) GetPositionOk() (*int32, bool) {
-	if o == nil || IsNil(o.Position) {
+func (o *RackComponent) GetSlotIdOk() (*int32, bool) {
+	if o == nil || IsNil(o.SlotId) {
 		return nil, false
 	}
-	return o.Position, true
+	return o.SlotId, true
 }
 
-// HasPosition returns a boolean if a field has been set.
-func (o *RackComponent) HasPosition() bool {
-	if o != nil && !IsNil(o.Position) {
+// HasSlotId returns a boolean if a field has been set.
+func (o *RackComponent) HasSlotId() bool {
+	if o != nil && !IsNil(o.SlotId) {
 		return true
 	}
 
 	return false
 }
 
-// SetPosition gets a reference to the given int32 and assigns it to the Position field.
-func (o *RackComponent) SetPosition(v int32) {
-	o.Position = &v
+// SetSlotId gets a reference to the given int32 and assigns it to the SlotId field.
+func (o *RackComponent) SetSlotId(v int32) {
+	o.SlotId = &v
+}
+
+// GetTrayIdx returns the TrayIdx field value if set, zero value otherwise.
+func (o *RackComponent) GetTrayIdx() int32 {
+	if o == nil || IsNil(o.TrayIdx) {
+		var ret int32
+		return ret
+	}
+	return *o.TrayIdx
+}
+
+// GetTrayIdxOk returns a tuple with the TrayIdx field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *RackComponent) GetTrayIdxOk() (*int32, bool) {
+	if o == nil || IsNil(o.TrayIdx) {
+		return nil, false
+	}
+	return o.TrayIdx, true
+}
+
+// HasTrayIdx returns a boolean if a field has been set.
+func (o *RackComponent) HasTrayIdx() bool {
+	if o != nil && !IsNil(o.TrayIdx) {
+		return true
+	}
+
+	return false
+}
+
+// SetTrayIdx gets a reference to the given int32 and assigns it to the TrayIdx field.
+func (o *RackComponent) SetTrayIdx(v int32) {
+	o.TrayIdx = &v
+}
+
+// GetHostId returns the HostId field value if set, zero value otherwise.
+func (o *RackComponent) GetHostId() int32 {
+	if o == nil || IsNil(o.HostId) {
+		var ret int32
+		return ret
+	}
+	return *o.HostId
+}
+
+// GetHostIdOk returns a tuple with the HostId field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *RackComponent) GetHostIdOk() (*int32, bool) {
+	if o == nil || IsNil(o.HostId) {
+		return nil, false
+	}
+	return o.HostId, true
+}
+
+// HasHostId returns a boolean if a field has been set.
+func (o *RackComponent) HasHostId() bool {
+	if o != nil && !IsNil(o.HostId) {
+		return true
+	}
+
+	return false
+}
+
+// SetHostId gets a reference to the given int32 and assigns it to the HostId field.
+func (o *RackComponent) SetHostId(v int32) {
+	o.HostId = &v
+}
+
+// GetBmcs returns the Bmcs field value if set, zero value otherwise.
+func (o *RackComponent) GetBmcs() []BMCInfo {
+	if o == nil || IsNil(o.Bmcs) {
+		var ret []BMCInfo
+		return ret
+	}
+	return o.Bmcs
+}
+
+// GetBmcsOk returns a tuple with the Bmcs field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *RackComponent) GetBmcsOk() ([]BMCInfo, bool) {
+	if o == nil || IsNil(o.Bmcs) {
+		return nil, false
+	}
+	return o.Bmcs, true
+}
+
+// HasBmcs returns a boolean if a field has been set.
+func (o *RackComponent) HasBmcs() bool {
+	if o != nil && !IsNil(o.Bmcs) {
+		return true
+	}
+
+	return false
+}
+
+// SetBmcs gets a reference to the given []BMCInfo and assigns it to the Bmcs field.
+func (o *RackComponent) SetBmcs(v []BMCInfo) {
+	o.Bmcs = v
+}
+
+// GetPowerState returns the PowerState field value if set, zero value otherwise.
+func (o *RackComponent) GetPowerState() string {
+	if o == nil || IsNil(o.PowerState) {
+		var ret string
+		return ret
+	}
+	return *o.PowerState
+}
+
+// GetPowerStateOk returns a tuple with the PowerState field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *RackComponent) GetPowerStateOk() (*string, bool) {
+	if o == nil || IsNil(o.PowerState) {
+		return nil, false
+	}
+	return o.PowerState, true
+}
+
+// HasPowerState returns a boolean if a field has been set.
+func (o *RackComponent) HasPowerState() bool {
+	if o != nil && !IsNil(o.PowerState) {
+		return true
+	}
+
+	return false
+}
+
+// SetPowerState gets a reference to the given string and assigns it to the PowerState field.
+func (o *RackComponent) SetPowerState(v string) {
+	o.PowerState = &v
 }
 
 func (o RackComponent) MarshalJSON() ([]byte, error) {
@@ -327,6 +565,9 @@ func (o RackComponent) ToMap() (map[string]interface{}, error) {
 	if !IsNil(o.ComponentId) {
 		toSerialize["componentId"] = o.ComponentId
 	}
+	if !IsNil(o.RackId) {
+		toSerialize["rackId"] = o.RackId
+	}
 	if !IsNil(o.Type) {
 		toSerialize["type"] = o.Type
 	}
@@ -339,11 +580,29 @@ func (o RackComponent) ToMap() (map[string]interface{}, error) {
 	if !IsNil(o.Manufacturer) {
 		toSerialize["manufacturer"] = o.Manufacturer
 	}
+	if !IsNil(o.Model) {
+		toSerialize["model"] = o.Model
+	}
+	if !IsNil(o.Description) {
+		toSerialize["description"] = o.Description
+	}
 	if !IsNil(o.FirmwareVersion) {
 		toSerialize["firmwareVersion"] = o.FirmwareVersion
 	}
-	if !IsNil(o.Position) {
-		toSerialize["position"] = o.Position
+	if !IsNil(o.SlotId) {
+		toSerialize["slotId"] = o.SlotId
+	}
+	if !IsNil(o.TrayIdx) {
+		toSerialize["trayIdx"] = o.TrayIdx
+	}
+	if !IsNil(o.HostId) {
+		toSerialize["hostId"] = o.HostId
+	}
+	if !IsNil(o.Bmcs) {
+		toSerialize["bmcs"] = o.Bmcs
+	}
+	if !IsNil(o.PowerState) {
+		toSerialize["powerState"] = o.PowerState
 	}
 	return toSerialize, nil
 }

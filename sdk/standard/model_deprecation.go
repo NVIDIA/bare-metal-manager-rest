@@ -1,9 +1,9 @@
 /*
-Carbide REST API
+NVIDIA Bare Metal Manager REST API
 
-Carbide REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all Carbide Sites.
+NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to as Sites.
 
-API version: 1.0.2
+API version: 1.0.4
 Contact: carbide-dev@exchange.nvidia.com
 */
 
@@ -19,7 +19,7 @@ import (
 // checks if the Deprecation type satisfies the MappedNullable interface at compile time
 var _ MappedNullable = &Deprecation{}
 
-// Deprecation Details of a particular deprecation in Carbide API
+// Deprecation Details of a particular deprecation in NVIDIA Bare Metal Manager API
 type Deprecation struct {
 	Attribute NullableString `json:"attribute,omitempty"`
 	QueryParam NullableString `json:"queryParam,omitempty"`

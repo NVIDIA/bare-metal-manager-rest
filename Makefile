@@ -422,9 +422,9 @@ test-temporal-e2e:
 # Generated Go API Client
 # =============================================================================
 
-# Generate Go API client from OpenAPI spec using openapi-generator
+# Generate Go API SDK from OpenAPI spec using openapi-generator
 # Requires: brew install openapi-generator
-generate-client:
+generate-sdk:
 	openapi-generator generate \
 		-i openapi/spec.yaml \
 		-g go \

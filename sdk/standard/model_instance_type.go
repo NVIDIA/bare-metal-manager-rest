@@ -1,9 +1,9 @@
 /*
-Carbide REST API
+NVIDIA Bare Metal Manager REST API
 
-Carbide REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all Carbide Sites.
+NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to as Sites.
 
-API version: 1.0.2
+API version: 1.0.4
 Contact: carbide-dev@exchange.nvidia.com
 */
 
@@ -27,6 +27,7 @@ type InstanceType struct {
 	ControllerMachineType *string `json:"controllerMachineType,omitempty"`
 	InfrastructureProviderId *string `json:"infrastructureProviderId,omitempty"`
 	SiteId *string `json:"siteId,omitempty"`
+	Labels map[string]string `json:"labels,omitempty"`
 	MachineCapabilities []MachineCapability `json:"machineCapabilities,omitempty"`
 	// Available only for Providers
 	MachineInstanceTypes []MachineInstanceType `json:"machineInstanceTypes,omitempty"`
@@ -246,6 +247,38 @@ func (o *InstanceType) HasSiteId() bool {
 // SetSiteId gets a reference to the given string and assigns it to the SiteId field.
 func (o *InstanceType) SetSiteId(v string) {
 	o.SiteId = &v
+}
+
+// GetLabels returns the Labels field value if set, zero value otherwise.
+func (o *InstanceType) GetLabels() map[string]string {
+	if o == nil || IsNil(o.Labels) {
+		var ret map[string]string
+		return ret
+	}
+	return o.Labels
+}
+
+// GetLabelsOk returns a tuple with the Labels field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *InstanceType) GetLabelsOk() (map[string]string, bool) {
+	if o == nil || IsNil(o.Labels) {
+		return map[string]string{}, false
+	}
+	return o.Labels, true
+}
+
+// HasLabels returns a boolean if a field has been set.
+func (o *InstanceType) HasLabels() bool {
+	if o != nil && !IsNil(o.Labels) {
+		return true
+	}
+
+	return false
+}
+
+// SetLabels gets a reference to the given map[string]string and assigns it to the Labels field.
+func (o *InstanceType) SetLabels(v map[string]string) {
+	o.Labels = v
 }
 
 // GetMachineCapabilities returns the MachineCapabilities field value if set, zero value otherwise.
@@ -531,6 +564,9 @@ func (o InstanceType) ToMap() (map[string]interface{}, error) {
 	}
 	if !IsNil(o.SiteId) {
 		toSerialize["siteId"] = o.SiteId
+	}
+	if !IsNil(o.Labels) {
+		toSerialize["labels"] = o.Labels
 	}
 	if !IsNil(o.MachineCapabilities) {
 		toSerialize["machineCapabilities"] = o.MachineCapabilities
