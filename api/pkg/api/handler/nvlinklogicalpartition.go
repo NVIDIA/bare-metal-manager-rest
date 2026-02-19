@@ -309,7 +309,8 @@ func (cibph CreateNVLinkLogicalPartitionHandler) Handle(c echo.Context) error {
 	logger.Info().Str("Workflow ID", wid).Msg("scheduled NVLink Logical Partition creation workflow")
 
 	// Block until the workflow has completed and returned success/error.
-	err = we.Get(ctx, nil)
+	var workflowResult *cwssaws.NVLinkLogicalPartition
+	err = we.Get(ctx, &workflowResult)
 	if err != nil {
 		var timeoutErr *tp.TimeoutError
 		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
@@ -338,6 +339,37 @@ func (cibph CreateNVLinkLogicalPartitionHandler) Handle(c echo.Context) error {
 
 	logger.Info().Str("Workflow ID", wid).Msg("completed NVLink Logical Partition creation workflow")
 
+	// update the db record for NVLink Logical Partition with the status from the workflow
+	unvllp := nvllp
+	if workflowResult != nil {
+		logger.Info().Str("Workflow ID", wid).Msg("received NVLink Logical Partition info from workflow")
+
+		status, statusMessage := common.GetNVLinkLogicalPartitionStatus(workflowResult.Status.State)
+		// if status is nil, then default is pending and inventory will be updating status from workflow
+		if status != nil {
+			// update the db record for NVLink Logical Partition
+			unvllp, err = nvllpDAO.Update(ctx, tx, cdbm.NVLinkLogicalPartitionUpdateInput{
+				NVLinkLogicalPartitionID: nvllp.ID,
+				Status:                   status,
+			})
+
+			if err != nil {
+				logger.Error().Err(err).Msg("unable to update NVLink Logical Partition record in DB")
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to update NVLink Logical Partition, DB error", nil)
+			}
+
+			ssd, err := sdDAO.CreateFromParams(ctx, tx, nvllp.ID.String(), *status, statusMessage)
+			if err != nil {
+				logger.Error().Err(err).Msg("error creating Status Detail DB entry")
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Status Detail for NVLink Logical Partition, DB error", nil)
+			}
+			if ssd == nil {
+				logger.Error().Msg("Status Detail DB entry not returned from CreateFromParams")
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get new Status Detail for NVLink Logical Partition, DB error", nil)
+			}
+		}
+	}
+
 	// commit transaction
 	err = tx.Commit()
 	if err != nil {
@@ -349,7 +381,7 @@ func (cibph CreateNVLinkLogicalPartitionHandler) Handle(c echo.Context) error {
 	txCommitted = true
 
 	// create response
-	apiNVLinkLogicalPartition := model.NewAPINVLinkLogicalPartition(nvllp, nil, nil, []cdbm.StatusDetail{*ssd})
+	apiNVLinkLogicalPartition := model.NewAPINVLinkLogicalPartition(unvllp, nil, nil, []cdbm.StatusDetail{*ssd})
 	logger.Info().Msg("finishing API handler")
 	return c.JSON(http.StatusCreated, apiNVLinkLogicalPartition)
 }
