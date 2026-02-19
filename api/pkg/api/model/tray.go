@@ -157,22 +157,6 @@ func (r *APITrayGetAllRequest) Hash() string {
 }
 
 
-// APITray is the API representation of a Tray (Component) from RLA
-type APITray struct {
-	ID              string           `json:"id"`
-	ComponentID     string           `json:"componentId"`
-	Type            string           `json:"type"`
-	Name            string           `json:"name"`
-	Manufacturer    string           `json:"manufacturer"`
-	Model           string           `json:"model"`
-	SerialNumber    string           `json:"serialNumber"`
-	Description     string           `json:"description"`
-	FirmwareVersion string           `json:"firmwareVersion"`
-	PowerState      string           `json:"powerState"`
-	Position        *APITrayPosition `json:"position"`
-	RackID          string           `json:"rackId"`
-}
-
 // APITrayPosition represents the position of a tray within a rack
 type APITrayPosition struct {
 	SlotID  int32 `json:"slotId"`
@@ -188,6 +172,22 @@ func (atp *APITrayPosition) FromProto(protoPosition *rlav1.RackPosition) {
 	atp.SlotID = protoPosition.GetSlotId()
 	atp.TrayIdx = protoPosition.GetTrayIdx()
 	atp.HostID = protoPosition.GetHostId()
+}
+
+// APITray is the API representation of a Tray (Component) from RLA
+type APITray struct {
+	ID              string           `json:"id"`
+	ComponentID     string           `json:"componentId"`
+	Type            string           `json:"type"`
+	Name            string           `json:"name"`
+	Manufacturer    string           `json:"manufacturer"`
+	Model           string           `json:"model"`
+	SerialNumber    string           `json:"serialNumber"`
+	Description     string           `json:"description"`
+	FirmwareVersion string           `json:"firmwareVersion"`
+	PowerState      string           `json:"powerState"`
+	Position        *APITrayPosition `json:"position"`
+	RackID          string           `json:"rackId"`
 }
 
 // FromProto converts an RLA protobuf Component to an APITray
@@ -238,24 +238,4 @@ func NewAPITray(comp *rlav1.Component) *APITray {
 	apiTray := &APITray{}
 	apiTray.FromProto(comp)
 	return apiTray
-}
-
-// fromProtoComponents converts protobuf components to APITray slice
-func fromProtoComponents(components []*rlav1.Component) []*APITray {
-	trays := make([]*APITray, 0, len(components))
-	for _, comp := range components {
-		apiTray := NewAPITray(comp)
-		if apiTray != nil {
-			trays = append(trays, apiTray)
-		}
-	}
-	return trays
-}
-
-// NewAPITrays creates a slice of APITray from the RLA protobuf response
-func NewAPITrays(resp *rlav1.GetComponentsResponse) []*APITray {
-	if resp == nil {
-		return []*APITray{}
-	}
-	return fromProtoComponents(resp.GetComponents())
 }

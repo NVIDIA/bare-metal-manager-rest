@@ -33,13 +33,6 @@ type ManageTray struct {
 	RlaAtomicClient *cClient.RlaAtomicClient
 }
 
-// NewManageTray returns a new ManageTray client
-func NewManageTray(rlaClient *cClient.RlaAtomicClient) ManageTray {
-	return ManageTray{
-		RlaAtomicClient: rlaClient,
-	}
-}
-
 // GetTray retrieves a tray by its UUID from RLA
 func (mt *ManageTray) GetTray(ctx context.Context, request *rlav1.GetComponentInfoByIDRequest) (*rlav1.GetComponentInfoResponse, error) {
 	logger := log.With().Str("Activity", "GetTray").Logger()
@@ -97,4 +90,11 @@ func (mt *ManageTray) GetTrays(ctx context.Context, request *rlav1.GetComponents
 	logger.Info().Int32("Total", response.GetTotal()).Msg("Completed activity")
 
 	return response, nil
+}
+
+// NewManageTray returns a new ManageTray client
+func NewManageTray(rlaClient *cClient.RlaAtomicClient) ManageTray {
+	return ManageTray{
+		RlaAtomicClient: rlaClient,
+	}
 }

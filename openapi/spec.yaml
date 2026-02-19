@@ -8341,12 +8341,12 @@ paths:
             type: string
           name: componentId
           in: query
-          description: Filter by component IDs (comma-separated)
+          description: Filter by component ID (use repeated params for multiple values)
         - schema:
             type: string
           name: id
           in: query
-          description: Filter by tray UUIDs (comma-separated)
+          description: Filter by tray UUID (use repeated params for multiple values)
         - schema:
             type: integer
             example: 1

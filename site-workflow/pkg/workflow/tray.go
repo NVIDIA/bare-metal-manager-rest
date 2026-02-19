@@ -98,7 +98,7 @@ func GetTrays(ctx workflow.Context, request *rlav1.GetComponentsRequest) (*rlav1
 		return nil, err
 	}
 
-	logger.Info().Int32("total", response.GetTotal()).Msg("completing workflow")
+	logger.Info().Int32("Total", response.GetTotal()).Msg("completing workflow")
 
 	return &response, nil
 }

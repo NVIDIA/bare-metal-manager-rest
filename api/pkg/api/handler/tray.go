@@ -37,12 +37,14 @@ import (
 	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model"
 	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/pagination"
 	sc "github.com/nvidia/bare-metal-manager-rest/api/pkg/client/site"
+	auth "github.com/nvidia/bare-metal-manager-rest/auth/pkg/authorization"
 	cerr "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
 	sutil "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
 	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
 	temporalEnums "go.temporal.io/api/enums/v1"
+	tp "go.temporal.io/sdk/temporal"
 )
 
 // ~~~~~ Get Tray Handler ~~~~~ //
@@ -91,10 +93,29 @@ func (gth GetTrayHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
 	}
 
-	// Ensure user is a provider or tenant for the org
-	infrastructureProvider, tenant, apiErr := common.IsProviderOrTenant(ctx, logger, gth.dbSession, org, dbUser, true, false)
-	if apiErr != nil {
-		return c.JSON(apiErr.Code, apiErr)
+	// Validate org membership
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Validate role, only Provider Admins are allowed to access Tray data
+	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Provider Admin role, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Provider Admin role with org", nil)
+	}
+
+	// Get Infrastructure Provider for org
+	infrastructureProvider, err := common.GetInfrastructureProviderForOrg(ctx, nil, gth.dbSession, org)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error getting infrastructure provider for org")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
 	}
 
 	// Validate siteId is provided
@@ -113,13 +134,9 @@ func (gth GetTrayHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site due to DB error", nil)
 	}
 
-	// Validate provider/tenant site access
-	hasAccess, apiErr := ValidateProviderOrTenantSiteAccess(ctx, logger, gth.dbSession, site, infrastructureProvider, tenant)
-	if apiErr != nil {
-		return c.JSON(apiErr.Code, apiErr)
-	}
-	if !hasAccess {
-		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have access to Site", nil)
+	// Verify site belongs to the org's Infrastructure Provider
+	if site.InfrastructureProviderID != infrastructureProvider.ID {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
 	// Get tray ID from URL param
@@ -162,6 +179,10 @@ func (gth GetTrayHandler) Handle(c echo.Context) error {
 	var rlaResponse rlav1.GetComponentInfoResponse
 	err = we.Get(ctx, &rlaResponse)
 	if err != nil {
+		var timeoutErr *tp.TimeoutError
+		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
+			return common.TerminateWorkflowOnTimeOut(c, logger, stc, fmt.Sprintf("tray-get-%s", trayStrID), err, "Tray", "GetTray")
+		}
 		logger.Error().Err(err).Msg("failed to get result from GetTray workflow")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get tray from RLA", nil)
 	}
@@ -208,8 +229,8 @@ func NewGetAllTrayHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.Cli
 // @Param rackId query string false "Filter by Rack ID"
 // @Param rackName query string false "Filter by Rack name"
 // @Param type query string false "Filter by tray type (compute, switch, powershelf)"
-// @Param componentId query string false "Filter by component IDs (comma-separated)"
-// @Param id query string false "Filter by tray UUIDs (comma-separated)"
+// @Param componentId query string false "Filter by component ID (use repeated params for multiple values)"
+// @Param id query string false "Filter by tray UUID (use repeated params for multiple values)"
 // @Param orderBy query string false "Order by field (e.g. name_ASC, manufacturer_DESC)"
 // @Param pageNumber query int false "Page number (1-based)"
 // @Param pageSize query int false "Page size"
@@ -227,10 +248,29 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
 	}
 
-	// Ensure user is a provider or tenant for the org
-	infrastructureProvider, tenant, apiErr := common.IsProviderOrTenant(ctx, logger, gath.dbSession, org, dbUser, true, false)
-	if apiErr != nil {
-		return c.JSON(apiErr.Code, apiErr)
+	// Validate org membership
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Validate role, only Provider Admins are allowed to access Tray data
+	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Provider Admin role, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Provider Admin role with org", nil)
+	}
+
+	// Get Infrastructure Provider for org
+	infrastructureProvider, err := common.GetInfrastructureProviderForOrg(ctx, nil, gath.dbSession, org)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error getting infrastructure provider for org")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
 	}
 
 	// Validate siteId is provided
@@ -249,13 +289,9 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site due to DB error", nil)
 	}
 
-	// Validate provider/tenant site access
-	hasAccess, apiErr := ValidateProviderOrTenantSiteAccess(ctx, logger, gath.dbSession, site, infrastructureProvider, tenant)
-	if apiErr != nil {
-		return c.JSON(apiErr.Code, apiErr)
-	}
-	if !hasAccess {
-		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have access to Site", nil)
+	// Verify site belongs to the org's Infrastructure Provider
+	if site.InfrastructureProviderID != infrastructureProvider.ID {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
 	// Build and validate tray request from query params
@@ -271,10 +307,10 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 		apiRequest.Type = &v
 	}
 	if vals := qParams["componentId"]; len(vals) > 0 {
-		apiRequest.ComponentIDs = common.SplitCommaSeparated(vals)
+		apiRequest.ComponentIDs = vals
 	}
 	if vals := qParams["id"]; len(vals) > 0 {
-		apiRequest.IDs = common.SplitCommaSeparated(vals)
+		apiRequest.IDs = vals
 	}
 	if verr := apiRequest.Validate(); verr != nil {
 		logger.Warn().Err(verr).Msg("invalid tray request parameters")
@@ -338,11 +374,21 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 	var rlaResponse rlav1.GetComponentsResponse
 	err = we.Get(ctx, &rlaResponse)
 	if err != nil {
+		var timeoutErr *tp.TimeoutError
+		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
+			return common.TerminateWorkflowOnTimeOut(c, logger, stc, fmt.Sprintf("tray-get-all-%s", apiRequest.Hash()), err, "Tray", "GetTrays")
+		}
 		logger.Error().Err(err).Msg("failed to get result from GetTrays workflow")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get trays from RLA", nil)
 	}
 
-	apiTrays := model.NewAPITrays(&rlaResponse)
+	apiTrays := make([]*model.APITray, 0, len(rlaResponse.GetComponents()))
+	for _, comp := range rlaResponse.GetComponents() {
+		apiTray := model.NewAPITray(comp)
+		if apiTray != nil {
+			apiTrays = append(apiTrays, apiTray)
+		}
+	}
 
 	// Set pagination response header
 	total := int(rlaResponse.GetTotal())

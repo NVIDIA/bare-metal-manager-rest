@@ -25,45 +25,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNewAPITrays(t *testing.T) {
-	tests := []struct {
-		name          string
-		resp          *rlav1.GetComponentsResponse
-		wantTrayCount int
-	}{
-		{
-			name:          "nil response returns empty list",
-			resp:          nil,
-			wantTrayCount: 0,
-		},
-		{
-			name: "returns all trays",
-			resp: &rlav1.GetComponentsResponse{
-				Components: []*rlav1.Component{
-					{
-						Type: rlav1.ComponentType_COMPONENT_TYPE_COMPUTE,
-						Info: &rlav1.DeviceInfo{Id: &rlav1.UUID{Id: "tray-1"}},
-					},
-					{
-						Type: rlav1.ComponentType_COMPONENT_TYPE_NVLSWITCH,
-						Info: &rlav1.DeviceInfo{Id: &rlav1.UUID{Id: "tray-2"}},
-					},
-				},
-				Total: 2,
-			},
-			wantTrayCount: 2,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := NewAPITrays(tt.resp)
-			assert.NotNil(t, got)
-			assert.Equal(t, tt.wantTrayCount, len(got))
-		})
-	}
-}
-
 func TestProtoToAPIComponentTypeName(t *testing.T) {
 	tests := []struct {
 		name string
