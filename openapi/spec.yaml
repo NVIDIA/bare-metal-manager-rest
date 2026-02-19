@@ -17,8 +17,8 @@ openapi: 3.1.0
 info:
   title: NVIDIA Bare Metal Manager REST API
   version: 1.0.4
-  summary: NVIDIA Bare Metal Manager REST API is the centralize RESTful gateway to access NVIDIA Bare Metal Manager service
-  description: 'NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to asSites.'
+  summary: NVIDIA Bare Metal Manager REST API is the centralized RESTful gateway to access NVIDIA Bare Metal Manager service
+  description: 'NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to as Sites.'
   license:
     name: Apache-2.0
     url: 'https://www.apache.org/licenses/LICENSE-2.0'
@@ -51,7 +51,7 @@ tags:
       - `POST /org/:orgName/carbide/tenant` endpoint was deprecated and was removed on August 17th, 2023 0:00 UTC. Tenants are automatically created when retrieved by a Tenant Admin.
       - `PATCH /org/:orgName/carbide/tenant/current` endpoint was deprecated and was removed on August 17th, 2023 0:00 UTC. Tenant details are populated from Org information and cannot be updated by user.
   - name: Tenant Account
-    description: Tenant Account connects a Tenant with an Infrastructure Provider. It represent/contains any information pertaining to their relationship.
+    description: Tenant Account connects a Tenant with an Infrastructure Provider. It represents/contains any information pertaining to their relationship.
   - name: Site
     description: Site operations
   - name: Allocation
@@ -98,11 +98,11 @@ tags:
       - `displayName` attribute was deprecated and removed on October 30, 2024 0:00 UTC. Please update your usage accordingly.
   - name: Instance
     description: |-
-      Instance is a Machine provisioned with an Operating System for a Tenant and attached to one of more Subnets
+      Instance is a Machine provisioned with an Operating System for a Tenant and attached to one or more Subnets
 
       Deprecation history:
 
-      - `sshUrl` Was deprecated in favor of `serialConsoleUrl` and was removed on April 25th, 2023 0:00 UTC. Please use `serialConsoleUrl` instead.
+      - `sshUrl` was deprecated in favor of `serialConsoleUrl` and was removed on April 25th, 2023 0:00 UTC. Please use `serialConsoleUrl` instead.
       - `instanceSubnets` was deprecated in favor of `interfaces` and was removed on May 10th, 2023 0:00 UTC. Please use `interfaces` instead.
       - `sshkeygroups` was deprecated in favor of `sshKeyGroups` and was removed on September 4th, 2025 0:00 UTC. Please use `sshKeyGroups` instead.
       - `allocationId` was deprecated, and removed on September 6th, 2025 0:00 UTC.
@@ -118,13 +118,13 @@ tags:
     description: |-
       IP Block is a set of IP addresses defined by a prefix and prefix length.
 
-      It can be used by the Provider to describe the overlay network of a particular Site. Providers can also use Allocations to delegate portions of these blocks to Tenant.
+      It can be used by the Provider to describe the overlay network of a particular Site. Providers can also use Allocations to delegate portions of these blocks to Tenants.
 
       Historic deprecations:
 
       - `blockSize` was deprecated in favor of `prefixLength` and was removed on April 15th, 2023 0:00 UTC. Please use `prefixLength` instead.
   - name: DPU Extension Service
-    description: DPU Extension Service allows users to run custom services in the DPUs of their Instance
+    description: DPU Extension Service allows users to run custom services in the DPUs of their Instances
   - name: SSH Key Group
     description: SSH Key Groups allow binding several SSH Keys together so they can be applied to Sites or other entities as a unit
   - name: SSH Key
@@ -134,7 +134,7 @@ tags:
   - name: Audit
     description: Audit operations
   - name: Metadata
-    description: Metadata described various system level attributes of the API server
+    description: Metadata describes various system level attributes of the API server
   - name: Deprecations
     description: |-
       Endpoints that have deprecations will be grouped here. Following deprecations are in effect or slated to be effective in future:
@@ -155,10 +155,10 @@ tags:
       - `displayName` attribute was deprecated and removed on October 30, 2024 0:00 UTC. Please update your usage accordingly.
 
       Instance:
-      - `sshUrl` Was deprecated in favor of `serialConsoleUrl` and was removed on April 25th, 2023 0:00 UTC. Please use `serialConsoleUrl` instead.
+      - `sshUrl` was deprecated in favor of `serialConsoleUrl` and was removed on April 25th, 2023 0:00 UTC. Please use `serialConsoleUrl` instead.
       - `instanceSubnets` was deprecated in favor of `interfaces` and was removed on May 10th, 2023 0:00 UTC. Please use `interfaces` instead.
       - `sshkeygroups` was deprecated in favor of `sshKeyGroups` and was removed on September 4th, 2025 0:00 UTC. Please use `sshKeyGroups` instead.
-      - `allocationId`was deprecated, and removed on September 6th, 2025 0:00 UTC.
+      - `allocationId` was deprecated, and removed on September 6th, 2025 0:00 UTC.
 
       IP Block:
       - `blockSize` was deprecated in favor of `prefixLength` and was removed on April 15th, 2023 0:00 UTC. Please use `prefixLength` instead.
@@ -481,7 +481,7 @@ paths:
       description: |-
         Create a Tenant Account.
 
-        Org must have an Infrastructure Provider entity and its ID must Infrastructure Provider ID in request data. User must have `FORGE_PROVIDER_ADMIN` authorization role
+        Org must have an Infrastructure Provider entity and its ID must match the Infrastructure Provider ID in request data. User must have `FORGE_PROVIDER_ADMIN` authorization role
 
         Infrastructure Provider can create a Tenant Account by specifying the Tenant's UUID or Tenant's org name. This will set the status of the Tenant Account to "Invited". Then the Tenant can view this account information and are able to confirm/accept the account by updating the Tenant Account.
       requestBody:
@@ -629,7 +629,7 @@ paths:
       description: |-
         Update a Tenant Account.
 
-        Can be used to accept an invitation sent by InfraStructure provider.
+        Can be used to accept an invitation sent by Infrastructure Provider.
 
         Org must have a tenant entity whose ID matches the `tenantId` of the Tenant Account object. User must have `FORGE_TENANT_ADMIN` role. Can only update a TenantAccount that has `Invited` status.
       requestBody:
@@ -1933,7 +1933,7 @@ paths:
       description: |-
         Delete an IP block
 
-        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` role. Oly root IP Blocks can be deleted if there are no allocations associated with it.
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` role. Only root IP Blocks can be deleted if there are no allocations associated with it.
 
         Tenant IP Blocks are managed via Allocation.
       tags:
@@ -3103,7 +3103,7 @@ paths:
       description: |-
         Retrieve all Expected Machines.
 
-        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` or `CARBIDE_PROVIDER_VIEWER` role.
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` or `FORGE_PROVIDER_VIEWER` role.
 
         Alternatively, Tenant Admins with `TargetedInstanceCreation` capability can also retrieve Expected Machines if they have an account with the Site's Infrastructure Provider (siteId query parameter is required for Tenants).
       parameters:
@@ -3192,7 +3192,7 @@ paths:
       description: |-
         Retrieve a specific Expected Machine by ID.
 
-        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` or `CARBIDE_PROVIDER_VIEWER` role.
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` or `FORGE_PROVIDER_VIEWER` role.
 
         Alternatively, Tenant Admins with `TargetedInstanceCreation` capability can also retrieve Expected Machines if they have an account with the Site's Infrastructure Provider.
       parameters:
@@ -3435,7 +3435,7 @@ paths:
 
         A `siteId` query parameter is required for all requests.
 
-        For Infrastructure Providers: Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` or `CARBIDE_PROVIDER_VIEWER` role.
+        For Infrastructure Providers: Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` or `FORGE_PROVIDER_VIEWER` role.
 
         For Tenants: Org must have a Tenant with `TargetedInstanceCreation` capability enabled. User must have `FORGE_TENANT_ADMIN` role. The Tenant must have an account with the Site's Infrastructure Provider.
       parameters:
@@ -3550,7 +3550,7 @@ paths:
 
         SKUs represent unique hardware configurations discovered at sites. They are automatically derived from machine characteristics.
 
-        For Infrastructure Providers: Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` or `CARBIDE_PROVIDER_VIEWER` role.
+        For Infrastructure Providers: Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` or `FORGE_PROVIDER_VIEWER` role.
 
         For Tenants: Org must have a Tenant with `TargetedInstanceCreation` capability enabled. User must have `FORGE_TENANT_ADMIN` role. The Tenant must have an account with the SKU's Site's Infrastructure Provider.
       responses:
@@ -7769,7 +7769,7 @@ paths:
       description: |
         Update a Machine
 
-        Instance Type attribute updates, maintenance attribute updates and labels updates must be specified in separate requests. They cannot be proceessed at the same time.
+        Instance Type attribute updates, maintenance attribute updates and labels updates must be specified in separate requests. They cannot be processed at the same time.
 
         Some attributes can only be updated by Provider, while others can be updated by Provider or a Privileged Tenant.
       requestBody:
@@ -9816,7 +9816,7 @@ components:
     SubnetCountByStatus:
       title: SubnetCountByStatus
       type: object
-      description: Describes counts of VPCs in various statuses
+      description: Describes counts of Subnets in various statuses
       examples:
         - total: 4
           pending: 1
@@ -9840,7 +9840,7 @@ components:
     TenantAccount:
       title: TenantAccount
       type: object
-      description: Associates a Tenant with a Infrastructure Provider
+      description: Associates a Tenant with an Infrastructure Provider
       examples:
         - id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
           infrastructureProviderId: e94bcfda-f6cb-42e4-80ec-516811e5abbf
@@ -9944,7 +9944,7 @@ components:
       examples:
         - id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
           name: San Jose Central 4
-          description: Datecenter serving the San Jose central region
+          description: Datacenter serving the San Jose central region
           org: qygdmg8oqik8
           infrastructureProviderId: 5f2cc306-76e9-4fca-9186-950c9ef9a74e
           siteControllerVersion: '0.1'
@@ -10182,7 +10182,7 @@ components:
       description: Request data to update a Site
       examples:
         - name: San Jose Central No.4
-          description: Datecenter 4 serving central San Jose
+          description: Datacenter 4 serving central San Jose
           renewRegistrationToken: true
           serialConsoleHostname: sol.carbide.acme.com
           isSerialConsoleEnabled: true
@@ -11158,7 +11158,7 @@ components:
           type: string
           minLength: 2
           maxLength: 256
-          description: Name of the Parition to create
+          description: Name of the Partition to create
         description:
           type: string
           description: Optional description of the Partition
@@ -11298,7 +11298,7 @@ components:
     OperatingSystem:
       title: OperatingSystem
       type: object
-      description: Describe the attributes of the operating system/bootloader that can be used on instances
+      description: Describes the attributes of the operating system/bootloader that can be used on instances
       examples:
         - id: 497f6eca-6276-4993-bfeb-53cbbbba6f08
           name: ubuntu-22.04
@@ -11478,7 +11478,7 @@ components:
             - string
             - 'null'
           format: uri
-          description: Original URL from where the Operating System image can be retreived from
+          description: Original URL from where the Operating System image can be retrieved
         imageSha:
           type:
             - string
@@ -15678,7 +15678,7 @@ components:
           credentials:
             registryUrl: 'https://registry.hub.docker.com'
             username: johndoe
-            password: 1a6E1?w3Wz+
+            password: password123
       properties:
         name:
           type: string
@@ -15718,7 +15718,7 @@ components:
           credentials:
             registryUrl: 'https://registry.hub.docker.com'
             username: johndoe
-            password: 1a6E1?w3Wz+
+            password: password123
       properties:
         name:
           type: string
@@ -15739,7 +15739,7 @@ components:
       examples:
         - registryUrl: 'https://registry.hub.docker.com'
           username: johndoe
-          password: 1a6E1?w3Wz+
+          password: password123
       properties:
         registryUrl:
           type: string
@@ -16074,7 +16074,7 @@ components:
                 message: Could not find resource with specified ID
                 data: null
     ForbiddenError:
-      description: Error response when user is not authorized to call an endpoint or retrive/modify objects
+      description: Error response when user is not authorized to call an endpoint or retrieve/modify objects
       content:
         application/json:
           schema:
