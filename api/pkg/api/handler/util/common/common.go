@@ -19,6 +19,7 @@ package common
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -1497,4 +1498,18 @@ func AddToValidationErrors(errs validation.Errors, key string, err error) {
 		// Add new error
 		errs[key] = err
 	}
+}
+
+// QueryParamHash builds a deterministic hash from query params for workflow ID dedup.
+// Sorts parameters to ensure consistent hash regardless of parameter order.
+func QueryParamHash(c echo.Context) string {
+	sortedParams := make([]string, 0, len(c.QueryParams()))
+	for k, v := range c.QueryParams() {
+		slices.Sort(v)
+		for _, val := range v {
+			sortedParams = append(sortedParams, k+"="+val)
+		}
+	}
+	slices.Sort(sortedParams)
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(sortedParams, "&"))))[:12]
 }

@@ -19,7 +19,6 @@ package handler
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -46,20 +45,6 @@ import (
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
 )
-
-// queryParamHash builds a deterministic hash from query params for workflow ID dedup.
-// Sorts parameters to ensure consistent hash regardless of parameter order.
-func queryParamHash(c echo.Context) string {
-	sortedParams := make([]string, 0, len(c.QueryParams()))
-	for k, v := range c.QueryParams() {
-		slices.Sort(v)
-		for _, val := range v {
-			sortedParams = append(sortedParams, k+"="+val)
-		}
-	}
-	slices.Sort(sortedParams)
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(sortedParams, "&"))))[:12]
-}
 
 // ~~~~~ Get Rack Handler ~~~~~ //
 
@@ -372,7 +357,7 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 		OrderBy:        orderBy,
 	}
 
-	workflowID := fmt.Sprintf("rack-get-all-%s", queryParamHash(c))
+	workflowID := fmt.Sprintf("rack-get-all-%s", common.QueryParamHash(c))
 
 	// Execute workflow
 	workflowOptions := tClient.StartWorkflowOptions{
@@ -702,7 +687,7 @@ func (vrsh ValidateRacksHandler) Handle(c echo.Context) error {
 		Filters: filters,
 	}
 
-	workflowID := fmt.Sprintf("rack-validate-all-%s", queryParamHash(c))
+	workflowID := fmt.Sprintf("rack-validate-all-%s", common.QueryParamHash(c))
 
 	// Execute workflow
 	workflowOptions := tClient.StartWorkflowOptions{
