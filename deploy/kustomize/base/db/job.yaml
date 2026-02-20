@@ -28,6 +28,8 @@ spec:
       labels:
         app: db
     spec:
+      imagePullSecrets:
+        - name: imagepullsecret
       restartPolicy: OnFailure
       initContainers:
         # Wait for PostgreSQL to be ready
@@ -44,7 +46,7 @@ spec:
               echo "PostgreSQL is ready!"
       containers:
         - name: migrations
-          image: localhost:5000/carbide-rest-db:latest
+          image: carbide-rest-db:latest
           env:
             - name: PGHOST
               value: postgres

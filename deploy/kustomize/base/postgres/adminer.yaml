@@ -30,6 +30,8 @@ spec:
       labels:
         app: adminer
     spec:
+      imagePullSecrets:
+        - name: imagepullsecret
       containers:
         - name: adminer
           image: adminer:4.8.1

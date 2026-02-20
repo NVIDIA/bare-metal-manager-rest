@@ -35,9 +35,11 @@ spec:
       labels:
         app: cloud-worker
     spec:
+      imagePullSecrets:
+        - name: imagepullsecret
       containers:
         - name: cloud-worker
-          image: localhost:5000/carbide-rest-workflow:latest
+          image: carbide-rest-workflow:latest
           ports:
             - containerPort: 9360
               name: metrics
@@ -120,9 +122,11 @@ spec:
       labels:
         app: site-worker
     spec:
+      imagePullSecrets:
+        - name: imagepullsecret
       containers:
         - name: site-worker
-          image: localhost:5000/carbide-rest-workflow:latest
+          image: carbide-rest-workflow:latest
           ports:
             - containerPort: 9360
               name: metrics

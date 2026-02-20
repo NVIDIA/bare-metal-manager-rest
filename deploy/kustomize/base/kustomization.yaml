@@ -42,6 +42,7 @@ resources:
   
   # Secrets
   - secrets/secrets.yaml
+  - secrets/imagepullsecret.yaml
   
   # Database migrations (Job)
   - db/job.yaml

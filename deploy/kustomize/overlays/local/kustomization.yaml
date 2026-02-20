@@ -13,7 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Kustomize overlay for local Kind development
+# Kustomize overlay for local Kind development.
+# Base uses short image refs (e.g. carbide-rest-api:latest) and imagePullSecrets
+# (imagepullsecret) for registry access.
+# This overlay sets registry/tag for local (localhost:5000, latest) and clears
+# imagePullSecrets (no auth for local).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -22,34 +26,40 @@ namespace: carbide-rest
 resources:
   - ../../base
 
-# Image overrides for local development
+# Image overrides: map base refs to local registry and tag
 images:
-  - name: localhost:5000/carbide-rest-api
+  - name: carbide-rest-api:latest
     newName: localhost:5000/carbide-rest-api
     newTag: latest
-  - name: localhost:5000/carbide-rest-workflow
+  - name: carbide-rest-workflow:latest
     newName: localhost:5000/carbide-rest-workflow
     newTag: latest
-  - name: localhost:5000/carbide-rest-site-manager
+  - name: carbide-rest-site-manager:latest
     newName: localhost:5000/carbide-rest-site-manager
     newTag: latest
-  - name: localhost:5000/carbide-rest-site-agent
+  - name: carbide-rest-site-agent:latest
     newName: localhost:5000/carbide-rest-site-agent
     newTag: latest
-  - name: localhost:5000/carbide-rest-db
+  - name: carbide-rest-db:latest
     newName: localhost:5000/carbide-rest-db
     newTag: latest
-  - name: localhost:5000/carbide-rest-cert-manager
+  - name: carbide-rest-cert-manager:latest
     newName: localhost:5000/carbide-rest-cert-manager
     newTag: latest
+  - name: carbide-rest-mock-core:latest
+    newName: localhost:5000/carbide-rest-mock-core
+    newTag: latest
 
-# JSON patches to set imagePullPolicy: Never for all app containers
+# Patches: clear imagePullSecrets for local (no registry auth); set imagePullPolicy: Never for app images
 patches:
   # API
   - target:
       kind: Deployment
       name: carbide-rest-api
     patch: |-
+      - op: replace
+        path: /spec/template/spec/imagePullSecrets
+        value: []
       - op: add
         path: /spec/template/spec/containers/0/imagePullPolicy
         value: Never
@@ -58,6 +68,9 @@ patches:
       kind: Deployment
       name: cloud-worker
     patch: |-
+      - op: replace
+        path: /spec/template/spec/imagePullSecrets
+        value: []
       - op: add
         path: /spec/template/spec/containers/0/imagePullPolicy
         value: Never
@@ -66,6 +79,9 @@ patches:
       kind: Deployment
       name: site-worker
     patch: |-
+      - op: replace
+        path: /spec/template/spec/imagePullSecrets
+        value: []
       - op: add
         path: /spec/template/spec/containers/0/imagePullPolicy
         value: Never
@@ -74,6 +90,9 @@ patches:
       kind: Deployment
       name: carbide-rest-site-agent
     patch: |-
+      - op: replace
+        path: /spec/template/spec/imagePullSecrets
+        value: []
       - op: add
         path: /spec/template/spec/containers/0/imagePullPolicy
         value: Never
@@ -82,6 +101,9 @@ patches:
       kind: Deployment
       name: carbide-rest-cert-manager
     patch: |-
+      - op: replace
+        path: /spec/template/spec/imagePullSecrets
+        value: []
       - op: add
         path: /spec/template/spec/containers/0/imagePullPolicy
         value: Never
@@ -90,7 +112,21 @@ patches:
       kind: Deployment
       name: carbide-rest-site-manager
     patch: |-
+      - op: replace
+        path: /spec/template/spec/imagePullSecrets
+        value: []
       - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Never
+  # Mock Core (base has imagePullPolicy already, so replace not add)
+  - target:
+      kind: Deployment
+      name: carbide-rest-mock-core
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/imagePullSecrets
+        value: []
+      - op: replace
         path: /spec/template/spec/containers/0/imagePullPolicy
         value: Never
   # DB migrations Job
@@ -98,6 +134,9 @@ patches:
       kind: Job
       name: db
     patch: |-
+      - op: replace
+        path: /spec/template/spec/imagePullSecrets
+        value: []
       - op: add
         path: /spec/template/spec/containers/0/imagePullPolicy
         value: Never

@@ -30,10 +30,12 @@ spec:
       labels:
         app: carbide-rest-site-manager
     spec:
+      imagePullSecrets:
+        - name: imagepullsecret
       serviceAccountName: carbide-rest-site-manager
       containers:
         - name: site-manager
-          image: localhost:5000/carbide-rest-site-manager:latest
+          image: carbide-rest-site-manager:latest
           args:
             - --listen-port=8100
             - --creds-manager-url=https://carbide-rest-cert-manager:8000

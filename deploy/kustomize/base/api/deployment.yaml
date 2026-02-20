@@ -30,9 +30,11 @@ spec:
       labels:
         app: carbide-rest-api
     spec:
+      imagePullSecrets:
+        - name: imagepullsecret
       containers:
         - name: api
-          image: localhost:5000/carbide-rest-api:latest
+          image: carbide-rest-api:latest
           ports:
             - containerPort: 8388
               name: http
