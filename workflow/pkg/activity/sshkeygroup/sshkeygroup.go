@@ -220,34 +220,29 @@ func (mskg ManageSSHKeyGroup) SyncSSHKeyGroupViaSiteAgent(ctx context.Context, s
 
 					status = cdbm.SSHKeyGroupSiteAssociationStatusError
 					statusMessage = "failed to create SSHKeyGroup, timeout occurred executing workflow on Site"
-				} else if err.Error() != "" && strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
-					// Handle duplicate key error - call async update
-					logger.Info().Msg("SSHKeyGroup already exists on Site, attempting to update it instead of creating a new one")
+					// Clear the error so the function can continue and update the status, then return nil
+					err = nil
+				} else if err.Error() != "" && strings.Contains(err.Error(), util.ErrMsgSiteControllerDuplicateEntryFound) {
+					// Handle duplicate key error - record error and fail workflow for retry
+					// Next iteration of workflow can pick up the correct creation status
+					logger.Warn().Err(err).Msg("SSHKeyGroup already exists on Site (duplicate key constraint), recording error and failing workflow for retry")
 
-					// Set the workflow ID and KeysetIdentifier for the update request asynchronously
-					workflowOptions.ID = "site-ssh-key-group-update-" + sshKeyGroupID.String() + "-" + *skgsa.Version
-					updateSSHKeyGroupRequest := &cwssaws.UpdateTenantKeysetRequest{
-						KeysetIdentifier: keysetIdentifier,
-						KeysetContent:    keysetContent,
-						Version:          *skgsa.Version,
-					}
+					status = cdbm.SSHKeyGroupSiteAssociationStatusError
+					statusMessage = fmt.Sprintf("SSHKeyGroup already exists on Site: %s", err.Error())
 
-					// Execute the site workflow to update the SSH Key Group asynchronously (don't wait)
-					we, serr := stc.ExecuteWorkflow(ctx, workflowOptions, "UpdateSSHKeyGroupV2", updateSSHKeyGroupRequest)
+					// Record the error in status detail
+					_ = mskg.updateSSHKeyGroupSiteAssociationStatusInDB(ctx, nil, skgsa.ID, &status, &statusMessage)
 
-					statusMessage = MsgSSHKeyGroupUpdateInitiated
-					if serr != nil {
-						status = cdbm.SSHKeyGroupSiteAssociationStatusError
-						statusMessage = "failed to initiate SSH Key Group syncing for update via Site Agent"
-					} else {
-						logger.Info().Str("Workflow ID", we.GetID()).Msg("initiated asynchronous update SSHKeyGroup workflow")
-					}
+					// Return error to fail the workflow for retry
+					return fmt.Errorf("SSHKeyGroup creation failed due to duplicate key constraint, workflow will retry: %w", err)
 				} else {
 					// Other errors
 					status = cdbm.SSHKeyGroupSiteAssociationStatusError
 					statusMessage = "failed to initiate SSHKeyGroup syncing for create via Site Agent"
 				}
 			} else {
+				status = cdbm.SSHKeyGroupSiteAssociationStatusSynced
+				statusMessage = MsgSSHKeyGroupSynced
 				logger.Info().Str("Workflow ID", wid).Msg("completed synchronous create SSHKeyGroup workflow")
 			}
 		}
