@@ -267,7 +267,7 @@ kind-apply:
 	@echo "Waiting for Cert Manager..."
 	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=180s
 	@echo "Waiting for Temporal..."
-	kubectl -n temporal wait --for=condition=ready pod -l app.kubernetes.io/name=temporal --timeout=120s
+	kubectl -n temporal wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=frontend --timeout=120s
 	@echo "Waiting for Keycloak..."
 	kubectl -n carbide-rest wait --for=condition=ready pod -l app=keycloak --timeout=180s
 	@echo "Running database migrations..."
