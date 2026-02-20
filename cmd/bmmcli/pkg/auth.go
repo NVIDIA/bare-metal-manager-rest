@@ -378,18 +378,7 @@ func doInteractiveOIDCLogin(cfg *ConfigFile, cfgPath string) (string, error) {
 func doInteractiveAPIKeyLogin(cfg *ConfigFile, cfgPath string) (string, error) {
 	apiKey := cfg.Auth.APIKey
 
-	// Build the token exchange URL. NGC requires a scope parameter to embed
-	// org-level role claims in the returned token; without it the token has
-	// an empty "access":[] array and the API rejects all requests with 403.
-	exchangeURL := apiKey.AuthnURL
-	if cfg.API.Org != "" {
-		q := url.Values{}
-		q.Set("service", "ngc")
-		q.Set("scope", "group/ngc:"+cfg.API.Org+":role")
-		exchangeURL = apiKey.AuthnURL + "?" + q.Encode()
-	}
-
-	req, err := http.NewRequest("GET", exchangeURL, nil)
+	req, err := http.NewRequest("GET", apiKey.AuthnURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("building request: %w", err)
 	}
