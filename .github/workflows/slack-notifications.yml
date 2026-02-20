@@ -16,37 +16,17 @@
 name: Notify Slack on Pull Request
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened]
 
 jobs:
   notify-slack:
     runs-on: ubuntu-latest
     steps:
-      - name: Check for Secret Availability
-        id: slack-webhook-url-check
-        # perform secret check & put boolean result as an output
-        shell: bash
-        run: |
-          if [ "${{ secrets.SLACK_WEBHOOK_URL }}" != '' ]; then
-            echo "available=true" >> $GITHUB_OUTPUT;
-          else
-            echo "available=false" >> $GITHUB_OUTPUT;
-          fi
       - name: Send Slack Notification
-        if: steps.slack-webhook-url-check.outputs.available == 'true'
         uses: slackapi/slack-github-action@v2.1.1 # Use a pre-existing action
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: incoming-webhook
           payload: |
-            text: ":github: *carbide-rest* - ${{ github.event.pull_request.title }} by ${{ github.event.pull_request.user.login }} at ${{ github.event.pull_request.html_url }}"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: ":github: *carbide-rest* - ${{ github.event.pull_request.title }} by *${{ github.event.pull_request.user.login }}*"
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "${{ github.event.pull_request.html_url }}"
+            text: ":github: *carbide-rest* - ${{ github.event.pull_request.title }}\nOpened by: *${{ github.event.pull_request.user.login }}*\nURL: ${{ github.event.pull_request.html_url }}"
