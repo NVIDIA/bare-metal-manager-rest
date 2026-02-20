@@ -8142,6 +8142,7 @@ paths:
         description: Name of the Org
       - schema:
           type: string
+          format: uuid
         name: id
         in: path
         required: true
@@ -8430,6 +8431,7 @@ paths:
         description: Name of the Org
       - schema:
           type: string
+          format: uuid
         name: id
         in: path
         required: true
@@ -8490,6 +8492,7 @@ paths:
         description: Name of the Org
       - schema:
           type: string
+          format: uuid
         name: id
         in: path
         required: true
@@ -8556,8 +8559,6 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '403':
           $ref: '#/components/responses/ForbiddenError'
-        '404':
-          $ref: '#/components/responses/NotFoundError'
       tags:
         - Rack
   '/v2/org/{org}/carbide/network-security-group':

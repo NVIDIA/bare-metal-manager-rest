@@ -189,6 +189,9 @@ func (gth GetTrayHandler) Handle(c echo.Context) error {
 
 	// Convert to API model
 	apiTray := model.NewAPITray(rlaResponse.GetComponent())
+	if apiTray == nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusNotFound, "Tray not found", nil)
+	}
 
 	logger.Info().Msg("finishing API handler")
 

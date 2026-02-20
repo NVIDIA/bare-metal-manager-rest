@@ -241,6 +241,18 @@ func TestGetTrayHandler_Handle(t *testing.T) {
 			wantErr:        true,
 		},
 		{
+			name:   "failure - tray not found (nil component)",
+			reqOrg: org,
+			user:   providerUser,
+			trayID: trayID,
+			queryParams: map[string]string{
+				"siteId": site.ID.String(),
+			},
+			mockComponent:  nil,
+			expectedStatus: http.StatusNotFound,
+			wantErr:        true,
+		},
+		{
 			name:   "failure - tenant access denied (no site access)",
 			reqOrg: org,
 			user:   tenantUser,

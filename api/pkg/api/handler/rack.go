@@ -196,6 +196,9 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 	// Convert to API model
 	protoRack := rlaResponse.GetRack()
 	apiRack := model.NewAPIRack(protoRack, includeComponents)
+	if apiRack == nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusNotFound, "Rack not found", nil)
+	}
 
 	logger.Info().Msg("finishing API handler")
 

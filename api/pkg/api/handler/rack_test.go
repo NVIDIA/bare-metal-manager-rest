@@ -146,6 +146,165 @@ func testRackBuildUser(t *testing.T, dbSession *cdb.Session, starfleetID string,
 	return u
 }
 
+func TestGetRackHandler_Handle(t *testing.T) {
+	// Setup
+	e := echo.New()
+	dbSession := testRackInitDB(t)
+	defer dbSession.Close()
+
+	cfg := common.GetTestConfig()
+	tcfg, _ := cfg.GetTemporalConfig()
+	scp := sc.NewClientPool(tcfg)
+
+	org := "test-org"
+	_, site, _ := testRackSetupTestData(t, dbSession, org)
+
+	// Create provider user
+	providerUser := testRackBuildUser(t, dbSession, "provider-user-rack-get", org, []string{"FORGE_PROVIDER_ADMIN"})
+
+	// Create tenant user (no provider role)
+	tenantUser := testRackBuildUser(t, dbSession, "tenant-user-rack-get", org, []string{"FORGE_TENANT_ADMIN"})
+
+	handler := NewGetRackHandler(dbSession, nil, scp, cfg)
+
+	rackID := uuid.New().String()
+
+	mockRack := &rlav1.Rack{
+		Info: &rlav1.DeviceInfo{
+			Id:           &rlav1.UUID{Id: rackID},
+			Name:         "Rack-001",
+			Manufacturer: "NVIDIA",
+		},
+	}
+
+	tracer := oteltrace.NewNoopTracerProvider().Tracer("test")
+	ctx := context.Background()
+
+	tests := []struct {
+		name           string
+		reqOrg         string
+		user           *cdbm.User
+		rackID         string
+		queryParams    map[string]string
+		mockRack       *rlav1.Rack
+		expectedStatus int
+		wantErr        bool
+	}{
+		{
+			name:   "success - get rack by ID",
+			reqOrg: org,
+			user:   providerUser,
+			rackID: rackID,
+			queryParams: map[string]string{
+				"siteId": site.ID.String(),
+			},
+			mockRack:       mockRack,
+			expectedStatus: http.StatusOK,
+			wantErr:        false,
+		},
+		{
+			name:   "failure - missing siteId",
+			reqOrg: org,
+			user:   providerUser,
+			rackID: rackID,
+			queryParams: map[string]string{
+				// no siteId
+			},
+			expectedStatus: http.StatusBadRequest,
+			wantErr:        true,
+		},
+		{
+			name:   "failure - invalid siteId",
+			reqOrg: org,
+			user:   providerUser,
+			rackID: rackID,
+			queryParams: map[string]string{
+				"siteId": uuid.New().String(),
+			},
+			expectedStatus: http.StatusBadRequest,
+			wantErr:        true,
+		},
+		{
+			name:   "failure - rack not found (nil rack)",
+			reqOrg: org,
+			user:   providerUser,
+			rackID: rackID,
+			queryParams: map[string]string{
+				"siteId": site.ID.String(),
+			},
+			mockRack:       nil,
+			expectedStatus: http.StatusNotFound,
+			wantErr:        true,
+		},
+		{
+			name:   "failure - tenant access denied",
+			reqOrg: org,
+			user:   tenantUser,
+			rackID: rackID,
+			queryParams: map[string]string{
+				"siteId": site.ID.String(),
+			},
+			expectedStatus: http.StatusForbidden,
+			wantErr:        true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockTemporalClient := &tmocks.Client{}
+			mockWorkflowRun := &tmocks.WorkflowRun{}
+			mockWorkflowRun.On("GetID").Return("test-workflow-id")
+			if tt.mockRack != nil {
+				mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+					resp := args.Get(1).(*rlav1.GetRackInfoResponse)
+					resp.Rack = tt.mockRack
+				}).Return(nil)
+			} else {
+				mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+					resp := args.Get(1).(*rlav1.GetRackInfoResponse)
+					resp.Rack = nil
+				}).Return(nil)
+			}
+			mockTemporalClient.Mock.On("ExecuteWorkflow", mock.Anything, mock.Anything, "GetRack", mock.Anything).Return(mockWorkflowRun, nil)
+			scp.IDClientMap[site.ID.String()] = mockTemporalClient
+
+			q := url.Values{}
+			for k, v := range tt.queryParams {
+				q.Set(k, v)
+			}
+			path := fmt.Sprintf("/v2/org/%s/carbide/rack/%s?%s", tt.reqOrg, tt.rackID, q.Encode())
+
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			rec := httptest.NewRecorder()
+
+			ec := e.NewContext(req, rec)
+			ec.SetParamNames("orgName", "id")
+			ec.SetParamValues(tt.reqOrg, tt.rackID)
+			ec.Set("user", tt.user)
+
+			ctx = context.WithValue(ctx, otelecho.TracerKey, tracer)
+			ec.SetRequest(ec.Request().WithContext(ctx))
+
+			err := handler.Handle(ec)
+
+			if tt.expectedStatus != rec.Code {
+				t.Errorf("GetRackHandler.Handle() status = %v, want %v, response: %v, err: %v", rec.Code, tt.expectedStatus, rec.Body.String(), err)
+			}
+
+			require.Equal(t, tt.expectedStatus, rec.Code)
+			if tt.expectedStatus != http.StatusOK {
+				return
+			}
+
+			var apiRack model.APIRack
+			err = json.Unmarshal(rec.Body.Bytes(), &apiRack)
+			assert.NoError(t, err)
+			assert.Equal(t, rackID, apiRack.ID)
+		})
+	}
+}
+
 func TestGetAllRackHandler_Handle(t *testing.T) {
 	// Setup
 	e := echo.New()
