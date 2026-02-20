@@ -1,9 +1,9 @@
 /*
-Carbide REST API
+NVIDIA Bare Metal Manager REST API
 
-Carbide REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all Carbide Sites.
+NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to as Sites.
 
-API version: 1.0.2
+API version: 1.0.4
 Contact: carbide-dev@exchange.nvidia.com
 */
 
@@ -25,6 +25,7 @@ type InstanceTypeCreateRequest struct {
 	Name string `json:"name"`
 	Description *string `json:"description,omitempty"`
 	SiteId string `json:"siteId"`
+	Labels map[string]string `json:"labels,omitempty"`
 	ControllerMachineType *string `json:"controllerMachineType,omitempty"`
 	MachineCapabilities []InstanceTypeCapabilityCreateRequest `json:"machineCapabilities,omitempty"`
 }
@@ -130,6 +131,38 @@ func (o *InstanceTypeCreateRequest) SetSiteId(v string) {
 	o.SiteId = v
 }
 
+// GetLabels returns the Labels field value if set, zero value otherwise.
+func (o *InstanceTypeCreateRequest) GetLabels() map[string]string {
+	if o == nil || IsNil(o.Labels) {
+		var ret map[string]string
+		return ret
+	}
+	return o.Labels
+}
+
+// GetLabelsOk returns a tuple with the Labels field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *InstanceTypeCreateRequest) GetLabelsOk() (map[string]string, bool) {
+	if o == nil || IsNil(o.Labels) {
+		return map[string]string{}, false
+	}
+	return o.Labels, true
+}
+
+// HasLabels returns a boolean if a field has been set.
+func (o *InstanceTypeCreateRequest) HasLabels() bool {
+	if o != nil && !IsNil(o.Labels) {
+		return true
+	}
+
+	return false
+}
+
+// SetLabels gets a reference to the given map[string]string and assigns it to the Labels field.
+func (o *InstanceTypeCreateRequest) SetLabels(v map[string]string) {
+	o.Labels = v
+}
+
 // GetControllerMachineType returns the ControllerMachineType field value if set, zero value otherwise.
 func (o *InstanceTypeCreateRequest) GetControllerMachineType() string {
 	if o == nil || IsNil(o.ControllerMachineType) {
@@ -209,6 +242,9 @@ func (o InstanceTypeCreateRequest) ToMap() (map[string]interface{}, error) {
 		toSerialize["description"] = o.Description
 	}
 	toSerialize["siteId"] = o.SiteId
+	if !IsNil(o.Labels) {
+		toSerialize["labels"] = o.Labels
+	}
 	if !IsNil(o.ControllerMachineType) {
 		toSerialize["controllerMachineType"] = o.ControllerMachineType
 	}

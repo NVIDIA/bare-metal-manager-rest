@@ -1,9 +1,9 @@
 /*
-Carbide REST API
+NVIDIA Bare Metal Manager REST API
 
-Carbide REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all Carbide Sites.
+NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to as Sites.
 
-API version: 1.0.2
+API version: 1.0.4
 Contact: carbide-dev@exchange.nvidia.com
 */
 
@@ -21,7 +21,7 @@ var _ MappedNullable = &Tenant{}
 
 // Tenant Tenant is the consumer of resources that Infrastructure Providers serve
 type Tenant struct {
-	// Carbide issued ID of the Tenant
+	// Unique ID of the Tenant
 	Id *string `json:"id,omitempty"`
 	// Name/external ID of Tenant's organization
 	Org *string `json:"org,omitempty"`
