@@ -1818,13 +1818,28 @@ func cmdAuditList(s *Session, args []string) error {
 }
 
 func cmdMachineCapabilityList(s *Session, args []string) error {
-	LogScopedCmd(s, "machine-capability", "list")
-	req := s.Client.MachineAPI.GetAllMachineCapabilities(s.Ctx, s.Org)
-	if strings.TrimSpace(s.Scope.SiteID) != "" {
-		req = req.SiteId(s.Scope.SiteID)
+	siteID := strings.TrimSpace(s.Scope.SiteID)
+	siteName := s.Scope.SiteName
+
+	// siteId is required by the API — prompt if not already in scope.
+	if siteID == "" {
+		site, err := s.Resolver.Resolve(s.Ctx, "site", "Site")
+		if err != nil {
+			return err
+		}
+		siteID = site.ID
+		siteName = site.Name
 	}
+
+	LogScopedCmd(s, "machine-capability", "list", "--site-id", siteID)
+	_ = siteName
+
+	req := s.Client.MachineAPI.GetAllMachineCapabilities(s.Ctx, s.Org).SiteId(siteID)
 	caps, _, err := req.Execute()
 	if err != nil {
+		if strings.Contains(err.Error(), "403") || strings.Contains(err.Error(), "Forbidden") {
+			return fmt.Errorf("machine-capability list requires Infrastructure Provider access (FORGE_PROVIDER_ADMIN) — your org may not have that role")
+		}
 		return fmt.Errorf("listing machine capabilities: %w", err)
 	}
 	return printDetailJSON(os.Stdout, caps)
