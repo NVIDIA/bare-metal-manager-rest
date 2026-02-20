@@ -78,12 +78,16 @@ Below is a **prescriptive, BYO‑Kubernetes bring‑up guide** that is **not sit
 * **Loki v2.8.4**  
 * **Node exporter v1.6.1**
 
-**Carbide components (what this guide installs)**
+**Carbide components (what this repo deploys)**
 
-* **cloud‑api**: nvcr.io/nvidian/nvforge-devel/cloud-api:v0.2.72 (two replicas)  
-* **cloud‑workflow**: nvcr.io/nvidian/nvforge-devel/cloud-workflow:v0.2.30 (cloud‑worker, site‑worker)  
-* **cloud‑cert‑manager (credsmgr)**: nvcr.io/nvidian/nvforge-devel/cloud-cert-manager:v0.1.16  
-* **elektra-site-agent**: nvcr.io/nvidian/nvforge-devel/forge-elektra:v2025.06.20-rc1-0
+All run in namespace **carbide-rest**. The base uses short image refs (e.g. `carbide-rest-api:latest`); overlays can override registry/tag (e.g. to NVCR).
+
+* **carbide-rest-api**: Deployment `carbide-rest-api`, image `carbide-rest-api:latest` (overridable via overlay)  
+* **carbide-rest-workflow**: Deployments `cloud-worker` and `site-worker`, image `carbide-rest-workflow:latest`  
+* **carbide-rest-cert-manager** (credsmgr): Deployment `carbide-rest-cert-manager`, image `carbide-rest-cert-manager:latest`  
+* **carbide-rest-site-manager**: Deployment `carbide-rest-site-manager`, image `carbide-rest-site-manager:latest`  
+* **carbide-rest-site-agent**: Deployment `carbide-rest-site-agent`, image `carbide-rest-site-agent:latest`  
+* **carbide-rest-mock-core**: Deployment `carbide-rest-mock-core`, image `carbide-rest-mock-core:latest`
 
 
 ## **1\) Order of operations (high level)**
@@ -151,7 +155,7 @@ This repo uses a single namespace **carbide-rest** and [Kustomize](https://kusto
 
 * Controller/Webhook/CAInjector **v1.11.1**  
 * Approver‑policy **v0.6.3**  
-* ClusterIssuers present: self-issuer, site-issuer, carbide-ca-issuer, carbide-ca-issuer
+* ClusterIssuers present: self-issuer, site-issuer, carbide-ca-issuer
 
 **If you already have cert‑manager**
 
@@ -193,13 +197,18 @@ See **7.0** (CA secret) and **7.1** (cloud-cert-manager) for how to provision th
 * Enable **TLS** (recommended) or allow secure network policy between DB and the NVCarbide namespaces.  
 * Create extensions (the apps expect these):
 
-| CREATE EXTENSION IF NOT EXISTS btree\_gin;CREATE EXTENSION IF NOT EXISTS pg\_trgm; |
-| :---- |
+```sql
+CREATE EXTENSION IF NOT EXISTS btree_gin;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+```
 
 This can be done with a call similar to the following:
 
-| psql "postgres://\<POSTGRES\_USER\>:\<POSTGRES\_PASSWORD\>@\<POSTGRES\_HOST\>:\<POSTGRES\_PORT\>/\<POSTGRES\_DB\>?sslmode=\<POSTGRES\_SSLMODE\>" \\     \-c 'CREATE EXTENSION IF NOT EXISTS btree\_gin;' \\     \-c 'CREATE EXTENSION IF NOT EXISTS pg\_trgm;' |
-| :---- |
+```bash
+psql "postgres://<POSTGRES_USER>:<POSTGRES_PASSWORD>@<POSTGRES_HOST>:<POSTGRES_PORT>/<POSTGRES_DB>?sslmode=<POSTGRES_SSLMODE>" \
+  -c 'CREATE EXTENSION IF NOT EXISTS btree_gin;' \
+  -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm;'
+```
 
 * Make the DSN available to workloads via ESO targets (per‑namespace credentials):  
   * Examples: forge.forge-pg-cluster.credentials, elektra-site-agent.elektra.forge-pg-cluster.credentials (names are examples—use your own).
@@ -229,8 +238,12 @@ This can be done with a call similar to the following:
 * Ensure the **frontend gRPC endpoint** is reachable from NVCarbide workloads and present the proper **mTLS**/CA if you require TLS.  
 * Register namespaces:
 
-| tctl \--ns cloud namespace registertctl \--ns site  namespace registertctl \--ns \<SITE\_UUID\> namespace register (once you know the site UUID) |
-| :---- |
+```bash
+tctl --ns cloud namespace register
+tctl --ns site  namespace register
+tctl --ns <SITE_UUID> namespace register
+```
+(once you know the site UUID)
 
 **If you deploy our reference**
 
@@ -254,14 +267,16 @@ Before deploying **carbide-rest-cert-manager** and using the **carbide-ca-issuer
 
 The cert-manager deployment in this repo expects these keys under the volume mount `/etc/pki/ca`. You can create the CA with your own PKI tooling. Example:
 
-| openssl genrsa -out ca.key 4096
-openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -out ca.crt -subj "/CN=Carbide CA/O=NVIDIA" |
-| :---- |
+```bash
+openssl genrsa -out ca.key 4096
+openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -out ca.crt -subj "/CN=Carbide CA/O=NVIDIA"
+```
 
 Create the secret in the deployment namespace (in this repo: **carbide-rest**). Use keys **tls.crt** and **tls.key**:
 
-| kubectl \-n carbide-rest create secret generic ca-signing-secret \--from-file=tls.crt=./ca.crt \--from-file=tls.key=./ca.key |
-| :---- |
+```bash
+kubectl -n carbide-rest create secret generic ca-signing-secret --from-file=tls.crt=./ca.crt --from-file=tls.key=./ca.key
+```
 
 Once **ca-signing-secret** exists, **carbide-rest-cert-manager** and **carbide-ca-issuer** can issue certificates.
 
@@ -294,8 +309,14 @@ This section is **internal only**: CNs/SANs are hard‑coded to \*.temporal.nvid
 
 From the internal repo location you already referenced for SAs, there is a Kustomize base with:
 
-| client-cloud-api.yaml         \# client cert for cloud-apiclient-cloud-workflow.yaml    \# client cert for cloud-workflowserver-cloud.yaml             \# server cert for "cloud" Temporal endpointserver-interservice.yaml      \# server cert for Temporal inter-service trafficserver-site.yaml              \# server cert for "site" Temporal endpointkustomization.yaml            \# references all of the above |
-| :---- |
+```
+client-cloud-api.yaml         # client cert for cloud-api
+client-cloud-workflow.yaml    # client cert for cloud-workflow
+server-cloud.yaml             # server cert for "cloud" Temporal endpoint
+server-interservice.yaml      # server cert for Temporal inter-service traffic
+server-site.yaml              # server cert for "site" Temporal endpoint
+kustomization.yaml            # references all of the above
+```
 
 kustomization.yaml simply lists these five Certificate resources as resources
 
@@ -377,8 +398,11 @@ This will create:
 
 You can verify issuance with:
 
-| kubectl \-n cloud-api        get certificate,secret temporal-client-cloud-certskubectl \-n cloud-workflow   get certificate,secret temporal-client-cloud-certskubectl \-n temporal         get certificate,secret server-\*-certs |
-| :---- |
+```bash
+kubectl -n cloud-api        get certificate,secret temporal-client-cloud-certs
+kubectl -n cloud-workflow   get certificate,secret temporal-client-cloud-certs
+kubectl -n temporal         get certificate,secret server-*-certs
+```
 
 ## **7.3 Install Temporal (reference only)**
 
@@ -419,13 +443,24 @@ We used the internal temporal-helm-charts/temporal chart with a custom values.ya
 
 We installed it with a simple Helm command from the chart directory, e.g.:
 
-| helm dependency update ./ helm upgrade \--install temporal . \\  \--namespace temporal \\  \-f ./values.yaml |
-| :---- |
+```bash
+helm dependency update ./
+helm upgrade --install temporal . \
+  --namespace temporal \
+  -f ./values.yaml
+```
 
-After a successful install in our reference cluster, kubectl \-n temporal get pods showed:
+After a successful install in our reference cluster, `kubectl -n temporal get pods` showed:
 
-| elasticsearch-master-0temporal-admintools-...temporal-frontend-...temporal-history-...temporal-matching-...temporal-web-...temporal-worker-... |
-| :---- |
+```
+elasticsearch-master-0
+temporal-admintools-...
+temporal-frontend-...
+temporal-history-...
+temporal-matching-...
+temporal-web-...
+temporal-worker-...
+```
 
 All in Running state.
 
@@ -460,13 +495,27 @@ What the script does at a high level:
 
 Example invocation and (trimmed) output:
 
-| ./register-temporal-namespaces.sh⏳  Waiting for Temporal admintools pod to be Ready...✅  admintools pod temporal-admintools-... is Ready⏳  Waiting for at least one Temporal worker pod to be Ready...✅  worker pod temporal-worker-... is ReadyCreating Temporal namespace 'cloud' (attempt 1/10)...✓  Namespace 'cloud' created.Creating Temporal namespace 'site' (attempt 1/10)...✓  Namespace 'site' created.🎉 Temporal namespaces 'cloud' and 'site' ensured. |
-| :---- |
+```bash
+./register-temporal-namespaces.sh
+```
+```
+⏳  Waiting for Temporal admintools pod to be Ready...
+✅  admintools pod temporal-admintools-... is Ready
+⏳  Waiting for at least one Temporal worker pod to be Ready...
+✅  worker pod temporal-worker-... is Ready
+Creating Temporal namespace 'cloud' (attempt 1/10)...
+✓  Namespace 'cloud' created.
+Creating Temporal namespace 'site' (attempt 1/10)...
+✓  Namespace 'site' created.
+🎉 Temporal namespaces 'cloud' and 'site' ensured.
+```
 
 For customers, the equivalent manual commands (run wherever tctl can reach their Temporal frontend) are:
 
-| tctl \--ns cloud namespace registertctl \--ns site  namespace register |
-| :---- |
+```bash
+tctl --ns cloud namespace register
+tctl --ns site  namespace register
+```
 
 ## 
 
@@ -534,12 +583,25 @@ When you hand this to a customer, they need to **review and customize** the foll
 
 First if the following extensions are not setup:
 
-| \-c 'CREATE EXTENSION IF NOT EXISTS btree\_gin;' \\\-c 'CREATE EXTENSION IF NOT EXISTS pg\_trgm;' |
-| :---- |
+```bash
+-c 'CREATE EXTENSION IF NOT EXISTS btree_gin;' \
+-c 'CREATE EXTENSION IF NOT EXISTS pg_trgm;'
+```
 
 Run [create-postgres-extensions.sh](http://create-postgres-extensions.sh) while pointing to the cluster:
 
-| \~/go/src/cloud-db/deploy🌴git:(sa-enablement-distroless) ⌚ 21:40:53 » ./create-postgres-extensions.sh📦 Using database name: forge⏳  Waiting for StatefulSet postgres/forge-pg-cluster replicas to be Ready...✅  Postgres StatefulSet is Ready (3/3)🔑  Running extension SQL inside pod forge-pg-cluster-0Defaulted container "postgres" out of: postgres, postgres-exporterCREATE EXTENSIONCREATE EXTENSION✅  Postgres extensions ensured. |
+| \~/go/src/cloud-db/deploy🌴git:(sa-enablement-distroless) ⌚ 21:40:53 » ./create-postgres-extensions.sh
+
+📦 Using database name: forge
+
+⏳  Waiting for StatefulSet postgres/forge-pg-cluster replicas to be Ready...
+
+✅  Postgres StatefulSet is Ready (3/3)
+🔑  Running extension SQL inside pod forge-pg-cluster-0
+Defaulted container "postgres" out of: postgres, postgres-exporter
+CREATE EXTENSION
+CREATE EXTENSION
+✅  Postgres extensions ensured. |
 | :---- |
 
 Once the customer-specific fields are updated in the cloud-api Kustomize base (image, registry auth, config, DB secret name, service type), the architect applies it with:
@@ -609,7 +671,15 @@ This NVCR image is **only** what we ran internally. Customers **must build their
 
 In the cloud-workflow repo’s sa-enablement branch, we expect:
 
-| deploy/kustomize/base/cloud-workflow/  secrets/    temporal-client-cloud-certs.yaml  \# placeholder TLS secret, empty values  configmap.yaml                      \# cloud-workflow-config (config.yaml)  deployment.yaml                     \# cloud-worker \+ site-worker  service.yaml                        \# Services for each worker deployment  imagepullsecret.yaml  namespace.yaml  kustomization.yaml |
+| deploy/kustomize/base/cloud-workflow/
+  secrets/
+    temporal-client-cloud-certs.yaml  \# placeholder TLS secret, empty values
+  configmap.yaml                      \# cloud-workflow-config (config.yaml)
+  deployment.yaml                     \# cloud-worker \+ site-worker
+  service.yaml                        \# Services for each worker deployment
+  imagepullsecret.yaml
+  namespace.yaml
+  kustomization.yaml |
 | :---- |
 
 #### 7.5.4 Config (what SAs must change)
@@ -659,14 +729,20 @@ For customer deployments:
 
 1. **Build from source** (in the cloud-workflow repo):
 
-| docker build \-t \<CUSTOM\_REGISTRY\>/\<PROJECT\>/cloud-workflow:\<TAG\> .docker push \<CUSTOM\_REGISTRY\>/\<PROJECT\>/cloud-workflow:\<TAG\> |
-| :---- |
+```bash
+docker build -t <CUSTOM_REGISTRY>/<PROJECT>/cloud-workflow:<TAG> .
+docker push <CUSTOM_REGISTRY>/<PROJECT>/cloud-workflow:<TAG>
+```
 
 2. **Update the image reference** in the manifests to use **their registry URL**, not NVCR:  
    * Either via **Kustomize images** in deploy/kustomize/base/cloud-workflow/kustomization.yaml:
 
-| images:  \- name: cloud-workflow          \# logical name in deployment.yaml    newName: \<CUSTOM\_REGISTRY\>/\<PROJECT\>/cloud-workflow    newTag: \<TAG\> |
-| :---- |
+```yaml
+images:
+  - name: cloud-workflow
+    newName: <CUSTOM_REGISTRY>/<PROJECT>/cloud-workflow
+    newTag: <TAG>
+```
 
    * Or by editing deployment.yaml directly if you are not using the images: transform.  
 3. Ensure imagePullSecrets points at the customer’s registry secret when the registry is private.
@@ -740,7 +816,16 @@ cloud-api is the **front-end API** for cloud-side operations. It exposes HTTP en
 
 Under the cloud-api repo’s sa-enablement [branch](https://gitlab-master.nvidia.com/nvmetal/cloud-api/-/merge_requests/1181):
 
-| deploy/kustomize/base/  secrets/    ssa-client-secret.yaml              \# placeholder    temporal-client-cloud-certs.yaml    \# placeholder  configmap.yaml                        \# cloud-api-config (config.yaml)  Deployment.yaml   Imagepullsecret.yaml                  \# replace the secret value  service.yaml  namespace.yaml  kustomization.yaml |
+| deploy/kustomize/base/
+  secrets/
+    ssa-client-secret.yaml              \# placeholder
+    temporal-client-cloud-certs.yaml    \# placeholder
+  configmap.yaml                        \# cloud-api-config (config.yaml)
+  Deployment.yaml   Imagepullsecret.yaml                  \# replace the secret value
+  service.yaml
+  namespace.yaml
+  kustomization.yaml
+ |
 | :---- |
 
 ### **Config & integration details**
@@ -797,7 +882,8 @@ This is the **main file SAs need to customize** for each customer.
 * Decide if they want imagePullSecrets:  
   * For private registries, ensure:
 
-| imagePullSecrets:  \- name: \<CUSTOM\_IMAGEPULLSECRET\> |
+| imagePullSecrets:
+  \- name: \<CUSTOM\_IMAGEPULLSECRET\> |
 | :---- |
 
 #### 3\. Database credentials Secret
@@ -958,7 +1044,10 @@ In the cloud-site-manager repo (sa‑enablement branch), the base Kustomize tree
 
 kustomization.yaml sets the **reference** image to:
 
-| images:  \- name: sitemgr    newName: nvcr.io/nvidian/nvforge-devel/cloud-site-manager    newTag: v0.1.16 |
+| images:
+  \- name: sitemgr
+    newName: nvcr.io/nvidian/nvforge-devel/cloud-site-manager
+    newTag: v0.1.16 |
 | :---- |
 
 ### 
@@ -971,12 +1060,17 @@ Customers must build cloud-site-manager from source and push to their own regist
 
 Example:
 
-| \# Build and pushdocker build \-t \<REGISTRY\>/\<PROJECT\>/cloud-site-manager:\<TAG\> .docker push \<REGISTRY\>/\<PROJECT\>/cloud-site-manager:\<TAG\> |
+| \# Build and push
+docker build \-t \<REGISTRY\>/\<PROJECT\>/cloud-site-manager:\<TAG\> .
+docker push \<REGISTRY\>/\<PROJECT\>/cloud-site-manager:\<TAG\> |
 | :---- |
 
 Then in the Kustomize base:
 
-| images:  \- name: sitemgr    newName: \<REGISTRY\>/\<PROJECT\>/cloud-site-manager    newTag: \<TAG\> |
+| images:
+  \- name: sitemgr
+    newName: \<REGISTRY\>/\<PROJECT\>/cloud-site-manager
+    newTag: \<TAG\> |
 | :---- |
 
 If their registry is private, ensure an appropriate imagePullSecrets entry (and corresponding Secret) is present in the Deployment; otherwise it can be removed.
@@ -1067,10 +1161,14 @@ We need to add proper policies to the cluster using terraform (e.g. for PKI or n
 
 * Since we are still using internal NVIDIA images we need NVCR auth token to pull these images. Export in an env variable  
   export NVCR\_AUTH\_TOKEN=XXX   
-* Then create the secret (in this repo, use namespace **carbide-rest** to match the base):
+* Create the secret in the **same namespace as the workloads** that reference it. This repo deploys all workloads into **carbide-rest** and every pod template uses **imagePullSecrets: - name: imagepullsecret**, so the secret must be created in **carbide-rest**. (Using `-n default` would only be correct if your workloads ran in the default namespace, which this repo does not.)
 
-| kubectl create secret generic imagepullsecret \\      \--type=kubernetes.io/dockerconfigjson \\      \-n carbide-rest \\      \--from-literal=.dockerconfigjson="{\\"auths\\":{\\"nvcr.io\\":{\\"auth\\":\\"$NVCR\_AUTH\_TOKEN\\"}}}" |
-| :---- |
+```bash
+kubectl create secret generic imagepullsecret \
+  --type=kubernetes.io/dockerconfigjson \
+  -n carbide-rest \
+  --from-literal=.dockerconfigjson="{\"auths\":{\"nvcr.io\":{\"auth\":\"$NVCR_AUTH_TOKEN\"}}}"
+```
 
 
 * 
@@ -1279,14 +1377,18 @@ What it does:
 
 Typical output:
 
-| 🔖  Site name : deploy🔑  SITE\_UUID : 12bd0e80-3382-40d6-82d0-0b20dc14be11📌  First-state log: SITE\_UUID=12bd0e80-3382-40d6-82d0-0b20dc14be11✅  Generated .../deploy/site.sql |
+| 🔖  Site name : deploy
+🔑  SITE\_UUID : 12bd0e80-3382-40d6-82d0-0b20dc14be11
+📌  First-state log: SITE\_UUID=12bd0e80-3382-40d6-82d0-0b20dc14be11
+✅  Generated .../deploy/site.sql |
 | :---- |
 
 #### 2\) create-site-in-db.sh – insert site rows \+ Temporal namespace
 
 Then:
 
-| ./create-site-in-db.sh\# or ./create-site-in-db.sh /path/to/site.sql |
+| ./create-site-in-db.sh
+\# or ./create-site-in-db.sh /path/to/site.sql |
 | :---- |
 
 What it does:
@@ -1300,14 +1402,23 @@ What it does:
 
 Typical output:
 
-| Using SITE\_UUID=12bd0e80-3382-40d6-82d0-0b20dc14be11⏳  Checking if site rows already exist...Inserting site data into Postgres...INSERT 0 1INSERT 0 1⏳  Ensuring Temporal namespace 12bd0e80-3382-40d6-82d0-0b20dc14be11 exists...Namespace 12bd0e80-3382-40d6-82d0-0b20dc14be11 successfully registered.✓  Temporal namespace 12bd0e80-3382-40d6-82d0-0b20dc14be11 registered.🎉  Site DB rows & Temporal namespace ensured for SITE\_UUID=12bd0e80-3382-40d6-82d0-0b20dc14be11. |
+| Using SITE\_UUID=12bd0e80-3382-40d6-82d0-0b20dc14be11
+⏳  Checking if site rows already exist...
+Inserting site data into Postgres...
+INSERT 0 1
+INSERT 0 1
+⏳  Ensuring Temporal namespace 12bd0e80-3382-40d6-82d0-0b20dc14be11 exists...
+Namespace 12bd0e80-3382-40d6-82d0-0b20dc14be11 successfully registered.
+✓  Temporal namespace 12bd0e80-3382-40d6-82d0-0b20dc14be11 registered.
+🎉  Site DB rows & Temporal namespace ensured for SITE\_UUID=12bd0e80-3382-40d6-82d0-0b20dc14be11. |
 | :---- |
 
 #### 3\) setup-site-bootstrap.sh – create site CR \+ secrets
 
 Finally:
 
-| ./setup-site-bootstrap.sh\# Optional: SITE\_UUID=\<existing\> ./setup-site-bootstrap.sh |
+| ./setup-site-bootstrap.sh
+\# Optional: SITE\_UUID=\<existing\> ./setup-site-bootstrap.sh |
 | :---- |
 
 What it does:
@@ -1331,7 +1442,21 @@ What it does:
 
 Typical output:
 
-| Using SITE\_UUID=12bd0e80-3382-40d6-82d0-0b20dc14be11Ensuring nettools-pod exists...nettools-pod is Running.Creating site via site-manager...sites.forge.nvidia.io "site-12bd0e80-3382-40d6-82d0-0b20dc14be11" already existsFetching CA certificate from credsmgr...Reading OTP from Site CR...OTP=4waJOq-GEETjPTS134HCCw0DIiU=Ensuring namespace elektra-site-agent exists...namespace/elektra-site-agent createdCreating / updating bootstrap-info secret in elektra-site-agent...secret/bootstrap-info createdCreating / updating temporal-cert secret in elektra-site-agent...secret/temporal-cert created🎉  Site-agent bootstrap secrets created. No restart performed. |
+| Using SITE\_UUID=12bd0e80-3382-40d6-82d0-0b20dc14be11
+Ensuring nettools-pod exists...
+nettools-pod is Running.
+Creating site via site-manager...
+sites.forge.nvidia.io "site-12bd0e80-3382-40d6-82d0-0b20dc14be11" already exists
+Fetching CA certificate from credsmgr...
+Reading OTP from Site CR...
+OTP=4waJOq-GEETjPTS134HCCw0DIiU=
+Ensuring namespace elektra-site-agent exists...
+namespace/elektra-site-agent created
+Creating / updating bootstrap-info secret in elektra-site-agent...
+secret/bootstrap-info created
+Creating / updating temporal-cert secret in elektra-site-agent...
+secret/temporal-cert created
+🎉  Site-agent bootstrap secrets created. No restart performed. |
 | :---- |
 
 At this point:
@@ -1349,12 +1474,27 @@ At this point:
 
 The overlay lives under elektra-site-agent/deploy/overlay/ and imports the base:
 
-| resources:  \- ../baseimages:  \- name: nvcr.io/nvidian/nvforge-devel/forge-elektra    newTag: v2025.10.10-rc1-0configMapGenerator:  \- name: elektra-config-map    behavior: merge    env: config.properties |
+| resources:
+  \- ../base
+images:
+  \- name: nvcr.io/nvidian/nvforge-devel/forge-elektra
+    newTag: v2025.10.10-rc1-0
+configMapGenerator:
+  \- name: elektra-config-map
+    behavior: merge
+    env: config.properties |
 | :---- |
 
 The **only fields you must always adjust per site** are in overlay/config.properties:
 
-| cluster\_id=12bd0e80-3382-40d6-82d0-0b20dc14be11temporal\_host=temporal-frontend-headless.temporal.svc.cluster.localtemporal\_port=7233temporal\_publish\_namespace=sitetemporal\_publish\_queue=sitetemporal\_subscribe\_namespace=12bd0e80-3382-40d6-82d0-0b20dc14be11temporal\_subscribe\_queue=sitecarbide\_grpc=2 |
+| cluster\_id=12bd0e80-3382-40d6-82d0-0b20dc14be11
+temporal\_host=temporal-frontend-headless.temporal.svc.cluster.local
+temporal\_port=7233
+temporal\_publish\_namespace=site
+temporal\_publish\_queue=site
+temporal\_subscribe\_namespace=12bd0e80-3382-40d6-82d0-0b20dc14be11
+temporal\_subscribe\_queue=site
+carbide\_grpc=2 |
 | :---- |
 
 **SA actions:**
@@ -1386,7 +1526,19 @@ deploy via:
 
 Expected creation:
 
-| namespace/elektra-site-agent configuredserviceaccount/site-agent createdrole.rbac.authorization.k8s.io/site-agent createdclusterrole.rbac.authorization.k8s.io/cert-manager-policy:elektra-site-agent createdrolebinding.rbac.authorization.k8s.io/site-agent createdclusterrolebinding.rbac.authorization.k8s.io/cert-manager-policy:elektra-site-agent createdconfigmap/elektra-config-map createdconfigmap/elektra-database-config createdservice/elektra createdservice/elektra-headless createdstatefulset.apps/elektra-site-agent createdcertificate.cert-manager.io/grpc-client-cert createdcertificaterequestpolicy.policy.cert-manager.io/site-agent-approver-policy created |
+| namespace/elektra-site-agent configured
+serviceaccount/site-agent created
+role.rbac.authorization.k8s.io/site-agent created
+clusterrole.rbac.authorization.k8s.io/cert-manager-policy:elektra-site-agent created
+rolebinding.rbac.authorization.k8s.io/site-agent created
+clusterrolebinding.rbac.authorization.k8s.io/cert-manager-policy:elektra-site-agent created
+configmap/elektra-config-map created
+configmap/elektra-database-config created
+service/elektra created
+service/elektra-headless created
+statefulset.apps/elektra-site-agent created
+certificate.cert-manager.io/grpc-client-cert created
+certificaterequestpolicy.policy.cert-manager.io/site-agent-approver-policy created |
 | :---- |
 
 Verify pods:
@@ -1396,7 +1548,9 @@ Verify pods:
 
 You should eventually see something like:
 
-| elektra-site-agent-0   1/1   Running   ...elektra-site-agent-1   1/1   Running   ...elektra-site-agent-2   1/1   Running   ... |
+| elektra-site-agent-0   1/1   Running   ...
+elektra-site-agent-1   1/1   Running   ...
+elektra-site-agent-2   1/1   Running   ... |
 | :---- |
 
 At this point, the site agent is fully wired:
@@ -1488,7 +1642,22 @@ You need to configure a rule to automatically approve all machines. Failing to d
 
 First prepare expected machine JSON file as follows:
 
-| {  "expected\_machines": \[    {      "bmc\_mac\_address": "C4:5A:B1:C8:38:0D",      "bmc\_username": "root",      "bmc\_password": "default-password1",      "chassis\_serial\_number": "SERIAL-1"    },    {      "bmc\_mac\_address": "C4:5A:FF:FF:FF:FF",      "bmc\_username": "root",      "bmc\_password": "default-password2",      "chassis\_serial\_number": "SERIAL-2"    }  \]} |
+| {
+  "expected\_machines": \[
+    {
+      "bmc\_mac\_address": "C4:5A:B1:C8:38:0D",
+      "bmc\_username": "root",
+      "bmc\_password": "default-password1",
+      "chassis\_serial\_number": "SERIAL-1"
+    },
+    {
+      "bmc\_mac\_address": "C4:5A:FF:FF:FF:FF",
+      "bmc\_username": "root",
+      "bmc\_password": "default-password2",
+      "chassis\_serial\_number": "SERIAL-2"
+    }
+  \]
+} |
 | :---- |
 
 Only servers listed in this table will be ingested. So you have to include all servers in this file. When the file is ready upload it to the site by this command:

@@ -13,8 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Overlay for db (migrations and postgres) deployment customization.
-# Customize images or add patches for db-migrations Job and postgres here.
+# Overlay for db (migrations) and postgres deployment customization.
+# Customize images or add patches for the db Job (migrations) and postgres here.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -23,15 +23,15 @@ namespace: carbide-rest
 resources:
   - ../../base
 
-# Example: override db-migrations image
+# Example: override db (migrations) image
 # images:
-#   - name: carbide-rest-db
+#   - name: carbide-rest-db:latest
 #     newName: your-registry/carbide-rest-db
 #     newTag: v1.0.0
 
 # Add patches under patches/ or list them here, e.g.:
 # patches:
-#   - path: patches/db-migrations.yaml
+#   - path: patches/db.yaml
 #     target:
 #       kind: Job
-#       name: db-migrations
+#       name: db
