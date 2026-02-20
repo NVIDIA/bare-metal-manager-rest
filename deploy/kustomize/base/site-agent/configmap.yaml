@@ -38,7 +38,7 @@ data:
   ENABLE_DEBUG: "true"
   ENABLE_TLS: "true"
   POD_NAME: "carbide-rest-site-agent-0"
-  POD_NAMESPACE: "carbide"
+  POD_NAMESPACE: "carbide-rest"
   METRICS_PORT: "2112"
   DB_ADDR: "postgres"
   DB_USER: "forge"

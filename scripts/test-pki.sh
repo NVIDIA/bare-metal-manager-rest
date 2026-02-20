@@ -44,7 +44,7 @@
 
 set -e
 
-NAMESPACE="carbide"
+NAMESPACE="carbide-rest"
 PASSED=0
 FAILED=0
 STRICT_MODE=${STRICT_MODE:-true}

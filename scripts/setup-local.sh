@@ -16,7 +16,7 @@
 
 set -e
 
-NAMESPACE="${NAMESPACE:-carbide}"
+NAMESPACE="${NAMESPACE:-carbide-rest}"
 API_URL="${API_URL:-http://localhost:8388}"
 KEYCLOAK_URL="${KEYCLOAK_URL:-http://localhost:8080}"
 ORG="${ORG:-test-org}"
@@ -70,7 +70,7 @@ EOFCNF
         -config "$CA_DIR/ca.cnf" \
         -extensions v3_ca
     
-    # Create CA secret in carbide namespace for credsmgr
+    # Create CA secret in carbide-rest namespace for credsmgr
     kubectl create secret tls ca-signing-secret \
         --cert="$CA_DIR/ca.crt" \
         --key="$CA_DIR/ca.key" \

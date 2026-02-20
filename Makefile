@@ -263,41 +263,41 @@ kind-load:
 kind-apply:
 	kubectl apply -k $(KUSTOMIZE_OVERLAY)
 	@echo "Waiting for PostgreSQL..."
-	kubectl -n carbide wait --for=condition=ready pod -l app=postgres --timeout=120s
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=postgres --timeout=120s
 	@echo "Waiting for Cert Manager..."
-	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=180s
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=180s
 	@echo "Waiting for Temporal..."
-	kubectl -n carbide wait --for=condition=ready pod -l app=temporal --timeout=120s
+	kubectl -n temporal wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=frontend --timeout=120s
 	@echo "Waiting for Keycloak..."
-	kubectl -n carbide wait --for=condition=ready pod -l app=keycloak --timeout=180s
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=keycloak --timeout=180s
 	@echo "Running database migrations..."
-	kubectl -n carbide wait --for=condition=complete job/db --timeout=120s
+	kubectl -n carbide-rest wait --for=condition=complete job/db --timeout=120s
 	@echo "Waiting for API service..."
-	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-api --timeout=120s || true
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-api --timeout=120s || true
 	@echo "Waiting for Site Manager..."
-	kubectl -n carbide rollout restart deployment/carbide-rest-site-manager || true
-	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=120s || true
+	kubectl -n carbide-rest rollout restart deployment/carbide-rest-site-manager || true
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=120s || true
 	@echo "Waiting for Site Agent..."
-	kubectl -n carbide rollout restart deployment/carbide-rest-site-agent || true
-	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-site-agent --timeout=120s || true
+	kubectl -n carbide-rest rollout restart deployment/carbide-rest-site-agent || true
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-site-agent --timeout=120s || true
 
 # Rebuild and redeploy apps only (faster iteration)
 kind-redeploy: docker-build-local kind-load
-	kubectl -n carbide rollout restart deployment/carbide-rest-api
-	kubectl -n carbide rollout restart deployment/cloud-worker
-	kubectl -n carbide rollout restart deployment/site-worker
-	kubectl -n carbide rollout restart deployment/carbide-rest-site-agent
-	kubectl -n carbide rollout restart deployment/carbide-rest-mock-core
-	kubectl -n carbide rollout restart deployment/carbide-rest-cert-manager
-	kubectl -n carbide rollout restart deployment/carbide-rest-site-manager
+	kubectl -n carbide-rest rollout restart deployment/carbide-rest-api
+	kubectl -n carbide-rest rollout restart deployment/cloud-worker
+	kubectl -n carbide-rest rollout restart deployment/site-worker
+	kubectl -n carbide-rest rollout restart deployment/carbide-rest-site-agent
+	kubectl -n carbide-rest rollout restart deployment/carbide-rest-mock-core
+	kubectl -n carbide-rest rollout restart deployment/carbide-rest-cert-manager
+	kubectl -n carbide-rest rollout restart deployment/carbide-rest-site-manager
 
 # Show status of all pods and services
 kind-status:
-	kubectl -n carbide get pods,svc,jobs
+	kubectl -n carbide-rest get pods,svc,jobs
 
 # View logs from API service
 kind-logs:
-	kubectl -n carbide logs -l app=carbide-rest-api -f --tail=100
+	kubectl -n carbide-rest logs -l app=carbide-rest-api -f --tail=100
 
 # Full reset: tear down cluster, rebuild images, and redeploy everything
 kind-reset:
@@ -325,10 +325,10 @@ kind-reset:
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	@echo "Setting up PKI secrets for cert-manager..."
-	NAMESPACE=carbide ./scripts/setup-local.sh pki
+	NAMESPACE=carbide-rest ./scripts/setup-local.sh pki
 	kubectl apply -k $(KUSTOMIZE_OVERLAY)
-	kubectl -n carbide wait --for=condition=ready pod -l app=postgres --timeout=240s
-	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=360s
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=postgres --timeout=240s
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=360s
 	@echo "Configuring cert-manager.io ClusterIssuer..."
 	kubectl apply -k deploy/kustomize/base/cert-manager-io/
 	@echo "Creating temporal namespace..."
@@ -339,11 +339,11 @@ kind-reset:
 	kubectl -n temporal wait --for=condition=Ready certificate/server-interservice-cert --timeout=240s || true
 	kubectl -n temporal wait --for=condition=Ready certificate/server-cloud-cert --timeout=240s || true
 	kubectl -n temporal wait --for=condition=Ready certificate/server-site-cert --timeout=240s || true
-	kubectl -n carbide wait --for=condition=Ready certificate/temporal-client-cert --timeout=240s || true
+	kubectl -n carbide-rest wait --for=condition=Ready certificate/temporal-client-cert --timeout=240s || true
 	@echo "Creating postgres-auth secret for Temporal Helm chart..."
 	kubectl -n temporal create secret generic postgres-auth --from-literal=password=temporal || true
 	@echo "Granting temporal user CREATEDB permission..."
-	kubectl -n carbide exec -it postgres-0 -- psql -U postgres -c "ALTER USER temporal CREATEDB; ALTER DATABASE temporal OWNER TO temporal; ALTER DATABASE temporal_visibility OWNER TO temporal;" || true
+	kubectl -n carbide-rest exec -it postgres-0 -- psql -U postgres -c "ALTER USER temporal CREATEDB; ALTER DATABASE temporal OWNER TO temporal; ALTER DATABASE temporal_visibility OWNER TO temporal;" || true
 	@echo "Updating Helm chart dependencies..."
 	helm dependency update temporal-helm/temporal/
 	@echo "Installing Temporal via Helm chart..."
@@ -368,14 +368,14 @@ kind-reset:
 		--tls-ca-path /var/secrets/temporal/certs/server-interservice/ca.crt \
 		--tls-server-name interservice.server.temporal.local || true
 	@echo "Temporal Helm deployment ready"
-	kubectl -n carbide wait --for=condition=ready pod -l app=keycloak --timeout=360s
-	kubectl -n carbide wait --for=condition=complete job/db --timeout=240s
-	-kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-api --timeout=240s
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=keycloak --timeout=360s
+	kubectl -n carbide-rest wait --for=condition=complete job/db --timeout=240s
+	-kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-api --timeout=240s
 	@echo "Waiting for workflow workers..."
-	-kubectl -n carbide wait --for=condition=ready pod -l app=cloud-worker --timeout=240s
-	-kubectl -n carbide wait --for=condition=ready pod -l app=site-worker --timeout=240s
+	-kubectl -n carbide-rest wait --for=condition=ready pod -l app=cloud-worker --timeout=240s
+	-kubectl -n carbide-rest wait --for=condition=ready pod -l app=site-worker --timeout=240s
 	@echo "Waiting for Site Manager..."
-	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=360s
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=360s
 	./scripts/setup-local.sh site-agent
 	@echo ""
 	@echo "================================================================================"

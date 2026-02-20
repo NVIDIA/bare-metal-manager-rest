@@ -17,7 +17,7 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: carbide
+namespace: carbide-rest
 
 resources:
   # Namespace
@@ -34,7 +34,7 @@ resources:
   
   # Temporal deployed via Helm chart (see Makefile:kind-reset)
   # Temporal certificates applied separately via temporal-helm kustomization
-  # Temporal client certificate (for services in carbide namespace)
+  # Temporal client certificate (for services in carbide-rest namespace)
   - temporal/temporal-client-cert.yaml
   - keycloak/deployment.yaml
   - keycloak/service.yaml
