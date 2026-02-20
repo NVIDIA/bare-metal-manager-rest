@@ -8309,6 +8309,11 @@ paths:
         Get all Trays (components) for the specified Site.
 
         Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+
+        **Filter constraints:**
+        - `rackId` and `rackName` are mutually exclusive
+        - `rackId`/`rackName` cannot be combined with `id`/`componentId` (rack-level vs component-level targeting)
+        - `componentId` requires `type` to be specified
       parameters:
         - schema:
             type: string
@@ -8341,12 +8346,13 @@ paths:
             type: string
           name: componentId
           in: query
-          description: Filter by component ID (use repeated params for multiple values)
+          description: Filter by component ID. Can be specified multiple times to filter on more than one component ID. Requires 'type' parameter.
         - schema:
             type: string
+            format: uuid
           name: id
           in: query
-          description: Filter by tray UUID (use repeated params for multiple values)
+          description: Filter by tray UUID. Can be specified multiple times to filter on more than one tray ID.
         - schema:
             type: integer
             example: 1
@@ -13939,51 +13945,12 @@ components:
         expected:
           $ref: '#/components/schemas/RackComponent'
         actual:
-          $ref: '#/components/schemas/ActualComponent'
+          $ref: '#/components/schemas/RackComponent'
         fieldDiffs:
           type: array
           description: List of field differences (populated when type is DIFF_TYPE_DRIFT)
           items:
             $ref: '#/components/schemas/FieldDiff'
-    ActualComponent:
-      title: ActualComponent
-      type: object
-      description: A component's actual state from external systems (e.g. Carbide, PSM)
-      properties:
-        id:
-          type: string
-          format: uuid
-          description: Unique identifier of the component in RLA
-        componentId:
-          type: string
-          description: ID of the component in its source system (e.g. Machine ID for compute nodes)
-        type:
-          type: string
-          description: Type of the component
-        name:
-          type: string
-          description: Name of the component
-        serialNumber:
-          type: string
-          description: Serial number of the component
-        manufacturer:
-          type: string
-          description: Manufacturer of the component
-        firmwareVersion:
-          type: string
-          description: Firmware version of the component
-        position:
-          type: integer
-          description: Slot position of the component within the rack
-        powerState:
-          type: string
-          description: Current power state of the component
-        healthStatus:
-          type: string
-          description: Health status from the source system
-        source:
-          type: string
-          description: 'Data source (e.g. carbide, psm)'
     FieldDiff:
       title: FieldDiff
       type: object
