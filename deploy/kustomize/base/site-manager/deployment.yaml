@@ -38,7 +38,7 @@ spec:
           image: carbide-rest-site-manager:latest
           args:
             - --listen-port=8100
-            - --creds-manager-url=https://carbide-rest-cert-manager:8000
+            - --creds-manager-url=https://carbide-rest-cert-manager.carbide-rest:8000
             - --tls-cert-path=/etc/tls/tls.crt
             - --tls-key-path=/etc/tls/tls.key
             - --namespace=carbide-rest
