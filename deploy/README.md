@@ -155,7 +155,7 @@ This repo uses a single namespace **carbide-rest** and [Kustomize](https://kusto
 
 * Controller/Webhook/CAInjector **v1.11.1**  
 * Approver‑policy **v0.6.3**  
-* ClusterIssuers present: self-issuer, site-issuer, carbide-ca-issuer
+* ClusterIssuers present: self-issuer, site-issuer, carbide-ca-rest-issuer
 
 **If you already have cert‑manager**
 
@@ -179,7 +179,7 @@ This repo uses a single namespace **carbide-rest** and [Kustomize](https://kusto
 **HashiCorp Vault is not required** for this deployment. PKI is provided by:
 
 * **carbide-rest-cert-manager** (native Go PKI) — issues certificates for Temporal and site bootstrap from a CA stored in a Kubernetes secret.
-* **carbide-ca-issuer** (cert-manager.io ClusterIssuer) — uses the same CA secret (**ca-signing-secret**) so that cert-manager can issue certificates (e.g. for site-manager, site-agent, Temporal client) without a separate Vault server.
+* **carbide-ca-rest-issuer** (cert-manager.io ClusterIssuer) — uses the same CA secret (**ca-signing-secret**) so that cert-manager can issue certificates (e.g. for site-manager, site-agent, Temporal client) without a separate Vault server.
 
 See **7.0** (CA secret) and **7.1** (cloud-cert-manager) for how to provision the CA and deploy the cert-manager.
 
@@ -257,7 +257,7 @@ tctl --ns <SITE_UUID> namespace register
 
 #### Goal
 
-Before deploying **carbide-rest-cert-manager** and using the **carbide-ca-issuer** ClusterIssuer, a root CA must be provided as a Kubernetes secret. The cert-manager deployment and the ClusterIssuer both use this secret.
+Before deploying **carbide-rest-cert-manager** and using the **carbide-rest-ca-issuer** ClusterIssuer, a root CA must be provided as a Kubernetes secret. The cert-manager deployment and the ClusterIssuer both use this secret.
 
 **One Secret in the same namespace as the deployment (in this repo: carbide-rest):**
 
@@ -278,7 +278,7 @@ Create the secret in the deployment namespace (in this repo: **carbide-rest**). 
 kubectl -n carbide-rest create secret generic ca-signing-secret --from-file=tls.crt=./ca.crt --from-file=tls.key=./ca.key
 ```
 
-Once **ca-signing-secret** exists, **carbide-rest-cert-manager** and **carbide-ca-issuer** can issue certificates.
+Once **ca-signing-secret** exists, **carbide-rest-cert-manager** and **carbide-rest-ca-issuer** can issue certificates.
 
 ## **7.1 cloud‑cert‑manager “credsmgr” (carbide-rest-cert-manager)**
 
@@ -288,9 +288,9 @@ carbide-rest-cert-manager (the **credsmgr** deployment) is responsible for issui
 
 * Uses **native Go PKI** (no Vault server).  
 * Reads the root CA from Kubernetes secret **ca-signing-secret** (tls.crt / tls.key).  
-* Exposes an HTTPS service on port 8000; **carbide-ca-issuer** ClusterIssuer uses the same CA so cert-manager can issue certificates (site-manager, site-agent, Temporal client, etc.) without a separate Vault.
+* Exposes an HTTPS service on port 8000; **carbide-rest-ca-issuer** ClusterIssuer uses the same CA so cert-manager can issue certificates (site-manager, site-agent, Temporal client, etc.) without a separate Vault.
 
-**Current layout (this repo):** All resources use namespace **carbide-rest**. The base includes cert-manager/deployment.yaml (single container, native PKI), cert-manager/service.yaml, cert-manager/rbac.yaml, and cert-manager-io/cluster-issuer.yaml (carbide-ca-issuer referencing ca-signing-secret). The base also includes secrets/imagepullsecret.yaml (Secret name **imagepullsecret**) and short image refs for all app images; overlays override registry/tag and, for local, clear imagePullSecrets. Ensure **ca-signing-secret** exists (see 7.0) before deploying. No Vault server or vault-token is required.
+**Current layout (this repo):** All resources use namespace **carbide-rest**. The base includes cert-manager/deployment.yaml (single container, native PKI), cert-manager/service.yaml, cert-manager/rbac.yaml, and cert-manager-io/cluster-issuer.yaml (carbide-rest-ca-issuer referencing ca-signing-secret). The base also includes secrets/imagepullsecret.yaml (Secret name **imagepullsecret**) and short image refs for all app images; overlays override registry/tag and, for local, clear imagePullSecrets. Ensure **ca-signing-secret** exists (see 7.0) before deploying. No Vault server or vault-token is required.
 
 ## **7.2 Install Temporal Certificates \- Reference only\!**
 
@@ -301,7 +301,7 @@ This step pre‑provisions the TLS certs that Temporal and the cloud workloads u
 * **Client certs** used by cloud-api and cloud-workflow when calling Temporal.  
 * **Server certs** used by Temporal for its cloud, site, and inter‑service endpoints.
 
-All of these are issued by the carbide-ca-issuer ClusterIssuer you created in **7.1 cloud‑cert‑manager** and ultimately chain back to the CA secret from **7.0** (ca-signing-secret).
+All of these are issued by the carbide-rest-ca-issuer ClusterIssuer you created in **7.1 cloud‑cert‑manager** and ultimately chain back to the CA secret from **7.0** (ca-signing-secret).
 
 This section is **internal only**: CNs/SANs are hard‑coded to \*.temporal.nvidia.com. Customers should treat this as a pattern and replace hostnames and namespaces with their own.  
 
@@ -341,7 +341,7 @@ kustomization.yaml simply lists these five Certificate resources as resources
 
 Both client certs:
 
-* issuerRef: name: carbide-ca-issuer, kind: ClusterIssuer, group: cert-manager.io  
+* issuerRef: name: carbide-rest-ca-issuer, kind: ClusterIssuer, group: cert-manager.io  
 * usages: server auth, client auth  
 * Duration: 2160h (90 days), renewBefore: 360h (15 days)
 
@@ -353,7 +353,7 @@ Cloud‑side deployments mount these Secrets at:
 
 **Server certificates (Temporal namespace)**
 
-All three server certs live in **namespace temporal** and are issued by carbide-ca-issuer with usages: \[server auth, client auth\].
+All three server certs live in **namespace temporal** and are issued by carbide-rest-ca-issuer with usages: \[server auth, client auth\].
 
 * **server-cloud.yaml**  
   * Certificate server-cloud-certs  
@@ -382,7 +382,7 @@ These Secrets are consumed by your Temporal deployment (frontends, gateways, etc
 **Prerequisites:**
 
 * 7.0 root CA secrets (ca-signing-secret) exist in cert-manager.  
-* 7.1 cloud-cert-manager / credsmgr and the carbide-ca-issuer ClusterIssuer are healthy.
+* 7.1 cloud-cert-manager / credsmgr and the carbide-rest-ca-issuer ClusterIssuer are healthy.
 
 From the directory containing the kustomization.yaml and the five cert YAMLs above, apply:
 
@@ -985,7 +985,7 @@ cloud-site-manager (a.k.a. *sitemgr*) is “site registry” service. It:
 Before you deploy cloud-site-manager, you should already have:
 
 * **cert-manager \+ cloud-cert-manager (credsmgr)**:  
-  * carbide-ca-issuer ClusterIssuer configured and working.  
+  * carbide-rest-ca-issuer ClusterIssuer configured and working.  
   * credsmgr Service reachable at https://credsmgr.cert-manager:8000 (or your equivalent).  
 * **CA secret**: ca-signing-secret in the deployment namespace (see 7.0).  
 * **Kubernetes CRD support** (standard; no extra setup).
@@ -1176,7 +1176,7 @@ kubectl create secret generic imagepullsecret \
 There is already a branch in the carbide repository called sa-enablement\_dev8.  
 * Talks to **Carbide** over mTLS gRPC to orchestrate hardware operations.  
 * Reads/writes to a **site‑local PostgreSQL** database for persistent state.  
-* Uses **cert‑manager (carbide-ca-issuer)** to obtain a client cert and trust the CA.  
+* Uses **cert‑manager (carbide-rest-ca-issuer)** to obtain a client cert and trust the CA.  
 * Is bootstrapped **per site** using an OTP \+ CA bundle \+ credentials delivered by the cloud side (cloud‑site‑manager).
 
 Workload shape:
@@ -1219,9 +1219,9 @@ Before applying the Elektra Kustomize overlays, your cluster must already have:
 
 If enable\_tls=true in Elektra, you also need a way to obtain an mTLS client certificate and CA bundle for the site (wired into the temporal-cert Secret later).
 
-#### cert‑manager (carbide-ca-issuer)
+#### cert‑manager (carbide-rest-ca-issuer)
 
-* A ClusterIssuer for site‑agent mTLS, e.g. **carbide-ca-issuer**.  
+* A ClusterIssuer for site‑agent mTLS, e.g. **carbide-rest-ca-issuer**.  
 * A CertificateRequestPolicy that allows the Elektra namespace to request a client cert with a SPIFFE URI like:  
   * spiffe://forge.local/elektra-site-agent/sa/\<SA\_NAME\>
 
@@ -1229,7 +1229,7 @@ The grpc‑client overlay already defines:
 
 * CertificateRequestPolicy site-agent-approver-policy  
 * ClusterRole/ClusterRoleBinding giving cert-manager permission to **use** that policy  
-* A Certificate grpc-client-cert issuing Secret elektra-site-agent-grpc-client-cert via carbide-ca-issuer.
+* A Certificate grpc-client-cert issuing Secret elektra-site-agent-grpc-client-cert via carbide-rest-ca-issuer.
 
 You just need to ensure your **ClusterIssuer name / SPIFFE root** match your PKI.
 
@@ -1303,7 +1303,7 @@ If you integrate with Lightstep/OTel, set these and ensure an appropriate otel-l
 The grpc‑client overlay defines:
 
 * CertificateRequestPolicy site-agent-approver-policy  
-  * issuerRef → ClusterIssuer carbide-ca-issuer  
+  * issuerRef → ClusterIssuer carbide-rest-ca-issuer  
   * Scoped to namespace: elektra-site-agent  
   * Allows DNS SANs:  
     * \*.svc, \*.cluster.local, \*.svc.cluster.local  
@@ -1326,7 +1326,7 @@ If your PKI differs, update:
 * spec.issuerRef.name, and SAN/URI values in grpc-client-cert,  
 * The secretName used by the spiffe volume in the StatefulSet.
 
-Ensure cert‑manager (and carbide-ca-issuer) allow the **site-agent** namespace to request that cert. Elektra won’t establish mTLS correctly with Carbide/other services if this cert is missing and enable\_tls=true.
+Ensure cert‑manager (and carbide-rest-ca-issuer) allow the **site-agent** namespace to request that cert. Elektra won’t establish mTLS correctly with Carbide/other services if this cert is missing and enable\_tls=true.
 
 #### Dynamic secrets used by Elektra
 
@@ -1515,7 +1515,7 @@ With:
 
 * DB Secret \+ elektra-database-config in place,  
 * Temporal endpoint \+ namespaces (cloud, site, and \<SITE\_UUID\>) ready,  
-* cert‑manager and carbide-ca-issuer configured,  
+* cert‑manager and carbide-rest-ca-issuer configured,  
 * bootstrap-info & temporal-cert created via setup-site-bootstrap.sh,  
 * overlay/config.properties updated as above,
 

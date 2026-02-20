@@ -48,11 +48,8 @@ resources:
   - db/job.yaml
   
   # Application services
-  - api/deployment.yaml
-  - api/service.yaml
-  - api/configmap.yaml
-  - workflow/deployment.yaml
-  - workflow/configmap.yaml
+  - api
+  - workflow
   - mock-core/deployment.yaml
   - mock-core/service.yaml
   - site-agent/deployment.yaml
@@ -60,13 +57,8 @@ resources:
   - site-agent/configmap.yaml
   - site-agent/secret.yaml
   - site-agent/certificate.yaml
-  - cert-manager/deployment.yaml
-  - cert-manager/service.yaml
-  - cert-manager/rbac.yaml
-  - site-manager/deployment.yaml
-  - site-manager/service.yaml
-  - site-manager/rbac.yaml
-  - site-manager/certificate.yaml
+  - cert-manager
+  - site-manager
 
 commonLabels:
   app.kubernetes.io/part-of: carbide-rest

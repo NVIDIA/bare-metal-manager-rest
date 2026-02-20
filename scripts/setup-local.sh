@@ -93,7 +93,7 @@ create_service_certs() {
     # Note: carbide-tls-certs and site-manager-tls are now managed by
     # cert-manager.io Certificate resources (see deploy/kustomize/base/site-agent/certificate.yaml
     # and deploy/kustomize/base/site-manager/certificate.yaml). They will be issued
-    # automatically once the carbide-ca-issuer ClusterIssuer is applied.
+    # automatically once the carbide-rest-ca-issuer ClusterIssuer is applied.
     
     CA_CERT=$(kubectl get secret ca-signing-secret -n "$NAMESPACE" -o jsonpath='{.data.tls\.crt}' | base64 -d 2>/dev/null || echo "")
     

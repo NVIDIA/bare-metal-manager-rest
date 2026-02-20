@@ -21,17 +21,18 @@ kind: Kustomization
 namespace: carbide-rest
 
 resources:
-  - ../../base
+  - ../../base/db
 
-# Example: override db (migrations) image
-# images:
-#   - name: carbide-rest-db:latest
-#     newName: your-registry/carbide-rest-db
-#     newTag: v1.0.0
+images:
+  - name: carbide-rest-db:latest
+    newName: localhost:5000/carbide-rest-db
+    newTag: v1.0.2
 
-# Add patches under patches/ or list them here, e.g.:
-# patches:
-#   - path: patches/db.yaml
-#     target:
-#       kind: Job
-#       name: db
+patches:
+  - target:
+      kind: Job
+      name: db-migration.*
+    patch: |-
+      - op: replace
+        path: /metadata/name
+        value: db-migration-1-0-4

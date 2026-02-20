@@ -25,8 +25,7 @@ generatorOptions:
 namespace: carbide-rest
 
 resources:
-  - ../../base/workflow/deployment.yaml
-  - ../../base/workflow/configmap.yaml
+  - ../../base/workflow
 
 images:
   - name: carbide-rest-workflow:latest

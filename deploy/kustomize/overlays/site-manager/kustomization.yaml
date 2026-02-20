@@ -25,10 +25,7 @@ generatorOptions:
 namespace: carbide-rest
 
 resources:
-  - ../../base/site-manager/deployment.yaml
-  - ../../base/site-manager/service.yaml
-  - ../../base/site-manager/rbac.yaml
-  - ../../base/site-manager/certificate.yaml
+  - ../../base/site-manager
 
 images:
   - name: carbide-rest-site-manager:latest

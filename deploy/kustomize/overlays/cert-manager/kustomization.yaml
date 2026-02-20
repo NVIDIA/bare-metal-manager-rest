@@ -25,13 +25,11 @@ generatorOptions:
 namespace: carbide-rest
 
 resources:
-  - ../../base/cert-manager/deployment.yaml
-  - ../../base/cert-manager/service.yaml
-  - ../../base/cert-manager/rbac.yaml
+  - ../../base/cert-manager
 
 images:
   - name: carbide-rest-cert-manager:latest
-    newName: nvcr.io/nvidian/nvforge-devel/carbide-rest-cert-manager
+    newName: localhost:5000/carbide-rest-cert-manager
     newTag: v1.0.2
 
 commonLabels:

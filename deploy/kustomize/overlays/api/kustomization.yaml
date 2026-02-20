@@ -25,13 +25,11 @@ generatorOptions:
 namespace: carbide-rest
 
 resources:
-  - ../../base/api/deployment.yaml
-  - ../../base/api/service.yaml
-  - ../../base/api/configmap.yaml
+  - ../../base/api
 
 images:
   - name: carbide-rest-api:latest
-    newName: nvcr.io/nvidian/nvforge-devel/carbide-rest-api
+    newName: localhost:5000/carbide-rest-api
     newTag: v1.0.2
 
 commonLabels:
