@@ -18,6 +18,7 @@
 .PHONY: test-ipam test-site-agent test-site-manager test-workflow test-db test-api test-auth test-common test-cert-manager test-site-workflow migrate carbide-mock-server-build carbide-mock-server-start carbide-mock-server-stop rla-mock-server-build rla-mock-server-start rla-mock-server-stop
 .PHONY: validate-openapi preview-openapi generate-client
 .PHONY: pre-commit-install pre-commit-run pre-commit-update
+.PHONY: generate-client clean-client build-cli
 
 # Build configuration
 BUILD_DIR := build/binaries
@@ -472,3 +473,53 @@ pre-commit-run:
 # Update pre-commit hooks to latest versions
 pre-commit-update:
 	pre-commit autoupdate
+
+# =============================================================================
+# CLI Client Code Generation (openapi-generator)
+# =============================================================================
+
+# Replace the API name in OpenAPI spec paths (default: carbide).
+# Usage: make set-api-name API_NAME=myname
+# Then regenerate the client: make generate-client && make build-cli
+set-api-name:
+ifndef API_NAME
+	$(error API_NAME is required. Usage: make set-api-name API_NAME=myname)
+endif
+	@echo "Replacing API name in specs/carbide-rest.yaml paths with '$(API_NAME)'..."
+	sed -i '' 's|/v2/org/{org}/[^/]*/|/v2/org/{org}/$(API_NAME)/|g' specs/carbide-rest.yaml
+	@echo "Done. Run 'make generate-client && make build-cli' to rebuild."
+
+# Generate Go SDK client from the OpenAPI spec.
+# The API name (e.g. carbide) is embedded in the generated client paths.
+# To use a different name, run: make set-api-name API_NAME=myname
+# before regenerating.
+generate-client:
+	@echo "Generating Go client from specs/carbide-rest.yaml..."
+	openapi-generator generate \
+		-i specs/carbide-rest.yaml \
+		-g go \
+		--package-name client \
+		--additional-properties=enumClassPrefix=true \
+		-o client/
+	@echo "Running post-generation fixups..."
+	find ./client -name "*.go" -type f -exec sed -i '' 's|github.com/GIT_USER_ID/GIT_REPO_ID|github.com/nvidia/bare-metal-manager-rest/client|g' {} \;
+	rm -f client/go.mod client/go.sum
+	rm -rf client/.travis.yml client/git_push.sh client/api client/.openapi-generator/FILES
+	go fmt ./client/...
+	@echo "Client generation complete."
+
+# Remove all generated client files
+clean-client:
+	rm -rf client/.openapi-generator client/api client/docs client/test
+	find ./client -name "*.go" -not -name ".openapi-generator-ignore" -type f -maxdepth 1 -exec rm -f {} \;
+
+# Build the CLI binary
+build-cli:
+	mkdir -p $(BUILD_DIR)
+	cd cmd/bmmcli && CGO_ENABLED=0 go build -o ../../$(BUILD_DIR)/bmm .
+	@echo "CLI built at $(BUILD_DIR)/bmm"
+
+# Build and install the CLI to GOPATH/bin (on your PATH)
+install-cli:
+	cd cmd/bmmcli && go install .
+	@echo "bmm installed to $$(go env GOPATH)/bin/bmm"
