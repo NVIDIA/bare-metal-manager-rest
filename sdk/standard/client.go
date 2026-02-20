@@ -96,6 +96,8 @@ type APIClient struct {
 
 	TenantAccountAPI *TenantAccountAPIService
 
+	TrayAPI *TrayAPIService
+
 	UserAPI *UserAPIService
 
 	VPCAPI *VPCAPIService
@@ -142,6 +144,7 @@ func NewAPIClient(cfg *Configuration) *APIClient {
 	c.SubnetAPI = (*SubnetAPIService)(&c.common)
 	c.TenantAPI = (*TenantAPIService)(&c.common)
 	c.TenantAccountAPI = (*TenantAccountAPIService)(&c.common)
+	c.TrayAPI = (*TrayAPIService)(&c.common)
 	c.UserAPI = (*UserAPIService)(&c.common)
 	c.VPCAPI = (*VPCAPIService)(&c.common)
 	c.VPCPrefixAPI = (*VPCPrefixAPIService)(&c.common)

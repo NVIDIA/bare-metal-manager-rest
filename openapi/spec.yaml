@@ -6500,8 +6500,6 @@ paths:
         - schema:
             type: string
             enum:
-              - NAME_ASC
-              - NAME_DESC
               - STATUS_ASC
               - STATUS_DESC
               - CREATED_ASC
@@ -8975,8 +8973,8 @@ paths:
       summary: Delete DPU Extension Service
       operationId: delete-dpu-extension-service
       responses:
-        '202':
-          description: Accepted
+        '204':
+          description: No Content
         '403':
           $ref: '#/components/responses/ForbiddenError'
       description: |-
@@ -9062,8 +9060,8 @@ paths:
       summary: Delete DPU Extension Service Version
       operationId: delete-dpu-extension-service-version
       responses:
-        '202':
-          description: Accepted
+        '204':
+          description: No Content
         '403':
           $ref: '#/components/responses/ForbiddenError'
       description: |-
