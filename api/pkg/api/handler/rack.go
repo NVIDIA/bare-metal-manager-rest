@@ -47,6 +47,14 @@ import (
 	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
 )
 
+// Allowed query parameters for each rack handler
+var (
+	getRackAllowedParams      = []string{"siteId", "includeComponents"}
+	getAllRackAllowedParams    = []string{"siteId", "includeComponents", "name", "manufacturer", "model", "pageNumber", "pageSize", "orderBy"}
+	validateRackAllowedParams = []string{"siteId"}
+	validateRacksAllowedParams = []string{"siteId", "name", "manufacturer", "model"}
+)
+
 // ~~~~~ Get Rack Handler ~~~~~ //
 
 // GetRackHandler is the API Handler for getting a Rack by ID
@@ -86,6 +94,10 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "Get", c, grh.tracerSpan)
 	if handlerSpan != nil {
 		defer handlerSpan.End()
+	}
+
+	if err := common.ValidateQueryParams(c, getRackAllowedParams); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
 	}
 
 	// Is DB user missing?
@@ -249,6 +261,10 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "GetAll", c, garh.tracerSpan)
 	if handlerSpan != nil {
 		defer handlerSpan.End()
+	}
+
+	if err := common.ValidateQueryParams(c, getAllRackAllowedParams); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
 	}
 
 	// Is DB user missing?
@@ -458,6 +474,10 @@ func (vrh ValidateRackHandler) Handle(c echo.Context) error {
 		defer handlerSpan.End()
 	}
 
+	if err := common.ValidateQueryParams(c, validateRackAllowedParams); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+	}
+
 	// Is DB user missing?
 	if dbUser == nil {
 		logger.Error().Msg("invalid User object found in request context")
@@ -617,6 +637,10 @@ func (vrsh ValidateRacksHandler) Handle(c echo.Context) error {
 	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "ValidateRacks", c, vrsh.tracerSpan)
 	if handlerSpan != nil {
 		defer handlerSpan.End()
+	}
+
+	if err := common.ValidateQueryParams(c, validateRacksAllowedParams); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
 	}
 
 	// Is DB user missing?

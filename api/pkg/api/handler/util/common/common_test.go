@@ -23,11 +23,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/labstack/echo/v4"
 	swe "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/error"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -2492,4 +2494,60 @@ func TestUniqueChecker_ComplexScenario(t *testing.T) {
 	duplicates = checker.GetDuplicates()
 	assert.Len(t, duplicates, 1)
 	assert.Contains(t, duplicates, "mac-x")
+}
+
+func TestValidateQueryParams(t *testing.T) {
+	e := echo.New()
+	allowed := []string{"siteId", "name", "pageSize"}
+
+	tests := []struct {
+		name    string
+		query   string
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "all params allowed",
+			query:   "siteId=abc&name=rack1",
+			wantErr: false,
+		},
+		{
+			name:    "no params",
+			query:   "",
+			wantErr: false,
+		},
+		{
+			name:    "unknown param",
+			query:   "siteId=abc&foo=bar",
+			wantErr: true,
+			errMsg:  "unknown query parameter: foo",
+		},
+		{
+			name:    "all unknown",
+			query:   "bogus=1",
+			wantErr: true,
+			errMsg:  "unknown query parameter: bogus",
+		},
+		{
+			name:    "subset of allowed",
+			query:   "pageSize=20",
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/?"+tt.query, nil)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+
+			err := ValidateQueryParams(c, allowed)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Equal(t, tt.errMsg, err.Error())
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
