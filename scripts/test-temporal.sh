@@ -159,14 +159,14 @@ test_rotation() {
     kubectl -n "$NAMESPACE" delete secret server-interservice-certs --ignore-not-found
     kubectl -n "$NAMESPACE" delete secret server-cloud-certs --ignore-not-found
     kubectl -n "$NAMESPACE" delete secret server-site-certs --ignore-not-found
-    kubectl -n $CARBIDE_REST_NAMESPACE delete secret temporal-client-certs --ignore-not-found
+    kubectl -n "$CARBIDE_REST_NAMESPACE" delete secret temporal-client-certs --ignore-not-found
     echo ""
 
     echo "Step 4: Waiting for cert-manager to reissue certificates..."
     kubectl -n "$NAMESPACE" wait --for=condition=Ready certificate/server-interservice-cert --timeout="${TIMEOUT}s"
     kubectl -n "$NAMESPACE" wait --for=condition=Ready certificate/server-cloud-cert --timeout="${TIMEOUT}s"
     kubectl -n "$NAMESPACE" wait --for=condition=Ready certificate/server-site-cert --timeout="${TIMEOUT}s"
-    kubectl -n $CARBIDE_REST_NAMESPACE wait --for=condition=Ready certificate/temporal-client-cert --timeout="${TIMEOUT}s"
+    kubectl -n "$CARBIDE_REST_NAMESPACE" wait --for=condition=Ready certificate/temporal-client-cert --timeout="${TIMEOUT}s"
     echo ""
 
     echo "Step 5: Verifying new certificate serial numbers..."
