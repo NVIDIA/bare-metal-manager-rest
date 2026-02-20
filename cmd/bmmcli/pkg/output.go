@@ -1,0 +1,105 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+package bmmcli
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"text/tabwriter"
+
+	"gopkg.in/yaml.v3"
+)
+
+// FormatOutput writes data to stdout in the requested format (json, yaml, table).
+func FormatOutput(data []byte, format string) error {
+	switch format {
+	case "yaml":
+		return formatYAML(data)
+	case "table":
+		return formatTable(data)
+	default:
+		return formatJSON(data)
+	}
+}
+
+func formatJSON(data []byte) error {
+	var v interface{}
+	if err := json.Unmarshal(data, &v); err != nil {
+		_, err = os.Stdout.Write(data)
+		return err
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(v)
+}
+
+func formatYAML(data []byte) error {
+	var v interface{}
+	if err := json.Unmarshal(data, &v); err != nil {
+		_, err = os.Stdout.Write(data)
+		return err
+	}
+	return yaml.NewEncoder(os.Stdout).Encode(v)
+}
+
+var tableFields = []string{"id", "name", "status", "created", "updated"}
+
+func formatTable(data []byte) error {
+	var raw interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		_, err = os.Stdout.Write(data)
+		return err
+	}
+
+	var items []map[string]interface{}
+	switch v := raw.(type) {
+	case []interface{}:
+		for _, item := range v {
+			if m, ok := item.(map[string]interface{}); ok {
+				items = append(items, m)
+			}
+		}
+	case map[string]interface{}:
+		items = append(items, v)
+	default:
+		return formatJSON(data)
+	}
+
+	if len(items) == 0 {
+		fmt.Println("(no results)")
+		return nil
+	}
+
+	var cols []string
+	for _, f := range tableFields {
+		if _, ok := items[0][f]; ok {
+			cols = append(cols, f)
+		}
+	}
+	if len(cols) == 0 {
+		return formatJSON(data)
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	for i, c := range cols {
+		if i > 0 {
+			fmt.Fprint(w, "\t")
+		}
+		fmt.Fprint(w, c)
+	}
+	fmt.Fprintln(w)
+
+	for _, item := range items {
+		for i, c := range cols {
+			if i > 0 {
+				fmt.Fprint(w, "\t")
+			}
+			fmt.Fprintf(w, "%v", item[c])
+		}
+		fmt.Fprintln(w)
+	}
+
+	return w.Flush()
+}

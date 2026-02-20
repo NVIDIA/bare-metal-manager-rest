@@ -18,6 +18,10 @@
 .PHONY: test-ipam test-site-agent test-site-manager test-workflow test-db test-api test-auth test-common test-cert-manager test-site-workflow migrate carbide-mock-server-build carbide-mock-server-start carbide-mock-server-stop rla-mock-server-build rla-mock-server-start rla-mock-server-stop
 .PHONY: validate-openapi preview-openapi generate-client
 .PHONY: pre-commit-install pre-commit-run pre-commit-update
+.PHONY: bmmcli-build install-bmmcli
+
+# bmmcli install directory — defaults to GOPATH/bin, override with INSTALL_DIR=...
+INSTALL_DIR ?= $(shell go env GOPATH)/bin
 
 # Build configuration
 BUILD_DIR := build/binaries
@@ -417,6 +421,23 @@ test-pki:
 # Run Temporal mTLS and rotation tests
 test-temporal-e2e:
 	./scripts/test-temporal.sh all
+
+# =============================================================================
+# bmmcli — Carbide Bare Metal Manager CLI
+# =============================================================================
+
+# Build the bmmcli binary into build/binaries/bmmcli.
+# The OpenAPI spec is embedded at build time via //go:embed, so it must be
+# copied to cli/bmmcli/spec.yaml before the Go compiler runs.
+bmmcli-build:
+	@mkdir -p $(BUILD_DIR)
+	go build -o $(BUILD_DIR)/bmmcli ./cmd/bmmcli/
+	@echo "Built: $(BUILD_DIR)/bmmcli"
+
+# Build and install bmmcli to INSTALL_DIR (default: GOPATH/bin).
+install-bmmcli: bmmcli-build
+	install -m 0755 $(BUILD_DIR)/bmmcli $(INSTALL_DIR)/bmmcli
+	@echo "Installed: $(INSTALL_DIR)/bmmcli"
 
 # =============================================================================
 # Generated Go API Client
