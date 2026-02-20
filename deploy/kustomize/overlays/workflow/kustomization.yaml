@@ -13,8 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Overlay for workflow (cloud-worker) deployment customization.
-# Customize images, replicas, or add patches for cloud-worker here.
+# Overlay for workflow only: cloud-worker + site-worker.
+# Deploys only this component; Postgres, Temporal certs, secrets, etc. are assumed to exist.
+# Apply with: kubectl kustomize --load-restrictor LoadRestrictionsNone . | kubectl apply -f -
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -24,17 +25,13 @@ generatorOptions:
 namespace: carbide-rest
 
 resources:
-  - ../../base
+  - ../../base/workflow/deployment.yaml
+  - ../../base/workflow/configmap.yaml
 
-# Override registry/tag for workflow image (base uses carbide-rest-workflow:latest)
 images:
   - name: carbide-rest-workflow:latest
-    newName: nvcr.io/nvidian/nvforge-devel/cloud-workflow
-    newTag: v0.1.16
+    newName: nvcr.io/nvidian/nvforge-devel/carbide-rest-workflow
+    newTag: v1.0.2
 
-# Add patches under patches/ or list them here, e.g.:
-# patches:
-#   - path: patches/replicas.yaml
-#     target:
-#       kind: Deployment
-#       name: cloud-worker
+commonLabels:
+  app.kubernetes.io/part-of: carbide-rest

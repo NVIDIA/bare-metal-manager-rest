@@ -13,8 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Overlay for site-manager deployment customization.
-# Customize images, replicas, or add patches for carbide-rest-site-manager here.
+# Overlay for site-manager only: carbide-rest-site-manager.
+# Deploys only this component; cert-manager, namespace, imagepullsecret, etc. are assumed to exist.
+# Apply with: kubectl kustomize --load-restrictor LoadRestrictionsNone . | kubectl apply -f -
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -24,16 +25,15 @@ generatorOptions:
 namespace: carbide-rest
 
 resources:
-  - ../../base
+  - ../../base/site-manager/deployment.yaml
+  - ../../base/site-manager/service.yaml
+  - ../../base/site-manager/rbac.yaml
+  - ../../base/site-manager/certificate.yaml
 
 images:
   - name: carbide-rest-site-manager:latest
-    newName: nvcr.io/nvidian/nvforge-devel/cloud-site-manager
-    newTag: v0.1.16-4-g8d0b81a
+    newName: nvcr.io/nvidian/nvforge-devel/carbide-rest-site-manager
+    newTag: v1.0.2
 
-# Add patches under patches/ or list them here, e.g.:
-# patches:
-#   - path: patches/replicas.yaml
-#     target:
-#       kind: Deployment
-#       name: carbide-rest-site-manager
+commonLabels:
+  app.kubernetes.io/part-of: carbide-rest

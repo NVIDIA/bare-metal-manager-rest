@@ -13,8 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Overlay for cert-manager deployment customization.
-# Customize images, replicas, or add patches for carbide-rest-cert-manager here.
+# Overlay for cert-manager only: carbide-rest-cert-manager (deployment, service, rbac).
+# Deploys only this component; namespace, imagepullsecret, ca-signing-secret, etc. are assumed to exist.
+# Apply with: kubectl kustomize --load-restrictor LoadRestrictionsNone . | kubectl apply -f -
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -24,16 +25,14 @@ generatorOptions:
 namespace: carbide-rest
 
 resources:
-  - ../../base
+  - ../../base/cert-manager/deployment.yaml
+  - ../../base/cert-manager/service.yaml
+  - ../../base/cert-manager/rbac.yaml
 
 images:
   - name: carbide-rest-cert-manager:latest
     newName: nvcr.io/nvidian/nvforge-devel/carbide-rest-cert-manager
     newTag: v1.0.2
 
-# Add patches under patches/ or list them here, e.g.:
-# patches:
-#   - path: patches/replicas.yaml
-#     target:
-#       kind: Deployment
-#       name: carbide-rest-cert-manager
+commonLabels:
+  app.kubernetes.io/part-of: carbide-rest

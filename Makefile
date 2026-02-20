@@ -217,6 +217,7 @@ rla-protogen:
 # =============================================================================
 
 .PHONY: kind-up kind-down kind-deploy kind-load kind-apply kind-redeploy kind-status kind-logs kind-reset kind-verify setup-site-agent
+.PHONY: deploy-overlay-api deploy-overlay-cert-manager deploy-overlay-site-manager deploy-overlay-workflow
 
 # Kind cluster configuration
 KIND_CLUSTER_NAME := carbide-rest-local
@@ -298,6 +299,16 @@ kind-status:
 # View logs from API service
 kind-logs:
 	kubectl -n carbide-rest logs -l app=carbide-rest-api -f --tail=100
+
+# Scoped overlays: deploy only one component + its deps (no duplication of yaml; requires LoadRestrictionsNone)
+deploy-overlay-api:
+	kubectl kustomize --load-restrictor LoadRestrictionsNone deploy/kustomize/overlays/api | kubectl apply -f -
+deploy-overlay-cert-manager:
+	kubectl kustomize --load-restrictor LoadRestrictionsNone deploy/kustomize/overlays/cert-manager | kubectl apply -f -
+deploy-overlay-site-manager:
+	kubectl kustomize --load-restrictor LoadRestrictionsNone deploy/kustomize/overlays/site-manager | kubectl apply -f -
+deploy-overlay-workflow:
+	kubectl kustomize --load-restrictor LoadRestrictionsNone deploy/kustomize/overlays/workflow | kubectl apply -f -
 
 # Full reset: tear down cluster, rebuild images, and redeploy everything
 kind-reset:

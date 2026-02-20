@@ -13,8 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Overlay for API deployment customization.
-# Customize images, replicas, or add patches for carbide-rest-api here.
+# Overlay for API only: carbide-rest-api.
+# Deploys only this component; Postgres, Keycloak, Temporal certs, secrets, etc. are assumed to exist.
+# Apply with: kubectl kustomize --load-restrictor LoadRestrictionsNone . | kubectl apply -f -
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -24,16 +25,14 @@ generatorOptions:
 namespace: carbide-rest
 
 resources:
-  - ../../base
+  - ../../base/api/deployment.yaml
+  - ../../base/api/service.yaml
+  - ../../base/api/configmap.yaml
 
 images:
   - name: carbide-rest-api:latest
     newName: nvcr.io/nvidian/nvforge-devel/carbide-rest-api
     newTag: v1.0.2
 
-# Add patches under patches/ or list them here, e.g.:
-# patches:
-#   - path: patches/replicas.yaml
-#     target:
-#       kind: Deployment
-#       name: carbide-rest-api
+commonLabels:
+  app.kubernetes.io/part-of: carbide-rest

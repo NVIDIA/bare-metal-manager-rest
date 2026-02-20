@@ -1,11 +1,30 @@
-# 
-
 # **Carbide Installation**
 
 | Revision | Date | Notes |
 | :---- | :- | :---- |
 | 0.1 |  |  |
 |  |  |  |
+
+## Getting started (local development)
+
+For local development on [Kind](https://kind.sigs.k8s.io/), use the provided Make target to bring up a full stack in one shot:
+
+```bash
+make kind-reset
+```
+
+This will:
+
+1. Create or recreate the Kind cluster and install cert-manager.
+2. Build all Carbide REST images (api, workflow, site-manager, site-agent, cert-manager, db, mock-core) and load them into the cluster.
+3. Apply CRDs, PKI secrets, and the **local** Kustomize overlay (`deploy/kustomize/overlays/local`), which uses `localhost:5000/...:latest` and does not require registry auth.
+4. Deploy Temporal (Helm), issue certificates, and wait for core workloads to be ready.
+
+After it completes, check pods in the `carbide-rest` namespace (e.g. `kubectl get pods -n carbide-rest`). For API logs: `make kind-logs`.
+
+See **Deploy layout (Kustomize)** below for how base vs overlays work and how to customize images or registry for other environments.
+
+---
 
 ## Context
 
@@ -88,7 +107,30 @@ Below is a **prescriptive, BYO‑Kubernetes bring‑up guide** that is **not sit
 4. **Monitoring (optional but recommended)**  
    * Prometheus operator, Grafana, Loki, OTel, node exporter
 
-The rest of this document details **what to configure** for each shared service and **how the NVCarbide workloads use them**.  
+The rest of this document details **what to configure** for each shared service and **how the NVCarbide workloads use them**.
+
+## **Deploy layout (Kustomize)**
+
+This repo uses a single namespace **carbide-rest** and [Kustomize](https://kustomize.io/) under `deploy/kustomize/`:
+
+* **Base** (`deploy/kustomize/base`)  
+  * Defines the namespace, Postgres, Keycloak, Temporal client cert, secrets (including **imagepullsecret** for registry access), DB migration Job, and all application workloads (API, workflow, site-manager, site-agent, cert-manager, mock-core).  
+  * All container images use **short refs** (e.g. `carbide-rest-api:latest`, `carbide-rest-workflow:latest`) so overlays can override registry and tag.  
+  * Every pod template includes **imagePullSecrets: - name: imagepullsecret**. The base includes a Secret manifest `secrets/imagepullsecret.yaml` (name `imagepullsecret`, type `kubernetes.io/dockerconfigjson`) with a valid placeholder; replace its `.dockerconfigjson` data for private registries.
+
+* **Overlays** (`deploy/kustomize/overlays/`)  
+  * **local** — Used by `make kind-reset`. References the full base; overrides images to `localhost:5000/<name>:latest`, clears **imagePullSecrets** (no auth for local), and sets **imagePullPolicy: Never** for app containers. Apply with: `kubectl apply -k deploy/kustomize/overlays/local`.  
+  * **api**, **cert-manager**, **site-manager**, **workflow** — **Per-component overlays**: each deploys **only** that component’s manifests (no dependencies). Namespace, imagepullsecret, Postgres, cert-manager, etc. are assumed to exist; use the full base or local overlay for those. Each overlay’s `resources:` points at that component’s base files only. Because those paths live outside the overlay directory, apply with Kustomize’s relaxed load restrictor:
+    * **Make:** `make deploy-overlay-cert-manager`, `make deploy-overlay-site-manager`, `make deploy-overlay-api`, `make deploy-overlay-workflow`, or  
+    * **Manual:** `kubectl kustomize --load-restrictor LoadRestrictionsNone deploy/kustomize/overlays/<name> | kubectl apply -f -`  
+  Each overlay sets **images** (newName/newTag) for that component’s registry/tag.
+
+**Applying**
+
+* Local (Kind): `kubectl apply -k deploy/kustomize/overlays/local` (as in `make kind-reset`).  
+* From base only (you must set images elsewhere or use default short refs and provide **imagepullsecret**): `kubectl apply -k deploy/kustomize/base`.  
+* **Per-component (component only; deps assumed):** `make deploy-overlay-<api|cert-manager|site-manager|workflow>` or `kubectl kustomize --load-restrictor LoadRestrictionsNone deploy/kustomize/overlays/<name> | kubectl apply -f -`.  
+* To customize registry/tag without using the local overlay, copy or extend an overlay and set the **images** and optionally **patches** as needed.
 
 ## **2\) External Secrets Operator (ESO)**
 
@@ -198,13 +240,13 @@ This can be done with a call similar to the following:
 
 ## **7\) What each carbide workload expects \- exact images we used and what resources needs to be applied in what order:**
 
-## **7.0 CA secret for cert‑manager (carbide namespace)**
+## **7.0 CA secret for cert‑manager (carbide-rest namespace)**
 
 #### Goal
 
 Before deploying **carbide-rest-cert-manager** and using the **carbide-ca-issuer** ClusterIssuer, a root CA must be provided as a Kubernetes secret. The cert-manager deployment and the ClusterIssuer both use this secret.
 
-**One Secret in the same namespace as the deployment (e.g. carbide):**
+**One Secret in the same namespace as the deployment (in this repo: carbide-rest):**
 
 * **ca-signing-secret**  
   * `tls.crt` — PEM‑encoded root CA certificate  
@@ -216,9 +258,9 @@ The cert-manager deployment in this repo expects these keys under the volume mou
 openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -out ca.crt -subj "/CN=Carbide CA/O=NVIDIA" |
 | :---- |
 
-Create the secret in the deployment namespace (e.g. **carbide**). Use keys **tls.crt** and **tls.key**:
+Create the secret in the deployment namespace (in this repo: **carbide-rest**). Use keys **tls.crt** and **tls.key**:
 
-| kubectl \-n carbide create secret generic ca-signing-secret \--from-file=tls.crt=./ca.crt \--from-file=tls.key=./ca.key |
+| kubectl \-n carbide-rest create secret generic ca-signing-secret \--from-file=tls.crt=./ca.crt \--from-file=tls.key=./ca.key |
 | :---- |
 
 Once **ca-signing-secret** exists, **carbide-rest-cert-manager** and **carbide-ca-issuer** can issue certificates.
@@ -233,7 +275,7 @@ carbide-rest-cert-manager (the **credsmgr** deployment) is responsible for issui
 * Reads the root CA from Kubernetes secret **ca-signing-secret** (tls.crt / tls.key).  
 * Exposes an HTTPS service on port 8000; **carbide-ca-issuer** ClusterIssuer uses the same CA so cert-manager can issue certificates (site-manager, site-agent, Temporal client, etc.) without a separate Vault.
 
-**Current layout (this repo):** deploy/kustomize/base includes cert-manager/deployment.yaml (single container, native PKI), cert-manager/service.yaml, cert-manager/rbac.yaml, and cert-manager-io/cluster-issuer.yaml (carbide-ca-issuer referencing ca-signing-secret). Ensure **ca-signing-secret** exists (see 7.0) before deploying. No Vault server or vault-token is required.
+**Current layout (this repo):** All resources use namespace **carbide-rest**. The base includes cert-manager/deployment.yaml (single container, native PKI), cert-manager/service.yaml, cert-manager/rbac.yaml, and cert-manager-io/cluster-issuer.yaml (carbide-ca-issuer referencing ca-signing-secret). The base also includes secrets/imagepullsecret.yaml (Secret name **imagepullsecret**) and short image refs for all app images; overlays override registry/tag and, for local, clear imagePullSecrets. Ensure **ca-signing-secret** exists (see 7.0) before deploying. No Vault server or vault-token is required.
 
 ## **7.2 Install Temporal Certificates \- Reference only\!**
 
@@ -1025,9 +1067,9 @@ We need to add proper policies to the cluster using terraform (e.g. for PKI or n
 
 * Since we are still using internal NVIDIA images we need NVCR auth token to pull these images. Export in an env variable  
   export NVCR\_AUTH\_TOKEN=XXX   
-* Then create the secret:
+* Then create the secret (in this repo, use namespace **carbide-rest** to match the base):
 
-| kubectl create secret generic imagepullsecret \\      \--type=kubernetes.io/dockerconfigjson \\      \-n default \\      \--from-literal=.dockerconfigjson="{\\"auths\\":{\\"nvcr.io\\":{\\"auth\\":\\"$NVCR\_AUTH\_TOKEN\\"}}}" |
+| kubectl create secret generic imagepullsecret \\      \--type=kubernetes.io/dockerconfigjson \\      \-n carbide-rest \\      \--from-literal=.dockerconfigjson="{\\"auths\\":{\\"nvcr.io\\":{\\"auth\\":\\"$NVCR\_AUTH\_TOKEN\\"}}}" |
 | :---- |
 
 
