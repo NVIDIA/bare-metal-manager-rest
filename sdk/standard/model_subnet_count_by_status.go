@@ -1,9 +1,9 @@
 /*
-Carbide REST API
+NVIDIA Bare Metal Manager REST API
 
-Carbide REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all Carbide Sites.
+NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to as Sites.
 
-API version: 1.0.2
+API version: 1.0.4
 Contact: carbide-dev@exchange.nvidia.com
 */
 
@@ -18,7 +18,7 @@ import (
 // checks if the SubnetCountByStatus type satisfies the MappedNullable interface at compile time
 var _ MappedNullable = &SubnetCountByStatus{}
 
-// SubnetCountByStatus Describes counts of VPCs in various statuses
+// SubnetCountByStatus Describes counts of Subnets in various statuses
 type SubnetCountByStatus struct {
 	Total *int32 `json:"total,omitempty"`
 	Pending *int32 `json:"pending,omitempty"`

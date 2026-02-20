@@ -77,6 +77,24 @@ func testAllocationBuildSubnet(t *testing.T, dbSession *cdb.Session, tenant *cdb
 	return subnet
 }
 
+func testAllocationBuildVpcPrefix(t *testing.T, dbSession *cdb.Session, tenant *cdbm.Tenant, vpc *cdbm.Vpc, name string, ipb *cdbm.IPBlock) *cdbm.VpcPrefix {
+	vpcPrefix := &cdbm.VpcPrefix{
+		ID:           uuid.New(),
+		Name:         name,
+		SiteID:       vpc.SiteID,
+		VpcID:        vpc.ID,
+		TenantID:     tenant.ID,
+		Status:       cdbm.VpcPrefixStatusReady,
+		Prefix:       ipb.Prefix,
+		PrefixLength: ipb.PrefixLength,
+		IPBlockID:    &ipb.ID,
+		CreatedBy:    uuid.New(),
+	}
+	_, err := dbSession.DB.NewInsert().Model(vpcPrefix).Exec(context.Background())
+	assert.Nil(t, err)
+	return vpcPrefix
+}
+
 func testAllocationBuildVpc(t *testing.T, dbSession *cdb.Session, ip *cdbm.InfrastructureProvider, site *cdbm.Site, tenant *cdbm.Tenant, org, name string) *cdbm.Vpc {
 	vpc := &cdbm.Vpc{
 		ID:                       uuid.New(),
@@ -2281,12 +2299,15 @@ func TestAllocationHandler_Delete(t *testing.T) {
 
 	ipb1 := testIPBlockBuildIPBlock(t, dbSession, "testipb", site, ip, &tenant1.ID, cdbm.IPBlockRoutingTypeDatacenterOnly, "192.168.0.0", 16, cdbm.IPBlockProtocolVersionV4, false, cdbm.IPBlockStatusReady, ipu)
 	ipbFG := testIPBlockBuildIPBlock(t, dbSession, "testipbFG", site, ip, nil, cdbm.IPBlockRoutingTypeDatacenterOnly, "192.170.0.0", 16, cdbm.IPBlockProtocolVersionV4, false, cdbm.IPBlockStatusReady, ipu)
+	ipbVpcPrefix := testIPBlockBuildIPBlock(t, dbSession, "testipbVpcPrefix", site, ip, &tenant1.ID, cdbm.IPBlockRoutingTypeDatacenterOnly, "192.169.0.0", 16, cdbm.IPBlockProtocolVersionV4, false, cdbm.IPBlockStatusReady, ipu)
 
 	vpc1 := testAllocationBuildVpc(t, dbSession, ip, site, tenant1, ipOrg1, "testVPC")
 	os1 := testAllocationBuildOperatingSystem(t, dbSession, "ubuntu")
 
 	acGoodIT := model.APIAllocationConstraintCreateRequest{ResourceType: cdbm.AllocationResourceTypeInstanceType, ResourceTypeID: it1.ID.String(), ConstraintType: cdbm.AllocationConstraintTypeReserved, ConstraintValue: 2}
 	acGoodIPB := model.APIAllocationConstraintCreateRequest{ResourceType: cdbm.AllocationResourceTypeIPBlock, ResourceTypeID: ipb1.ID.String(), ConstraintType: cdbm.AllocationConstraintTypeReserved, ConstraintValue: 24}
+
+	acGoodIPBVpcPrefix := model.APIAllocationConstraintCreateRequest{ResourceType: cdbm.AllocationResourceTypeIPBlock, ResourceTypeID: ipbVpcPrefix.ID.String(), ConstraintType: cdbm.AllocationConstraintTypeReserved, ConstraintValue: 16}
 
 	acGoodIPBFG := model.APIAllocationConstraintCreateRequest{ResourceType: cdbm.AllocationResourceTypeIPBlock, ResourceTypeID: ipbFG.ID.String(), ConstraintType: cdbm.AllocationConstraintTypeReserved, ConstraintValue: 16}
 
@@ -2298,6 +2319,8 @@ func TestAllocationHandler_Delete(t *testing.T) {
 	assert.Nil(t, err)
 	okBodyIPBFG, err := json.Marshal(model.APIAllocationCreateRequest{Name: "okipbfg", Description: cdb.GetStrPtr(""), TenantID: tenant1.ID.String(), SiteID: site.ID.String(), AllocationConstraints: []model.APIAllocationConstraintCreateRequest{acGoodIPBFG}})
 	assert.Nil(t, err)
+	okBodyIPBVpcPrefix, err := json.Marshal(model.APIAllocationCreateRequest{Name: "okipbvpcprefix", Description: cdb.GetStrPtr(""), TenantID: tenant1.ID.String(), SiteID: site.ID.String(), AllocationConstraints: []model.APIAllocationConstraintCreateRequest{acGoodIPBVpcPrefix}})
+	assert.Nil(t, err)
 
 	parentPref, err := ipam.CreateIpamEntryForIPBlock(ctx, ipamStorage, ipb1.Prefix, ipb1.PrefixLength, ipb1.RoutingType, ipb1.InfrastructureProviderID.String(), ipb1.SiteID.String())
 	assert.Nil(t, err)
@@ -2306,6 +2329,10 @@ func TestAllocationHandler_Delete(t *testing.T) {
 	parentPrefFG, err := ipam.CreateIpamEntryForIPBlock(ctx, ipamStorage, ipbFG.Prefix, ipbFG.PrefixLength, ipbFG.RoutingType, ipbFG.InfrastructureProviderID.String(), ipbFG.SiteID.String())
 	assert.Nil(t, err)
 	assert.NotNil(t, parentPrefFG)
+
+	parentPrefVpcPrefix, err := ipam.CreateIpamEntryForIPBlock(ctx, ipamStorage, ipbVpcPrefix.Prefix, ipbVpcPrefix.PrefixLength, ipbVpcPrefix.RoutingType, ipbVpcPrefix.InfrastructureProviderID.String(), ipbVpcPrefix.SiteID.String())
+	assert.Nil(t, err)
+	assert.NotNil(t, parentPrefVpcPrefix)
 
 	// Create 1 Instance Type Allocation
 	aIT := testCreateAllocation(t, dbSession, ipamStorage, ipu, ipOrg1, string(okBodyIT))
@@ -2316,9 +2343,11 @@ func TestAllocationHandler_Delete(t *testing.T) {
 	//aIT2UUID := uuid.MustParse(aIT2.ID)
 	//ac2UUID := uuid.MustParse(aIT.AllocationConstraints[0].ID)
 
-	// Create 2 IP Block Allocation
+	// Create 3 IP Block Allocation
 	aIPB := testCreateAllocation(t, dbSession, ipamStorage, ipu, ipOrg1, string(okBodyIPB))
 	aIPBFG := testCreateAllocation(t, dbSession, ipamStorage, ipu, ipOrg1, string(okBodyIPBFG))
+	aIPBVpcPrefix := testCreateAllocation(t, dbSession, ipamStorage, ipu, ipOrg1, string(okBodyIPBVpcPrefix))
+	assert.NotNil(t, aIPBVpcPrefix)
 
 	instanceDAO := cdbm.NewInstanceDAO(dbSession)
 	instance, err := instanceDAO.Create(
@@ -2339,13 +2368,21 @@ func TestAllocationHandler_Delete(t *testing.T) {
 	)
 	assert.Nil(t, err)
 
+	vpcPrefixDAO := cdbm.NewVpcPrefixDAO(dbSession)
+	subnetDAO := cdbm.NewSubnetDAO(dbSession)
+
+	// Subnet for IP Block
 	childIPBUUID := uuid.MustParse(*aIPB.AllocationConstraints[0].DerivedResourceID)
 	ipbDAO := cdbm.NewIPBlockDAO(dbSession)
 	childIPB, err := ipbDAO.GetByID(ctx, nil, childIPBUUID, nil)
 	assert.Nil(t, err)
 	subnet := testAllocationBuildSubnet(t, dbSession, tenant1, vpc1, "testSubnet", childIPB.Prefix, childIPB)
 
-	subnetDAO := cdbm.NewSubnetDAO(dbSession)
+	// VPC Prefix for IP Block
+	childVpcPrefixUUID := uuid.MustParse(*aIPBVpcPrefix.AllocationConstraints[0].DerivedResourceID)
+	childVpcPrefixIBP, err := ipbDAO.GetByID(ctx, nil, childVpcPrefixUUID, nil)
+	assert.Nil(t, err)
+	vpcPrefix := testAllocationBuildVpcPrefix(t, dbSession, tenant1, vpc1, "testVPCPrefix", childVpcPrefixIBP)
 
 	// OTEL Spanner configuration
 	tracer, _, ctx := common.TestCommonTraceProviderSetup(t, ctx)
@@ -2372,6 +2409,16 @@ func TestAllocationHandler_Delete(t *testing.T) {
 		mock.AnythingOfType("func(internal.Context, uuid.UUID) error"),
 		mock.AnythingOfType("uuid.UUID")).Return(wrun2, fmt.Errorf("Failed to execute workflow"))
 
+	tmc3 := &tmocks.Client{}
+	wid3 := "test-workflow-id"
+	wrun3 := &tmocks.WorkflowRun{}
+	wrun3.On("GetID").Return(wid3)
+
+	tmc3.Mock.On("ExecuteWorkflow", mock.Anything,
+		mock.AnythingOfType("internal.StartWorkflowOptions"),
+		mock.AnythingOfType("func(internal.Context, uuid.UUID) error"),
+		mock.AnythingOfType("uuid.UUID")).Return(wrun3, nil)
+
 	tests := []struct {
 		name               string
 		reqOrgName         string
@@ -2382,6 +2429,7 @@ func TestAllocationHandler_Delete(t *testing.T) {
 		expectedStatus     int
 		deleteInstanceID   *uuid.UUID
 		deleteSubnetID     *uuid.UUID
+		deleteVpcPrefixID  *uuid.UUID
 		checkFullGrant     bool
 		verifyChildSpanner bool
 		tenantSiteCount    int
@@ -2467,7 +2515,16 @@ func TestAllocationHandler_Delete(t *testing.T) {
 			deleteSubnetID: &subnet.ID,
 		},
 		{
-			name:               "success case with IPBlock",
+			name:              "error when tenant has VpcPrefixes using IPBlock",
+			reqOrgName:        ipOrg1,
+			user:              ipu,
+			aID:               aIPBVpcPrefix.ID,
+			expectedErr:       true,
+			expectedStatus:    http.StatusBadRequest,
+			deleteVpcPrefixID: &vpcPrefix.ID,
+		},
+		{
+			name:               "success case IPBlock with Subnet as Allocation Constraint",
 			reqOrgName:         ipOrg1,
 			user:               ipu,
 			aID:                aIPB.ID,
@@ -2477,6 +2534,18 @@ func TestAllocationHandler_Delete(t *testing.T) {
 			verifyChildSpanner: true,
 			tenantSiteCount:    1, // Allocations left
 			tmc:                tmc1,
+		},
+		{
+			name:               "success case IPBlock with VPC Prefix as Allocation Constraint",
+			reqOrgName:         ipOrg1,
+			user:               ipu,
+			aID:                aIPBVpcPrefix.ID,
+			allocation:         aIPBVpcPrefix,
+			expectedErr:        false,
+			expectedStatus:     http.StatusAccepted,
+			verifyChildSpanner: true,
+			tenantSiteCount:    1, // Allocations left
+			tmc:                tmc3,
 		},
 		{
 			name:            "success case with IPBlock with Full Grant which should be cleared",
@@ -2508,7 +2577,7 @@ func TestAllocationHandler_Delete(t *testing.T) {
 			allocation:      aIT,
 			expectedErr:     false,
 			expectedStatus:  http.StatusAccepted,
-			tenantSiteCount: 0, // No more Allocations left
+			tenantSiteCount: 0, // no allocations left
 		},
 	}
 	for _, tc := range tests {
@@ -2586,6 +2655,11 @@ func TestAllocationHandler_Delete(t *testing.T) {
 			}
 			if tc.deleteSubnetID != nil {
 				err = subnetDAO.Delete(ctx, nil, *tc.deleteSubnetID)
+				assert.Nil(t, err)
+			}
+
+			if tc.deleteVpcPrefixID != nil {
+				err = vpcPrefixDAO.Delete(ctx, nil, *tc.deleteVpcPrefixID)
 				assert.Nil(t, err)
 			}
 

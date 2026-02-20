@@ -1,9 +1,9 @@
 /*
-Carbide REST API
+NVIDIA Bare Metal Manager REST API
 
-Carbide REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all Carbide Sites.
+NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to as Sites.
 
-API version: 1.0.2
+API version: 1.0.4
 Contact: carbide-dev@exchange.nvidia.com
 */
 
@@ -45,7 +45,7 @@ CreateTenantAccount Create Tenant Account
 
 Create a Tenant Account.
 
-Org must have an Infrastructure Provider entity and its ID must Infrastructure Provider ID in request data. User must have `FORGE_PROVIDER_ADMIN` authorization role
+Org must have an Infrastructure Provider entity and its ID must match the Infrastructure Provider ID in request data. User must have `FORGE_PROVIDER_ADMIN` authorization role
 
 Infrastructure Provider can create a Tenant Account by specifying the Tenant's UUID or Tenant's org name. This will set the status of the Tenant Account to "Invited". Then the Tenant can view this account information and are able to confirm/accept the account by updating the Tenant Account.
 
@@ -380,7 +380,6 @@ func (a *TenantAccountAPIService) GetAllTenantAccountExecute(r ApiGetAllTenantAc
 		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", r.pageNumber, "form", "")
 	} else {
 		var defaultValue int32 = 1
-		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", defaultValue, "form", "")
 		r.pageNumber = &defaultValue
 	}
 	if r.pageSize != nil {
@@ -629,7 +628,7 @@ UpdateTenantAccount Update Tenant Account
 
 Update a Tenant Account.
 
-Can be used to accept an invitation sent by InfraStructure provider.
+Can be used to accept an invitation sent by Infrastructure Provider.
 
 Org must have a tenant entity whose ID matches the `tenantId` of the Tenant Account object. User must have `FORGE_TENANT_ADMIN` role. Can only update a TenantAccount that has `Invited` status.
 
