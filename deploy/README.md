@@ -1586,7 +1586,7 @@ After carbide is up and running you can begin ingesting managed hosts. Before yo
   Run the command 
 
   **admin-cli \-c [https://api-](https://api-)\<ENVIRONMENT\_NAME\>.\<SITE\_DOMAIN\_NAME\> mi show**  
-* DHCP requests from all managed host IPMI networks have been forwarded to service running in Carbide whose IP address is CARBIDE\_DHCP\_EXTERNAL. THis must be completed by the site's networking team.  
+* DHCP requests from all managed host IPMI networks have been forwarded to service running in Carbide whose IP address is CARBIDE\_DHCP\_EXTERNAL. This must be completed by the site's networking team.  
 * You have the following information for all hosts that need to be ingested:  
   * Mac address of the host BMC  
   * Chassis serial number   
