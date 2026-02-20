@@ -402,15 +402,7 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 
 	// Create pagination response header
 	total := int(rlaResponse.GetTotal())
-	pageNumber := 1
-	pageSize := pagination.MaxPageSize
-	if pageRequest.PageNumber != nil {
-		pageNumber = *pageRequest.PageNumber
-	}
-	if pageRequest.PageSize != nil {
-		pageSize = *pageRequest.PageSize
-	}
-	pageResponse := pagination.NewPageResponse(pageNumber, pageSize, total, pageRequest.OrderByStr)
+	pageResponse := pagination.NewPageResponse(*pageRequest.PageNumber, *pageRequest.PageSize, total, pageRequest.OrderByStr)
 	pageHeader, err := json.Marshal(pageResponse)
 	if err != nil {
 		logger.Error().Err(err).Msg("error marshaling pagination response")

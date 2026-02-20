@@ -71,7 +71,7 @@ func NewGetTrayHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.Client
 
 // Handle godoc
 // @Summary Get a Tray
-// @Description Get a Tray by ID from RLA
+// @Description Get a Tray by ID
 // @Tags tray
 // @Accept json
 // @Produce json
@@ -172,7 +172,7 @@ func (gth GetTrayHandler) Handle(c echo.Context) error {
 	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "GetTray", rlaRequest)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to execute GetTray workflow")
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get tray from RLA", nil)
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get Tray details", nil)
 	}
 
 	// Get workflow result
@@ -184,7 +184,7 @@ func (gth GetTrayHandler) Handle(c echo.Context) error {
 			return common.TerminateWorkflowOnTimeOut(c, logger, stc, fmt.Sprintf("tray-get-%s", trayStrID), err, "Tray", "GetTray")
 		}
 		logger.Error().Err(err).Msg("failed to get result from GetTray workflow")
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get tray from RLA", nil)
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get Tray details", nil)
 	}
 
 	// Convert to API model
@@ -219,7 +219,7 @@ func NewGetAllTrayHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.Cli
 
 // Handle godoc
 // @Summary Get all Trays
-// @Description Get all Trays from RLA with optional filters
+// @Description Get all Trays with optional filters
 // @Tags tray
 // @Accept json
 // @Produce json
@@ -295,23 +295,8 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 	}
 
 	// Build and validate tray request from query params
-	qParams := c.QueryParams()
 	apiRequest := model.APITrayGetAllRequest{}
-	if v := c.QueryParam("rackId"); v != "" {
-		apiRequest.RackID = &v
-	}
-	if v := c.QueryParam("rackName"); v != "" {
-		apiRequest.RackName = &v
-	}
-	if v := c.QueryParam("type"); v != "" {
-		apiRequest.Type = &v
-	}
-	if vals := qParams["componentId"]; len(vals) > 0 {
-		apiRequest.ComponentIDs = vals
-	}
-	if vals := qParams["id"]; len(vals) > 0 {
-		apiRequest.IDs = vals
-	}
+	apiRequest.FromQueryParams(c.QueryParams())
 	if verr := apiRequest.Validate(); verr != nil {
 		logger.Warn().Err(verr).Msg("invalid tray request parameters")
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate request data", verr)
@@ -338,7 +323,7 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 	}
 
 	// Build RLA request from validated API request
-	rlaRequest := buildRLARequest(&apiRequest)
+	rlaRequest := apiRequest.ToProto()
 
 	// Set order and pagination on RLA request
 	var orderBy *rlav1.OrderBy
@@ -355,7 +340,7 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 
 	// Execute workflow
 	workflowOptions := tClient.StartWorkflowOptions{
-		ID:                       fmt.Sprintf("tray-get-all-%s", apiRequest.Hash()),
+		ID:                       fmt.Sprintf("tray-get-all-%s", common.QueryParamHash(c)),
 		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
 		WorkflowIDReusePolicy:    temporalEnums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
@@ -367,7 +352,7 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "GetTrays", rlaRequest)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to execute GetTrays workflow")
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get trays from RLA", nil)
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get Trays", nil)
 	}
 
 	// Get workflow result
@@ -376,10 +361,10 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 	if err != nil {
 		var timeoutErr *tp.TimeoutError
 		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
-			return common.TerminateWorkflowOnTimeOut(c, logger, stc, fmt.Sprintf("tray-get-all-%s", apiRequest.Hash()), err, "Tray", "GetTrays")
+			return common.TerminateWorkflowOnTimeOut(c, logger, stc, fmt.Sprintf("tray-get-all-%s", common.QueryParamHash(c)), err, "Tray", "GetTrays")
 		}
 		logger.Error().Err(err).Msg("failed to get result from GetTrays workflow")
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get trays from RLA", nil)
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get Trays", nil)
 	}
 
 	apiTrays := make([]*model.APITray, 0, len(rlaResponse.GetComponents()))
@@ -392,15 +377,7 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 
 	// Set pagination response header
 	total := int(rlaResponse.GetTotal())
-	pageNumber := 1
-	pageSize := pagination.MaxPageSize
-	if pageRequest.PageNumber != nil {
-		pageNumber = *pageRequest.PageNumber
-	}
-	if pageRequest.PageSize != nil {
-		pageSize = *pageRequest.PageSize
-	}
-	pageResponse := pagination.NewPageResponse(pageNumber, pageSize, total, pageRequest.OrderByStr)
+	pageResponse := pagination.NewPageResponse(*pageRequest.PageNumber, *pageRequest.PageSize, total, pageRequest.OrderByStr)
 	pageHeader, err := json.Marshal(pageResponse)
 	if err != nil {
 		logger.Error().Err(err).Msg("error marshaling pagination response")
@@ -411,83 +388,4 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 	logger.Info().Int("count", len(apiTrays)).Int("Total", total).Msg("finishing API handler")
 
 	return c.JSON(http.StatusOK, apiTrays)
-}
-
-// buildRLARequest builds an RLA GetComponentsRequest from a validated APITrayGetAllRequest.
-// The request must have been validated before calling this function.
-func buildRLARequest(req *model.APITrayGetAllRequest) *rlav1.GetComponentsRequest {
-	rlaRequest := &rlav1.GetComponentsRequest{}
-
-	// Component-level targeting: UUID-based IDs or componentIDs with type (ExternalRef)
-	hasIDs := len(req.IDs) > 0
-	hasComponentIDsWithType := len(req.ComponentIDs) > 0 && req.Type != nil
-
-	if hasIDs || hasComponentIDsWithType {
-		componentTargets := make([]*rlav1.ComponentTarget, 0, len(req.IDs)+len(req.ComponentIDs))
-
-		for _, id := range req.IDs {
-			componentTargets = append(componentTargets, &rlav1.ComponentTarget{
-				Identifier: &rlav1.ComponentTarget_Id{
-					Id: &rlav1.UUID{Id: id},
-				},
-			})
-		}
-
-		if hasComponentIDsWithType {
-			if protoName, ok := model.APIToProtoComponentTypeName[*req.Type]; ok {
-				protoType := rlav1.ComponentType(rlav1.ComponentType_value[protoName])
-				for _, cid := range req.ComponentIDs {
-					componentTargets = append(componentTargets, &rlav1.ComponentTarget{
-						Identifier: &rlav1.ComponentTarget_External{
-							External: &rlav1.ExternalRef{
-								Type: protoType,
-								Id:   cid,
-							},
-						},
-					})
-				}
-			}
-		}
-
-		rlaRequest.TargetSpec = &rlav1.OperationTargetSpec{
-			Targets: &rlav1.OperationTargetSpec_Components{
-				Components: &rlav1.ComponentTargets{
-					Targets: componentTargets,
-				},
-			},
-		}
-		return rlaRequest
-	}
-
-	rackTarget := &rlav1.RackTarget{}
-
-	if req.RackID != nil {
-		rackTarget.Identifier = &rlav1.RackTarget_Id{
-			Id: &rlav1.UUID{Id: *req.RackID},
-		}
-	} else if req.RackName != nil {
-		rackTarget.Identifier = &rlav1.RackTarget_Name{
-			Name: *req.RackName,
-		}
-	}
-
-	if req.Type != nil {
-		if protoName, ok := model.APIToProtoComponentTypeName[*req.Type]; ok {
-			rackTarget.ComponentTypes = []rlav1.ComponentType{
-				rlav1.ComponentType(rlav1.ComponentType_value[protoName]),
-			}
-		}
-	} else {
-		rackTarget.ComponentTypes = model.ValidProtoComponentTypes
-	}
-
-	rlaRequest.TargetSpec = &rlav1.OperationTargetSpec{
-		Targets: &rlav1.OperationTargetSpec_Racks{
-			Racks: &rlav1.RackTargets{
-				Targets: []*rlav1.RackTarget{rackTarget},
-			},
-		},
-	}
-
-	return rlaRequest
 }

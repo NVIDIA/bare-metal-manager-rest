@@ -23,6 +23,7 @@ import (
 	"github.com/google/uuid"
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestProtoToAPIComponentTypeName(t *testing.T) {
@@ -420,15 +421,144 @@ func TestAPITrayGetAllRequest_Validate(t *testing.T) {
 	}
 }
 
-func TestAPITrayGetAllRequest_Hash(t *testing.T) {
-	strPtr := func(s string) *string { return &s }
+func TestAPITrayGetAllRequest_ToProto(t *testing.T) {
+	rackID := uuid.New().String()
+	rackName := "Rack-001"
+	trayType := "compute"
+	id1 := uuid.New().String()
+	id2 := uuid.New().String()
 
-	r1 := &APITrayGetAllRequest{RackID: strPtr("abc")}
-	r2 := &APITrayGetAllRequest{RackID: strPtr("abc")}
-	r3 := &APITrayGetAllRequest{RackName: strPtr("abc")}
+	tests := []struct {
+		name     string
+		request  *APITrayGetAllRequest
+		validate func(t *testing.T, req *rlav1.GetComponentsRequest)
+	}{
+		{
+			name:    "empty request - defaults to supported types",
+			request: &APITrayGetAllRequest{},
+			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
+				require.NotNil(t, req.TargetSpec)
+				rackTargets := req.TargetSpec.GetRacks()
+				require.NotNil(t, rackTargets)
+				require.Len(t, rackTargets.Targets, 1)
+				assert.ElementsMatch(t, ValidProtoComponentTypes, rackTargets.Targets[0].ComponentTypes)
+			},
+		},
+		{
+			name: "rackId only - rack-level targeting with supported types",
+			request: &APITrayGetAllRequest{
+				RackID: &rackID,
+			},
+			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
+				require.NotNil(t, req.TargetSpec)
+				rackTargets := req.TargetSpec.GetRacks()
+				require.NotNil(t, rackTargets)
+				require.Len(t, rackTargets.Targets, 1)
+				assert.Equal(t, rackID, rackTargets.Targets[0].GetId().GetId())
+				assert.ElementsMatch(t, ValidProtoComponentTypes, rackTargets.Targets[0].ComponentTypes)
+			},
+		},
+		{
+			name: "rackName only - rack-level targeting with supported types",
+			request: &APITrayGetAllRequest{
+				RackName: &rackName,
+			},
+			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
+				require.NotNil(t, req.TargetSpec)
+				rackTargets := req.TargetSpec.GetRacks()
+				require.NotNil(t, rackTargets)
+				require.Len(t, rackTargets.Targets, 1)
+				assert.Equal(t, rackName, rackTargets.Targets[0].GetName())
+				assert.ElementsMatch(t, ValidProtoComponentTypes, rackTargets.Targets[0].ComponentTypes)
+			},
+		},
+		{
+			name: "type only - rack-level targeting with component type",
+			request: &APITrayGetAllRequest{
+				Type: &trayType,
+			},
+			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
+				require.NotNil(t, req.TargetSpec)
+				rackTargets := req.TargetSpec.GetRacks()
+				require.NotNil(t, rackTargets)
+				require.Len(t, rackTargets.Targets, 1)
+				assert.Contains(t, rackTargets.Targets[0].ComponentTypes, rlav1.ComponentType_COMPONENT_TYPE_COMPUTE)
+			},
+		},
+		{
+			name: "rackId with type - rack-level targeting with filter",
+			request: &APITrayGetAllRequest{
+				RackID: &rackID,
+				Type:   &trayType,
+			},
+			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
+				require.NotNil(t, req.TargetSpec)
+				rackTargets := req.TargetSpec.GetRacks()
+				require.NotNil(t, rackTargets)
+				require.Len(t, rackTargets.Targets, 1)
+				assert.Equal(t, rackID, rackTargets.Targets[0].GetId().GetId())
+				assert.Contains(t, rackTargets.Targets[0].ComponentTypes, rlav1.ComponentType_COMPONENT_TYPE_COMPUTE)
+			},
+		},
+		{
+			name: "IDs - component-level targeting",
+			request: &APITrayGetAllRequest{
+				IDs: []string{id1, id2},
+			},
+			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
+				require.NotNil(t, req.TargetSpec)
+				compTargets := req.TargetSpec.GetComponents()
+				require.NotNil(t, compTargets)
+				assert.Len(t, compTargets.Targets, 2)
+				assert.Equal(t, id1, compTargets.Targets[0].GetId().GetId())
+				assert.Equal(t, id2, compTargets.Targets[1].GetId().GetId())
+			},
+		},
+		{
+			name: "componentIDs with type - component-level targeting via ExternalRef",
+			request: &APITrayGetAllRequest{
+				ComponentIDs: []string{"comp-1", "comp-2"},
+				Type:         &trayType,
+			},
+			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
+				require.NotNil(t, req.TargetSpec)
+				compTargets := req.TargetSpec.GetComponents()
+				require.NotNil(t, compTargets)
+				assert.Len(t, compTargets.Targets, 2)
+				for _, target := range compTargets.Targets {
+					ext := target.GetExternal()
+					require.NotNil(t, ext)
+					assert.Equal(t, rlav1.ComponentType_COMPONENT_TYPE_COMPUTE, ext.Type)
+				}
+			},
+		},
+		{
+			name: "IDs and componentIDs with type - mixed component-level targeting",
+			request: &APITrayGetAllRequest{
+				IDs:          []string{id1},
+				ComponentIDs: []string{"comp-1"},
+				Type:         &trayType,
+			},
+			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
+				require.NotNil(t, req.TargetSpec)
+				compTargets := req.TargetSpec.GetComponents()
+				require.NotNil(t, compTargets)
+				assert.Len(t, compTargets.Targets, 2)
+				assert.Equal(t, id1, compTargets.Targets[0].GetId().GetId())
+				assert.NotNil(t, compTargets.Targets[1].GetExternal())
+			},
+		},
+	}
 
-	assert.Equal(t, r1.Hash(), r2.Hash(), "same inputs should produce same hash")
-	assert.NotEqual(t, r1.Hash(), r3.Hash(), "different fields should produce different hash")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := tt.request.ToProto()
+			require.NotNil(t, req)
+			if tt.validate != nil {
+				tt.validate(t, req)
+			}
+		})
+	}
 }
 
 func TestGetProtoTrayOrderByFromQueryParam(t *testing.T) {

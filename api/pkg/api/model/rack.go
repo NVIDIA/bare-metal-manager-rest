@@ -159,6 +159,16 @@ type APIBMC struct {
 	IPAddress  string `json:"ipAddress"`
 }
 
+// FromProto converts a proto BMC to an APIBMC
+func (ab *APIBMC) FromProto(protoBMC *rlav1.BMCInfo) {
+	if protoBMC == nil {
+		return
+	}
+	ab.Type = protoBMC.GetType().String()
+	ab.MacAddress = protoBMC.GetMacAddress()
+	ab.IPAddress = protoBMC.GetIpAddress()
+}
+
 // APIRackComponent represents a component within a rack
 type APIRackComponent struct {
 	ID              string    `json:"id"`
@@ -217,11 +227,9 @@ func (arc *APIRackComponent) FromProto(protoComponent *rlav1.Component) {
 	if len(protoComponent.GetBmcs()) > 0 {
 		arc.BMCs = make([]*APIBMC, 0, len(protoComponent.GetBmcs()))
 		for _, bmc := range protoComponent.GetBmcs() {
-			arc.BMCs = append(arc.BMCs, &APIBMC{
-				Type:       bmc.GetType().String(),
-				MacAddress: bmc.GetMacAddress(),
-				IPAddress:  bmc.GetIpAddress(),
-			})
+			apiBMC := &APIBMC{}
+			apiBMC.FromProto(bmc)
+			arc.BMCs = append(arc.BMCs, apiBMC)
 		}
 	}
 }

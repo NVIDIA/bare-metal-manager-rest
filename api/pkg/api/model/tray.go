@@ -18,11 +18,10 @@
 package model
 
 import (
-	"crypto/sha256"
 	"fmt"
 	"maps"
+	"net/url"
 	"slices"
-	"strings"
 
 	"github.com/google/uuid"
 
@@ -87,6 +86,25 @@ type APITrayGetAllRequest struct {
 	IDs          []string
 }
 
+// FromQueryParams populates the request from URL query parameters.
+func (r *APITrayGetAllRequest) FromQueryParams(params url.Values) {
+	if v := params.Get("rackId"); v != "" {
+		r.RackID = &v
+	}
+	if v := params.Get("rackName"); v != "" {
+		r.RackName = &v
+	}
+	if v := params.Get("type"); v != "" {
+		r.Type = &v
+	}
+	if vals := params["componentId"]; len(vals) > 0 {
+		r.ComponentIDs = vals
+	}
+	if vals := params["id"]; len(vals) > 0 {
+		r.IDs = vals
+	}
+}
+
 // Validate checks field formats and enforces the RLA protobuf oneof constraints:
 //   - rackId must be a valid UUID
 //   - rackId and rackName are mutually exclusive (RackTarget.oneof identifier)
@@ -129,33 +147,82 @@ func (r *APITrayGetAllRequest) Validate() error {
 	return nil
 }
 
-// Hash returns a short deterministic hex string representing the request state.
-func (r *APITrayGetAllRequest) Hash() string {
-	h := sha256.New()
+// ToProto converts a validated APITrayGetAllRequest to an RLA GetComponentsRequest.
+func (r *APITrayGetAllRequest) ToProto() *rlav1.GetComponentsRequest {
+	rlaRequest := &rlav1.GetComponentsRequest{}
+
+	hasIDs := len(r.IDs) > 0
+	hasComponentIDsWithType := len(r.ComponentIDs) > 0 && r.Type != nil
+
+	if hasIDs || hasComponentIDsWithType {
+		componentTargets := make([]*rlav1.ComponentTarget, 0, len(r.IDs)+len(r.ComponentIDs))
+
+		for _, id := range r.IDs {
+			componentTargets = append(componentTargets, &rlav1.ComponentTarget{
+				Identifier: &rlav1.ComponentTarget_Id{
+					Id: &rlav1.UUID{Id: id},
+				},
+			})
+		}
+
+		if hasComponentIDsWithType {
+			if protoName, ok := APIToProtoComponentTypeName[*r.Type]; ok {
+				protoType := rlav1.ComponentType(rlav1.ComponentType_value[protoName])
+				for _, cid := range r.ComponentIDs {
+					componentTargets = append(componentTargets, &rlav1.ComponentTarget{
+						Identifier: &rlav1.ComponentTarget_External{
+							External: &rlav1.ExternalRef{
+								Type: protoType,
+								Id:   cid,
+							},
+						},
+					})
+				}
+			}
+		}
+
+		rlaRequest.TargetSpec = &rlav1.OperationTargetSpec{
+			Targets: &rlav1.OperationTargetSpec_Components{
+				Components: &rlav1.ComponentTargets{
+					Targets: componentTargets,
+				},
+			},
+		}
+		return rlaRequest
+	}
+
+	rackTarget := &rlav1.RackTarget{}
 
 	if r.RackID != nil {
-		fmt.Fprintf(h, "rackId=%s;", *r.RackID)
+		rackTarget.Identifier = &rlav1.RackTarget_Id{
+			Id: &rlav1.UUID{Id: *r.RackID},
+		}
+	} else if r.RackName != nil {
+		rackTarget.Identifier = &rlav1.RackTarget_Name{
+			Name: *r.RackName,
+		}
 	}
-	if r.RackName != nil {
-		fmt.Fprintf(h, "rackName=%s;", *r.RackName)
-	}
+
 	if r.Type != nil {
-		fmt.Fprintf(h, "type=%s;", *r.Type)
-	}
-	if len(r.ComponentIDs) > 0 {
-		sorted := slices.Clone(r.ComponentIDs)
-		slices.Sort(sorted)
-		fmt.Fprintf(h, "componentIds=%s;", strings.Join(sorted, ","))
-	}
-	if len(r.IDs) > 0 {
-		sorted := slices.Clone(r.IDs)
-		slices.Sort(sorted)
-		fmt.Fprintf(h, "ids=%s;", strings.Join(sorted, ","))
+		if protoName, ok := APIToProtoComponentTypeName[*r.Type]; ok {
+			rackTarget.ComponentTypes = []rlav1.ComponentType{
+				rlav1.ComponentType(rlav1.ComponentType_value[protoName]),
+			}
+		}
+	} else {
+		rackTarget.ComponentTypes = ValidProtoComponentTypes
 	}
 
-	return fmt.Sprintf("%x", h.Sum(nil))[:16]
+	rlaRequest.TargetSpec = &rlav1.OperationTargetSpec{
+		Targets: &rlav1.OperationTargetSpec_Racks{
+			Racks: &rlav1.RackTargets{
+				Targets: []*rlav1.RackTarget{rackTarget},
+			},
+		},
+	}
+
+	return rlaRequest
 }
-
 
 // APITrayPosition represents the position of a tray within a rack
 type APITrayPosition struct {
