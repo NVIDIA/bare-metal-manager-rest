@@ -31,8 +31,8 @@ images:
 patches:
   - target:
       kind: Job
-      name: db-migration.*
+      name: carbide-rest-db-migration.*
     patch: |-
       - op: replace
         path: /metadata/name
-        value: db-migration-1-0-4
+        value: carbide-rest-db-migration-1-0-4

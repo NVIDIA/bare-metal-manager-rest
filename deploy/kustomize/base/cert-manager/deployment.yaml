@@ -75,13 +75,6 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "250m"
-          lifecycle:
-            preStop:
-              exec:
-                command:
-                  - /bin/sh
-                  - -c
-                  - sleep 5
           readinessProbe:
             httpGet:
               path: /healthz
