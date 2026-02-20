@@ -67,7 +67,7 @@ data:
 
     tracing:
       enabled: false
-      serviceName: cloud-api
+      serviceName: carbide-rest-api
 
     keycloak:
       enabled: true
@@ -83,4 +83,3 @@ data:
       rate: 10.0
       burst: 30
       expiresIn: 180
-
