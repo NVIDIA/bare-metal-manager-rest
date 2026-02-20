@@ -4012,8 +4012,6 @@ paths:
         - schema:
             type: string
             enum:
-              - NAME_ASC
-              - NAME_DESC
               - STATUS_ASC
               - STATUS_DESC
               - CREATED_ASC
@@ -6454,7 +6452,7 @@ paths:
             type: string
           in: query
           name: status
-          description: Filter NVLink Interfaces by Status
+          description: Filter NVLink Interfaces by Status. Can be specified multiple times to filter on more than one status.
         - schema:
             type: string
           in: query
