@@ -70,7 +70,7 @@ EOFCNF
         -config "$CA_DIR/ca.cnf" \
         -extensions v3_ca
     
-    # Create CA secret in carbide namespace for credsmgr
+    # Create CA secret in carbide-rest namespace for credsmgr
     kubectl create secret tls ca-signing-secret \
         --cert="$CA_DIR/ca.crt" \
         --key="$CA_DIR/ca.key" \
