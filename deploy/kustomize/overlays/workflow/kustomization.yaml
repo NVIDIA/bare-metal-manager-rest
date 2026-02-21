@@ -29,8 +29,8 @@ resources:
 
 images:
   - name: carbide-rest-workflow:latest
-    newName: nvcr.io/nvidian/nvforge-devel/carbide-rest-workflow
-    newTag: v1.0.2
+    newName: localhost:5000/carbide-rest-workflow
+    newTag: latest
 
 commonLabels:
   app.kubernetes.io/part-of: carbide-rest

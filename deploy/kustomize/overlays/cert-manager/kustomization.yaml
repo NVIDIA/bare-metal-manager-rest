@@ -30,7 +30,7 @@ resources:
 images:
   - name: carbide-rest-cert-manager:latest
     newName: localhost:5000/carbide-rest-cert-manager
-    newTag: v1.0.2
+    newTag: latest
 
 commonLabels:
   app.kubernetes.io/part-of: carbide-rest

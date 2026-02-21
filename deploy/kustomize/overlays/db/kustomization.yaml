@@ -26,7 +26,7 @@ resources:
 images:
   - name: carbide-rest-db:latest
     newName: localhost:5000/carbide-rest-db
-    newTag: v1.0.2
+    newTag: latest
 
 patches:
   - target:
