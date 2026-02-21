@@ -215,9 +215,9 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 
 	logger.Info().Int("Count", apiRequest.Count).Bool("TopologyOptimized", topologyOptimized).Msg("Input validation completed for batch Instance creation request")
 
-	iv := common.NewInstanceValidator(bcih.dbSession, bcih.cfg, &logger)
+	icv := common.NewInstanceCreateValidator(bcih.dbSession, bcih.cfg, &logger)
 
-	tenant, vpc, site, defaultNvllpID, apiErr := iv.ValidateTenantAndVPC(ctx, org, apiRequest.TenantID, apiRequest.VpcID)
+	tenant, vpc, site, defaultNvllpID, apiErr := icv.ValidateTenantAndVPC(ctx, org, apiRequest.TenantID, apiRequest.VpcID)
 	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
@@ -248,7 +248,7 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "VPC and Instance Type specified in request data do not belong to the same Site", nil)
 	}
 
-	ifcResult, apiErr := iv.ValidateInterfaces(ctx, tenant, vpc, apiRequest.Interfaces)
+	ifcResult, apiErr := icv.ValidateInterfaces(ctx, tenant, vpc, apiRequest.Interfaces)
 	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
@@ -256,7 +256,7 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 	logger.Info().Int("uniqueSubnetCount", len(ifcResult.SubnetIDMap)).Int("uniqueVpcPrefixCount", len(ifcResult.VpcPrefixIDMap)).
 		Msg("validated all Subnets and VPC Prefixes (shared across all instances)")
 
-	_, apiErr = iv.ValidateDPUExtensionServices(ctx, tenant, site, apiRequest.DpuExtensionServiceDeployments)
+	_, apiErr = icv.ValidateDPUExtensionServices(ctx, tenant, site, apiRequest.DpuExtensionServiceDeployments)
 	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
@@ -264,11 +264,11 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 	logger.Info().Int("dpuExtensionServiceCount", len(apiRequest.DpuExtensionServiceDeployments)).
 		Msg("validated DPU Extension Service Deployments")
 
-	if apiErr := iv.ValidateNSG(ctx, tenant, site, apiRequest.NetworkSecurityGroupID); apiErr != nil {
+	if apiErr := icv.ValidateNSG(ctx, tenant, site, apiRequest.NetworkSecurityGroupID); apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	sshKeyGroups, apiErr := iv.ValidateSSHKeyGroups(ctx, tenant, site, apiRequest.SSHKeyGroupIDs)
+	sshKeyGroups, apiErr := icv.ValidateSSHKeyGroups(ctx, tenant, site, apiRequest.SSHKeyGroupIDs)
 	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
@@ -276,7 +276,7 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 	logger.Info().Int("sshKeyGroupCount", len(sshKeyGroups)).
 		Msg("validated SSH Key Groups")
 
-	osConfig, osID, apiErr := iv.BuildOsConfig(ctx, &apiRequest, site.ID)
+	osConfig, osID, apiErr := icv.BuildOsConfig(ctx, &apiRequest, site.ID)
 	if apiErr != nil {
 		logger.Error().Err(errors.New(apiErr.Message)).Msg("error building os config for creating Instances")
 		return c.JSON(apiErr.Code, apiErr)
@@ -426,16 +426,16 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 
 	// ==================== Step 5: Machine Capability Validation ====================
 
-	dbibic, apiErr := iv.ValidateIBInterfaces(ctx, tenant, site, apiRequest.InfiniBandInterfaces, apiInstanceTypeID)
+	dbibic, apiErr := icv.ValidateIBInterfaces(ctx, tenant, site, apiRequest.InfiniBandInterfaces, apiInstanceTypeID)
 	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	if apiErr := iv.ValidateDPUInterfaces(ctx, ifcResult.DBInterfaces, ifcResult.IsDeviceInfoPresent, apiInstanceTypeID); apiErr != nil {
+	if apiErr := icv.ValidateDPUInterfaces(ctx, ifcResult.DBInterfaces, ifcResult.IsDeviceInfoPresent, apiInstanceTypeID); apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	dbnvlic, apiErr := iv.ValidateNVLinkInterfaces(ctx, tenant, site, defaultNvllpID, apiRequest.NVLinkInterfaces, apiInstanceTypeID)
+	dbnvlic, apiErr := icv.ValidateNVLinkInterfaces(ctx, tenant, site, defaultNvllpID, apiRequest.NVLinkInterfaces, apiInstanceTypeID)
 	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}

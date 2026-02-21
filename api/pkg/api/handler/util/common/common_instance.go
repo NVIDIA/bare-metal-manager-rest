@@ -48,17 +48,17 @@ type InstanceOSConfigProvider interface {
 	GetUserData() *string
 }
 
-// InstanceValidator holds infrastructure dependencies for shared instance creation validation.
+// InstanceCreateValidator holds infrastructure dependencies for shared instance creation validation.
 // Domain data flows explicitly through method parameters and return values.
-type InstanceValidator struct {
+type InstanceCreateValidator struct {
 	DBSession *cdb.Session
 	Cfg       *config.Config
 	Logger    *zerolog.Logger
 }
 
-// NewInstanceValidator creates a validator with infrastructure dependencies.
-func NewInstanceValidator(dbSession *cdb.Session, cfg *config.Config, logger *zerolog.Logger) *InstanceValidator {
-	return &InstanceValidator{
+// NewInstanceCreateValidator creates a validator with infrastructure dependencies.
+func NewInstanceCreateValidator(dbSession *cdb.Session, cfg *config.Config, logger *zerolog.Logger) *InstanceCreateValidator {
+	return &InstanceCreateValidator{
 		DBSession: dbSession,
 		Cfg:       cfg,
 		Logger:    logger,
@@ -74,12 +74,12 @@ type InterfaceValidationResult struct {
 }
 
 // ValidateTenantAndVPC validates tenant ownership, VPC state, and site readiness.
-func (v *InstanceValidator) ValidateTenantAndVPC(ctx context.Context, org, tenantID, vpcID string) (
+func (icv *InstanceCreateValidator) ValidateTenantAndVPC(ctx context.Context, org, tenantID, vpcID string) (
 	*cdbm.Tenant, *cdbm.Vpc, *cdbm.Site, *uuid.UUID, *cerr.APIError,
 ) {
-	logger := v.Logger
+	logger := icv.Logger
 
-	tenant, err := GetTenantForOrg(ctx, nil, v.DBSession, org)
+	tenant, err := GetTenantForOrg(ctx, nil, icv.DBSession, org)
 	if err != nil {
 		if err == ErrOrgTenantNotFound {
 			logger.Warn().Err(err).Msg("Org does not have a Tenant associated")
@@ -89,7 +89,7 @@ func (v *InstanceValidator) ValidateTenantAndVPC(ctx context.Context, org, tenan
 		return nil, nil, nil, nil, cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve tenant for org", nil)
 	}
 
-	apiTenant, err := GetTenantFromIDString(ctx, nil, tenantID, v.DBSession)
+	apiTenant, err := GetTenantFromIDString(ctx, nil, tenantID, icv.DBSession)
 	if err != nil {
 		logger.Warn().Err(err).Msg("error retrieving tenant from request")
 		return nil, nil, nil, nil, cerr.NewAPIError(http.StatusBadRequest, "TenantID in request is not valid", nil)
@@ -99,7 +99,7 @@ func (v *InstanceValidator) ValidateTenantAndVPC(ctx context.Context, org, tenan
 		return nil, nil, nil, nil, cerr.NewAPIError(http.StatusBadRequest, "TenantID in request does not match tenant in org", nil)
 	}
 
-	vpc, err := GetVpcFromIDString(ctx, nil, vpcID, []string{cdbm.NVLinkLogicalPartitionRelationName}, v.DBSession)
+	vpc, err := GetVpcFromIDString(ctx, nil, vpcID, []string{cdbm.NVLinkLogicalPartitionRelationName}, icv.DBSession)
 	if err != nil {
 		if err == cdb.ErrDoesNotExist {
 			return nil, nil, nil, nil, cerr.NewAPIError(http.StatusBadRequest, "Could not find VPC with ID specified in request data", nil)
@@ -123,7 +123,7 @@ func (v *InstanceValidator) ValidateTenantAndVPC(ctx context.Context, org, tenan
 		defaultNvllpID = vpc.NVLinkLogicalPartitionID
 	}
 
-	siteDAO := cdbm.NewSiteDAO(v.DBSession)
+	siteDAO := cdbm.NewSiteDAO(icv.DBSession)
 	site, err := siteDAO.GetByID(ctx, nil, vpc.SiteID, nil, false)
 	if err != nil {
 		if err == cdb.ErrDoesNotExist {
@@ -143,11 +143,11 @@ func (v *InstanceValidator) ValidateTenantAndVPC(ctx context.Context, org, tenan
 }
 
 // ValidateInterfaces validates subnet and VPC prefix interfaces.
-func (v *InstanceValidator) ValidateInterfaces(ctx context.Context, tenant *cdbm.Tenant, vpc *cdbm.Vpc, interfaces []cam.APIInterfaceCreateOrUpdateRequest) (*InterfaceValidationResult, *cerr.APIError) {
-	logger := v.Logger
+func (icv *InstanceCreateValidator) ValidateInterfaces(ctx context.Context, tenant *cdbm.Tenant, vpc *cdbm.Vpc, interfaces []cam.APIInterfaceCreateOrUpdateRequest) (*InterfaceValidationResult, *cerr.APIError) {
+	logger := icv.Logger
 
-	subnetDAO := cdbm.NewSubnetDAO(v.DBSession)
-	vpDAO := cdbm.NewVpcPrefixDAO(v.DBSession)
+	subnetDAO := cdbm.NewSubnetDAO(icv.DBSession)
+	vpDAO := cdbm.NewVpcPrefixDAO(icv.DBSession)
 
 	subnetIDs := []uuid.UUID{}
 	vpcPrefixIDs := []uuid.UUID{}
@@ -286,8 +286,8 @@ func (v *InstanceValidator) ValidateInterfaces(ctx context.Context, tenant *cdbm
 }
 
 // ValidateDPUExtensionServices validates DPU extension service deployments.
-func (v *InstanceValidator) ValidateDPUExtensionServices(ctx context.Context, tenant *cdbm.Tenant, site *cdbm.Site, deployments []cam.APIDpuExtensionServiceDeploymentRequest) (map[string]*cdbm.DpuExtensionService, *cerr.APIError) {
-	logger := v.Logger
+func (icv *InstanceCreateValidator) ValidateDPUExtensionServices(ctx context.Context, tenant *cdbm.Tenant, site *cdbm.Site, deployments []cam.APIDpuExtensionServiceDeploymentRequest) (map[string]*cdbm.DpuExtensionService, *cerr.APIError) {
+	logger := icv.Logger
 
 	desIDMap := map[string]*cdbm.DpuExtensionService{}
 
@@ -313,7 +313,7 @@ func (v *InstanceValidator) ValidateDPUExtensionServices(ctx context.Context, te
 		}
 	}
 
-	desDAO := cdbm.NewDpuExtensionServiceDAO(v.DBSession)
+	desDAO := cdbm.NewDpuExtensionServiceDAO(icv.DBSession)
 	desList, _, err := desDAO.GetAll(ctx, nil, cdbm.DpuExtensionServiceFilterInput{
 		DpuExtensionServiceIDs: uniqueDesIDs,
 	}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
@@ -369,14 +369,14 @@ func (v *InstanceValidator) ValidateDPUExtensionServices(ctx context.Context, te
 }
 
 // ValidateNSG validates the network security group, if specified.
-func (v *InstanceValidator) ValidateNSG(ctx context.Context, tenant *cdbm.Tenant, site *cdbm.Site, nsgID *string) *cerr.APIError {
+func (icv *InstanceCreateValidator) ValidateNSG(ctx context.Context, tenant *cdbm.Tenant, site *cdbm.Site, nsgID *string) *cerr.APIError {
 	if nsgID == nil {
 		return nil
 	}
 
-	logger := v.Logger
+	logger := icv.Logger
 
-	nsgDAO := cdbm.NewNetworkSecurityGroupDAO(v.DBSession)
+	nsgDAO := cdbm.NewNetworkSecurityGroupDAO(icv.DBSession)
 	nsg, err := nsgDAO.GetByID(ctx, nil, *nsgID, nil)
 	if err != nil {
 		if err == cdb.ErrDoesNotExist {
@@ -406,15 +406,15 @@ func (v *InstanceValidator) ValidateNSG(ctx context.Context, tenant *cdbm.Tenant
 }
 
 // ValidateSSHKeyGroups validates SSH key groups and their site associations.
-func (v *InstanceValidator) ValidateSSHKeyGroups(ctx context.Context, tenant *cdbm.Tenant, site *cdbm.Site, sshKeyGroupIDs []string) ([]cdbm.SSHKeyGroup, *cerr.APIError) {
-	logger := v.Logger
+func (icv *InstanceCreateValidator) ValidateSSHKeyGroups(ctx context.Context, tenant *cdbm.Tenant, site *cdbm.Site, sshKeyGroupIDs []string) ([]cdbm.SSHKeyGroup, *cerr.APIError) {
+	logger := icv.Logger
 
 	sshKeyGroups := []cdbm.SSHKeyGroup{}
 
-	skgsaDAO := cdbm.NewSSHKeyGroupSiteAssociationDAO(v.DBSession)
+	skgsaDAO := cdbm.NewSSHKeyGroupSiteAssociationDAO(icv.DBSession)
 
 	for _, skgIDStr := range sshKeyGroupIDs {
-		sshkeygroup, serr := GetSSHKeyGroupFromIDString(ctx, nil, skgIDStr, v.DBSession, nil)
+		sshkeygroup, serr := GetSSHKeyGroupFromIDString(ctx, nil, skgIDStr, icv.DBSession, nil)
 		if serr != nil {
 			if serr == ErrInvalidID {
 				return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Invalid SSH Key Group ID: %s specified in request", skgIDStr), nil)
@@ -447,11 +447,11 @@ func (v *InstanceValidator) ValidateSSHKeyGroups(ctx context.Context, tenant *cd
 }
 
 // BuildOsConfig validates and builds the OS configuration for the Temporal workflow.
-func (v *InstanceValidator) BuildOsConfig(ctx context.Context, req InstanceOSConfigProvider, siteID uuid.UUID) (*cwssaws.OperatingSystem, *uuid.UUID, *cerr.APIError) {
-	logger := v.Logger
+func (icv *InstanceCreateValidator) BuildOsConfig(ctx context.Context, req InstanceOSConfigProvider, siteID uuid.UUID) (*cwssaws.OperatingSystem, *uuid.UUID, *cerr.APIError) {
+	logger := icv.Logger
 
 	if req.GetOperatingSystemID() == nil || *req.GetOperatingSystemID() == "" {
-		if err := req.ValidateAndSetOperatingSystemData(v.Cfg, nil); err != nil {
+		if err := req.ValidateAndSetOperatingSystemData(icv.Cfg, nil); err != nil {
 			logger.Error().Err(err).Msg("failed to validate OperatingSystem")
 			return nil, nil, cerr.NewAPIError(http.StatusBadRequest, "Failed to validate OperatingSystem data", err)
 		}
@@ -479,7 +479,7 @@ func (v *InstanceValidator) BuildOsConfig(ctx context.Context, req InstanceOSCon
 
 	osID := &id
 
-	osDAO := cdbm.NewOperatingSystemDAO(v.DBSession)
+	osDAO := cdbm.NewOperatingSystemDAO(icv.DBSession)
 	os, serr := osDAO.GetByID(ctx, nil, *osID, nil)
 	if serr != nil {
 		if serr == cdb.ErrDoesNotExist {
@@ -503,7 +503,7 @@ func (v *InstanceValidator) BuildOsConfig(ctx context.Context, req InstanceOSCon
 	}
 
 	if os.Type == cdbm.OperatingSystemTypeImage {
-		ossaDAO := cdbm.NewOperatingSystemSiteAssociationDAO(v.DBSession)
+		ossaDAO := cdbm.NewOperatingSystemSiteAssociationDAO(icv.DBSession)
 		_, ossaCount, err := ossaDAO.GetAll(
 			ctx, nil,
 			cdbm.OperatingSystemSiteAssociationFilterInput{
@@ -525,7 +525,7 @@ func (v *InstanceValidator) BuildOsConfig(ctx context.Context, req InstanceOSCon
 		}
 	}
 
-	err = req.ValidateAndSetOperatingSystemData(v.Cfg, os)
+	err = req.ValidateAndSetOperatingSystemData(icv.Cfg, os)
 	if err != nil {
 		logger.Error().Msgf("OperatingSystem options validation failed: %s", err)
 		return nil, nil, cerr.NewAPIError(http.StatusBadRequest, "OperatingSystem options validation failed", err)
@@ -560,14 +560,14 @@ func (v *InstanceValidator) BuildOsConfig(ctx context.Context, req InstanceOSCon
 
 // ValidateIBInterfaces validates InfiniBand interfaces against instance type capabilities,
 // validates partition ownership and state.
-func (v *InstanceValidator) ValidateIBInterfaces(ctx context.Context, tenant *cdbm.Tenant, site *cdbm.Site, ibIfcs []cam.APIInfiniBandInterfaceCreateOrUpdateRequest, instanceTypeID uuid.UUID) ([]cdbm.InfiniBandInterface, *cerr.APIError) {
-	logger := v.Logger
+func (icv *InstanceCreateValidator) ValidateIBInterfaces(ctx context.Context, tenant *cdbm.Tenant, site *cdbm.Site, ibIfcs []cam.APIInfiniBandInterfaceCreateOrUpdateRequest, instanceTypeID uuid.UUID) ([]cdbm.InfiniBandInterface, *cerr.APIError) {
+	logger := icv.Logger
 
 	if len(ibIfcs) == 0 {
 		return nil, nil
 	}
 
-	mcDAO := cdbm.NewMachineCapabilityDAO(v.DBSession)
+	mcDAO := cdbm.NewMachineCapabilityDAO(icv.DBSession)
 	itIbCaps, itIbCapCount, err := mcDAO.GetAll(ctx, nil, nil, []uuid.UUID{instanceTypeID}, cdb.GetStrPtr(cdbm.MachineCapabilityTypeInfiniBand), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		logger.Error().Err(err).Msg("error retrieving InfiniBand Machine Capabilities from DB for Instance Type")
@@ -588,7 +588,7 @@ func (v *InstanceValidator) ValidateIBInterfaces(ctx context.Context, tenant *cd
 		ibpIDs = append(ibpIDs, ibpID)
 	}
 
-	ibpDAO := cdbm.NewInfiniBandPartitionDAO(v.DBSession)
+	ibpDAO := cdbm.NewInfiniBandPartitionDAO(icv.DBSession)
 	ibpList, _, err := ibpDAO.GetAll(ctx, nil, cdbm.InfiniBandPartitionFilterInput{
 		InfiniBandPartitionIDs: ibpIDs,
 	}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
@@ -648,10 +648,10 @@ func (v *InstanceValidator) ValidateIBInterfaces(ctx context.Context, tenant *cd
 // validates logical partition ownership and state.
 // If no NVLink interfaces are specified but a default NVLink logical partition exists on the VPC,
 // it generates default interfaces from the GPU capabilities.
-func (v *InstanceValidator) ValidateNVLinkInterfaces(ctx context.Context, tenant *cdbm.Tenant, site *cdbm.Site, defaultNvllpID *uuid.UUID, nvlIfcs []cam.APINVLinkInterfaceCreateOrUpdateRequest, instanceTypeID uuid.UUID) ([]cdbm.NVLinkInterface, *cerr.APIError) {
-	logger := v.Logger
+func (icv *InstanceCreateValidator) ValidateNVLinkInterfaces(ctx context.Context, tenant *cdbm.Tenant, site *cdbm.Site, defaultNvllpID *uuid.UUID, nvlIfcs []cam.APINVLinkInterfaceCreateOrUpdateRequest, instanceTypeID uuid.UUID) ([]cdbm.NVLinkInterface, *cerr.APIError) {
+	logger := icv.Logger
 
-	mcDAO := cdbm.NewMachineCapabilityDAO(v.DBSession)
+	mcDAO := cdbm.NewMachineCapabilityDAO(icv.DBSession)
 	itNvlCaps, itNvlCapCount, err := mcDAO.GetAll(ctx, nil, nil, []uuid.UUID{instanceTypeID}, cdb.GetStrPtr(cdbm.MachineCapabilityTypeGPU), nil, nil, nil, nil, nil, cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeNVLink), nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
 	if err != nil {
 		logger.Error().Err(err).Msg("error retrieving GPU (NVLink) Machine Capabilities from DB for Instance Type")
@@ -682,7 +682,7 @@ func (v *InstanceValidator) ValidateNVLinkInterfaces(ctx context.Context, tenant
 
 		var nvllpMap map[uuid.UUID]*cdbm.NVLinkLogicalPartition
 		if defaultNvllpID == nil {
-			nvllpDAO := cdbm.NewNVLinkLogicalPartitionDAO(v.DBSession)
+			nvllpDAO := cdbm.NewNVLinkLogicalPartitionDAO(icv.DBSession)
 			uniqueNvllpIDs := make([]uuid.UUID, 0, len(nvllpIDs))
 			seenIDs := make(map[uuid.UUID]bool)
 			for _, id := range nvllpIDs {
@@ -762,14 +762,14 @@ func (v *InstanceValidator) ValidateNVLinkInterfaces(ctx context.Context, tenant
 }
 
 // ValidateDPUInterfaces validates DPU interface capabilities against instance type machine capabilities.
-func (v *InstanceValidator) ValidateDPUInterfaces(ctx context.Context, dbInterfaces []cdbm.Interface, isDeviceInfoPresent bool, instanceTypeID uuid.UUID) *cerr.APIError {
+func (icv *InstanceCreateValidator) ValidateDPUInterfaces(ctx context.Context, dbInterfaces []cdbm.Interface, isDeviceInfoPresent bool, instanceTypeID uuid.UUID) *cerr.APIError {
 	if !isDeviceInfoPresent {
 		return nil
 	}
 
-	logger := v.Logger
+	logger := icv.Logger
 
-	mcDAO := cdbm.NewMachineCapabilityDAO(v.DBSession)
+	mcDAO := cdbm.NewMachineCapabilityDAO(icv.DBSession)
 	itDpuCaps, itDpuCapCount, err := mcDAO.GetAll(ctx, nil, nil, []uuid.UUID{instanceTypeID},
 		cdb.GetStrPtr(cdbm.MachineCapabilityTypeNetwork), nil, nil, nil, nil, nil,
 		cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeDPU), nil, nil, nil, nil, nil)

@@ -197,33 +197,33 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Error validating Instance creation request data", verr)
 	}
 
-	iv := common.NewInstanceValidator(cih.dbSession, cih.cfg, &logger)
+	icv := common.NewInstanceCreateValidator(cih.dbSession, cih.cfg, &logger)
 
-	tenant, vpc, site, defaultNvllpID, apiErr := iv.ValidateTenantAndVPC(ctx, org, apiRequest.TenantID, apiRequest.VpcID)
+	tenant, vpc, site, defaultNvllpID, apiErr := icv.ValidateTenantAndVPC(ctx, org, apiRequest.TenantID, apiRequest.VpcID)
 	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	ifcResult, apiErr := iv.ValidateInterfaces(ctx, tenant, vpc, apiRequest.Interfaces)
+	ifcResult, apiErr := icv.ValidateInterfaces(ctx, tenant, vpc, apiRequest.Interfaces)
 	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	desIDMap, apiErr := iv.ValidateDPUExtensionServices(ctx, tenant, site, apiRequest.DpuExtensionServiceDeployments)
+	desIDMap, apiErr := icv.ValidateDPUExtensionServices(ctx, tenant, site, apiRequest.DpuExtensionServiceDeployments)
 	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	if apiErr := iv.ValidateNSG(ctx, tenant, site, apiRequest.NetworkSecurityGroupID); apiErr != nil {
+	if apiErr := icv.ValidateNSG(ctx, tenant, site, apiRequest.NetworkSecurityGroupID); apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	sshKeyGroups, apiErr := iv.ValidateSSHKeyGroups(ctx, tenant, site, apiRequest.SSHKeyGroupIDs)
+	sshKeyGroups, apiErr := icv.ValidateSSHKeyGroups(ctx, tenant, site, apiRequest.SSHKeyGroupIDs)
 	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	osConfig, osID, apiErr := iv.BuildOsConfig(ctx, &apiRequest, vpc.SiteID)
+	osConfig, osID, apiErr := icv.BuildOsConfig(ctx, &apiRequest, vpc.SiteID)
 	if apiErr != nil {
 		logger.Error().Err(errors.New(apiErr.Message)).Msg("error building os config for creating Instance")
 		return c.JSON(apiErr.Code, apiErr)
