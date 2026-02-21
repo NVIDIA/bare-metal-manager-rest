@@ -25,7 +25,7 @@ type ComponentDiff struct {
 	// ID of the component in its source system
 	ComponentId *string `json:"componentId,omitempty"`
 	Expected *RackComponent `json:"expected,omitempty"`
-	Actual *ActualComponent `json:"actual,omitempty"`
+	Actual *RackComponent `json:"actual,omitempty"`
 	// List of field differences (populated when type is DIFF_TYPE_DRIFT)
 	FieldDiffs []FieldDiff `json:"fieldDiffs,omitempty"`
 }
@@ -144,9 +144,9 @@ func (o *ComponentDiff) SetExpected(v RackComponent) {
 }
 
 // GetActual returns the Actual field value if set, zero value otherwise.
-func (o *ComponentDiff) GetActual() ActualComponent {
+func (o *ComponentDiff) GetActual() RackComponent {
 	if o == nil || IsNil(o.Actual) {
-		var ret ActualComponent
+		var ret RackComponent
 		return ret
 	}
 	return *o.Actual
@@ -154,7 +154,7 @@ func (o *ComponentDiff) GetActual() ActualComponent {
 
 // GetActualOk returns a tuple with the Actual field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-func (o *ComponentDiff) GetActualOk() (*ActualComponent, bool) {
+func (o *ComponentDiff) GetActualOk() (*RackComponent, bool) {
 	if o == nil || IsNil(o.Actual) {
 		return nil, false
 	}
@@ -170,8 +170,8 @@ func (o *ComponentDiff) HasActual() bool {
 	return false
 }
 
-// SetActual gets a reference to the given ActualComponent and assigns it to the Actual field.
-func (o *ComponentDiff) SetActual(v ActualComponent) {
+// SetActual gets a reference to the given RackComponent and assigns it to the Actual field.
+func (o *ComponentDiff) SetActual(v RackComponent) {
 	o.Actual = &v
 }
 
