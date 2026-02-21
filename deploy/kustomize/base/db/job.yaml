@@ -32,17 +32,18 @@ spec:
         - name: imagepullsecret
       restartPolicy: OnFailure
       initContainers:
-        # Wait for PostgreSQL to be ready (single check; job restarts on failure via backoffLimit)
+        # Wait for PostgreSQL to be ready
         - name: wait-for-postgres
           image: postgres:14.4-alpine
           command:
-            - pg_isready
-            - -h
-            - postgres
-            - -p
-            - "5432"
-            - -U
-            - postgres
+            - /bin/sh
+            - -c
+            - |
+              until pg_isready -h postgres -p 5432 -U postgres; do
+                echo "Waiting for PostgreSQL..."
+                sleep 2
+              done
+              echo "PostgreSQL is ready!"
       containers:
         - name: migrations
           image: carbide-rest-db:latest

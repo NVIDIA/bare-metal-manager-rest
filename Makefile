@@ -240,7 +240,7 @@ docker-build-local:
 # Create kind cluster with port mappings
 kind-up:
 	kind create cluster --name $(KIND_CLUSTER_NAME) --config deploy/kind/cluster-config.yaml
-	kubectl apply -f deploy/kustomize/base/crds/
+	#kubectl apply -f deploy/kustomize/base/crds/
 
 # Delete kind cluster
 kind-down:
@@ -272,7 +272,7 @@ kind-apply:
 	@echo "Waiting for Keycloak..."
 	kubectl -n carbide-rest wait --for=condition=ready pod -l app=keycloak --timeout=180s
 	@echo "Running database migrations..."
-	kubectl -n carbide-rest wait --for=condition=complete job/db --timeout=120s
+	kubectl -n carbide-rest wait --for=condition=complete job/carbide-rest-db-migration --timeout=120s
 	@echo "Waiting for API service..."
 	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-api --timeout=120s || true
 	@echo "Waiting for Site Manager..."
@@ -314,7 +314,7 @@ deploy-overlay-workflow:
 kind-reset:
 	-kind delete cluster --name $(KIND_CLUSTER_NAME)
 	kind create cluster --name $(KIND_CLUSTER_NAME) --config deploy/kind/cluster-config.yaml
-	kubectl apply -f deploy/kustomize/base/crds/
+	#kubectl apply -f deploy/kustomize/base/crds/
 	@echo "Installing cert-manager.io..."
 	kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
 	@echo "Waiting for cert-manager deployments..."
@@ -380,11 +380,14 @@ kind-reset:
 		--tls-server-name interservice.server.temporal.local || true
 	@echo "Temporal Helm deployment ready"
 	kubectl -n carbide-rest wait --for=condition=ready pod -l app=keycloak --timeout=360s
-	kubectl -n carbide-rest wait --for=condition=complete job/db --timeout=240s
+	kubectl -n carbide-rest wait --for=condition=complete job/carbide-rest-db-migration --timeout=240s
 	-kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-api --timeout=240s
+	@echo "Restarting workflow workers so they start with Temporal and certs ready..."
+	kubectl -n carbide-rest rollout restart deployment/cloud-worker
+	kubectl -n carbide-rest rollout restart deployment/site-worker
 	@echo "Waiting for workflow workers..."
-	-kubectl -n carbide-rest wait --for=condition=ready pod -l app=cloud-worker --timeout=240s
-	-kubectl -n carbide-rest wait --for=condition=ready pod -l app=site-worker --timeout=240s
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=cloud-worker --timeout=240s
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=site-worker --timeout=240s
 	@echo "Waiting for Site Manager..."
 	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=360s
 	./scripts/setup-local.sh site-agent

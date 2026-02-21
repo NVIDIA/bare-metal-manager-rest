@@ -199,7 +199,7 @@ create_site() {
     fi
 
     for attempt in 1 2 3; do
-        SITE_RESP=$(curl -s -X POST "$API_URL/v2/org/$ORG/carbide/site?infrastructureProviderId=$PROVIDER_ID" \
+        FULL=$(curl -s -w "\n%{http_code}" -X POST "$API_URL/v2/org/$ORG/carbide/site?infrastructureProviderId=$PROVIDER_ID" \
             -H "Authorization: Bearer $token" \
             -H "Content-Type: application/json" \
             -d '{
@@ -208,6 +208,8 @@ create_site() {
                 "location": {"address": "Local Development", "city": "Santa Clara", "state": "CA", "country": "USA", "postalCode": "95054"},
                 "contact": {"name": "Dev Team", "email": "dev@example.com", "phone": "555-0100"}
             }')
+        HTTP_CODE=$(echo "$FULL" | tail -n 1)
+        SITE_RESP=$(echo "$FULL" | sed '$d')
         
         SITE_ID=$(echo "$SITE_RESP" | jq -r '.id // empty')
         if [ -n "$SITE_ID" ] && [ "$SITE_ID" != "null" ]; then
@@ -216,12 +218,14 @@ create_site() {
         fi
         
         if [ $attempt -lt 3 ]; then
-            echo "Site creation attempt $attempt failed, retrying..." >&2
+            echo "Site creation attempt $attempt failed (HTTP $HTTP_CODE), retrying..." >&2
+            echo "Response: $SITE_RESP" >&2
             read -t 5 < /dev/null || true
         fi
     done
     
-    echo "ERROR: Failed to create site" >&2
+    echo "ERROR: Failed to create site (HTTP $HTTP_CODE)" >&2
+    echo "Response: $SITE_RESP" >&2
     exit 1
 }
 
@@ -255,6 +259,9 @@ configure_site_agent() {
 setup_site_agent() {
     echo "Setting up site-agent..."
     wait_for_services
+    
+    echo "Allowing API and Temporal to stabilize..."
+    sleep 10
     
     echo "Acquiring token..."
     TOKEN=$(get_token)

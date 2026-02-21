@@ -132,7 +132,7 @@ patches:
   # DB migrations Job
   - target:
       kind: Job
-      name: db
+      name: carbide-rest-db-migration
     patch: |-
       - op: replace
         path: /spec/template/spec/imagePullSecrets
