@@ -400,7 +400,7 @@ func (gaemh GetAllExpectedMachineHandler) Handle(c echo.Context) error {
 		// Get all Sites for the org's Infrastructure Provider
 		siteDAO := cdbm.NewSiteDAO(gaemh.dbSession)
 		sites, _, err := siteDAO.GetAll(ctx, nil,
-			cdbm.SiteFilterInput{InfrastructureProviderID: &infrastructureProvider.ID},
+			cdbm.SiteFilterInput{InfrastructureProviderIDs: []uuid.UUID{infrastructureProvider.ID}},
 			paginator.PageInput{Limit: cdb.GetIntPtr(math.MaxInt)},
 			nil,
 		)

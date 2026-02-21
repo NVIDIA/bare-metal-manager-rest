@@ -170,7 +170,7 @@ func (csh CreateSiteHandler) Handle(c echo.Context) error {
 
 	// Check for name uniqueness for the Site within the scope of the Provider
 	stDAO := cdbm.NewSiteDAO(csh.dbSession)
-	sts, tot, err := stDAO.GetAll(ctx, nil, cdbm.SiteFilterInput{Name: &apiRequest.Name, InfrastructureProviderID: &ip.ID}, paginator.PageInput{}, nil)
+	sts, tot, err := stDAO.GetAll(ctx, nil, cdbm.SiteFilterInput{Name: &apiRequest.Name, InfrastructureProviderIDs: []uuid.UUID{ip.ID}}, paginator.PageInput{}, nil)
 	if err != nil {
 		logger.Error().Err(err).Msg("db error checking for name uniqueness of Site")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Site, error reading from data store", nil)
@@ -472,7 +472,7 @@ func (ush UpdateSiteHandler) Handle(c echo.Context) error {
 
 	// Check for name uniqueness for the Site
 	if apiRequest.Name != nil && *apiRequest.Name != es.Name {
-		sts, tot, serr := stDAO.GetAll(ctx, nil, cdbm.SiteFilterInput{Name: apiRequest.Name, InfrastructureProviderID: &es.InfrastructureProviderID}, paginator.PageInput{}, nil)
+		sts, tot, serr := stDAO.GetAll(ctx, nil, cdbm.SiteFilterInput{Name: apiRequest.Name, InfrastructureProviderIDs: []uuid.UUID{es.InfrastructureProviderID}}, paginator.PageInput{}, nil)
 		if serr != nil {
 			logger.Error().Err(serr).Msg("db error checking for name uniqueness of Site")
 			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to update Site, error reading from data store", nil)
@@ -939,7 +939,7 @@ func (gash GetAllSiteHandler) Handle(c echo.Context) error {
 
 	if provider != nil {
 		// Retrieve Sites from Provider perspective
-		sites, _, serr := stDAO.GetAll(ctx, nil, cdbm.SiteFilterInput{InfrastructureProviderID: &provider.ID}, paginator.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		sites, _, serr := stDAO.GetAll(ctx, nil, cdbm.SiteFilterInput{InfrastructureProviderIDs: []uuid.UUID{provider.ID}}, paginator.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
 		if serr != nil {
 			logger.Error().Err(serr).Msg("error retrieving all Sites by param from DB")
 			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Sites", nil)
@@ -961,6 +961,36 @@ func (gash GetAllSiteHandler) Handle(c echo.Context) error {
 		for _, ts := range tss {
 			siteIDs.Add(ts.SiteID)
 			tsMap[ts.SiteID] = &ts
+		}
+
+		// If Tenant is privileged (has TargetedInstanceCreation capability),
+		// also retrieve all Sites from Providers they have a Tenant Account with
+		if tenant.Config != nil && tenant.Config.TargetedInstanceCreation {
+			taDAO := cdbm.NewTenantAccountDAO(gash.dbSession)
+			tas, _, serr := taDAO.GetAll(ctx, nil, cdbm.TenantAccountFilterInput{
+				TenantIDs: []uuid.UUID{tenant.ID},
+				Statuses:  []string{cdbm.TenantAccountStatusReady},
+			}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+			if serr != nil {
+				logger.Error().Err(serr).Msg("error retrieving Tenant Accounts for privileged Tenant")
+				return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Tenant Accounts", nil)
+			}
+
+			if len(tas) > 0 {
+				providerIDs := make([]uuid.UUID, 0, len(tas))
+				for _, ta := range tas {
+					providerIDs = append(providerIDs, ta.InfrastructureProviderID)
+				}
+
+				providerSites, _, serr := stDAO.GetAll(ctx, nil, cdbm.SiteFilterInput{InfrastructureProviderIDs: providerIDs}, paginator.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+				if serr != nil {
+					logger.Error().Err(serr).Msg("error retrieving Sites for Providers from Tenant Accounts")
+					return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Sites for one or more Providers", nil)
+				}
+				for _, site := range providerSites {
+					siteIDs.Add(site.ID)
+				}
+			}
 		}
 	}
 

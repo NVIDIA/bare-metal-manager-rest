@@ -2260,7 +2260,7 @@ func TestDeleteSiteHandler_Handle(t *testing.T) {
 
 			if !tt.wantErr {
 				stDAO := cdbm.NewSiteDAO(dbSession)
-				ipsts, _, terr := stDAO.GetAll(context.Background(), nil, cdbm.SiteFilterInput{InfrastructureProviderID: &ip.ID}, paginator.PageInput{}, nil)
+				ipsts, _, terr := stDAO.GetAll(context.Background(), nil, cdbm.SiteFilterInput{InfrastructureProviderIDs: []uuid.UUID{ip.ID}}, paginator.PageInput{}, nil)
 				assert.Nil(t, terr)
 				assert.Equal(t, tt.remainSiteCnt, len(ipsts))
 			}
