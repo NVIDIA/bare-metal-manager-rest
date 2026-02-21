@@ -144,16 +144,16 @@ func (cc *InstanceCreateContext) ValidateTenantAndVPC(ctx context.Context, org, 
 	site, err := siteDAO.GetByID(ctx, nil, vpc.SiteID, nil, false)
 	if err != nil {
 		if err == cdb.ErrDoesNotExist {
-			return cerr.NewAPIError(http.StatusBadRequest, "The Site where Instances are being created could not be found", nil)
+			return cerr.NewAPIError(http.StatusBadRequest, "The Site where this Instance is being created could not be found", nil)
 		}
 		logger.Error().Err(err).Msg("error retrieving Site from DB by ID")
-		return cerr.NewAPIError(http.StatusInternalServerError, "The Site where Instances are being created could not be retrieved", nil)
+		return cerr.NewAPIError(http.StatusInternalServerError, "The Site where this Instance is being created could not be retrieved", nil)
 	}
 
 	if site.Status != cdbm.SiteStatusRegistered {
 		logger.Warn().Str("Site ID", site.ID.String()).Str("Site Status", site.Status).
-			Msg("The Site where Instances are being created is not in Registered state")
-		return cerr.NewAPIError(http.StatusBadRequest, "The Site where Instances are being created is not in Registered state", nil)
+			Msg("The Site where this Instance is being created is not in Registered state")
+		return cerr.NewAPIError(http.StatusBadRequest, "The Site where this Instance is being created is not in Registered state", nil)
 	}
 
 	cc.Tenant = tenant
@@ -182,7 +182,7 @@ func (cc *InstanceCreateContext) ValidateInterfaces(ctx context.Context, interfa
 			subnetID, err := uuid.Parse(*ifc.SubnetID)
 			if err != nil {
 				logger.Error().Err(err).Str("subnetID", *ifc.SubnetID).Msg("error parsing subnet id")
-				return cerr.NewAPIError(http.StatusBadRequest, "Invalid Subnet ID format", nil)
+				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Subnet ID: %s specified in interfaces data in request is not valid", *ifc.SubnetID), nil)
 			}
 			subnetIDs = append(subnetIDs, subnetID)
 		}
@@ -190,7 +190,7 @@ func (cc *InstanceCreateContext) ValidateInterfaces(ctx context.Context, interfa
 			vpcPrefixID, err := uuid.Parse(*ifc.VpcPrefixID)
 			if err != nil {
 				logger.Warn().Err(err).Msg("error parsing vpcprefix id in instance vpcprefix request")
-				return cerr.NewAPIError(http.StatusBadRequest, "VPC Prefix ID specified in request data is not valid", nil)
+				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("VPC Prefix ID: %s specified in interfaces data in request is not valid", *ifc.VpcPrefixID), nil)
 			}
 			vpcPrefixIDs = append(vpcPrefixIDs, vpcPrefixID)
 		}
@@ -229,7 +229,7 @@ func (cc *InstanceCreateContext) ValidateInterfaces(ctx context.Context, interfa
 
 			subnet, ok := subnetIDMap[subnetID]
 			if !ok {
-				return cerr.NewAPIError(http.StatusBadRequest, "Could not find Subnet with ID specified in request data", nil)
+				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Could not find Subnet with ID: %v specified in request data", subnetID), nil)
 			}
 
 			if subnet.TenantID != tenant.ID {
@@ -264,7 +264,7 @@ func (cc *InstanceCreateContext) ValidateInterfaces(ctx context.Context, interfa
 
 			vpcPrefix, ok := vpcPrefixIDMap[vpcPrefixUUID]
 			if !ok {
-				return cerr.NewAPIError(http.StatusBadRequest, "Could not find VPC Prefix with ID specified in request data", nil)
+				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Could not find VPC Prefix with ID: %v specified in request data", vpcPrefixUUID), nil)
 			}
 
 			if vpcPrefix.TenantID != tenant.ID {
@@ -331,7 +331,7 @@ func (cc *InstanceCreateContext) ValidateDPUExtensionServices(ctx context.Contex
 			logger.Warn().Err(err).Str("serviceID", adesdr.DpuExtensionServiceID).
 				Msg("error parsing DPU Extension Service ID")
 			return cerr.NewAPIError(http.StatusBadRequest,
-				fmt.Sprintf("Invalid DPU Extension Service ID: %s", adesdr.DpuExtensionServiceID), nil)
+				fmt.Sprintf("Invalid DPU Extension Service ID: %s specified in request", adesdr.DpuExtensionServiceID), nil)
 		}
 		desIDs = append(desIDs, desID)
 		if !seenDesIDs[desID] {
@@ -347,7 +347,7 @@ func (cc *InstanceCreateContext) ValidateDPUExtensionServices(ctx context.Contex
 	if err != nil {
 		logger.Error().Err(err).Msg("error retrieving DPU Extension Services from DB")
 		return cerr.NewAPIError(http.StatusInternalServerError,
-			"Failed to retrieve DPU Extension Services specified in request, DB error", nil)
+			"Failed to retrieve DPU Extension Services from DB by IDs", nil)
 	}
 
 	desMap := make(map[uuid.UUID]*cdbm.DpuExtensionService, len(desList))
@@ -359,7 +359,7 @@ func (cc *InstanceCreateContext) ValidateDPUExtensionServices(ctx context.Contex
 		des, exists := desMap[desID]
 		if !exists {
 			return cerr.NewAPIError(http.StatusBadRequest,
-				fmt.Sprintf("Could not find DPU Extension Service with ID: %s", desID), nil)
+				fmt.Sprintf("Could not find DPU Extension Service with ID: %v specified in request data", desID), nil)
 		}
 
 		if des.TenantID != tenant.ID {
@@ -373,7 +373,7 @@ func (cc *InstanceCreateContext) ValidateDPUExtensionServices(ctx context.Contex
 			logger.Warn().Str("siteID", site.ID.String()).Str("serviceID", desID.String()).
 				Msg("DPU Extension Service does not belong to Site")
 			return cerr.NewAPIError(http.StatusForbidden,
-				fmt.Sprintf("DPU Extension Service: %s does not belong to Site where Instances are being created", desID.String()), nil)
+				fmt.Sprintf("DPU Extension Service: %s does not belong to Site where Instance is being created", desID.String()), nil)
 		}
 
 		versionFound := false
@@ -409,25 +409,25 @@ func (cc *InstanceCreateContext) ValidateNSG(ctx context.Context, nsgID *string)
 	if err != nil {
 		if err == cdb.ErrDoesNotExist {
 			return cerr.NewAPIError(http.StatusBadRequest,
-				fmt.Sprintf("Could not find Network Security Group with ID: %s", *nsgID), nil)
+				fmt.Sprintf("Could not find NetworkSecurityGroup with ID: %s specified in request", *nsgID), nil)
 		}
-		logger.Error().Err(err).Str("nsgID", *nsgID).Msg("error retrieving Network Security Group from DB")
+		logger.Error().Err(err).Str("nsgID", *nsgID).Msg("error retrieving NetworkSecurityGroup with ID specified in request data")
 		return cerr.NewAPIError(http.StatusInternalServerError,
-			"Failed to retrieve Network Security Group specified in request, DB error", nil)
+			"Failed to retrieve NetworkSecurityGroup with ID specified in request data", nil)
 	}
 
 	if nsg.SiteID != cc.Site.ID {
 		logger.Error().Str("siteID", cc.Site.ID.String()).Str("nsgID", *nsgID).
-			Msg("Network Security Group does not belong to Site")
+			Msg("NetworkSecurityGroup in request does not belong to Site")
 		return cerr.NewAPIError(http.StatusForbidden,
-			"Network Security Group specified in request does not belong to Site", nil)
+			"NetworkSecurityGroup with ID specified in request data does not belong to Site", nil)
 	}
 
 	if nsg.TenantID != cc.Tenant.ID {
 		logger.Error().Str("tenantID", cc.Tenant.ID.String()).Str("nsgID", *nsgID).
-			Msg("Network Security Group does not belong to Tenant")
+			Msg("NetworkSecurityGroup in request does not belong to Tenant")
 		return cerr.NewAPIError(http.StatusForbidden,
-			"Network Security Group specified in request does not belong to Tenant", nil)
+			"NetworkSecurityGroup with ID specified in request data does not belong to Tenant", nil)
 	}
 
 	return nil
@@ -448,27 +448,27 @@ func (cc *InstanceCreateContext) ValidateSSHKeyGroups(ctx context.Context, sshKe
 		sshkeygroup, serr := GetSSHKeyGroupFromIDString(ctx, nil, skgIDStr, cc.DBSession, nil)
 		if serr != nil {
 			if serr == ErrInvalidID {
-				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Failed to create Instances, Invalid SSH Key Group ID: %s", skgIDStr), nil)
+				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Invalid SSH Key Group ID: %s specified in request", skgIDStr), nil)
 			}
 			if serr == cdb.ErrDoesNotExist {
-				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Failed to create Instances, Could not find SSH Key Group with ID: %s", skgIDStr), nil)
+				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Could not find SSH Key Group with ID: %s specified in request data", skgIDStr), nil)
 			}
 			logger.Warn().Err(serr).Str("SSH Key Group ID", skgIDStr).Msg("error retrieving SSH Key Group from DB by ID")
-			return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Failed to retrieve SSH Key Group with ID `%s` specified in request, DB error", skgIDStr), nil)
+			return cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve SSH Key Groups from DB by IDs", nil)
 		}
 
 		if sshkeygroup.TenantID != tenant.ID {
 			logger.Warn().Str("Tenant ID", tenant.ID.String()).Str("SSH Key Group ID", skgIDStr).Msg("SSH Key Group does not belong to current Tenant")
-			return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Failed to create Instances, SSH Key Group with ID: %s does not belong to Tenant", skgIDStr), nil)
+			return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Failed to create Instance, SSH Key Group with ID: %s does not belong to Tenant", skgIDStr), nil)
 		}
 
 		_, serr = skgsaDAO.GetBySSHKeyGroupIDAndSiteID(ctx, nil, sshkeygroup.ID, site.ID, nil)
 		if serr != nil {
 			if serr == cdb.ErrDoesNotExist {
-				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("SSH Key Group with ID: %s is not associated with the Site where Instances are being created", skgIDStr), nil)
+				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("SSH Key Group: %s specified in request data is not associated with the Site where Instance is being created", skgIDStr), nil)
 			}
 			logger.Warn().Err(serr).Str("SSH Key Group ID", skgIDStr).Msg("error retrieving SSH Key Group Site Association from DB by SSH Key Group ID & Site ID")
-			return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Failed to determine if SSH Key Group: %s is associated with the Site where Instances are being created, DB error", skgIDStr), nil)
+			return cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve SSH Key Group Site Associations from DB", nil)
 		}
 
 		cc.SSHKeyGroups = append(cc.SSHKeyGroups, *sshkeygroup)
