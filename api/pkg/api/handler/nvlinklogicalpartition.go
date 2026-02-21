@@ -309,7 +309,8 @@ func (cibph CreateNVLinkLogicalPartitionHandler) Handle(c echo.Context) error {
 	logger.Info().Str("Workflow ID", wid).Msg("scheduled NVLink Logical Partition creation workflow")
 
 	// Block until the workflow has completed and returned success/error.
-	err = we.Get(ctx, nil)
+	var workflowResult *cwssaws.NVLinkLogicalPartition
+	err = we.Get(ctx, &workflowResult)
 	if err != nil {
 		var timeoutErr *tp.TimeoutError
 		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
@@ -338,7 +339,9 @@ func (cibph CreateNVLinkLogicalPartitionHandler) Handle(c echo.Context) error {
 
 	logger.Info().Str("Workflow ID", wid).Msg("completed NVLink Logical Partition creation workflow")
 
-	// commit transaction
+	// commit transaction - must commit once NVLink Logical Partition has been created
+	// If we have an error while updating the status, we'll rollback REST layer cache
+	// but object will remain on Site
 	err = tx.Commit()
 	if err != nil {
 		logger.Error().Err(err).Msg("error committing NVLink Logical Partition transaction to DB")
@@ -348,8 +351,40 @@ func (cibph CreateNVLinkLogicalPartitionHandler) Handle(c echo.Context) error {
 	// set committed so, deferred cleanup functions will do nothing
 	txCommitted = true
 
+	// update the db record for NVLink Logical Partition with the status from the workflow
+	// If we run into an error, we'll log it but won't return error
+	unvllp := nvllp
+	ussd := ssd // Use original status detail by default
+	if workflowResult != nil {
+		logger.Info().Str("Workflow ID", wid).Msg("received NVLink Logical Partition info from workflow")
+
+		status, statusMessage := common.GetNVLinkLogicalPartitionStatus(workflowResult.Status.State)
+		// if status is nil, then default is pending and inventory will be updating status from workflow
+		if status != nil {
+			// update the db record for NVLink Logical Partition (using new transaction/nil since tx is committed)
+			unvllp, err = nvllpDAO.Update(ctx, nil, cdbm.NVLinkLogicalPartitionUpdateInput{
+				NVLinkLogicalPartitionID: nvllp.ID,
+				Status:                   status,
+			})
+
+			if err != nil {
+				logger.Error().Err(err).Msg("unable to update NVLink Logical Partition record in DB, but object already exists on Site")
+				// Continue with original nvllp and ssd - don't return error
+			} else {
+				newSSD, err := sdDAO.CreateFromParams(ctx, nil, nvllp.ID.String(), *status, statusMessage)
+				if err != nil {
+					logger.Error().Err(err).Msg("error creating Status Detail DB entry, but object already exists on Site")
+					// Continue with original ssd - don't return error
+				} else if newSSD != nil {
+					// Use the new status detail if successfully created
+					ussd = newSSD
+				}
+			}
+		}
+	}
+
 	// create response
-	apiNVLinkLogicalPartition := model.NewAPINVLinkLogicalPartition(nvllp, nil, nil, []cdbm.StatusDetail{*ssd})
+	apiNVLinkLogicalPartition := model.NewAPINVLinkLogicalPartition(unvllp, nil, nil, []cdbm.StatusDetail{*ussd})
 	logger.Info().Msg("finishing API handler")
 	return c.JSON(http.StatusCreated, apiNVLinkLogicalPartition)
 }
