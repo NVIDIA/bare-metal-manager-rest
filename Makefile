@@ -386,8 +386,8 @@ kind-reset:
 	kubectl -n carbide-rest rollout restart deployment/cloud-worker
 	kubectl -n carbide-rest rollout restart deployment/site-worker
 	@echo "Waiting for workflow workers..."
-	kubectl -n carbide-rest wait --for=condition=ready pod -l app=cloud-worker --timeout=240s
-	kubectl -n carbide-rest wait --for=condition=ready pod -l app=site-worker --timeout=240s
+	kubectl -n carbide-rest rollout status deployment/cloud-worker --timeout=240s
+	kubectl -n carbide-rest rollout status deployment/site-worker --timeout=240s
 	@echo "Waiting for Site Manager..."
 	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=360s
 	./scripts/setup-local.sh site-agent
