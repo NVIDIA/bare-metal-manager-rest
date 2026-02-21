@@ -48,91 +48,74 @@ type InstanceOSConfigProvider interface {
 	GetUserData() *string
 }
 
-// InstanceCreateContext accumulates validated state during instance creation.
-// Both single and batch instance create handlers use this to avoid duplicating validation logic.
-type InstanceCreateContext struct {
+// InstanceValidator holds infrastructure dependencies for shared instance creation validation.
+// Domain data flows explicitly through method parameters and return values.
+type InstanceValidator struct {
 	DBSession *cdb.Session
 	Cfg       *config.Config
 	Logger    *zerolog.Logger
-
-	// Validated entities — populated progressively by validation methods.
-	Tenant         *cdbm.Tenant
-	VPC            *cdbm.Vpc
-	Site           *cdbm.Site
-	DefaultNvllpID *uuid.UUID
-
-	// Interface validation products
-	DBInterfaces        []cdbm.Interface
-	SubnetIDMap         map[uuid.UUID]*cdbm.Subnet
-	VpcPrefixIDMap      map[uuid.UUID]*cdbm.VpcPrefix
-	IsDeviceInfoPresent bool
-
-	// DPU Extension Service validation products
-	DESIDMap map[string]*cdbm.DpuExtensionService
-
-	// SSH Key Group validation products
-	SSHKeyGroups []cdbm.SSHKeyGroup
-
-	// Machine Capability validation products
-	DBIBInterfaces  []cdbm.InfiniBandInterface
-	DBNVLInterfaces []cdbm.NVLinkInterface
-
-	// OS Config products
-	OsConfig *cwssaws.OperatingSystem
-	OsID     *uuid.UUID
 }
 
-// NewInstanceCreateContext initializes a new context for shared instance creation logic.
-func NewInstanceCreateContext(dbSession *cdb.Session, cfg *config.Config, logger *zerolog.Logger) *InstanceCreateContext {
-	return &InstanceCreateContext{
+// NewInstanceValidator creates a validator with infrastructure dependencies.
+func NewInstanceValidator(dbSession *cdb.Session, cfg *config.Config, logger *zerolog.Logger) *InstanceValidator {
+	return &InstanceValidator{
 		DBSession: dbSession,
 		Cfg:       cfg,
 		Logger:    logger,
 	}
 }
 
-// ValidateTenantAndVPC validates tenant ownership, VPC state, site readiness, and populates
-// cc.Tenant, cc.VPC, cc.Site, and cc.DefaultNvllpID.
-func (cc *InstanceCreateContext) ValidateTenantAndVPC(ctx context.Context, org, tenantID, vpcID string) *cerr.APIError {
-	logger := cc.Logger
+// InterfaceValidationResult holds the products of ValidateInterfaces.
+type InterfaceValidationResult struct {
+	DBInterfaces        []cdbm.Interface
+	SubnetIDMap         map[uuid.UUID]*cdbm.Subnet
+	VpcPrefixIDMap      map[uuid.UUID]*cdbm.VpcPrefix
+	IsDeviceInfoPresent bool
+}
 
-	tenant, err := GetTenantForOrg(ctx, nil, cc.DBSession, org)
+// ValidateTenantAndVPC validates tenant ownership, VPC state, and site readiness.
+func (v *InstanceValidator) ValidateTenantAndVPC(ctx context.Context, org, tenantID, vpcID string) (
+	*cdbm.Tenant, *cdbm.Vpc, *cdbm.Site, *uuid.UUID, *cerr.APIError,
+) {
+	logger := v.Logger
+
+	tenant, err := GetTenantForOrg(ctx, nil, v.DBSession, org)
 	if err != nil {
 		if err == ErrOrgTenantNotFound {
 			logger.Warn().Err(err).Msg("Org does not have a Tenant associated")
-			return cerr.NewAPIError(http.StatusBadRequest, "Org does not have a Tenant associated", nil)
+			return nil, nil, nil, nil, cerr.NewAPIError(http.StatusBadRequest, "Org does not have a Tenant associated", nil)
 		}
 		logger.Error().Err(err).Msg("unable to retrieve tenant for org")
-		return cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve tenant for org", nil)
+		return nil, nil, nil, nil, cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve tenant for org", nil)
 	}
 
-	apiTenant, err := GetTenantFromIDString(ctx, nil, tenantID, cc.DBSession)
+	apiTenant, err := GetTenantFromIDString(ctx, nil, tenantID, v.DBSession)
 	if err != nil {
 		logger.Warn().Err(err).Msg("error retrieving tenant from request")
-		return cerr.NewAPIError(http.StatusBadRequest, "TenantID in request is not valid", nil)
+		return nil, nil, nil, nil, cerr.NewAPIError(http.StatusBadRequest, "TenantID in request is not valid", nil)
 	}
 	if apiTenant.ID != tenant.ID {
 		logger.Warn().Msg("tenant id in request does not match tenant in org")
-		return cerr.NewAPIError(http.StatusBadRequest, "TenantID in request does not match tenant in org", nil)
+		return nil, nil, nil, nil, cerr.NewAPIError(http.StatusBadRequest, "TenantID in request does not match tenant in org", nil)
 	}
 
-	vpc, err := GetVpcFromIDString(ctx, nil, vpcID, []string{cdbm.NVLinkLogicalPartitionRelationName}, cc.DBSession)
+	vpc, err := GetVpcFromIDString(ctx, nil, vpcID, []string{cdbm.NVLinkLogicalPartitionRelationName}, v.DBSession)
 	if err != nil {
 		if err == cdb.ErrDoesNotExist {
-			return cerr.NewAPIError(http.StatusBadRequest, "Could not find VPC with ID specified in request data", nil)
+			return nil, nil, nil, nil, cerr.NewAPIError(http.StatusBadRequest, "Could not find VPC with ID specified in request data", nil)
 		}
 		logger.Warn().Err(err).Str("vpcId", vpcID).Msg("error retrieving VPC from request")
-		return cerr.NewAPIError(http.StatusBadRequest, "VpcID in request is not valid", nil)
+		return nil, nil, nil, nil, cerr.NewAPIError(http.StatusBadRequest, "VpcID in request is not valid", nil)
 	}
 
 	if vpc.TenantID != tenant.ID {
 		logger.Warn().Msg("tenant id in request does not match tenant in VPC")
-		return cerr.NewAPIError(http.StatusBadRequest, "VPC specified in request is not owned by Tenant", nil)
+		return nil, nil, nil, nil, cerr.NewAPIError(http.StatusBadRequest, "VPC specified in request is not owned by Tenant", nil)
 	}
 
 	if vpc.ControllerVpcID == nil || vpc.Status != cdbm.VpcStatusReady {
 		logger.Warn().Msg("VPC specified in request data is not ready")
-		return cerr.NewAPIError(http.StatusBadRequest, "VPC specified in request data is not ready", nil)
+		return nil, nil, nil, nil, cerr.NewAPIError(http.StatusBadRequest, "VPC specified in request data is not ready", nil)
 	}
 
 	var defaultNvllpID *uuid.UUID
@@ -140,39 +123,31 @@ func (cc *InstanceCreateContext) ValidateTenantAndVPC(ctx context.Context, org, 
 		defaultNvllpID = vpc.NVLinkLogicalPartitionID
 	}
 
-	siteDAO := cdbm.NewSiteDAO(cc.DBSession)
+	siteDAO := cdbm.NewSiteDAO(v.DBSession)
 	site, err := siteDAO.GetByID(ctx, nil, vpc.SiteID, nil, false)
 	if err != nil {
 		if err == cdb.ErrDoesNotExist {
-			return cerr.NewAPIError(http.StatusBadRequest, "The Site where this Instance is being created could not be found", nil)
+			return nil, nil, nil, nil, cerr.NewAPIError(http.StatusBadRequest, "The Site where this Instance is being created could not be found", nil)
 		}
 		logger.Error().Err(err).Msg("error retrieving Site from DB by ID")
-		return cerr.NewAPIError(http.StatusInternalServerError, "The Site where this Instance is being created could not be retrieved", nil)
+		return nil, nil, nil, nil, cerr.NewAPIError(http.StatusInternalServerError, "The Site where this Instance is being created could not be retrieved", nil)
 	}
 
 	if site.Status != cdbm.SiteStatusRegistered {
 		logger.Warn().Str("Site ID", site.ID.String()).Str("Site Status", site.Status).
 			Msg("The Site where this Instance is being created is not in Registered state")
-		return cerr.NewAPIError(http.StatusBadRequest, "The Site where this Instance is being created is not in Registered state", nil)
+		return nil, nil, nil, nil, cerr.NewAPIError(http.StatusBadRequest, "The Site where this Instance is being created is not in Registered state", nil)
 	}
 
-	cc.Tenant = tenant
-	cc.VPC = vpc
-	cc.Site = site
-	cc.DefaultNvllpID = defaultNvllpID
-	return nil
+	return tenant, vpc, site, defaultNvllpID, nil
 }
 
-// ValidateInterfaces validates subnet and VPC prefix interfaces, populating
-// cc.DBInterfaces, cc.SubnetIDMap, cc.VpcPrefixIDMap, and cc.IsDeviceInfoPresent.
-// Requires cc.Tenant, cc.VPC, cc.Site to be populated.
-func (cc *InstanceCreateContext) ValidateInterfaces(ctx context.Context, interfaces []cam.APIInterfaceCreateOrUpdateRequest) *cerr.APIError {
-	logger := cc.Logger
-	tenant := cc.Tenant
-	vpc := cc.VPC
+// ValidateInterfaces validates subnet and VPC prefix interfaces.
+func (v *InstanceValidator) ValidateInterfaces(ctx context.Context, tenant *cdbm.Tenant, vpc *cdbm.Vpc, interfaces []cam.APIInterfaceCreateOrUpdateRequest) (*InterfaceValidationResult, *cerr.APIError) {
+	logger := v.Logger
 
-	subnetDAO := cdbm.NewSubnetDAO(cc.DBSession)
-	vpDAO := cdbm.NewVpcPrefixDAO(cc.DBSession)
+	subnetDAO := cdbm.NewSubnetDAO(v.DBSession)
+	vpDAO := cdbm.NewVpcPrefixDAO(v.DBSession)
 
 	subnetIDs := []uuid.UUID{}
 	vpcPrefixIDs := []uuid.UUID{}
@@ -182,7 +157,7 @@ func (cc *InstanceCreateContext) ValidateInterfaces(ctx context.Context, interfa
 			subnetID, err := uuid.Parse(*ifc.SubnetID)
 			if err != nil {
 				logger.Error().Err(err).Str("subnetID", *ifc.SubnetID).Msg("error parsing subnet id")
-				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Subnet ID: %s specified in interfaces data in request is not valid", *ifc.SubnetID), nil)
+				return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Subnet ID: %s specified in interfaces data in request is not valid", *ifc.SubnetID), nil)
 			}
 			subnetIDs = append(subnetIDs, subnetID)
 		}
@@ -190,7 +165,7 @@ func (cc *InstanceCreateContext) ValidateInterfaces(ctx context.Context, interfa
 			vpcPrefixID, err := uuid.Parse(*ifc.VpcPrefixID)
 			if err != nil {
 				logger.Warn().Err(err).Msg("error parsing vpcprefix id in instance vpcprefix request")
-				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("VPC Prefix ID: %s specified in interfaces data in request is not valid", *ifc.VpcPrefixID), nil)
+				return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("VPC Prefix ID: %s specified in interfaces data in request is not valid", *ifc.VpcPrefixID), nil)
 			}
 			vpcPrefixIDs = append(vpcPrefixIDs, vpcPrefixID)
 		}
@@ -201,7 +176,7 @@ func (cc *InstanceCreateContext) ValidateInterfaces(ctx context.Context, interfa
 		subnets, _, err := subnetDAO.GetAll(ctx, nil, cdbm.SubnetFilterInput{SubnetIDs: subnetIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving Subnets from DB by IDs")
-			return cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve Subnets from DB by IDs", nil)
+			return nil, cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve Subnets from DB by IDs", nil)
 		}
 		for i := range subnets {
 			subnetIDMap[subnets[i].ID] = &subnets[i]
@@ -213,7 +188,7 @@ func (cc *InstanceCreateContext) ValidateInterfaces(ctx context.Context, interfa
 		vpcPrefixes, _, err := vpDAO.GetAll(ctx, nil, cdbm.VpcPrefixFilterInput{VpcPrefixIDs: vpcPrefixIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving VPC Prefixes from DB by IDs")
-			return cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve VPC Prefixes from DB by IDs", nil)
+			return nil, cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve VPC Prefixes from DB by IDs", nil)
 		}
 		for i := range vpcPrefixes {
 			vpcPrefixIDMap[vpcPrefixes[i].ID] = &vpcPrefixes[i]
@@ -229,27 +204,27 @@ func (cc *InstanceCreateContext) ValidateInterfaces(ctx context.Context, interfa
 
 			subnet, ok := subnetIDMap[subnetID]
 			if !ok {
-				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Could not find Subnet with ID: %v specified in request data", subnetID), nil)
+				return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Could not find Subnet with ID: %v specified in request data", subnetID), nil)
 			}
 
 			if subnet.TenantID != tenant.ID {
 				logger.Warn().Msg(fmt.Sprintf("Subnet: %v specified in request is not owned by Tenant", subnetID))
-				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Subnet: %v specified in request is not owned by Tenant", subnetID), nil)
+				return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Subnet: %v specified in request is not owned by Tenant", subnetID), nil)
 			}
 
 			if subnet.ControllerNetworkSegmentID == nil || subnet.Status != cdbm.SubnetStatusReady {
 				logger.Warn().Msg(fmt.Sprintf("Subnet: %v specified in request data is not in Ready state", subnetID))
-				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Subnet: %v specified in request data is not in Ready state", subnetID), nil)
+				return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Subnet: %v specified in request data is not in Ready state", subnetID), nil)
 			}
 
 			if subnet.VpcID != vpc.ID {
 				logger.Warn().Msg(fmt.Sprintf("Subnet: %v specified in request does not match with VPC", subnetID))
-				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Subnet: %v specified in request does not match with VPC", subnetID), nil)
+				return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Subnet: %v specified in request does not match with VPC", subnetID), nil)
 			}
 
 			if vpc.NetworkVirtualizationType != nil && *vpc.NetworkVirtualizationType != cdbm.VpcEthernetVirtualizer {
 				logger.Warn().Msg(fmt.Sprintf("VPC: %v specified in request must have Ethernet network virtualization type in order to create Subnet based interfaces", vpc.ID))
-				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("VPC: %v specified in request must have Ethernet network virtualization type in order to create Subnet based interfaces", vpc.ID), nil)
+				return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("VPC: %v specified in request must have Ethernet network virtualization type in order to create Subnet based interfaces", vpc.ID), nil)
 			}
 
 			dbInterfaces = append(dbInterfaces, cdbm.Interface{
@@ -264,27 +239,27 @@ func (cc *InstanceCreateContext) ValidateInterfaces(ctx context.Context, interfa
 
 			vpcPrefix, ok := vpcPrefixIDMap[vpcPrefixUUID]
 			if !ok {
-				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Could not find VPC Prefix with ID: %v specified in request data", vpcPrefixUUID), nil)
+				return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Could not find VPC Prefix with ID: %v specified in request data", vpcPrefixUUID), nil)
 			}
 
 			if vpcPrefix.TenantID != tenant.ID {
 				logger.Warn().Msg(fmt.Sprintf("VPC Prefix: %v specified in request is not owned by Tenant", vpcPrefixUUID))
-				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("VPC Prefix: %v specified in request is not owned by Tenant", vpcPrefixUUID), nil)
+				return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("VPC Prefix: %v specified in request is not owned by Tenant", vpcPrefixUUID), nil)
 			}
 
 			if vpcPrefix.Status != cdbm.VpcPrefixStatusReady {
 				logger.Warn().Msg(fmt.Sprintf("VPC Prefix: %v specified in request data is not in Ready state", vpcPrefixUUID))
-				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("VPC Prefix: %v specified in request data is not in Ready state", vpcPrefixUUID), nil)
+				return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("VPC Prefix: %v specified in request data is not in Ready state", vpcPrefixUUID), nil)
 			}
 
 			if vpcPrefix.VpcID != vpc.ID {
 				logger.Warn().Msg(fmt.Sprintf("VPC Prefix: %v specified in request does not match with VPC", vpcPrefixUUID))
-				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("VPC Prefix: %v specified in request does not match with VPC", vpcPrefixUUID), nil)
+				return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("VPC Prefix: %v specified in request does not match with VPC", vpcPrefixUUID), nil)
 			}
 
 			if vpc.NetworkVirtualizationType == nil || *vpc.NetworkVirtualizationType != cdbm.VpcFNN {
 				logger.Warn().Msg(fmt.Sprintf("VPC: %v specified in request must have FNN network virtualization type in order to create VPC Prefix based interfaces", vpc.ID))
-				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("VPC: %v specified in request must have FNN network virtualization type in order to create VPC Prefix based interfaces", vpc.ID), nil)
+				return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("VPC: %v specified in request must have FNN network virtualization type in order to create VPC Prefix based interfaces", vpc.ID), nil)
 			}
 
 			if ifc.Device != nil && ifc.DeviceInstance != nil {
@@ -302,24 +277,22 @@ func (cc *InstanceCreateContext) ValidateInterfaces(ctx context.Context, interfa
 		}
 	}
 
-	cc.DBInterfaces = dbInterfaces
-	cc.SubnetIDMap = subnetIDMap
-	cc.VpcPrefixIDMap = vpcPrefixIDMap
-	cc.IsDeviceInfoPresent = isDeviceInfoPresent
-	return nil
+	return &InterfaceValidationResult{
+		DBInterfaces:        dbInterfaces,
+		SubnetIDMap:         subnetIDMap,
+		VpcPrefixIDMap:      vpcPrefixIDMap,
+		IsDeviceInfoPresent: isDeviceInfoPresent,
+	}, nil
 }
 
-// ValidateDPUExtensionServices validates DPU extension service deployments, populating cc.DESIDMap.
-// Requires cc.Tenant and cc.Site to be populated.
-func (cc *InstanceCreateContext) ValidateDPUExtensionServices(ctx context.Context, deployments []cam.APIDpuExtensionServiceDeploymentRequest) *cerr.APIError {
-	logger := cc.Logger
-	tenant := cc.Tenant
-	site := cc.Site
+// ValidateDPUExtensionServices validates DPU extension service deployments.
+func (v *InstanceValidator) ValidateDPUExtensionServices(ctx context.Context, tenant *cdbm.Tenant, site *cdbm.Site, deployments []cam.APIDpuExtensionServiceDeploymentRequest) (map[string]*cdbm.DpuExtensionService, *cerr.APIError) {
+	logger := v.Logger
 
-	cc.DESIDMap = map[string]*cdbm.DpuExtensionService{}
+	desIDMap := map[string]*cdbm.DpuExtensionService{}
 
 	if len(deployments) == 0 {
-		return nil
+		return desIDMap, nil
 	}
 
 	desIDs := make([]uuid.UUID, 0, len(deployments))
@@ -330,7 +303,7 @@ func (cc *InstanceCreateContext) ValidateDPUExtensionServices(ctx context.Contex
 		if err != nil {
 			logger.Warn().Err(err).Str("serviceID", adesdr.DpuExtensionServiceID).
 				Msg("error parsing DPU Extension Service ID")
-			return cerr.NewAPIError(http.StatusBadRequest,
+			return nil, cerr.NewAPIError(http.StatusBadRequest,
 				fmt.Sprintf("Invalid DPU Extension Service ID: %s specified in request", adesdr.DpuExtensionServiceID), nil)
 		}
 		desIDs = append(desIDs, desID)
@@ -340,13 +313,13 @@ func (cc *InstanceCreateContext) ValidateDPUExtensionServices(ctx context.Contex
 		}
 	}
 
-	desDAO := cdbm.NewDpuExtensionServiceDAO(cc.DBSession)
+	desDAO := cdbm.NewDpuExtensionServiceDAO(v.DBSession)
 	desList, _, err := desDAO.GetAll(ctx, nil, cdbm.DpuExtensionServiceFilterInput{
 		DpuExtensionServiceIDs: uniqueDesIDs,
 	}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
 	if err != nil {
 		logger.Error().Err(err).Msg("error retrieving DPU Extension Services from DB")
-		return cerr.NewAPIError(http.StatusInternalServerError,
+		return nil, cerr.NewAPIError(http.StatusInternalServerError,
 			"Failed to retrieve DPU Extension Services from DB by IDs", nil)
 	}
 
@@ -358,21 +331,21 @@ func (cc *InstanceCreateContext) ValidateDPUExtensionServices(ctx context.Contex
 	for i, desID := range desIDs {
 		des, exists := desMap[desID]
 		if !exists {
-			return cerr.NewAPIError(http.StatusBadRequest,
+			return nil, cerr.NewAPIError(http.StatusBadRequest,
 				fmt.Sprintf("Could not find DPU Extension Service with ID: %v specified in request data", desID), nil)
 		}
 
 		if des.TenantID != tenant.ID {
 			logger.Warn().Str("tenantID", tenant.ID.String()).Str("serviceID", desID.String()).
 				Msg("DPU Extension Service does not belong to current Tenant")
-			return cerr.NewAPIError(http.StatusForbidden,
+			return nil, cerr.NewAPIError(http.StatusForbidden,
 				fmt.Sprintf("DPU Extension Service: %s does not belong to current Tenant", desID.String()), nil)
 		}
 
 		if des.SiteID != site.ID {
 			logger.Warn().Str("siteID", site.ID.String()).Str("serviceID", desID.String()).
 				Msg("DPU Extension Service does not belong to Site")
-			return cerr.NewAPIError(http.StatusForbidden,
+			return nil, cerr.NewAPIError(http.StatusForbidden,
 				fmt.Sprintf("DPU Extension Service: %s does not belong to Site where Instance is being created", desID.String()), nil)
 		}
 
@@ -385,26 +358,25 @@ func (cc *InstanceCreateContext) ValidateDPUExtensionServices(ctx context.Contex
 			}
 		}
 		if !versionFound {
-			return cerr.NewAPIError(http.StatusBadRequest,
+			return nil, cerr.NewAPIError(http.StatusBadRequest,
 				fmt.Sprintf("Version: %s was not found for DPU Extension Service: %s", requestedVersion, desID.String()), nil)
 		}
 
-		cc.DESIDMap[desID.String()] = des
+		desIDMap[desID.String()] = des
 	}
 
-	return nil
+	return desIDMap, nil
 }
 
 // ValidateNSG validates the network security group, if specified.
-// Requires cc.Tenant and cc.Site to be populated.
-func (cc *InstanceCreateContext) ValidateNSG(ctx context.Context, nsgID *string) *cerr.APIError {
+func (v *InstanceValidator) ValidateNSG(ctx context.Context, tenant *cdbm.Tenant, site *cdbm.Site, nsgID *string) *cerr.APIError {
 	if nsgID == nil {
 		return nil
 	}
 
-	logger := cc.Logger
+	logger := v.Logger
 
-	nsgDAO := cdbm.NewNetworkSecurityGroupDAO(cc.DBSession)
+	nsgDAO := cdbm.NewNetworkSecurityGroupDAO(v.DBSession)
 	nsg, err := nsgDAO.GetByID(ctx, nil, *nsgID, nil)
 	if err != nil {
 		if err == cdb.ErrDoesNotExist {
@@ -416,15 +388,15 @@ func (cc *InstanceCreateContext) ValidateNSG(ctx context.Context, nsgID *string)
 			"Failed to retrieve NetworkSecurityGroup with ID specified in request data", nil)
 	}
 
-	if nsg.SiteID != cc.Site.ID {
-		logger.Error().Str("siteID", cc.Site.ID.String()).Str("nsgID", *nsgID).
+	if nsg.SiteID != site.ID {
+		logger.Error().Str("siteID", site.ID.String()).Str("nsgID", *nsgID).
 			Msg("NetworkSecurityGroup in request does not belong to Site")
 		return cerr.NewAPIError(http.StatusForbidden,
 			"NetworkSecurityGroup with ID specified in request data does not belong to Site", nil)
 	}
 
-	if nsg.TenantID != cc.Tenant.ID {
-		logger.Error().Str("tenantID", cc.Tenant.ID.String()).Str("nsgID", *nsgID).
+	if nsg.TenantID != tenant.ID {
+		logger.Error().Str("tenantID", tenant.ID.String()).Str("nsgID", *nsgID).
 			Msg("NetworkSecurityGroup in request does not belong to Tenant")
 		return cerr.NewAPIError(http.StatusForbidden,
 			"NetworkSecurityGroup with ID specified in request data does not belong to Tenant", nil)
@@ -433,63 +405,58 @@ func (cc *InstanceCreateContext) ValidateNSG(ctx context.Context, nsgID *string)
 	return nil
 }
 
-// ValidateSSHKeyGroups validates SSH key groups and their site associations, populating cc.SSHKeyGroups.
-// Requires cc.Tenant and cc.Site to be populated.
-func (cc *InstanceCreateContext) ValidateSSHKeyGroups(ctx context.Context, sshKeyGroupIDs []string) *cerr.APIError {
-	logger := cc.Logger
-	tenant := cc.Tenant
-	site := cc.Site
+// ValidateSSHKeyGroups validates SSH key groups and their site associations.
+func (v *InstanceValidator) ValidateSSHKeyGroups(ctx context.Context, tenant *cdbm.Tenant, site *cdbm.Site, sshKeyGroupIDs []string) ([]cdbm.SSHKeyGroup, *cerr.APIError) {
+	logger := v.Logger
 
-	cc.SSHKeyGroups = []cdbm.SSHKeyGroup{}
+	sshKeyGroups := []cdbm.SSHKeyGroup{}
 
-	skgsaDAO := cdbm.NewSSHKeyGroupSiteAssociationDAO(cc.DBSession)
+	skgsaDAO := cdbm.NewSSHKeyGroupSiteAssociationDAO(v.DBSession)
 
 	for _, skgIDStr := range sshKeyGroupIDs {
-		sshkeygroup, serr := GetSSHKeyGroupFromIDString(ctx, nil, skgIDStr, cc.DBSession, nil)
+		sshkeygroup, serr := GetSSHKeyGroupFromIDString(ctx, nil, skgIDStr, v.DBSession, nil)
 		if serr != nil {
 			if serr == ErrInvalidID {
-				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Invalid SSH Key Group ID: %s specified in request", skgIDStr), nil)
+				return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Invalid SSH Key Group ID: %s specified in request", skgIDStr), nil)
 			}
 			if serr == cdb.ErrDoesNotExist {
-				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Could not find SSH Key Group with ID: %s specified in request data", skgIDStr), nil)
+				return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Could not find SSH Key Group with ID: %s specified in request data", skgIDStr), nil)
 			}
 			logger.Warn().Err(serr).Str("SSH Key Group ID", skgIDStr).Msg("error retrieving SSH Key Group from DB by ID")
-			return cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve SSH Key Groups from DB by IDs", nil)
+			return nil, cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve SSH Key Groups from DB by IDs", nil)
 		}
 
 		if sshkeygroup.TenantID != tenant.ID {
 			logger.Warn().Str("Tenant ID", tenant.ID.String()).Str("SSH Key Group ID", skgIDStr).Msg("SSH Key Group does not belong to current Tenant")
-			return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Failed to create Instance, SSH Key Group with ID: %s does not belong to Tenant", skgIDStr), nil)
+			return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Failed to create Instance, SSH Key Group with ID: %s does not belong to Tenant", skgIDStr), nil)
 		}
 
 		_, serr = skgsaDAO.GetBySSHKeyGroupIDAndSiteID(ctx, nil, sshkeygroup.ID, site.ID, nil)
 		if serr != nil {
 			if serr == cdb.ErrDoesNotExist {
-				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("SSH Key Group: %s specified in request data is not associated with the Site where Instance is being created", skgIDStr), nil)
+				return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("SSH Key Group: %s specified in request data is not associated with the Site where Instance is being created", skgIDStr), nil)
 			}
 			logger.Warn().Err(serr).Str("SSH Key Group ID", skgIDStr).Msg("error retrieving SSH Key Group Site Association from DB by SSH Key Group ID & Site ID")
-			return cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve SSH Key Group Site Associations from DB", nil)
+			return nil, cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve SSH Key Group Site Associations from DB", nil)
 		}
 
-		cc.SSHKeyGroups = append(cc.SSHKeyGroups, *sshkeygroup)
+		sshKeyGroups = append(sshKeyGroups, *sshkeygroup)
 	}
 
-	return nil
+	return sshKeyGroups, nil
 }
 
 // BuildOsConfig validates and builds the OS configuration for the Temporal workflow.
-// Populates cc.OsConfig and cc.OsID.
-// Requires cc.Site to be populated.
-func (cc *InstanceCreateContext) BuildOsConfig(ctx context.Context, req InstanceOSConfigProvider, siteID uuid.UUID) *cerr.APIError {
-	logger := cc.Logger
+func (v *InstanceValidator) BuildOsConfig(ctx context.Context, req InstanceOSConfigProvider, siteID uuid.UUID) (*cwssaws.OperatingSystem, *uuid.UUID, *cerr.APIError) {
+	logger := v.Logger
 
 	if req.GetOperatingSystemID() == nil || *req.GetOperatingSystemID() == "" {
-		if err := req.ValidateAndSetOperatingSystemData(cc.Cfg, nil); err != nil {
+		if err := req.ValidateAndSetOperatingSystemData(v.Cfg, nil); err != nil {
 			logger.Error().Err(err).Msg("failed to validate OperatingSystem")
-			return cerr.NewAPIError(http.StatusBadRequest, "Failed to validate OperatingSystem data", err)
+			return nil, nil, cerr.NewAPIError(http.StatusBadRequest, "Failed to validate OperatingSystem data", err)
 		}
 
-		cc.OsConfig = &cwssaws.OperatingSystem{
+		osConfig := &cwssaws.OperatingSystem{
 			RunProvisioningInstructionsOnEveryBoot: *req.GetAlwaysBootWithCustomIpxe(),
 			PhoneHomeEnabled:                       *req.GetPhoneHomeEnabled(),
 			Variant: &cwssaws.OperatingSystem_Ipxe{
@@ -499,30 +466,29 @@ func (cc *InstanceCreateContext) BuildOsConfig(ctx context.Context, req Instance
 			},
 			UserData: req.GetUserData(),
 		}
-		cc.OsID = nil
-		return nil
+		return osConfig, nil, nil
 	}
 
 	id, err := uuid.Parse(*req.GetOperatingSystemID())
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to parse OperatingSystemID")
-		return cerr.NewAPIError(http.StatusBadRequest, "Unable to parse `operatingSystemId` specified", validation.Errors{
+		return nil, nil, cerr.NewAPIError(http.StatusBadRequest, "Unable to parse `operatingSystemId` specified", validation.Errors{
 			"operatingSystemId": errors.New(*req.GetOperatingSystemID()),
 		})
 	}
 
 	osID := &id
 
-	osDAO := cdbm.NewOperatingSystemDAO(cc.DBSession)
+	osDAO := cdbm.NewOperatingSystemDAO(v.DBSession)
 	os, serr := osDAO.GetByID(ctx, nil, *osID, nil)
 	if serr != nil {
 		if serr == cdb.ErrDoesNotExist {
-			return cerr.NewAPIError(http.StatusBadRequest, "Could not find OperatingSystem with ID specified in request data", validation.Errors{
+			return nil, nil, cerr.NewAPIError(http.StatusBadRequest, "Could not find OperatingSystem with ID specified in request data", validation.Errors{
 				"id": errors.New(osID.String()),
 			})
 		}
 		logger.Error().Err(serr).Msg("error retrieving OperatingSystem from DB by ID")
-		return cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve OperatingSystem with ID specified in request data, DB error", validation.Errors{
+		return nil, nil, cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve OperatingSystem with ID specified in request data, DB error", validation.Errors{
 			"id": errors.New(osID.String()),
 		})
 	}
@@ -533,11 +499,11 @@ func (cc *InstanceCreateContext) BuildOsConfig(ctx context.Context, req Instance
 
 	if os.TenantID.String() != req.GetTenantID() {
 		logger.Error().Msg("OperatingSystem in request is not owned by tenant")
-		return cerr.NewAPIError(http.StatusBadRequest, "OperatingSystem specified in request is not owned by Tenant", nil)
+		return nil, nil, cerr.NewAPIError(http.StatusBadRequest, "OperatingSystem specified in request is not owned by Tenant", nil)
 	}
 
 	if os.Type == cdbm.OperatingSystemTypeImage {
-		ossaDAO := cdbm.NewOperatingSystemSiteAssociationDAO(cc.DBSession)
+		ossaDAO := cdbm.NewOperatingSystemSiteAssociationDAO(v.DBSession)
 		_, ossaCount, err := ossaDAO.GetAll(
 			ctx, nil,
 			cdbm.OperatingSystemSiteAssociationFilterInput{
@@ -549,24 +515,25 @@ func (cc *InstanceCreateContext) BuildOsConfig(ctx context.Context, req Instance
 		)
 		if err != nil {
 			logger.Error().Msgf("Error retrieving OperatingSystemAssociations for OS: %s", err)
-			return cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve OperatingSystemAssociations for OS with ID specified in request data, DB error", validation.Errors{
+			return nil, nil, cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve OperatingSystemAssociations for OS with ID specified in request data, DB error", validation.Errors{
 				"id": errors.New(osID.String()),
 			})
 		}
 		if ossaCount == 0 {
 			logger.Error().Msg("OperatingSystem does not belong to VPC site")
-			return cerr.NewAPIError(http.StatusBadRequest, "OperatingSystem specified in request is not in VPC site", nil)
+			return nil, nil, cerr.NewAPIError(http.StatusBadRequest, "OperatingSystem specified in request is not in VPC site", nil)
 		}
 	}
 
-	err = req.ValidateAndSetOperatingSystemData(cc.Cfg, os)
+	err = req.ValidateAndSetOperatingSystemData(v.Cfg, os)
 	if err != nil {
 		logger.Error().Msgf("OperatingSystem options validation failed: %s", err)
-		return cerr.NewAPIError(http.StatusBadRequest, "OperatingSystem options validation failed", err)
+		return nil, nil, cerr.NewAPIError(http.StatusBadRequest, "OperatingSystem options validation failed", err)
 	}
 
+	var osConfig *cwssaws.OperatingSystem
 	if os.Type == cdbm.OperatingSystemTypeIPXE {
-		cc.OsConfig = &cwssaws.OperatingSystem{
+		osConfig = &cwssaws.OperatingSystem{
 			RunProvisioningInstructionsOnEveryBoot: *req.GetAlwaysBootWithCustomIpxe(),
 			PhoneHomeEnabled:                       *req.GetPhoneHomeEnabled(),
 			Variant: &cwssaws.OperatingSystem_Ipxe{
@@ -577,7 +544,7 @@ func (cc *InstanceCreateContext) BuildOsConfig(ctx context.Context, req Instance
 			UserData: req.GetUserData(),
 		}
 	} else {
-		cc.OsConfig = &cwssaws.OperatingSystem{
+		osConfig = &cwssaws.OperatingSystem{
 			PhoneHomeEnabled: *req.GetPhoneHomeEnabled(),
 			Variant: &cwssaws.OperatingSystem_OsImageId{
 				OsImageId: &cwssaws.UUID{
@@ -588,33 +555,27 @@ func (cc *InstanceCreateContext) BuildOsConfig(ctx context.Context, req Instance
 		}
 	}
 
-	cc.OsID = osID
-	return nil
+	return osConfig, osID, nil
 }
 
 // ValidateIBInterfaces validates InfiniBand interfaces against instance type capabilities,
-// validates partition ownership and state, and populates cc.DBIBInterfaces.
-// Requires cc.Tenant and cc.Site to be populated.
-func (cc *InstanceCreateContext) ValidateIBInterfaces(ctx context.Context, ibIfcs []cam.APIInfiniBandInterfaceCreateOrUpdateRequest, instanceTypeID uuid.UUID) *cerr.APIError {
-	logger := cc.Logger
-	tenant := cc.Tenant
-	site := cc.Site
-
-	cc.DBIBInterfaces = nil
+// validates partition ownership and state.
+func (v *InstanceValidator) ValidateIBInterfaces(ctx context.Context, tenant *cdbm.Tenant, site *cdbm.Site, ibIfcs []cam.APIInfiniBandInterfaceCreateOrUpdateRequest, instanceTypeID uuid.UUID) ([]cdbm.InfiniBandInterface, *cerr.APIError) {
+	logger := v.Logger
 
 	if len(ibIfcs) == 0 {
-		return nil
+		return nil, nil
 	}
 
-	mcDAO := cdbm.NewMachineCapabilityDAO(cc.DBSession)
+	mcDAO := cdbm.NewMachineCapabilityDAO(v.DBSession)
 	itIbCaps, itIbCapCount, err := mcDAO.GetAll(ctx, nil, nil, []uuid.UUID{instanceTypeID}, cdb.GetStrPtr(cdbm.MachineCapabilityTypeInfiniBand), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		logger.Error().Err(err).Msg("error retrieving InfiniBand Machine Capabilities from DB for Instance Type")
-		return cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve InfiniBand Capabilities for Instance Type, DB error", nil)
+		return nil, cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve InfiniBand Capabilities for Instance Type, DB error", nil)
 	}
 	if itIbCapCount == 0 {
 		logger.Warn().Msg("InfiniBand interfaces specified but Instance Type doesn't have InfiniBand Capability")
-		return cerr.NewAPIError(http.StatusBadRequest, "InfiniBand Interfaces cannot be specified if Instance Type doesn't have InfiniBand Capability", nil)
+		return nil, cerr.NewAPIError(http.StatusBadRequest, "InfiniBand Interfaces cannot be specified if Instance Type doesn't have InfiniBand Capability", nil)
 	}
 
 	ibpIDs := make([]uuid.UUID, 0, len(ibIfcs))
@@ -622,18 +583,18 @@ func (cc *InstanceCreateContext) ValidateIBInterfaces(ctx context.Context, ibIfc
 		ibpID, err := uuid.Parse(ibic.InfiniBandPartitionID)
 		if err != nil {
 			logger.Warn().Err(err).Msg("error parsing infiniband partition id")
-			return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Partition ID %v is not valid", ibic.InfiniBandPartitionID), nil)
+			return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Partition ID %v is not valid", ibic.InfiniBandPartitionID), nil)
 		}
 		ibpIDs = append(ibpIDs, ibpID)
 	}
 
-	ibpDAO := cdbm.NewInfiniBandPartitionDAO(cc.DBSession)
+	ibpDAO := cdbm.NewInfiniBandPartitionDAO(v.DBSession)
 	ibpList, _, err := ibpDAO.GetAll(ctx, nil, cdbm.InfiniBandPartitionFilterInput{
 		InfiniBandPartitionIDs: ibpIDs,
 	}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
 	if err != nil {
 		logger.Error().Err(err).Msg("error retrieving InfiniBand Partitions from DB")
-		return cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve Partitions specified in request data, DB error", nil)
+		return nil, cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve Partitions specified in request data, DB error", nil)
 	}
 
 	ibpMap := make(map[uuid.UUID]*cdbm.InfiniBandPartition, len(ibpList))
@@ -646,22 +607,22 @@ func (cc *InstanceCreateContext) ValidateIBInterfaces(ctx context.Context, ibIfc
 		ibpID := ibpIDs[i]
 		ibp, exists := ibpMap[ibpID]
 		if !exists {
-			return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Could not find Partition with ID %v", ibic.InfiniBandPartitionID), nil)
+			return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Could not find Partition with ID %v", ibic.InfiniBandPartitionID), nil)
 		}
 
 		if ibp.SiteID != site.ID {
 			logger.Warn().Msgf("InfiniBandPartition: %v does not match with Instance Site", ibpID)
-			return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Partition %v does not match with Instance Site", ibpID), nil)
+			return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Partition %v does not match with Instance Site", ibpID), nil)
 		}
 
 		if ibp.TenantID != tenant.ID {
 			logger.Warn().Msgf("InfiniBandPartition: %v is not owned by Tenant", ibpID)
-			return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Partition %v is not owned by Tenant", ibpID), nil)
+			return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Partition %v is not owned by Tenant", ibpID), nil)
 		}
 
 		if ibp.ControllerIBPartitionID == nil || ibp.Status != cdbm.InfiniBandPartitionStatusReady {
 			logger.Warn().Msgf("InfiniBandPartition: %v is not in Ready state", ibpID)
-			return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Partition %v is not in Ready state", ibpID), nil)
+			return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Partition %v is not in Ready state", ibpID), nil)
 		}
 
 		dbibic = append(dbibic, cdbm.InfiniBandInterface{
@@ -677,42 +638,36 @@ func (cc *InstanceCreateContext) ValidateIBInterfaces(ctx context.Context, ibIfc
 	err = cam.ValidateInfiniBandInterfaces(itIbCaps, ibIfcs)
 	if err != nil {
 		logger.Error().Err(err).Msg("InfiniBand interfaces validation failed")
-		return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("InfiniBand interfaces validation failed: %v", err), err)
+		return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("InfiniBand interfaces validation failed: %v", err), err)
 	}
 
-	cc.DBIBInterfaces = dbibic
-	return nil
+	return dbibic, nil
 }
 
 // ValidateNVLinkInterfaces validates NVLink interfaces against instance type capabilities,
-// validates logical partition ownership and state, and populates cc.DBNVLInterfaces.
+// validates logical partition ownership and state.
 // If no NVLink interfaces are specified but a default NVLink logical partition exists on the VPC,
 // it generates default interfaces from the GPU capabilities.
-// Requires cc.VPC, cc.Site, cc.Tenant, and cc.DefaultNvllpID to be populated.
-func (cc *InstanceCreateContext) ValidateNVLinkInterfaces(ctx context.Context, nvlIfcs []cam.APINVLinkInterfaceCreateOrUpdateRequest, instanceTypeID uuid.UUID) *cerr.APIError {
-	logger := cc.Logger
-	tenant := cc.Tenant
-	site := cc.Site
+func (v *InstanceValidator) ValidateNVLinkInterfaces(ctx context.Context, tenant *cdbm.Tenant, site *cdbm.Site, defaultNvllpID *uuid.UUID, nvlIfcs []cam.APINVLinkInterfaceCreateOrUpdateRequest, instanceTypeID uuid.UUID) ([]cdbm.NVLinkInterface, *cerr.APIError) {
+	logger := v.Logger
 
-	mcDAO := cdbm.NewMachineCapabilityDAO(cc.DBSession)
+	mcDAO := cdbm.NewMachineCapabilityDAO(v.DBSession)
 	itNvlCaps, itNvlCapCount, err := mcDAO.GetAll(ctx, nil, nil, []uuid.UUID{instanceTypeID}, cdb.GetStrPtr(cdbm.MachineCapabilityTypeGPU), nil, nil, nil, nil, nil, cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeNVLink), nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
 	if err != nil {
 		logger.Error().Err(err).Msg("error retrieving GPU (NVLink) Machine Capabilities from DB for Instance Type")
-		return cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve GPU Capabilities for Instance Type, DB error", nil)
+		return nil, cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve GPU Capabilities for Instance Type, DB error", nil)
 	}
-
-	cc.DBNVLInterfaces = nil
 
 	if len(nvlIfcs) > 0 {
 		if itNvlCapCount == 0 {
 			logger.Warn().Msg("NVLink interfaces specified but Instance Type doesn't have GPU (NVLink) Capability")
-			return cerr.NewAPIError(http.StatusBadRequest, "NVLink Interfaces cannot be specified if Instance Type doesn't have GPU Capabilities", nil)
+			return nil, cerr.NewAPIError(http.StatusBadRequest, "NVLink Interfaces cannot be specified if Instance Type doesn't have GPU Capabilities", nil)
 		}
 
 		err = cam.ValidateNVLinkInterfaces(itNvlCaps, nvlIfcs)
 		if err != nil {
 			logger.Error().Err(err).Msg("NVLink interfaces validation failed")
-			return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("NVLink interfaces validation failed: %v", err), err)
+			return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("NVLink interfaces validation failed: %v", err), err)
 		}
 
 		nvllpIDs := make([]uuid.UUID, 0, len(nvlIfcs))
@@ -720,14 +675,14 @@ func (cc *InstanceCreateContext) ValidateNVLinkInterfaces(ctx context.Context, n
 			nvllpID, err := uuid.Parse(nvlifc.NVLinkLogicalPartitionID)
 			if err != nil {
 				logger.Warn().Err(err).Msg("error parsing NVLink Logical Partition id")
-				return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("NVLink Logical Partition ID %v is not valid", nvlifc.NVLinkLogicalPartitionID), nil)
+				return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("NVLink Logical Partition ID %v is not valid", nvlifc.NVLinkLogicalPartitionID), nil)
 			}
 			nvllpIDs = append(nvllpIDs, nvllpID)
 		}
 
 		var nvllpMap map[uuid.UUID]*cdbm.NVLinkLogicalPartition
-		if cc.DefaultNvllpID == nil {
-			nvllpDAO := cdbm.NewNVLinkLogicalPartitionDAO(cc.DBSession)
+		if defaultNvllpID == nil {
+			nvllpDAO := cdbm.NewNVLinkLogicalPartitionDAO(v.DBSession)
 			uniqueNvllpIDs := make([]uuid.UUID, 0, len(nvllpIDs))
 			seenIDs := make(map[uuid.UUID]bool)
 			for _, id := range nvllpIDs {
@@ -742,7 +697,7 @@ func (cc *InstanceCreateContext) ValidateNVLinkInterfaces(ctx context.Context, n
 			}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
 			if err != nil {
 				logger.Error().Err(err).Msg("error retrieving NVLink Logical Partitions from DB")
-				return cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve NVLink Logical Partitions specified in request data, DB error", nil)
+				return nil, cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve NVLink Logical Partitions specified in request data, DB error", nil)
 			}
 
 			nvllpMap = make(map[uuid.UUID]*cdbm.NVLinkLogicalPartition, len(nvllpList))
@@ -755,29 +710,29 @@ func (cc *InstanceCreateContext) ValidateNVLinkInterfaces(ctx context.Context, n
 		for i, nvlifc := range nvlIfcs {
 			nvllpID := nvllpIDs[i]
 
-			if cc.DefaultNvllpID != nil {
-				if nvllpID != *cc.DefaultNvllpID {
-					return cerr.NewAPIError(http.StatusBadRequest, "NVLink Logical Partition specified for NVLink Interface does not match NVLink Logical Partition of VPC", nil)
+			if defaultNvllpID != nil {
+				if nvllpID != *defaultNvllpID {
+					return nil, cerr.NewAPIError(http.StatusBadRequest, "NVLink Logical Partition specified for NVLink Interface does not match NVLink Logical Partition of VPC", nil)
 				}
 			} else {
 				nvllp, exists := nvllpMap[nvllpID]
 				if !exists {
-					return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Could not find NVLink Logical Partition with ID %v", nvllpID), nil)
+					return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Could not find NVLink Logical Partition with ID %v", nvllpID), nil)
 				}
 
 				if nvllp.SiteID != site.ID {
 					logger.Warn().Msgf("NVLink Logical Partition: %v does not match with Instance Site", nvllpID)
-					return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("NVLink Logical Partition %v does not match with Instance Site", nvllpID), nil)
+					return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("NVLink Logical Partition %v does not match with Instance Site", nvllpID), nil)
 				}
 
 				if nvllp.TenantID != tenant.ID {
 					logger.Warn().Msgf("NVLink Logical Partition: %v is not owned by Tenant", nvllpID)
-					return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("NVLink Logical Partition %v is not owned by Tenant", nvllpID), nil)
+					return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("NVLink Logical Partition %v is not owned by Tenant", nvllpID), nil)
 				}
 
 				if nvllp.Status != cdbm.NVLinkLogicalPartitionStatusReady {
 					logger.Warn().Msgf("NVLink Logical Partition: %v is not in Ready state", nvllpID)
-					return cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("NVLink Logical Partition %v is not in Ready state", nvllpID), nil)
+					return nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("NVLink Logical Partition %v is not in Ready state", nvllpID), nil)
 				}
 			}
 
@@ -786,36 +741,35 @@ func (cc *InstanceCreateContext) ValidateNVLinkInterfaces(ctx context.Context, n
 				DeviceInstance:           nvlifc.DeviceInstance,
 			})
 		}
-		cc.DBNVLInterfaces = dbnvlic
-	} else if cc.DefaultNvllpID != nil {
+		return dbnvlic, nil
+	} else if defaultNvllpID != nil {
 		dbnvlic := []cdbm.NVLinkInterface{}
 		for _, nvlCap := range itNvlCaps {
 			if nvlCap.Count != nil {
 				for i := 0; i < *nvlCap.Count; i++ {
 					dbnvlic = append(dbnvlic, cdbm.NVLinkInterface{
-						NVLinkLogicalPartitionID: *cc.DefaultNvllpID,
+						NVLinkLogicalPartitionID: *defaultNvllpID,
 						Device:                   cdb.GetStrPtr(nvlCap.Name),
 						DeviceInstance:           i,
 					})
 				}
 			}
 		}
-		cc.DBNVLInterfaces = dbnvlic
+		return dbnvlic, nil
 	}
 
-	return nil
+	return nil, nil
 }
 
 // ValidateDPUInterfaces validates DPU interface capabilities against instance type machine capabilities.
-// Requires cc.DBInterfaces and cc.IsDeviceInfoPresent to be populated.
-func (cc *InstanceCreateContext) ValidateDPUInterfaces(ctx context.Context, instanceTypeID uuid.UUID) *cerr.APIError {
-	if !cc.IsDeviceInfoPresent {
+func (v *InstanceValidator) ValidateDPUInterfaces(ctx context.Context, dbInterfaces []cdbm.Interface, isDeviceInfoPresent bool, instanceTypeID uuid.UUID) *cerr.APIError {
+	if !isDeviceInfoPresent {
 		return nil
 	}
 
-	logger := cc.Logger
+	logger := v.Logger
 
-	mcDAO := cdbm.NewMachineCapabilityDAO(cc.DBSession)
+	mcDAO := cdbm.NewMachineCapabilityDAO(v.DBSession)
 	itDpuCaps, itDpuCapCount, err := mcDAO.GetAll(ctx, nil, nil, []uuid.UUID{instanceTypeID},
 		cdb.GetStrPtr(cdbm.MachineCapabilityTypeNetwork), nil, nil, nil, nil, nil,
 		cdb.GetStrPtr(cdbm.MachineCapabilityDeviceTypeDPU), nil, nil, nil, nil, nil)
@@ -831,7 +785,7 @@ func (cc *InstanceCreateContext) ValidateDPUInterfaces(ctx context.Context, inst
 			"Device and DeviceInstance cannot be specified if Instance Type doesn't have Network Capabilities with DPU device type", nil)
 	}
 
-	err = cam.ValidateMultiEthernetDeviceInterfaces(itDpuCaps, cc.DBInterfaces)
+	err = cam.ValidateMultiEthernetDeviceInterfaces(itDpuCaps, dbInterfaces)
 	if err != nil {
 		logger.Error().Err(err).Msg("DPU interfaces validation failed")
 		return cerr.NewAPIError(http.StatusBadRequest,

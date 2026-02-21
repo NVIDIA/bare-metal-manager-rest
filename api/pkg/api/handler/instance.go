@@ -197,44 +197,37 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Error validating Instance creation request data", verr)
 	}
 
-	cc := common.NewInstanceCreateContext(cih.dbSession, cih.cfg, &logger)
+	iv := common.NewInstanceValidator(cih.dbSession, cih.cfg, &logger)
 
-	// Validate tenant, VPC state, and site readiness (shared with batch instance API)
-	if apiErr := cc.ValidateTenantAndVPC(ctx, org, apiRequest.TenantID, apiRequest.VpcID); apiErr != nil {
-		return c.JSON(apiErr.Code, apiErr)
-	}
-	tenant := cc.Tenant
-	vpc := cc.VPC
-	site := cc.Site
-
-	// Validate interfaces (shared with batch instance API)
-	if apiErr := cc.ValidateInterfaces(ctx, apiRequest.Interfaces); apiErr != nil {
+	tenant, vpc, site, defaultNvllpID, apiErr := iv.ValidateTenantAndVPC(ctx, org, apiRequest.TenantID, apiRequest.VpcID)
+	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	// Validate DPU Extension Service Deployments (shared with batch instance API)
-	if apiErr := cc.ValidateDPUExtensionServices(ctx, apiRequest.DpuExtensionServiceDeployments); apiErr != nil {
+	ifcResult, apiErr := iv.ValidateInterfaces(ctx, tenant, vpc, apiRequest.Interfaces)
+	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	// Validate Network Security Group (shared with batch instance API)
-	if apiErr := cc.ValidateNSG(ctx, apiRequest.NetworkSecurityGroupID); apiErr != nil {
+	desIDMap, apiErr := iv.ValidateDPUExtensionServices(ctx, tenant, site, apiRequest.DpuExtensionServiceDeployments)
+	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	// Validate SSH Key Groups (shared with batch instance API)
-	if apiErr := cc.ValidateSSHKeyGroups(ctx, apiRequest.SSHKeyGroupIDs); apiErr != nil {
+	if apiErr := iv.ValidateNSG(ctx, tenant, site, apiRequest.NetworkSecurityGroupID); apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
-	sshKeyGroups := cc.SSHKeyGroups
 
-	// Validate and build OS configuration (shared with batch instance API)
-	if apiErr := cc.BuildOsConfig(ctx, &apiRequest, vpc.SiteID); apiErr != nil {
+	sshKeyGroups, apiErr := iv.ValidateSSHKeyGroups(ctx, tenant, site, apiRequest.SSHKeyGroupIDs)
+	if apiErr != nil {
+		return c.JSON(apiErr.Code, apiErr)
+	}
+
+	osConfig, osID, apiErr := iv.BuildOsConfig(ctx, &apiRequest, vpc.SiteID)
+	if apiErr != nil {
 		logger.Error().Err(errors.New(apiErr.Message)).Msg("error building os config for creating Instance")
 		return c.JSON(apiErr.Code, apiErr)
 	}
-	osConfig := cc.OsConfig
-	osID := cc.OsID
 
 	// Ensure we have one and only one of InstanceTypeID or MachineID
 	if apiRequest.InstanceTypeID != nil && apiRequest.MachineID != nil {
@@ -569,7 +562,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 	}
 
 	// Validate DPU Interfaces if Instance Type has Network Capability with DPU device type
-	if cc.IsDeviceInfoPresent {
+	if ifcResult.IsDeviceInfoPresent {
 		var dpuNetworkCapCount int
 		var dpuNetworkCaps []cdbm.MachineCapability
 
@@ -594,7 +587,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 		}
 
 		// Validate DPU Interfaces if Instance Type DPU capability is present and matches with the request
-		err = apiRequest.ValidateMultiEthernetDeviceInterfaces(dpuNetworkCaps, cc.DBInterfaces)
+		err = apiRequest.ValidateMultiEthernetDeviceInterfaces(dpuNetworkCaps, ifcResult.DBInterfaces)
 		if err != nil {
 			logger.Error().Err(err).Msg("Failed to validate DPU aware interfaces in request data")
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate DPU aware interfaces specified in request data", err)
@@ -669,8 +662,8 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 			}
 
 			// Validate that the NVLink Logical Partition ID matches the default NVLink Logical Partition ID
-			if cc.DefaultNvllpID != nil {
-				if nvllp.ID != *cc.DefaultNvllpID {
+			if defaultNvllpID != nil {
+				if nvllp.ID != *defaultNvllpID {
 					return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "NVLink Logical Partition specified for NVLink Interface does not match NVLink Logical Partition of VPC", nil)
 				}
 			} else {
@@ -694,13 +687,13 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 			// Validate Instance NVLink Interface information to create DB records later
 			dbnvlic = append(dbnvlic, cdbm.NVLinkInterface{NVLinkLogicalPartitionID: nvllp.ID, DeviceInstance: nvlifc.DeviceInstance})
 		}
-	} else if cc.DefaultNvllpID != nil {
+	} else if defaultNvllpID != nil {
 		// Generate Interfaces for the default NVLink Logical Partition
 		// For a given Machine, all the GPUs should be connected to the same NVLink Logical Partition
 		for _, nvlCap := range nvlCaps {
 			if nvlCap.Count != nil {
 				for i := 0; i < *nvlCap.Count; i++ {
-					dbnvlic = append(dbnvlic, cdbm.NVLinkInterface{NVLinkLogicalPartitionID: *cc.DefaultNvllpID, Device: cdb.GetStrPtr(nvlCap.Name), DeviceInstance: i})
+					dbnvlic = append(dbnvlic, cdbm.NVLinkInterface{NVLinkLogicalPartitionID: *defaultNvllpID, Device: cdb.GetStrPtr(nvlCap.Name), DeviceInstance: i})
 				}
 			}
 		}
@@ -775,7 +768,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 	// The first Subnet is automatically added to the physical interface
 	ifcs := []cdbm.Interface{}
 	ifcDAO := cdbm.NewInterfaceDAO(cih.dbSession)
-	for _, dbifc := range cc.DBInterfaces {
+	for _, dbifc := range ifcResult.DBInterfaces {
 		input := cdbm.InterfaceCreateInput{
 			InstanceID:        instance.ID,
 			SubnetID:          dbifc.SubnetID,
@@ -804,11 +797,11 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 		// Assign InstanceInterfaceConfig_SegmentId in case of Subnet
 		if dbifc.SubnetID != nil {
 			interfaceConfig.NetworkSegmentId = &cwssaws.NetworkSegmentId{
-				Value: cc.SubnetIDMap[*dbifc.SubnetID].ControllerNetworkSegmentID.String(),
+				Value: ifcResult.SubnetIDMap[*dbifc.SubnetID].ControllerNetworkSegmentID.String(),
 			}
 			interfaceConfig.NetworkDetails = &cwssaws.InstanceInterfaceConfig_SegmentId{
 				SegmentId: &cwssaws.NetworkSegmentId{
-					Value: cc.SubnetIDMap[*dbifc.SubnetID].ControllerNetworkSegmentID.String(),
+					Value: ifcResult.SubnetIDMap[*dbifc.SubnetID].ControllerNetworkSegmentID.String(),
 				},
 			}
 		}
@@ -950,7 +943,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create DPU Extension Service Deployment for Instance, DB error", nil)
 		}
 
-		des := cc.DESIDMap[desdID.String()]
+		des := desIDMap[desdID.String()]
 		desd.DpuExtensionService = des
 
 		desds = append(desds, *desd)

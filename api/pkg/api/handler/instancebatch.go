@@ -215,15 +215,12 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 
 	logger.Info().Int("Count", apiRequest.Count).Bool("TopologyOptimized", topologyOptimized).Msg("Input validation completed for batch Instance creation request")
 
-	cc := common.NewInstanceCreateContext(bcih.dbSession, bcih.cfg, &logger)
+	iv := common.NewInstanceValidator(bcih.dbSession, bcih.cfg, &logger)
 
-	// Validate tenant, VPC state, and site readiness (shared with single instance API)
-	if apiErr := cc.ValidateTenantAndVPC(ctx, org, apiRequest.TenantID, apiRequest.VpcID); apiErr != nil {
+	tenant, vpc, site, defaultNvllpID, apiErr := iv.ValidateTenantAndVPC(ctx, org, apiRequest.TenantID, apiRequest.VpcID)
+	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
-	tenant := cc.Tenant
-	vpc := cc.VPC
-	site := cc.Site
 
 	// Validate the instance type (batch-specific: required in request)
 	apiInstanceTypeID, err := uuid.Parse(apiRequest.InstanceTypeID)
@@ -251,43 +248,39 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "VPC and Instance Type specified in request data do not belong to the same Site", nil)
 	}
 
-	// Validate interfaces (shared with single instance API)
-	if apiErr := cc.ValidateInterfaces(ctx, apiRequest.Interfaces); apiErr != nil {
+	ifcResult, apiErr := iv.ValidateInterfaces(ctx, tenant, vpc, apiRequest.Interfaces)
+	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	logger.Info().Int("uniqueSubnetCount", len(cc.SubnetIDMap)).Int("uniqueVpcPrefixCount", len(cc.VpcPrefixIDMap)).
+	logger.Info().Int("uniqueSubnetCount", len(ifcResult.SubnetIDMap)).Int("uniqueVpcPrefixCount", len(ifcResult.VpcPrefixIDMap)).
 		Msg("validated all Subnets and VPC Prefixes (shared across all instances)")
 
-	// Validate DPU Extension Service Deployments (shared with single instance API)
-	if apiErr := cc.ValidateDPUExtensionServices(ctx, apiRequest.DpuExtensionServiceDeployments); apiErr != nil {
+	_, apiErr = iv.ValidateDPUExtensionServices(ctx, tenant, site, apiRequest.DpuExtensionServiceDeployments)
+	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
 	logger.Info().Int("dpuExtensionServiceCount", len(apiRequest.DpuExtensionServiceDeployments)).
 		Msg("validated DPU Extension Service Deployments")
 
-	// Validate Network Security Group (shared with single instance API)
-	if apiErr := cc.ValidateNSG(ctx, apiRequest.NetworkSecurityGroupID); apiErr != nil {
+	if apiErr := iv.ValidateNSG(ctx, tenant, site, apiRequest.NetworkSecurityGroupID); apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	// Validate SSH key groups (shared with single instance API)
-	if apiErr := cc.ValidateSSHKeyGroups(ctx, apiRequest.SSHKeyGroupIDs); apiErr != nil {
+	sshKeyGroups, apiErr := iv.ValidateSSHKeyGroups(ctx, tenant, site, apiRequest.SSHKeyGroupIDs)
+	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
-	sshKeyGroups := cc.SSHKeyGroups
 
 	logger.Info().Int("sshKeyGroupCount", len(sshKeyGroups)).
 		Msg("validated SSH Key Groups")
 
-	// Validate and build OS configuration (shared with single instance API)
-	if apiErr := cc.BuildOsConfig(ctx, &apiRequest, site.ID); apiErr != nil {
+	osConfig, osID, apiErr := iv.BuildOsConfig(ctx, &apiRequest, site.ID)
+	if apiErr != nil {
 		logger.Error().Err(errors.New(apiErr.Message)).Msg("error building os config for creating Instances")
 		return c.JSON(apiErr.Code, apiErr)
 	}
-	osConfig := cc.OsConfig
-	osID := cc.OsID
 
 	// Generate instance names with random suffix to avoid name conflicts
 	// Format: namePrefix-randomSuffix-index (e.g., myapp-a1b2c3-1)
@@ -433,23 +426,19 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 
 	// ==================== Step 5: Machine Capability Validation ====================
 
-	// Validate InfiniBand interfaces (shared with single instance API)
-	if apiErr := cc.ValidateIBInterfaces(ctx, apiRequest.InfiniBandInterfaces, apiInstanceTypeID); apiErr != nil {
+	dbibic, apiErr := iv.ValidateIBInterfaces(ctx, tenant, site, apiRequest.InfiniBandInterfaces, apiInstanceTypeID)
+	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	// Validate DPU interfaces (shared with single instance API)
-	if apiErr := cc.ValidateDPUInterfaces(ctx, apiInstanceTypeID); apiErr != nil {
+	if apiErr := iv.ValidateDPUInterfaces(ctx, ifcResult.DBInterfaces, ifcResult.IsDeviceInfoPresent, apiInstanceTypeID); apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	// Validate NVLink interfaces (shared with single instance API)
-	if apiErr := cc.ValidateNVLinkInterfaces(ctx, apiRequest.NVLinkInterfaces, apiInstanceTypeID); apiErr != nil {
+	dbnvlic, apiErr := iv.ValidateNVLinkInterfaces(ctx, tenant, site, defaultNvllpID, apiRequest.NVLinkInterfaces, apiInstanceTypeID)
+	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
-
-	dbibic := cc.DBIBInterfaces
-	dbnvlic := cc.DBNVLInterfaces
 
 	logger.Info().Msg("completed machine capability validation (Step 5)")
 
@@ -575,9 +564,9 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 	}
 
 	// --- Build and batch create Interfaces ---
-	ifcInputs := make([]cdbm.InterfaceCreateInput, 0, len(updatedInstances)*len(cc.DBInterfaces))
+	ifcInputs := make([]cdbm.InterfaceCreateInput, 0, len(updatedInstances)*len(ifcResult.DBInterfaces))
 	for _, inst := range updatedInstances {
-		for _, dbifc := range cc.DBInterfaces {
+		for _, dbifc := range ifcResult.DBInterfaces {
 			ifcInputs = append(ifcInputs, cdbm.InterfaceCreateInput{
 				InstanceID:        inst.ID,
 				SubnetID:          dbifc.SubnetID,
@@ -733,11 +722,11 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 		instCopy := inst // Make a copy to avoid loop variable capture
 		createdInstancesData[i] = instanceData{
 			instance:            &instCopy,
-			ifcs:                make([]cdbm.Interface, 0, len(cc.DBInterfaces)),
+			ifcs:                make([]cdbm.Interface, 0, len(ifcResult.DBInterfaces)),
 			ibifcs:              make([]cdbm.InfiniBandInterface, 0, len(dbibic)),
 			nvlifcs:             make([]cdbm.NVLinkInterface, 0, len(dbnvlic)),
 			desds:               make([]cdbm.DpuExtensionServiceDeployment, 0, len(dpuServiceIDs)),
-			interfaceConfigs:    make([]*cwssaws.InstanceInterfaceConfig, 0, len(cc.DBInterfaces)),
+			interfaceConfigs:    make([]*cwssaws.InstanceInterfaceConfig, 0, len(ifcResult.DBInterfaces)),
 			ibInterfaceConfigs:  make([]*cwssaws.InstanceIBInterfaceConfig, 0, len(dbibic)),
 			nvlInterfaceConfigs: make([]*cwssaws.InstanceNVLinkGpuConfig, 0, len(dbnvlic)),
 			desdConfigs:         make([]*cwssaws.InstanceDpuExtensionServiceConfig, 0, len(dpuServiceIDs)),
@@ -761,11 +750,11 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 		}
 		if ifc.SubnetID != nil {
 			interfaceConfig.NetworkSegmentId = &cwssaws.NetworkSegmentId{
-				Value: cc.SubnetIDMap[*ifc.SubnetID].ControllerNetworkSegmentID.String(),
+				Value: ifcResult.SubnetIDMap[*ifc.SubnetID].ControllerNetworkSegmentID.String(),
 			}
 			interfaceConfig.NetworkDetails = &cwssaws.InstanceInterfaceConfig_SegmentId{
 				SegmentId: &cwssaws.NetworkSegmentId{
-					Value: cc.SubnetIDMap[*ifc.SubnetID].ControllerNetworkSegmentID.String(),
+					Value: ifcResult.SubnetIDMap[*ifc.SubnetID].ControllerNetworkSegmentID.String(),
 				},
 			}
 		}
