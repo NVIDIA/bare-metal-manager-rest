@@ -17,34 +17,36 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: db
+  name: carbide-rest-db-migration
   labels:
-    app: db
+    app: carbide-rest-db-migration
 spec:
   ttlSecondsAfterFinished: 300
-  backoffLimit: 3
+  # Allow retries so init (single pg_isready) can succeed once postgres is up
+  backoffLimit: 30
   template:
     metadata:
       labels:
-        app: db
+        app: carbide-rest-db-migration
     spec:
+      imagePullSecrets:
+        - name: imagepullsecret
       restartPolicy: OnFailure
       initContainers:
-        # Wait for PostgreSQL to be ready
+        # Wait for PostgreSQL to be ready (single check; no shell in image)
         - name: wait-for-postgres
           image: postgres:14.4-alpine
           command:
-            - /bin/sh
-            - -c
-            - |
-              until pg_isready -h postgres -p 5432 -U postgres; do
-                echo "Waiting for PostgreSQL..."
-                sleep 2
-              done
-              echo "PostgreSQL is ready!"
+            - pg_isready
+            - -h
+            - postgres
+            - -p
+            - "5432"
+            - -U
+            - postgres
       containers:
         - name: migrations
-          image: localhost:5000/carbide-rest-db:latest
+          image: carbide-rest-db:latest
           env:
             - name: PGHOST
               value: postgres

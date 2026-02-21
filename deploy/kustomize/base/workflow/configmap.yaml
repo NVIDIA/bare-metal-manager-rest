@@ -63,5 +63,4 @@ data:
 
     tracing:
       enabled: false
-      serviceName: cloud-workflow
-
+      serviceName: carbide-rest-workflow

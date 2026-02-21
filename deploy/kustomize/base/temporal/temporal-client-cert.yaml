@@ -39,6 +39,6 @@ spec:
     - cloud-worker
     - site-worker
   issuerRef:
-    name: carbide-ca-issuer
+    name: carbide-rest-ca-issuer
     kind: ClusterIssuer
     group: cert-manager.io
