@@ -96,8 +96,8 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 		defer handlerSpan.End()
 	}
 
-	if err := common.ValidateQueryParams(c, getRackAllowedParams); err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+	if apiErr := common.ValidateQueryParams(c.QueryParams(), getRackAllowedParams); apiErr != nil {
+		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, nil)
 	}
 
 	// Is DB user missing?
@@ -263,8 +263,8 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 		defer handlerSpan.End()
 	}
 
-	if err := common.ValidateQueryParams(c, getAllRackAllowedParams); err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+	if apiErr := common.ValidateQueryParams(c.QueryParams(), getAllRackAllowedParams); apiErr != nil {
+		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, nil)
 	}
 
 	// Is DB user missing?
@@ -474,8 +474,8 @@ func (vrh ValidateRackHandler) Handle(c echo.Context) error {
 		defer handlerSpan.End()
 	}
 
-	if err := common.ValidateQueryParams(c, validateRackAllowedParams); err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+	if apiErr := common.ValidateQueryParams(c.QueryParams(), validateRackAllowedParams); apiErr != nil {
+		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, nil)
 	}
 
 	// Is DB user missing?
@@ -639,8 +639,8 @@ func (vrsh ValidateRacksHandler) Handle(c echo.Context) error {
 		defer handlerSpan.End()
 	}
 
-	if err := common.ValidateQueryParams(c, validateRacksAllowedParams); err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+	if apiErr := common.ValidateQueryParams(c.QueryParams(), validateRacksAllowedParams); apiErr != nil {
+		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, nil)
 	}
 
 	// Is DB user missing?

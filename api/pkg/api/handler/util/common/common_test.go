@@ -23,13 +23,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"os"
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
 	swe "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/error"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -2497,7 +2495,6 @@ func TestUniqueChecker_ComplexScenario(t *testing.T) {
 }
 
 func TestValidateQueryParams(t *testing.T) {
-	e := echo.New()
 	allowed := []string{"siteId", "name", "pageSize"}
 
 	tests := []struct {
@@ -2520,13 +2517,13 @@ func TestValidateQueryParams(t *testing.T) {
 			name:    "unknown param",
 			query:   "siteId=abc&foo=bar",
 			wantErr: true,
-			errMsg:  "unknown query parameter: foo",
+			errMsg:  "Unknown query parameter specified in request: foo",
 		},
 		{
 			name:    "all unknown",
 			query:   "bogus=1",
 			wantErr: true,
-			errMsg:  "unknown query parameter: bogus",
+			errMsg:  "Unknown query parameter specified in request: bogus",
 		},
 		{
 			name:    "subset of allowed",
@@ -2537,16 +2534,15 @@ func TestValidateQueryParams(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "/?"+tt.query, nil)
-			rec := httptest.NewRecorder()
-			c := e.NewContext(req, rec)
+			queryParams, _ := url.ParseQuery(tt.query)
 
-			err := ValidateQueryParams(c, allowed)
+			apiErr := ValidateQueryParams(queryParams, allowed)
 			if tt.wantErr {
-				assert.Error(t, err)
-				assert.Equal(t, tt.errMsg, err.Error())
+				assert.NotNil(t, apiErr)
+				assert.Equal(t, http.StatusBadRequest, apiErr.Code)
+				assert.Equal(t, tt.errMsg, apiErr.Message)
 			} else {
-				assert.NoError(t, err)
+				assert.Nil(t, apiErr)
 			}
 		})
 	}

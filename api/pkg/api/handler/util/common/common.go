@@ -1501,11 +1501,11 @@ func AddToValidationErrors(errs validation.Errors, key string, err error) {
 }
 
 // ValidateQueryParams checks that all query parameters in the request are in the allowed set.
-// Returns an error naming the first unknown parameter found, or nil if all are valid.
-func ValidateQueryParams(c echo.Context, allowedParams []string) error {
-	for key := range c.QueryParams() {
+// Returns an APIError naming the first unknown parameter found, or nil if all are valid.
+func ValidateQueryParams(queryParams url.Values, allowedParams []string) *cau.APIError {
+	for key := range queryParams {
 		if !slices.Contains(allowedParams, key) {
-			return fmt.Errorf("unknown query parameter: %s", key)
+			return cau.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Unknown query parameter specified in request: %s", key), nil)
 		}
 	}
 	return nil

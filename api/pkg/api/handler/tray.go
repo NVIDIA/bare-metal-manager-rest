@@ -93,8 +93,8 @@ func (gth GetTrayHandler) Handle(c echo.Context) error {
 		defer handlerSpan.End()
 	}
 
-	if err := common.ValidateQueryParams(c, getTrayAllowedParams); err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+	if apiErr := common.ValidateQueryParams(c.QueryParams(), getTrayAllowedParams); apiErr != nil {
+		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, nil)
 	}
 
 	// Is DB user missing?
@@ -255,8 +255,8 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 		defer handlerSpan.End()
 	}
 
-	if err := common.ValidateQueryParams(c, getAllTrayAllowedParams); err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+	if apiErr := common.ValidateQueryParams(c.QueryParams(), getAllTrayAllowedParams); apiErr != nil {
+		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, nil)
 	}
 
 	// Is DB user missing?
