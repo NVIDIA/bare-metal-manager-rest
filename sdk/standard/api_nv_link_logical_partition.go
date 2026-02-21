@@ -281,7 +281,7 @@ type ApiGetAllNvlinkInterfaceRequest struct {
 	orderBy *string
 }
 
-// Filter NVLink Interfaces by Status
+// Filter NVLink Interfaces by Status. Can be specified multiple times to filter on more than one status.
 func (r ApiGetAllNvlinkInterfaceRequest) Status(status string) ApiGetAllNvlinkInterfaceRequest {
 	r.status = &status
 	return r

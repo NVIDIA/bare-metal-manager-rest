@@ -2493,3 +2493,57 @@ func TestUniqueChecker_ComplexScenario(t *testing.T) {
 	assert.Len(t, duplicates, 1)
 	assert.Contains(t, duplicates, "mac-x")
 }
+
+func TestValidateQueryParams(t *testing.T) {
+	allowed := []string{"siteId", "name", "pageSize"}
+
+	tests := []struct {
+		name    string
+		query   string
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "all params allowed",
+			query:   "siteId=abc&name=rack1",
+			wantErr: false,
+		},
+		{
+			name:    "no params",
+			query:   "",
+			wantErr: false,
+		},
+		{
+			name:    "unknown param",
+			query:   "siteId=abc&foo=bar",
+			wantErr: true,
+			errMsg:  "Unknown query parameter specified in request: foo",
+		},
+		{
+			name:    "all unknown",
+			query:   "bogus=1",
+			wantErr: true,
+			errMsg:  "Unknown query parameter specified in request: bogus",
+		},
+		{
+			name:    "subset of allowed",
+			query:   "pageSize=20",
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			queryParams, _ := url.ParseQuery(tt.query)
+
+			apiErr := ValidateQueryParams(queryParams, allowed)
+			if tt.wantErr {
+				assert.NotNil(t, apiErr)
+				assert.Equal(t, http.StatusBadRequest, apiErr.Code)
+				assert.Equal(t, tt.errMsg, apiErr.Message)
+			} else {
+				assert.Nil(t, apiErr)
+			}
+		})
+	}
+}

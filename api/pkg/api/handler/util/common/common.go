@@ -1500,6 +1500,17 @@ func AddToValidationErrors(errs validation.Errors, key string, err error) {
 	}
 }
 
+// ValidateQueryParams checks that all query parameters in the request are in the allowed set.
+// Returns an APIError naming the first unknown parameter found, or nil if all are valid.
+func ValidateQueryParams(queryParams url.Values, allowedParams []string) *cau.APIError {
+	for key := range queryParams {
+		if !slices.Contains(allowedParams, key) {
+			return cau.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Unknown query parameter specified in request: %s", key), nil)
+		}
+	}
+	return nil
+}
+
 // QueryParamHash builds a deterministic hash from query params for workflow ID dedup.
 // Sorts parameters to ensure consistent hash regardless of parameter order.
 func QueryParamHash(c echo.Context) string {

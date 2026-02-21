@@ -47,6 +47,12 @@ import (
 	tp "go.temporal.io/sdk/temporal"
 )
 
+// Allowed query parameters for each tray handler
+var (
+	getTrayAllowedParams    = []string{"siteId"}
+	getAllTrayAllowedParams = []string{"siteId", "rackId", "rackName", "type", "componentId", "id", "pageNumber", "pageSize", "orderBy"}
+)
+
 // ~~~~~ Get Tray Handler ~~~~~ //
 
 // GetTrayHandler is the API Handler for getting a Tray by ID
@@ -85,6 +91,10 @@ func (gth GetTrayHandler) Handle(c echo.Context) error {
 	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Tray", "Get", c, gth.tracerSpan)
 	if handlerSpan != nil {
 		defer handlerSpan.End()
+	}
+
+	if apiErr := common.ValidateQueryParams(c.QueryParams(), getTrayAllowedParams); apiErr != nil {
+		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, nil)
 	}
 
 	// Is DB user missing?
@@ -243,6 +253,10 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Tray", "GetAll", c, gath.tracerSpan)
 	if handlerSpan != nil {
 		defer handlerSpan.End()
+	}
+
+	if apiErr := common.ValidateQueryParams(c.QueryParams(), getAllTrayAllowedParams); apiErr != nil {
+		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, nil)
 	}
 
 	// Is DB user missing?
