@@ -51,6 +51,8 @@ import (
 
 	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
+
+	wfutil "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/util"
 )
 
 // ~~~~~ Create Handler ~~~~~ //
@@ -358,27 +360,12 @@ func (cibph CreateNVLinkLogicalPartitionHandler) Handle(c echo.Context) error {
 	if workflowResult != nil {
 		logger.Info().Str("Workflow ID", wid).Msg("received NVLink Logical Partition info from workflow")
 
-		status, statusMessage := common.GetNVLinkLogicalPartitionStatus(workflowResult.Status.State)
+		status, statusMessage := wfutil.GetNVLinkLogicalPartitionStatus(workflowResult.Status.State)
 		// if status is nil, then default is pending and inventory will be updating status from workflow
 		if status != nil {
-			// update the db record for NVLink Logical Partition (using new transaction/nil since tx is committed)
-			unvllp, err = nvllpDAO.Update(ctx, nil, cdbm.NVLinkLogicalPartitionUpdateInput{
-				NVLinkLogicalPartitionID: nvllp.ID,
-				Status:                   status,
-			})
-
+			unvllp, ussd, err = wfutil.UpdateNVLinkLogicalPartitionStatusInDB(ctx, nil, cibph.dbSession, nvllp.ID, status, statusMessage)
 			if err != nil {
-				logger.Error().Err(err).Msg("unable to update NVLink Logical Partition record in DB, but object already exists on Site")
-				// Continue with original nvllp and ssd - don't return error
-			} else {
-				newSSD, err := sdDAO.CreateFromParams(ctx, nil, nvllp.ID.String(), *status, statusMessage)
-				if err != nil {
-					logger.Error().Err(err).Msg("error creating Status Detail DB entry, but object already exists on Site")
-					// Continue with original ssd - don't return error
-				} else if newSSD != nil {
-					// Use the new status detail if successfully created
-					ussd = newSSD
-				}
+				logger.Error().Err(err).Msg("failed to update NVLink Logical Partition status in DB")
 			}
 		}
 	}
