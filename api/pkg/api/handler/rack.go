@@ -50,9 +50,9 @@ import (
 // Allowed query parameters for each rack handler
 var (
 	getRackAllowedParams      = []string{"siteId", "includeComponents"}
-	getAllRackAllowedParams    = []string{"siteId", "includeComponents", "name", "manufacturer", "model", "pageNumber", "pageSize", "orderBy"}
+	getAllRackAllowedParams    = []string{"siteId", "includeComponents", "name", "manufacturer", "pageNumber", "pageSize", "orderBy"}
 	validateRackAllowedParams = []string{"siteId"}
-	validateRacksAllowedParams = []string{"siteId", "name", "manufacturer", "model"}
+	validateRacksAllowedParams = []string{"siteId", "name", "manufacturer"}
 )
 
 // ~~~~~ Get Rack Handler ~~~~~ //
@@ -251,7 +251,6 @@ func NewGetAllRackHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.Cli
 // @Param includeComponents query boolean false "Include rack components in response"
 // @Param name query string false "Filter by rack name"
 // @Param manufacturer query string false "Filter by manufacturer"
-// @Param model query string false "Filter by model"
 // @Param pageNumber query integer false "Page number of results returned"
 // @Param pageSize query integer false "Number of results per page"
 // @Param orderBy query string false "Order by field"
@@ -630,7 +629,6 @@ func NewValidateRacksHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.
 // @Param siteId query string true "ID of the Site"
 // @Param name query string false "Filter racks by name"
 // @Param manufacturer query string false "Filter racks by manufacturer"
-// @Param model query string false "Filter racks by model"
 // @Success 200 {object} model.APIRackValidationResult
 // @Router /v2/org/{org}/carbide/rack/validation [get]
 func (vrsh ValidateRacksHandler) Handle(c echo.Context) error {

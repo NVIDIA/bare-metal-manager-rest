@@ -759,5 +759,21 @@ func NewAPIRoutes(dbSession *cdb.Session, tc tClient.Client, tnc tClient.Namespa
 		},
 	}
 
+	forgePathPrefix := "/org/:orgName/forge"
+	forgeRoutes := []Route{
+		// Tray validation endpoints (RLA)
+		{
+			Path:    forgePathPrefix + "/tray/validation",
+			Method:  http.MethodGet,
+			Handler: apiHandler.NewValidateTraysHandler(dbSession, tc, scp, cfg),
+		},
+		{
+			Path:    forgePathPrefix + "/tray/:id/validation",
+			Method:  http.MethodGet,
+			Handler: apiHandler.NewValidateTrayHandler(dbSession, tc, scp, cfg),
+		},
+	}
+	apiRoutes = append(apiRoutes, forgeRoutes...)
+
 	return apiRoutes
 }

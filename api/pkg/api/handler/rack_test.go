@@ -413,12 +413,12 @@ func TestGetAllRackHandler_Handle(t *testing.T) {
 			wantErr:        false,
 		},
 		{
-			name:   "success - filter by model",
+			name:   "success - filter by name",
 			reqOrg: org,
 			user:   providerUser,
 			queryParams: map[string]string{
 				"siteId": site.ID.String(),
-				"model":  "NVL72",
+				"name":   "Rack-001",
 			},
 			mockResponse:   createMockRLAResponse([]*rlav1.Rack{testRacks[0], testRacks[1]}, 2),
 			expectedStatus: http.StatusOK,
@@ -862,8 +862,8 @@ func TestValidateRacksHandler_Handle(t *testing.T) {
 			user:   providerUser,
 			queryParams: map[string]string{
 				"siteId":       site.ID.String(),
+				"name":         "Rack-001",
 				"manufacturer": "NVIDIA",
-				"model":        "NVL72",
 			},
 			mockResponse: &rlav1.ValidateComponentsResponse{
 				Diffs:      []*rlav1.ComponentDiff{},

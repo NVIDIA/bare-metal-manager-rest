@@ -55,6 +55,31 @@ var validTrayTypesAny, ValidProtoComponentTypes = func() ([]interface{}, []rlav1
 	return anyTypes, protoTypes
 }()
 
+// TrayFilterFieldMap maps API field names to RLA protobuf ComponentFilterField enum for tray validation queries
+var TrayFilterFieldMap = map[string]rlav1.ComponentFilterField{
+	"name":         rlav1.ComponentFilterField_COMPONENT_FILTER_FIELD_NAME,
+	"manufacturer": rlav1.ComponentFilterField_COMPONENT_FILTER_FIELD_MANUFACTURER,
+	"type":         rlav1.ComponentFilterField_COMPONENT_FILTER_FIELD_TYPE,
+}
+
+// GetProtoTrayFilterFromQueryParam creates an RLA protobuf Filter from API query parameters for tray (component) queries
+func GetProtoTrayFilterFromQueryParam(fieldName, value string) *rlav1.Filter {
+	field, ok := TrayFilterFieldMap[fieldName]
+	if !ok {
+		return nil
+	}
+	return &rlav1.Filter{
+		Field: &rlav1.Filter_ComponentField{
+			ComponentField: field,
+		},
+		QueryInfo: &rlav1.StringQueryInfo{
+			Patterns:   []string{value},
+			IsWildcard: false,
+			UseOr:      false,
+		},
+	}
+}
+
 // TrayOrderByFieldMap maps API field names to RLA protobuf ComponentOrderByField enum
 var TrayOrderByFieldMap = map[string]rlav1.ComponentOrderByField{
 	"name":         rlav1.ComponentOrderByField_COMPONENT_ORDER_BY_FIELD_NAME,

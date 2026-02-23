@@ -8054,11 +8054,6 @@ paths:
           name: manufacturer
           description: Filter by manufacturer
         - schema:
-            type: string
-          in: query
-          name: model
-          description: Filter by model
-        - schema:
             type: integer
             example: 1
             default: 1
@@ -8213,7 +8208,7 @@ paths:
       description: |-
         Validate Rack components by comparing expected vs actual state.
 
-        If no filter is specified, validates all racks in the Site. Filters can narrow the scope to specific racks by name, manufacturer, or model.
+        If no filter is specified, validates all racks in the Site. Filters can narrow the scope to specific racks by name or manufacturer.
 
         Compares the expected component configuration (stored in RLA) against the actual state from external systems (e.g., Carbide, PSM). Returns a detailed diff report showing missing, extra, and drifted components.
 
@@ -8238,12 +8233,6 @@ paths:
           in: query
           required: false
           description: Filter racks by manufacturer
-        - schema:
-            type: string
-          name: model
-          in: query
-          required: false
-          description: Filter racks by model
       responses:
         '200':
           description: OK
@@ -8557,6 +8546,150 @@ paths:
           $ref: '#/components/responses/ForbiddenError'
       tags:
         - Rack
+  '/v2/org/{org}/forge/tray/validation':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+    get:
+      summary: Validate Trays
+      operationId: validate-trays
+      description: |-
+        Validate Tray components by comparing expected vs actual state via RLA.
+
+        If no filter is specified, validates all trays in the Site. Use rackId/rackName to scope to a specific rack, and name/manufacturer/type to filter by tray attributes.
+
+        Compares the expected component configuration (stored in RLA) against the actual state from external systems. Returns a detailed diff report showing missing, extra, and drifted components.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site
+        - schema:
+            type: string
+            format: uuid
+          name: rackId
+          in: query
+          required: false
+          description: Scope to a specific Rack by ID (mutually exclusive with rackName)
+        - schema:
+            type: string
+          name: rackName
+          in: query
+          required: false
+          description: Scope to a specific Rack by name (mutually exclusive with rackId)
+        - schema:
+            type: string
+          name: name
+          in: query
+          required: false
+          description: Filter trays by name
+        - schema:
+            type: string
+          name: manufacturer
+          in: query
+          required: false
+          description: Filter trays by manufacturer
+        - schema:
+            type: string
+            enum:
+              - compute
+              - switch
+              - powershelf
+          name: type
+          in: query
+          required: false
+          description: Filter trays by type
+        - schema:
+            type: string
+          name: componentId
+          in: query
+          required: false
+          description: Filter by external component ID (requires type; mutually exclusive with rackId/rackName; use repeated params for multiple values)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RackValidationResult'
+              examples:
+                example-no-diffs:
+                  value:
+                    diffs: []
+                    totalDiffs: 0
+                    onlyInExpectedCount: 0
+                    onlyInActualCount: 0
+                    driftCount: 0
+                    matchCount: 10
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Tray
+  '/v2/org/{org}/forge/tray/{id}/validation':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+          format: uuid
+        name: id
+        in: path
+        required: true
+        description: ID of the Tray
+    get:
+      summary: Validate a Tray
+      operationId: validate-tray
+      description: |-
+        Validate a Tray by comparing expected vs actual state via RLA.
+
+        Compares the expected component configuration (stored in RLA) against the actual state from external systems. Returns a detailed diff report showing missing, extra, and drifted components.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RackValidationResult'
+              examples:
+                example-no-diffs:
+                  value:
+                    diffs: []
+                    totalDiffs: 0
+                    onlyInExpectedCount: 0
+                    onlyInActualCount: 0
+                    driftCount: 0
+                    matchCount: 5
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Tray
   '/v2/org/{org}/carbide/network-security-group':
     parameters:
       - schema:
