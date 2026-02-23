@@ -36,26 +36,6 @@ import (
 
 // ~~~~~ Shared Types and Helpers ~~~~~ //
 
-// allocationDetail carries allocation constraint info, optionally with tenant context
-type allocationDetail struct {
-	allocationID    uuid.UUID
-	allocationName  string
-	tenantID        uuid.UUID
-	tenantName      string
-	constraintValue int
-}
-
-// addMachineStatusCounts increments usage counters based on machine status
-func addMachineStatusCounts(stats *model.APIUsedMachineStats, m cdbm.Machine) {
-	stats.Total++
-	switch m.Status {
-	case cdbm.MachineStatusError:
-		stats.Error++
-	case cdbm.MachineStatusMaintenance:
-		stats.Maintenance++
-	}
-}
-
 // buildMachineUsageMaps builds per-instance-type and per-tenant-instance-type usage maps from instances
 func buildMachineUsageMaps(instances []cdbm.Instance, machineByID map[string]cdbm.Machine) (
 	itUsed map[uuid.UUID]*model.APIUsedMachineStats,
@@ -82,8 +62,8 @@ func buildMachineUsageMaps(instances []cdbm.Instance, machineByID map[string]cdb
 		}
 
 		if m, ok := machineByID[*inst.MachineID]; ok {
-			addMachineStatusCounts(itUsed[itID], m)
-			addMachineStatusCounts(tenantITUsed[tID][itID], m)
+			itUsed[itID].AddMachineStatusCounts(m)
+			tenantITUsed[tID][itID].AddMachineStatusCounts(m)
 		}
 	}
 
@@ -91,24 +71,10 @@ func buildMachineUsageMaps(instances []cdbm.Instance, machineByID map[string]cdb
 }
 
 // buildConstraintsByIT groups allocation constraints by instance type ID
-func buildConstraintsByIT(constraints []cdbm.AllocationConstraint, allocationMap map[uuid.UUID]cdbm.Allocation) map[uuid.UUID][]allocationDetail {
-	result := make(map[uuid.UUID][]allocationDetail)
+func buildConstraintsByIT(constraints []cdbm.AllocationConstraint) map[uuid.UUID][]cdbm.AllocationConstraint {
+	result := make(map[uuid.UUID][]cdbm.AllocationConstraint)
 	for _, ac := range constraints {
-		alloc, ok := allocationMap[ac.AllocationID]
-		if !ok {
-			continue
-		}
-		tenantName := ""
-		if alloc.Tenant != nil {
-			tenantName = alloc.Tenant.Org
-		}
-		result[ac.ResourceTypeID] = append(result[ac.ResourceTypeID], allocationDetail{
-			allocationID:    alloc.ID,
-			allocationName:  alloc.Name,
-			tenantID:        alloc.TenantID,
-			tenantName:      tenantName,
-			constraintValue: ac.ConstraintValue,
-		})
+		result[ac.ResourceTypeID] = append(result[ac.ResourceTypeID], ac)
 	}
 	return result
 }
@@ -117,17 +83,17 @@ func buildConstraintsByIT(constraints []cdbm.AllocationConstraint, allocationMap
 func buildInstanceTypeStats(
 	it cdbm.InstanceType,
 	itMachines []cdbm.Machine,
-	itConstraints []allocationDetail,
+	itConstraints []cdbm.AllocationConstraint,
 	itUsed map[uuid.UUID]*model.APIUsedMachineStats,
 	tenantITUsed map[uuid.UUID]map[uuid.UUID]*model.APIUsedMachineStats,
 ) model.APIMachineInstanceTypeStats {
 	assignedStats := &model.APIUsedMachineStats{}
 	for _, m := range itMachines {
-		addMachineStatusCounts(assignedStats, m)
+		assignedStats.AddMachineStatusCounts(m)
 	}
 
-	allocated := lo.Reduce(itConstraints, func(acc int, cd allocationDetail, _ int) int {
-		return acc + cd.constraintValue
+	allocated := lo.Reduce(itConstraints, func(acc int, ac cdbm.AllocationConstraint, _ int) int {
+		return acc + ac.ConstraintValue
 	}, 0)
 
 	used := model.APIUsedMachineStats{}
@@ -142,20 +108,21 @@ func buildInstanceTypeStats(
 	}
 
 	tenantMap := make(map[uuid.UUID]*model.APIMachineInstanceTypeTenant)
-	for _, cd := range itConstraints {
-		tenantEntry, exists := tenantMap[cd.tenantID]
+	for _, ac := range itConstraints {
+		tID := ac.Allocation.TenantID
+		tenantEntry, exists := tenantMap[tID]
 		if !exists {
 			tenantEntry = &model.APIMachineInstanceTypeTenant{
-				ID:   cd.tenantID.String(),
-				Name: cd.tenantName,
+				ID:   tID.String(),
+				Name: ac.Allocation.Tenant.Org,
 			}
-			tenantMap[cd.tenantID] = tenantEntry
+			tenantMap[tID] = tenantEntry
 		}
-		tenantEntry.Allocated += cd.constraintValue
+		tenantEntry.Allocated += ac.ConstraintValue
 		tenantEntry.Allocations = append(tenantEntry.Allocations, model.APIMachineInstanceTypeTenantAllocation{
-			ID:        cd.allocationID.String(),
-			Name:      cd.allocationName,
-			Allocated: cd.constraintValue,
+			ID:        ac.Allocation.ID.String(),
+			Name:      ac.Allocation.Name,
+			Allocated: ac.ConstraintValue,
 		})
 	}
 
@@ -227,7 +194,7 @@ func (h GetMachineGPUStatsHandler) Handle(c echo.Context) error {
 	site, err := common.GetSiteFromIDString(ctx, nil, siteIDStr, h.dbSession)
 	if err != nil {
 		logger.Error().Err(err).Str("siteId", siteIDStr).Msg("error parsing or retrieving site")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid siteId", nil)
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid Site ID specified in query param", nil)
 	}
 
 	if site.InfrastructureProviderID != infrastructureProvider.ID {
@@ -346,7 +313,7 @@ func (h GetTenantInstanceTypeStatsHandler) Handle(c echo.Context) error {
 	site, err := common.GetSiteFromIDString(ctx, nil, siteIDStr, h.dbSession)
 	if err != nil {
 		logger.Error().Err(err).Str("siteId", siteIDStr).Msg("error parsing or retrieving site")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid siteId", nil)
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid Site ID specified in query param", nil)
 	}
 
 	if site.InfrastructureProviderID != infrastructureProvider.ID {
@@ -368,25 +335,24 @@ func (h GetTenantInstanceTypeStatsHandler) Handle(c echo.Context) error {
 	instanceTypeIDs := lo.Map(instanceTypes, func(it cdbm.InstanceType, _ int) uuid.UUID { return it.ID })
 	instanceTypeMap := lo.KeyBy(instanceTypes, func(it cdbm.InstanceType) uuid.UUID { return it.ID })
 
-	// 2. Fetch all allocations for the site (with Tenant relation)
+	// 2. Fetch all allocations for the site (IDs needed to filter constraints)
 	aDAO := cdbm.NewAllocationDAO(h.dbSession)
 	allocations, _, err := aDAO.GetAll(ctx, nil, cdbm.AllocationFilterInput{SiteIDs: siteIDs},
-		cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, []string{"Tenant"})
+		cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
 	if err != nil {
 		logger.Error().Err(err).Msg("error retrieving allocations")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve allocations", nil)
 	}
 
 	allocationIDs := lo.Map(allocations, func(a cdbm.Allocation, _ int) uuid.UUID { return a.ID })
-	allocationMap := lo.KeyBy(allocations, func(a cdbm.Allocation) uuid.UUID { return a.ID })
 
-	// 3. Fetch allocation constraints (guard empty allocationIDs to avoid empty IN clause)
+	// 3. Fetch allocation constraints with Allocation.Tenant
 	var constraints []cdbm.AllocationConstraint
 	if len(allocationIDs) > 0 {
 		acDAO := cdbm.NewAllocationConstraintDAO(h.dbSession)
 		constraints, _, err = acDAO.GetAll(ctx, nil, allocationIDs,
 			cdb.GetStrPtr(cdbm.AllocationResourceTypeInstanceType), instanceTypeIDs,
-			nil, nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+			nil, nil, []string{"Allocation.Tenant"}, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving allocation constraints")
 			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve allocation constraints", nil)
@@ -431,27 +397,19 @@ func (h GetTenantInstanceTypeStatsHandler) Handle(c echo.Context) error {
 			tenantITUsed[tID][itID] = &model.APIUsedMachineStats{}
 		}
 		if m, ok := machineByID[*inst.MachineID]; ok {
-			addMachineStatusCounts(tenantITUsed[tID][itID], m)
+			tenantITUsed[tID][itID].AddMachineStatusCounts(m)
 		}
 	}
 
-	// Group constraints by tenantID -> instanceTypeID -> allocation details
-	tenantITAllocs := make(map[uuid.UUID]map[uuid.UUID][]allocationDetail)
+	// Group constraints by tenantID -> instanceTypeID
+	tenantITAllocs := make(map[uuid.UUID]map[uuid.UUID][]cdbm.AllocationConstraint)
 	for _, ac := range constraints {
-		alloc, ok := allocationMap[ac.AllocationID]
-		if !ok {
-			continue
-		}
-		tID := alloc.TenantID
+		tID := ac.Allocation.TenantID
 		itID := ac.ResourceTypeID
 		if tenantITAllocs[tID] == nil {
-			tenantITAllocs[tID] = make(map[uuid.UUID][]allocationDetail)
+			tenantITAllocs[tID] = make(map[uuid.UUID][]cdbm.AllocationConstraint)
 		}
-		tenantITAllocs[tID][itID] = append(tenantITAllocs[tID][itID], allocationDetail{
-			allocationID:    alloc.ID,
-			allocationName:  alloc.Name,
-			constraintValue: ac.ConstraintValue,
-		})
+		tenantITAllocs[tID][itID] = append(tenantITAllocs[tID][itID], ac)
 	}
 
 	// Healthy (non-error) machines per instance type for maxAllocatable
@@ -471,28 +429,22 @@ func (h GetTenantInstanceTypeStatsHandler) Handle(c echo.Context) error {
 	// Build response grouped by tenant
 	tenantStatsMap := make(map[uuid.UUID]*model.APITenantInstanceTypeStats)
 	for tID, itAllocs := range tenantITAllocs {
-		var tenantOrg, tenantOrgDisplay string
-		var tenantIDStr string
-		for _, alloc := range allocations {
-			if alloc.TenantID == tID && alloc.Tenant != nil {
-				tenantIDStr = alloc.Tenant.ID.String()
-				tenantOrg = alloc.Tenant.Org
-				if alloc.Tenant.OrgDisplayName != nil {
-					tenantOrgDisplay = *alloc.Tenant.OrgDisplayName
-				} else {
-					tenantOrgDisplay = alloc.Tenant.Org
-				}
+		var t *cdbm.Tenant
+		for _, acs := range itAllocs {
+			if len(acs) > 0 {
+				t = acs[0].Allocation.Tenant
 				break
 			}
 		}
 
-		if tenantIDStr == "" {
-			logger.Warn().Str("tenantID", tID.String()).Msg("tenant info not found for allocation, tenant relation may not be loaded")
+		tenantOrgDisplay := t.Org
+		if t.OrgDisplayName != nil {
+			tenantOrgDisplay = *t.OrgDisplayName
 		}
 
 		ts := &model.APITenantInstanceTypeStats{
-			ID:             tenantIDStr,
-			Org:            tenantOrg,
+			ID:             t.ID.String(),
+			Org:            t.Org,
 			OrgDisplayName: tenantOrgDisplay,
 		}
 
@@ -501,15 +453,15 @@ func (h GetTenantInstanceTypeStatsHandler) Handle(c echo.Context) error {
 			if !ok {
 				continue
 			}
-			allocated := lo.Reduce(details, func(acc int, d allocationDetail, _ int) int {
-				return acc + d.constraintValue
+			allocated := lo.Reduce(details, func(acc int, ac cdbm.AllocationConstraint, _ int) int {
+				return acc + ac.ConstraintValue
 			}, 0)
 
-			apiAllocs := lo.Map(details, func(d allocationDetail, _ int) model.APITenantInstanceTypeAllocation {
+			apiAllocs := lo.Map(details, func(ac cdbm.AllocationConstraint, _ int) model.APITenantInstanceTypeAllocation {
 				return model.APITenantInstanceTypeAllocation{
-					ID:    d.allocationID.String(),
-					Name:  d.allocationName,
-					Total: d.constraintValue,
+					ID:    ac.Allocation.ID.String(),
+					Name:  ac.Allocation.Name,
+					Total: ac.ConstraintValue,
 				}
 			})
 
@@ -591,7 +543,7 @@ func (h GetMachineInstanceTypeSummaryHandler) Handle(c echo.Context) error {
 	site, err := common.GetSiteFromIDString(ctx, nil, siteIDStr, h.dbSession)
 	if err != nil {
 		logger.Error().Err(err).Str("siteId", siteIDStr).Msg("error parsing or retrieving site")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid siteId", nil)
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid Site ID specified in query param", nil)
 	}
 
 	if site.InfrastructureProviderID != infrastructureProvider.ID {
@@ -689,7 +641,7 @@ func (h GetMachineInstanceTypeStatsHandler) Handle(c echo.Context) error {
 	site, err := common.GetSiteFromIDString(ctx, nil, siteIDStr, h.dbSession)
 	if err != nil {
 		logger.Error().Err(err).Str("siteId", siteIDStr).Msg("error parsing or retrieving site")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid siteId", nil)
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid Site ID specified in query param", nil)
 	}
 
 	if site.InfrastructureProviderID != infrastructureProvider.ID {
@@ -730,25 +682,24 @@ func (h GetMachineInstanceTypeStatsHandler) Handle(c echo.Context) error {
 	assignedMachines := lo.Filter(machines, func(m cdbm.Machine, _ int) bool { return m.InstanceTypeID != nil })
 	machinesByIT := lo.GroupBy(assignedMachines, func(m cdbm.Machine) uuid.UUID { return *m.InstanceTypeID })
 
-	// 3. Fetch all allocations for the site (with Tenant relation)
+	// 3. Fetch all allocations for the site (IDs needed to filter constraints)
 	aDAO := cdbm.NewAllocationDAO(h.dbSession)
 	allocations, _, err := aDAO.GetAll(ctx, nil, cdbm.AllocationFilterInput{SiteIDs: siteIDs},
-		cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, []string{"Tenant"})
+		cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
 	if err != nil {
 		logger.Error().Err(err).Msg("error retrieving allocations")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve allocations", nil)
 	}
 
 	allocationIDs := lo.Map(allocations, func(a cdbm.Allocation, _ int) uuid.UUID { return a.ID })
-	allocationMap := lo.KeyBy(allocations, func(a cdbm.Allocation) uuid.UUID { return a.ID })
 
-	// 4. Fetch allocation constraints (guard empty allocationIDs)
+	// 4. Fetch allocation constraints with Allocation.Tenant
 	var constraints []cdbm.AllocationConstraint
 	if len(allocationIDs) > 0 {
 		acDAO := cdbm.NewAllocationConstraintDAO(h.dbSession)
 		constraints, _, err = acDAO.GetAll(ctx, nil, allocationIDs,
 			cdb.GetStrPtr(cdbm.AllocationResourceTypeInstanceType), instanceTypeIDs,
-			nil, nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
+			nil, nil, []string{"Allocation.Tenant"}, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
 		if err != nil {
 			logger.Error().Err(err).Msg("error retrieving allocation constraints")
 			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve allocation constraints", nil)
@@ -766,7 +717,7 @@ func (h GetMachineInstanceTypeStatsHandler) Handle(c echo.Context) error {
 
 	// Build aggregation maps using shared helpers
 	itUsed, tenantITUsed := buildMachineUsageMaps(instances, machineByID)
-	constraintsByIT := buildConstraintsByIT(constraints, allocationMap)
+	constraintsByIT := buildConstraintsByIT(constraints)
 
 	// Build response
 	result := lo.Map(instanceTypes, func(it cdbm.InstanceType, _ int) model.APIMachineInstanceTypeStats {

@@ -17,6 +17,10 @@
 
 package model
 
+import (
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
+)
+
 // ~~~~~ Machine GPU Stats ~~~~~ //
 
 // APIMachineGPUStats represents GPU summary stats for a single GPU type across machines at a site
@@ -67,6 +71,17 @@ type APIUsedMachineStats struct {
 	Error int `json:"error"`
 	// Maintenance is the number of used Machines in maintenance state
 	Maintenance int `json:"maintenance"`
+}
+
+// AddMachineStatusCounts increments usage counters based on machine status
+func (ums *APIUsedMachineStats) AddMachineStatusCounts(m cdbm.Machine) {
+	ums.Total++
+	switch m.Status {
+	case cdbm.MachineStatusError:
+		ums.Error++
+	case cdbm.MachineStatusMaintenance:
+		ums.Maintenance++
+	}
 }
 
 // APITenantInstanceTypeAllocation represents a single allocation's stats for an instance type
