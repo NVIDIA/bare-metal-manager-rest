@@ -79,7 +79,7 @@ func (a *ExpectedMachineAPIService) BatchCreateExpectedMachinesExecute(r ApiBatc
 		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
 	}
 
-	localVarPath := localBasePath + "/v2/org/{org}/forge/expected-machine/batch"
+	localVarPath := localBasePath + "/v2/org/{org}/carbide/expected-machine/batch"
 	localVarPath = strings.Replace(localVarPath, "{"+"org"+"}", url.PathEscape(parameterValueToString(r.org, "org")), -1)
 
 	localVarHeaderParams := make(map[string]string)
@@ -229,7 +229,7 @@ func (a *ExpectedMachineAPIService) BatchUpdateExpectedMachinesExecute(r ApiBatc
 		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
 	}
 
-	localVarPath := localBasePath + "/v2/org/{org}/forge/expected-machine/batch"
+	localVarPath := localBasePath + "/v2/org/{org}/carbide/expected-machine/batch"
 	localVarPath = strings.Replace(localVarPath, "{"+"org"+"}", url.PathEscape(parameterValueToString(r.org, "org")), -1)
 
 	localVarHeaderParams := make(map[string]string)
