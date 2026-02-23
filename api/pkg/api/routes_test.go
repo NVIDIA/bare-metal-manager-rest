@@ -76,8 +76,8 @@ func TestNewAPIRoutes(t *testing.T) {
 		"machine-validation":      11,
 		"dpu-extension-service":   7,
 		"sku":                     2,
-		"rack":                    4,
-		"tray":                    2,
+		"rack":                    6,
+		"tray":                    4,
 	}
 
 	totalRouteCount := 0

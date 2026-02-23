@@ -49,10 +49,12 @@ import (
 
 // Allowed query parameters for each rack handler
 var (
-	getRackAllowedParams      = []string{"siteId", "includeComponents"}
-	getAllRackAllowedParams    = []string{"siteId", "includeComponents", "name", "manufacturer", "model", "pageNumber", "pageSize", "orderBy"}
-	validateRackAllowedParams = []string{"siteId"}
-	validateRacksAllowedParams = []string{"siteId", "name", "manufacturer", "model"}
+	getRackAllowedParams               = []string{"siteId", "includeComponents"}
+	getAllRackAllowedParams             = []string{"siteId", "includeComponents", "name", "manufacturer", "model", "pageNumber", "pageSize", "orderBy"}
+	validateRackAllowedParams          = []string{"siteId"}
+	validateRacksAllowedParams         = []string{"siteId", "name", "manufacturer", "model"}
+	powerControlRackAllowedParams      = []string{"siteId"}
+	powerControlRackBatchAllowedParams = []string{"siteId", "name", "id"}
 )
 
 // ~~~~~ Get Rack Handler ~~~~~ //
@@ -757,4 +759,269 @@ func (vrsh ValidateRacksHandler) Handle(c echo.Context) error {
 	logger.Info().Int("FilterCount", len(filters)).Int32("TotalDiffs", rlaResponse.GetTotalDiffs()).Msg("finishing API handler")
 
 	return c.JSON(http.StatusOK, apiResult)
+}
+
+// ~~~~~ Power Control Rack Handler ~~~~~ //
+
+// PowerControlRackHandler is the API Handler for power controlling a single Rack by ID
+type PowerControlRackHandler struct {
+	dbSession  *cdb.Session
+	tc         tClient.Client
+	scp        *sc.ClientPool
+	cfg        *config.Config
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewPowerControlRackHandler initializes and returns a new handler for power controlling a Rack
+func NewPowerControlRackHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) PowerControlRackHandler {
+	return PowerControlRackHandler{
+		dbSession:  dbSession,
+		tc:         tc,
+		scp:        scp,
+		cfg:        cfg,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Power control a Rack
+// @Description Power control a single Rack by ID (on, off, cycle, forceoff, forcecycle)
+// @Tags rack
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param org path string true "Name of NGC organization"
+// @Param id path string true "ID of Rack"
+// @Param siteId query string true "ID of the Site"
+// @Param body body model.APIPowerControlRequest true "Power control request"
+// @Success 200 {object} model.APIPowerControlResponse
+// @Router /v2/org/{org}/carbide/rack/{id}/power [patch]
+func (pcrh PowerControlRackHandler) Handle(c echo.Context) error {
+	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "PowerControl", c, pcrh.tracerSpan)
+	if handlerSpan != nil {
+		defer handlerSpan.End()
+	}
+
+	if apiErr := common.ValidateQueryParams(c.QueryParams(), powerControlRackAllowedParams); apiErr != nil {
+		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, nil)
+	}
+
+	// Is DB user missing?
+	if dbUser == nil {
+		logger.Error().Msg("invalid User object found in request context")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// Validate org membership
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Validate role, only Provider Admins are allowed to power control Rack
+	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Provider Admin role, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Provider Admin role with org", nil)
+	}
+
+	// Get Infrastructure Provider for org
+	infrastructureProvider, err := common.GetInfrastructureProviderForOrg(ctx, nil, pcrh.dbSession, org)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error getting infrastructure provider for org")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
+	}
+
+	// Get rack ID from URL param
+	rackStrID := c.Param("id")
+	pcrh.tracerSpan.SetAttribute(handlerSpan, attribute.String("rack_id", rackStrID), logger)
+
+	// Get site ID from query param (required)
+	siteStrID := c.QueryParam("siteId")
+	if siteStrID == "" {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
+	}
+
+	// Validate the site
+	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, pcrh.dbSession)
+	if err != nil {
+		if errors.Is(err, cdb.ErrDoesNotExist) {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
+		}
+		logger.Error().Err(err).Msg("error retrieving Site from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site specified in request due to DB error", nil)
+	}
+
+	// Verify site belongs to the org's Infrastructure Provider
+	if site.InfrastructureProviderID != infrastructureProvider.ID {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
+	}
+
+	// Parse and validate request body
+	apiRequest := model.APIPowerControlRequest{}
+	if err := c.Bind(&apiRequest); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
+	}
+	if verr := apiRequest.Validate(); verr != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate request data", verr)
+	}
+
+	// Get the temporal client for the site
+	stc, err := pcrh.scp.GetClientByID(site.ID)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Temporal client for Site")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
+	}
+
+	// Build TargetSpec for single rack by ID
+	targetSpec := &rlav1.OperationTargetSpec{
+		Targets: &rlav1.OperationTargetSpec_Racks{
+			Racks: &rlav1.RackTargets{
+				Targets: []*rlav1.RackTarget{
+					{
+						Identifier: &rlav1.RackTarget_Id{
+							Id: &rlav1.UUID{Id: rackStrID},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	return executePowerControlWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.State,
+		fmt.Sprintf("rack-power-%s-%s", apiRequest.State, rackStrID), "Rack")
+}
+
+// ~~~~~ Power Control Racks (Batch) Handler ~~~~~ //
+
+// PowerControlRackBatchHandler is the API Handler for power controlling Racks with optional filters
+type PowerControlRackBatchHandler struct {
+	dbSession  *cdb.Session
+	tc         tClient.Client
+	scp        *sc.ClientPool
+	cfg        *config.Config
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewPowerControlRackBatchHandler initializes and returns a new handler for batch power controlling Racks
+func NewPowerControlRackBatchHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) PowerControlRackBatchHandler {
+	return PowerControlRackBatchHandler{
+		dbSession:  dbSession,
+		tc:         tc,
+		scp:        scp,
+		cfg:        cfg,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Power control Racks
+// @Description Power control Racks with optional filters (on, off, cycle, forceoff, forcecycle). If no filter is specified, targets all racks in the Site.
+// @Tags rack
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param org path string true "Name of NGC organization"
+// @Param siteId query string true "ID of the Site"
+// @Param name query string false "Filter racks by name (use repeated params for multiple values)"
+// @Param id query string false "Filter racks by UUID (use repeated params for multiple values)"
+// @Param body body model.APIPowerControlRequest true "Power control request"
+// @Success 200 {object} model.APIPowerControlResponse
+// @Router /v2/org/{org}/carbide/rack/power [patch]
+func (pcrbh PowerControlRackBatchHandler) Handle(c echo.Context) error {
+	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "PowerControlBatch", c, pcrbh.tracerSpan)
+	if handlerSpan != nil {
+		defer handlerSpan.End()
+	}
+
+	if apiErr := common.ValidateQueryParams(c.QueryParams(), powerControlRackBatchAllowedParams); apiErr != nil {
+		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, nil)
+	}
+
+	// Is DB user missing?
+	if dbUser == nil {
+		logger.Error().Msg("invalid User object found in request context")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// Validate org membership
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Validate role, only Provider Admins are allowed to power control Rack
+	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Provider Admin role, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Provider Admin role with org", nil)
+	}
+
+	// Get Infrastructure Provider for org
+	infrastructureProvider, err := common.GetInfrastructureProviderForOrg(ctx, nil, pcrbh.dbSession, org)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error getting infrastructure provider for org")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
+	}
+
+	// Get site ID from query param (required)
+	siteStrID := c.QueryParam("siteId")
+	if siteStrID == "" {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
+	}
+
+	// Validate the site
+	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, pcrbh.dbSession)
+	if err != nil {
+		if errors.Is(err, cdb.ErrDoesNotExist) {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
+		}
+		logger.Error().Err(err).Msg("error retrieving Site from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site specified in request due to DB error", nil)
+	}
+
+	// Verify site belongs to the org's Infrastructure Provider
+	if site.InfrastructureProviderID != infrastructureProvider.ID {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
+	}
+
+	// Build and validate rack filter request from query params
+	filterRequest := model.APIRackPowerControlBatchRequest{}
+	filterRequest.FromQueryParams(c.QueryParams())
+	if verr := filterRequest.Validate(); verr != nil {
+		logger.Warn().Err(verr).Msg("invalid rack filter parameters")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate filter parameters", verr)
+	}
+
+	// Parse and validate request body
+	apiRequest := model.APIPowerControlRequest{}
+	if err := c.Bind(&apiRequest); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
+	}
+	if verr := apiRequest.Validate(); verr != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate request data", verr)
+	}
+
+	// Get the temporal client for the site
+	stc, err := pcrbh.scp.GetClientByID(site.ID)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Temporal client for Site")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
+	}
+
+	// Build TargetSpec from rack filters
+	targetSpec := filterRequest.ToTargetSpec()
+
+	return executePowerControlWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.State,
+		fmt.Sprintf("rack-power-batch-%s-%s", apiRequest.State, common.QueryParamHash(c)), "Rack")
 }
