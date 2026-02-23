@@ -753,27 +753,21 @@ func NewAPIRoutes(dbSession *cdb.Session, tc tClient.Client, tnc tClient.Namespa
 			Handler: apiHandler.NewGetAllTrayHandler(dbSession, tc, scp, cfg),
 		},
 		{
-			Path:    apiPathPrefix + "/tray/:id",
-			Method:  http.MethodGet,
-			Handler: apiHandler.NewGetTrayHandler(dbSession, tc, scp, cfg),
-		},
-	}
-
-	forgePathPrefix := "/org/:orgName/forge"
-	forgeRoutes := []Route{
-		// Tray validation endpoints (RLA)
-		{
-			Path:    forgePathPrefix + "/tray/validation",
+			Path:    apiPathPrefix + "/tray/validation",
 			Method:  http.MethodGet,
 			Handler: apiHandler.NewValidateTraysHandler(dbSession, tc, scp, cfg),
 		},
 		{
-			Path:    forgePathPrefix + "/tray/:id/validation",
+			Path:    apiPathPrefix + "/tray/:id",
+			Method:  http.MethodGet,
+			Handler: apiHandler.NewGetTrayHandler(dbSession, tc, scp, cfg),
+		},
+		{
+			Path:    apiPathPrefix + "/tray/:id/validation",
 			Method:  http.MethodGet,
 			Handler: apiHandler.NewValidateTrayHandler(dbSession, tc, scp, cfg),
 		},
 	}
-	apiRoutes = append(apiRoutes, forgeRoutes...)
 
 	return apiRoutes
 }

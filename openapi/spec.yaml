@@ -8546,7 +8546,7 @@ paths:
           $ref: '#/components/responses/ForbiddenError'
       tags:
         - Rack
-  '/v2/org/{org}/forge/tray/validation':
+  '/v2/org/{org}/carbide/tray/validation':
     parameters:
       - schema:
           type: string
@@ -8636,7 +8636,7 @@ paths:
           $ref: '#/components/responses/ForbiddenError'
       tags:
         - Tray
-  '/v2/org/{org}/forge/tray/{id}/validation':
+  '/v2/org/{org}/carbide/tray/{id}/validation':
     parameters:
       - schema:
           type: string

@@ -810,7 +810,7 @@ func TestValidateTrayHandler_Handle(t *testing.T) {
 			for k, v := range tt.queryParams {
 				q.Set(k, v)
 			}
-			path := fmt.Sprintf("/v2/org/%s/forge/tray/%s/validation?%s", tt.reqOrg, tt.trayID, q.Encode())
+			path := fmt.Sprintf("/v2/org/%s/carbide/tray/%s/validation?%s", tt.reqOrg, tt.trayID, q.Encode())
 
 			req := httptest.NewRequest(http.MethodGet, path, nil)
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
@@ -1082,7 +1082,7 @@ func TestValidateTraysHandler_Handle(t *testing.T) {
 			for k, v := range tt.queryParams {
 				q.Set(k, v)
 			}
-			path := fmt.Sprintf("/v2/org/%s/forge/tray/validation?%s", tt.reqOrg, q.Encode())
+			path := fmt.Sprintf("/v2/org/%s/carbide/tray/validation?%s", tt.reqOrg, q.Encode())
 
 			req := httptest.NewRequest(http.MethodGet, path, nil)
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
