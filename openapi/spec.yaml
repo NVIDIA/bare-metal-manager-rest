@@ -3285,7 +3285,7 @@ paths:
           $ref: '#/components/responses/NotFoundError'
       tags:
         - Expected Machine
-  '/v2/org/{org}/forge/expected-machine/batch':
+  '/v2/org/{org}/carbide/expected-machine/batch':
     parameters:
       - schema:
           type: string
