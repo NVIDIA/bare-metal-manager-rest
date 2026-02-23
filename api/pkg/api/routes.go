@@ -742,6 +742,11 @@ func NewAPIRoutes(dbSession *cdb.Session, tc tClient.Client, tnc tClient.Namespa
 			Handler: apiHandler.NewPowerControlRackBatchHandler(dbSession, tc, scp, cfg),
 		},
 		{
+			Path:    apiPathPrefix + "/rack/firmware",
+			Method:  http.MethodPatch,
+			Handler: apiHandler.NewFirmwareUpgradeRackBatchHandler(dbSession, tc, scp, cfg),
+		},
+		{
 			Path:    apiPathPrefix + "/rack/:id",
 			Method:  http.MethodGet,
 			Handler: apiHandler.NewGetRackHandler(dbSession, tc, scp, cfg),
@@ -756,6 +761,11 @@ func NewAPIRoutes(dbSession *cdb.Session, tc tClient.Client, tnc tClient.Namespa
 			Method:  http.MethodPatch,
 			Handler: apiHandler.NewPowerControlRackHandler(dbSession, tc, scp, cfg),
 		},
+		{
+			Path:    apiPathPrefix + "/rack/:id/firmware",
+			Method:  http.MethodPatch,
+			Handler: apiHandler.NewFirmwareUpgradeRackHandler(dbSession, tc, scp, cfg),
+		},
 		// Tray endpoints (RLA)
 		{
 			Path:    apiPathPrefix + "/tray",
@@ -768,6 +778,11 @@ func NewAPIRoutes(dbSession *cdb.Session, tc tClient.Client, tnc tClient.Namespa
 			Handler: apiHandler.NewPowerControlTrayBatchHandler(dbSession, tc, scp, cfg),
 		},
 		{
+			Path:    apiPathPrefix + "/tray/firmware",
+			Method:  http.MethodPatch,
+			Handler: apiHandler.NewFirmwareUpgradeTrayBatchHandler(dbSession, tc, scp, cfg),
+		},
+		{
 			Path:    apiPathPrefix + "/tray/:id",
 			Method:  http.MethodGet,
 			Handler: apiHandler.NewGetTrayHandler(dbSession, tc, scp, cfg),
@@ -776,6 +791,11 @@ func NewAPIRoutes(dbSession *cdb.Session, tc tClient.Client, tnc tClient.Namespa
 			Path:    apiPathPrefix + "/tray/:id/power",
 			Method:  http.MethodPatch,
 			Handler: apiHandler.NewPowerControlTrayHandler(dbSession, tc, scp, cfg),
+		},
+		{
+			Path:    apiPathPrefix + "/tray/:id/firmware",
+			Method:  http.MethodPatch,
+			Handler: apiHandler.NewFirmwareUpgradeTrayHandler(dbSession, tc, scp, cfg),
 		},
 	}
 

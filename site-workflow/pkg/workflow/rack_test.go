@@ -699,3 +699,131 @@ func (s *PowerResetRackTestSuite) Test_PowerResetRack_ActivityFails() {
 func TestPowerResetRackTestSuite(t *testing.T) {
 	suite.Run(t, new(PowerResetRackTestSuite))
 }
+
+// UpgradeFirmwareTestSuite tests the UpgradeFirmware workflow
+type UpgradeFirmwareTestSuite struct {
+	suite.Suite
+	testsuite.WorkflowTestSuite
+
+	env *testsuite.TestWorkflowEnvironment
+}
+
+func (s *UpgradeFirmwareTestSuite) SetupTest() {
+	s.env = s.NewTestWorkflowEnvironment()
+}
+
+func (s *UpgradeFirmwareTestSuite) AfterTest(suiteName, testName string) {
+	s.env.AssertExpectations(s.T())
+}
+
+func (s *UpgradeFirmwareTestSuite) Test_UpgradeFirmware_Success() {
+	var rackManager rActivity.ManageRack
+
+	request := &rlav1.UpgradeFirmwareRequest{
+		TargetSpec: &rlav1.OperationTargetSpec{
+			Targets: &rlav1.OperationTargetSpec_Racks{
+				Racks: &rlav1.RackTargets{
+					Targets: []*rlav1.RackTarget{
+						{
+							Identifier: &rlav1.RackTarget_Id{
+								Id: &rlav1.UUID{Id: "test-rack-id"},
+							},
+						},
+					},
+				},
+			},
+		},
+		Description: "API firmware upgrade Rack",
+	}
+
+	expectedResponse := &rlav1.SubmitTaskResponse{
+		TaskIds: []*rlav1.UUID{{Id: "task-1"}},
+	}
+
+	s.env.RegisterActivity(rackManager.UpgradeFirmware)
+	s.env.OnActivity(rackManager.UpgradeFirmware, mock.Anything, mock.Anything).Return(expectedResponse, nil)
+
+	s.env.ExecuteWorkflow(UpgradeFirmware, request)
+	s.True(s.env.IsWorkflowCompleted())
+	s.NoError(s.env.GetWorkflowError())
+
+	var response rlav1.SubmitTaskResponse
+	s.NoError(s.env.GetWorkflowResult(&response))
+	s.Equal(1, len(response.GetTaskIds()))
+}
+
+func (s *UpgradeFirmwareTestSuite) Test_UpgradeFirmware_WithVersion() {
+	var rackManager rActivity.ManageRack
+
+	version := "24.11.0"
+	request := &rlav1.UpgradeFirmwareRequest{
+		TargetSpec: &rlav1.OperationTargetSpec{
+			Targets: &rlav1.OperationTargetSpec_Racks{
+				Racks: &rlav1.RackTargets{
+					Targets: []*rlav1.RackTarget{
+						{
+							Identifier: &rlav1.RackTarget_Id{
+								Id: &rlav1.UUID{Id: "test-rack-id"},
+							},
+						},
+					},
+				},
+			},
+		},
+		TargetVersion: &version,
+		Description:   "API firmware upgrade Rack",
+	}
+
+	expectedResponse := &rlav1.SubmitTaskResponse{
+		TaskIds: []*rlav1.UUID{{Id: "task-1"}},
+	}
+
+	s.env.RegisterActivity(rackManager.UpgradeFirmware)
+	s.env.OnActivity(rackManager.UpgradeFirmware, mock.Anything, mock.Anything).Return(expectedResponse, nil)
+
+	s.env.ExecuteWorkflow(UpgradeFirmware, request)
+	s.True(s.env.IsWorkflowCompleted())
+	s.NoError(s.env.GetWorkflowError())
+
+	var response rlav1.SubmitTaskResponse
+	s.NoError(s.env.GetWorkflowResult(&response))
+	s.Equal(1, len(response.GetTaskIds()))
+}
+
+func (s *UpgradeFirmwareTestSuite) Test_UpgradeFirmware_ActivityFails() {
+	var rackManager rActivity.ManageRack
+
+	request := &rlav1.UpgradeFirmwareRequest{
+		TargetSpec: &rlav1.OperationTargetSpec{
+			Targets: &rlav1.OperationTargetSpec_Racks{
+				Racks: &rlav1.RackTargets{
+					Targets: []*rlav1.RackTarget{
+						{
+							Identifier: &rlav1.RackTarget_Id{
+								Id: &rlav1.UUID{Id: "test-rack-id"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	errMsg := "RLA connection failed"
+
+	s.env.RegisterActivity(rackManager.UpgradeFirmware)
+	s.env.OnActivity(rackManager.UpgradeFirmware, mock.Anything, mock.Anything).Return(nil, errors.New(errMsg))
+
+	s.env.ExecuteWorkflow(UpgradeFirmware, request)
+	s.True(s.env.IsWorkflowCompleted())
+	err := s.env.GetWorkflowError()
+	s.Error(err)
+
+	var applicationErr *temporal.ApplicationError
+	s.True(errors.As(err, &applicationErr))
+	s.Equal(errMsg, applicationErr.Error())
+}
+
+func TestUpgradeFirmwareTestSuite(t *testing.T) {
+	suite.Run(t, new(UpgradeFirmwareTestSuite))
+}

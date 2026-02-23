@@ -88,6 +88,14 @@ func (api *API) RegisterSubscriber() error {
 	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterActivity(rackManager.PowerResetRack)
 	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered PowerResetRack activity")
 
+	// UpgradeFirmware
+	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterWorkflow(sww.UpgradeFirmware)
+	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered UpgradeFirmware workflow")
+
+	// UpgradeFirmware activity
+	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterActivity(rackManager.UpgradeFirmware)
+	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered UpgradeFirmware activity")
+
 	// Register the tray subscribers here
 	ManagerAccess.Data.EB.Log.Info().Msg("RLA: Registering the tray workflows")
 

@@ -8732,12 +8732,6 @@ paths:
           name: name
           in: query
           description: Filter racks by name. Can be specified multiple times to filter on more than one rack name.
-        - schema:
-            type: string
-            format: uuid
-          name: id
-          in: query
-          description: Filter racks by UUID. Can be specified multiple times to filter on more than one rack ID.
       requestBody:
         required: true
         content:
@@ -8758,6 +8752,270 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PowerControlResponse'
+              examples:
+                example-1:
+                  value:
+                    taskIds:
+                      - 550e8400-e29b-41d4-a716-446655440000
+                      - 660e8400-e29b-41d4-a716-446655440001
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Rack
+  '/v2/org/{org}/carbide/tray/{id}/firmware':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+          format: uuid
+        name: id
+        in: path
+        required: true
+        description: ID of the Tray
+    patch:
+      summary: Firmware upgrade a Tray
+      operationId: firmware-upgrade-tray
+      description: |-
+        Upgrade firmware on a single Tray by ID. Version is optional; omit to upgrade to the latest available.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FirmwareUpgradeRequest'
+            examples:
+              with-version:
+                value:
+                  version: '24.11.0'
+              without-version:
+                value: {}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirmwareUpgradeResponse'
+              examples:
+                example-1:
+                  value:
+                    taskIds:
+                      - 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Tray
+  '/v2/org/{org}/carbide/tray/firmware':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+    patch:
+      summary: Firmware upgrade Trays
+      operationId: firmware-upgrade-trays
+      description: |-
+        Upgrade firmware on Trays with optional filters. Version is optional; omit to upgrade to the latest available. If no filter is specified, targets all trays in the Site.
+
+        **Filter constraints:**
+        - `rackId` and `rackName` are mutually exclusive
+        - `rackId`/`rackName` cannot be combined with `id`/`componentId` (rack-level vs component-level targeting)
+        - `componentId` requires `type` to be specified
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site
+        - schema:
+            type: string
+            format: uuid
+          name: rackId
+          in: query
+          description: Filter by Rack ID
+        - schema:
+            type: string
+          name: rackName
+          in: query
+          description: Filter by Rack name
+        - schema:
+            type: string
+            enum:
+              - compute
+              - switch
+              - powershelf
+          name: type
+          in: query
+          description: Filter by tray type
+        - schema:
+            type: string
+          name: componentId
+          in: query
+          description: Filter by component ID. Can be specified multiple times to filter on more than one component ID. Requires 'type' parameter.
+        - schema:
+            type: string
+            format: uuid
+          name: id
+          in: query
+          description: Filter by tray UUID. Can be specified multiple times to filter on more than one tray ID.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FirmwareUpgradeRequest'
+            examples:
+              with-version:
+                value:
+                  version: '24.11.0'
+              without-version:
+                value: {}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirmwareUpgradeResponse'
+              examples:
+                example-1:
+                  value:
+                    taskIds:
+                      - 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Tray
+  '/v2/org/{org}/carbide/rack/{id}/firmware':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+          format: uuid
+        name: id
+        in: path
+        required: true
+        description: ID of the Rack
+    patch:
+      summary: Firmware upgrade a Rack
+      operationId: firmware-upgrade-rack
+      description: |-
+        Upgrade firmware on a single Rack by ID. Version is optional; omit to upgrade to the latest available.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FirmwareUpgradeRequest'
+            examples:
+              with-version:
+                value:
+                  version: '24.11.0'
+              without-version:
+                value: {}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirmwareUpgradeResponse'
+              examples:
+                example-1:
+                  value:
+                    taskIds:
+                      - 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Rack
+  '/v2/org/{org}/carbide/rack/firmware':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+    patch:
+      summary: Firmware upgrade Racks
+      operationId: firmware-upgrade-racks
+      description: |-
+        Upgrade firmware on Racks with optional name filter. Version is optional; omit to upgrade to the latest available. If no filter is specified, targets all racks in the Site.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site
+        - schema:
+            type: string
+          name: name
+          in: query
+          description: Filter racks by name. Can be specified multiple times to filter on more than one rack name.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FirmwareUpgradeRequest'
+            examples:
+              with-version:
+                value:
+                  version: '24.11.0'
+              without-version:
+                value: {}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirmwareUpgradeResponse'
               examples:
                 example-1:
                   value:
@@ -14435,6 +14693,31 @@ components:
             type: string
             format: uuid
           description: List of task IDs created for the power control operation (one per rack)
+      examples:
+        - taskIds:
+            - 550e8400-e29b-41d4-a716-446655440000
+    FirmwareUpgradeRequest:
+      title: FirmwareUpgradeRequest
+      type: object
+      description: Request body for firmware upgrade operations. Version is optional; omit to upgrade to the latest available.
+      properties:
+        version:
+          type: string
+          description: Target firmware version. If not specified, upgrades to the latest available version.
+      examples:
+        - version: '24.11.0'
+        - {}
+    FirmwareUpgradeResponse:
+      title: FirmwareUpgradeResponse
+      type: object
+      description: Response for firmware upgrade operations containing task IDs for tracking
+      properties:
+        taskIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: List of task IDs created for the firmware upgrade operation
       examples:
         - taskIds:
             - 550e8400-e29b-41d4-a716-446655440000

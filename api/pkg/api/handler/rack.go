@@ -53,8 +53,10 @@ var (
 	getAllRackAllowedParams             = []string{"siteId", "includeComponents", "name", "manufacturer", "model", "pageNumber", "pageSize", "orderBy"}
 	validateRackAllowedParams          = []string{"siteId"}
 	validateRacksAllowedParams         = []string{"siteId", "name", "manufacturer", "model"}
-	powerControlRackAllowedParams      = []string{"siteId"}
-	powerControlRackBatchAllowedParams = []string{"siteId", "name", "id"}
+	powerControlRackAllowedParams          = []string{"siteId"}
+	powerControlRackBatchAllowedParams     = []string{"siteId", "name"}
+	firmwareUpgradeRackAllowedParams       = []string{"siteId"}
+	firmwareUpgradeRackBatchAllowedParams  = []string{"siteId", "name"}
 )
 
 // ~~~~~ Get Rack Handler ~~~~~ //
@@ -995,13 +997,8 @@ func (pcrbh PowerControlRackBatchHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
-	// Build and validate rack filter request from query params
 	filterRequest := model.APIRackPowerControlBatchRequest{}
 	filterRequest.FromQueryParams(c.QueryParams())
-	if verr := filterRequest.Validate(); verr != nil {
-		logger.Warn().Err(verr).Msg("invalid rack filter parameters")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate filter parameters", verr)
-	}
 
 	// Parse and validate request body
 	apiRequest := model.APIPowerControlRequest{}
@@ -1024,4 +1021,236 @@ func (pcrbh PowerControlRackBatchHandler) Handle(c echo.Context) error {
 
 	return executePowerControlWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.State,
 		fmt.Sprintf("rack-power-batch-%s-%s", apiRequest.State, common.QueryParamHash(c)), "Rack")
+}
+
+// ~~~~~ Firmware Upgrade Rack Handler ~~~~~ //
+
+// FirmwareUpgradeRackHandler is the API Handler for upgrading firmware on a single Rack by ID
+type FirmwareUpgradeRackHandler struct {
+	dbSession  *cdb.Session
+	tc         tClient.Client
+	scp        *sc.ClientPool
+	cfg        *config.Config
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewFirmwareUpgradeRackHandler initializes and returns a new handler for firmware upgrading a Rack
+func NewFirmwareUpgradeRackHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) FirmwareUpgradeRackHandler {
+	return FirmwareUpgradeRackHandler{
+		dbSession:  dbSession,
+		tc:         tc,
+		scp:        scp,
+		cfg:        cfg,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Firmware upgrade a Rack
+// @Description Upgrade firmware on a Rack identified by UUID. Version is optional; omit to upgrade to the latest available.
+// @Tags rack
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param org path string true "Name of NGC organization"
+// @Param id path string true "UUID of the Rack"
+// @Param siteId query string true "ID of the Site"
+// @Param body body model.APIFirmwareUpgradeRequest true "Firmware upgrade request"
+// @Success 200 {object} model.APIFirmwareUpgradeResponse
+// @Router /v2/org/{org}/carbide/rack/{id}/firmware [patch]
+func (furh FirmwareUpgradeRackHandler) Handle(c echo.Context) error {
+	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "FirmwareUpgrade", c, furh.tracerSpan)
+	if handlerSpan != nil {
+		defer handlerSpan.End()
+	}
+
+	if apiErr := common.ValidateQueryParams(c.QueryParams(), firmwareUpgradeRackAllowedParams); apiErr != nil {
+		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, nil)
+	}
+
+	if dbUser == nil {
+		logger.Error().Msg("invalid User object found in request context")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Provider Admin role, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Provider Admin role with org", nil)
+	}
+
+	infrastructureProvider, err := common.GetInfrastructureProviderForOrg(ctx, nil, furh.dbSession, org)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error getting infrastructure provider for org")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
+	}
+
+	rackStrID := c.Param("id")
+	furh.tracerSpan.SetAttribute(handlerSpan, attribute.String("rack_id", rackStrID), logger)
+
+	siteStrID := c.QueryParam("siteId")
+	if siteStrID == "" {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
+	}
+
+	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, furh.dbSession)
+	if err != nil {
+		if errors.Is(err, cdb.ErrDoesNotExist) {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
+		}
+		logger.Error().Err(err).Msg("error retrieving Site from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site specified in request due to DB error", nil)
+	}
+
+	if site.InfrastructureProviderID != infrastructureProvider.ID {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
+	}
+
+	apiRequest := model.APIFirmwareUpgradeRequest{}
+	if err := c.Bind(&apiRequest); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
+	}
+
+	stc, err := furh.scp.GetClientByID(site.ID)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Temporal client for Site")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
+	}
+
+	targetSpec := &rlav1.OperationTargetSpec{
+		Targets: &rlav1.OperationTargetSpec_Racks{
+			Racks: &rlav1.RackTargets{
+				Targets: []*rlav1.RackTarget{
+					{
+						Identifier: &rlav1.RackTarget_Id{
+							Id: &rlav1.UUID{Id: rackStrID},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	return executeFirmwareUpgradeWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.Version,
+		fmt.Sprintf("rack-fw-upgrade-%s", rackStrID), "Rack")
+}
+
+// ~~~~~ Firmware Upgrade Racks (Batch) Handler ~~~~~ //
+
+// FirmwareUpgradeRackBatchHandler is the API Handler for firmware upgrading Racks with optional filters
+type FirmwareUpgradeRackBatchHandler struct {
+	dbSession  *cdb.Session
+	tc         tClient.Client
+	scp        *sc.ClientPool
+	cfg        *config.Config
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewFirmwareUpgradeRackBatchHandler initializes and returns a new handler for batch firmware upgrading Racks
+func NewFirmwareUpgradeRackBatchHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) FirmwareUpgradeRackBatchHandler {
+	return FirmwareUpgradeRackBatchHandler{
+		dbSession:  dbSession,
+		tc:         tc,
+		scp:        scp,
+		cfg:        cfg,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Firmware upgrade Racks
+// @Description Upgrade firmware on Racks with optional name filter. Version is optional; omit to upgrade to the latest available. If no filter is specified, targets all racks in the Site.
+// @Tags rack
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param org path string true "Name of NGC organization"
+// @Param siteId query string true "ID of the Site"
+// @Param name query string false "Filter racks by name (use repeated params for multiple values)"
+// @Param body body model.APIFirmwareUpgradeRequest true "Firmware upgrade request"
+// @Success 200 {object} model.APIFirmwareUpgradeResponse
+// @Router /v2/org/{org}/carbide/rack/firmware [patch]
+func (furbh FirmwareUpgradeRackBatchHandler) Handle(c echo.Context) error {
+	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "FirmwareUpgradeBatch", c, furbh.tracerSpan)
+	if handlerSpan != nil {
+		defer handlerSpan.End()
+	}
+
+	if apiErr := common.ValidateQueryParams(c.QueryParams(), firmwareUpgradeRackBatchAllowedParams); apiErr != nil {
+		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, nil)
+	}
+
+	if dbUser == nil {
+		logger.Error().Msg("invalid User object found in request context")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Provider Admin role, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Provider Admin role with org", nil)
+	}
+
+	infrastructureProvider, err := common.GetInfrastructureProviderForOrg(ctx, nil, furbh.dbSession, org)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error getting infrastructure provider for org")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
+	}
+
+	siteStrID := c.QueryParam("siteId")
+	if siteStrID == "" {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
+	}
+
+	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, furbh.dbSession)
+	if err != nil {
+		if errors.Is(err, cdb.ErrDoesNotExist) {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
+		}
+		logger.Error().Err(err).Msg("error retrieving Site from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site specified in request due to DB error", nil)
+	}
+
+	if site.InfrastructureProviderID != infrastructureProvider.ID {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
+	}
+
+	filterRequest := model.APIRackFirmwareUpgradeBatchRequest{}
+	filterRequest.FromQueryParams(c.QueryParams())
+
+	apiRequest := model.APIFirmwareUpgradeRequest{}
+	if err := c.Bind(&apiRequest); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
+	}
+
+	stc, err := furbh.scp.GetClientByID(site.ID)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Temporal client for Site")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
+	}
+
+	targetSpec := filterRequest.ToTargetSpec()
+
+	return executeFirmwareUpgradeWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.Version,
+		fmt.Sprintf("rack-fw-upgrade-batch-%s", common.QueryParamHash(c)), "Rack")
 }

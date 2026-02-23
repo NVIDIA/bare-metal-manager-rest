@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/google/uuid"
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
@@ -77,10 +76,9 @@ func NewAPIPowerControlResponse(resp *rlav1.SubmitTaskResponse) *APIPowerControl
 // ========== Rack Power Control Batch Request ==========
 
 // APIRackPowerControlBatchRequest captures query parameters for batch rack power control.
-// Supports filtering by rack name and ID.
+// Supports filtering by rack name.
 type APIRackPowerControlBatchRequest struct {
 	Names []string
-	IDs   []string
 }
 
 // FromQueryParams populates the request from URL query parameters.
@@ -88,32 +86,11 @@ func (r *APIRackPowerControlBatchRequest) FromQueryParams(params url.Values) {
 	if vals := params["name"]; len(vals) > 0 {
 		r.Names = vals
 	}
-	if vals := params["id"]; len(vals) > 0 {
-		r.IDs = vals
-	}
-}
-
-// Validate validates the batch rack power control filter request
-func (r *APIRackPowerControlBatchRequest) Validate() error {
-	for _, id := range r.IDs {
-		if _, parseErr := uuid.Parse(id); parseErr != nil {
-			return validation.Errors{"id": fmt.Errorf("%s: %s", validationErrorInvalidUUID, id)}
-		}
-	}
-	return nil
 }
 
 // ToTargetSpec converts the filter request to an RLA OperationTargetSpec
 func (r *APIRackPowerControlBatchRequest) ToTargetSpec() *rlav1.OperationTargetSpec {
 	var rackTargets []*rlav1.RackTarget
-
-	for _, id := range r.IDs {
-		rackTargets = append(rackTargets, &rlav1.RackTarget{
-			Identifier: &rlav1.RackTarget_Id{
-				Id: &rlav1.UUID{Id: id},
-			},
-		})
-	}
 
 	for _, name := range r.Names {
 		rackTargets = append(rackTargets, &rlav1.RackTarget{
@@ -123,7 +100,6 @@ func (r *APIRackPowerControlBatchRequest) ToTargetSpec() *rlav1.OperationTargetS
 		})
 	}
 
-	// No filters = all racks (empty RackTarget with no identifier)
 	if len(rackTargets) == 0 {
 		rackTargets = append(rackTargets, &rlav1.RackTarget{})
 	}

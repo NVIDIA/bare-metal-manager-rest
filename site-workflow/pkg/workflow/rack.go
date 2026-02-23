@@ -238,3 +238,36 @@ func PowerResetRack(ctx workflow.Context, request *rlav1.PowerResetRackRequest) 
 
 	return &response, nil
 }
+
+// UpgradeFirmware is a workflow to upgrade firmware on racks or components via RLA
+func UpgradeFirmware(ctx workflow.Context, request *rlav1.UpgradeFirmwareRequest) (*rlav1.SubmitTaskResponse, error) {
+	logger := log.With().Str("Workflow", "Rack").Str("Action", "UpgradeFirmware").Logger()
+
+	logger.Info().Msg("Starting workflow")
+
+	retrypolicy := &temporal.RetryPolicy{
+		InitialInterval:    1 * time.Second,
+		BackoffCoefficient: 2.0,
+		MaximumInterval:    10 * time.Second,
+		MaximumAttempts:    2,
+	}
+	options := workflow.ActivityOptions{
+		StartToCloseTimeout: 5 * time.Minute,
+		RetryPolicy:         retrypolicy,
+	}
+
+	ctx = workflow.WithActivityOptions(ctx, options)
+
+	var rackManager activity.ManageRack
+	var response rlav1.SubmitTaskResponse
+
+	err := workflow.ExecuteActivity(ctx, rackManager.UpgradeFirmware, request).Get(ctx, &response)
+	if err != nil {
+		logger.Error().Err(err).Str("Activity", "UpgradeFirmware").Msg("Failed to execute activity from workflow")
+		return nil, err
+	}
+
+	logger.Info().Int("TaskCount", len(response.GetTaskIds())).Msg("Completing workflow")
+
+	return &response, nil
+}
