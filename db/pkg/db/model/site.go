@@ -182,13 +182,13 @@ type SiteConfigFilterInput struct {
 }
 
 type SiteFilterInput struct {
-	Name                     *string
-	Org                      *string
-	InfrastructureProviderID *uuid.UUID
-	SiteIDs                  []uuid.UUID
-	Config                   *SiteConfigFilterInput
-	Statuses                 []string
-	SearchQuery              *string
+	Name                      *string
+	Org                       *string
+	InfrastructureProviderIDs []uuid.UUID
+	SiteIDs                   []uuid.UUID
+	Config                    *SiteConfigFilterInput
+	Statuses                  []string
+	SearchQuery               *string
 }
 
 var _ bun.BeforeAppendModelHook = (*Site)(nil)
@@ -279,9 +279,9 @@ func (ssd SiteSQLDAO) setQueryWithFilter(filter SiteFilterInput, query *bun.Sele
 		ssd.tracerSpan.SetAttribute(siteDAOSpan, "org", *filter.Org)
 	}
 
-	if filter.InfrastructureProviderID != nil {
-		query = query.Where("st.infrastructure_provider_id = ?", *filter.InfrastructureProviderID)
-		ssd.tracerSpan.SetAttribute(siteDAOSpan, "infrastructure_provider_id", filter.InfrastructureProviderID.String())
+	if filter.InfrastructureProviderIDs != nil {
+		query = query.Where("st.infrastructure_provider_id IN (?)", bun.In(filter.InfrastructureProviderIDs))
+		ssd.tracerSpan.SetAttribute(siteDAOSpan, "infrastructure_provider_ids", filter.InfrastructureProviderIDs)
 	}
 
 	if filter.SiteIDs != nil {
