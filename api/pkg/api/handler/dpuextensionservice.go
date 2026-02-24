@@ -46,6 +46,7 @@ import (
 	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
 
 	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
+	wpkgutil "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/util"
 )
 
 // ~~~~~ Create Handler ~~~~~ //
@@ -258,7 +259,7 @@ func (cdesh CreateDpuExtensionServiceHandler) Handle(c echo.Context) error {
 	// Create workflow options
 	workflowOptions := tclient.StartWorkflowOptions{
 		ID:                       "dpu-extension-service-create-" + dpuExtensionService.ID.String(),
-		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		WorkflowExecutionTimeout: wpkgutil.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
 	}
 
@@ -270,7 +271,7 @@ func (cdesh CreateDpuExtensionServiceHandler) Handle(c echo.Context) error {
 	}
 
 	// Add context deadlines
-	ctxWithTimeout, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, wpkgutil.WorkflowContextTimeout)
 	defer cancel()
 
 	// Trigger Site workflow
@@ -869,7 +870,7 @@ func (udesh UpdateDpuExtensionServiceHandler) Handle(c echo.Context) error {
 
 	workflowOptions := tclient.StartWorkflowOptions{
 		ID:                       "dpu-extension-service-update-" + updatedDpuExtensionService.ID.String(),
-		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		WorkflowExecutionTimeout: wpkgutil.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
 	}
 
@@ -881,7 +882,7 @@ func (udesh UpdateDpuExtensionServiceHandler) Handle(c echo.Context) error {
 	}
 
 	// Add context deadlines
-	ctxWithTimeout, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, wpkgutil.WorkflowContextTimeout)
 	defer cancel()
 
 	// Trigger Site workflow
@@ -1112,7 +1113,7 @@ func (ddesh DeleteDpuExtensionServiceHandler) Handle(c echo.Context) error {
 
 	workflowOptions := tclient.StartWorkflowOptions{
 		ID:                       "dpu-extension-service-delete-" + dpuExtensionService.ID.String(),
-		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		WorkflowExecutionTimeout: wpkgutil.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
 	}
 
@@ -1248,13 +1249,13 @@ func (gdesvh GetDpuExtensionServiceVersionHandler) Handle(c echo.Context) error 
 
 	workflowOptions := tclient.StartWorkflowOptions{
 		ID:                       "dpu-extension-service-get-versions-info-" + dpuExtensionService.ID.String() + "-" + versionID,
-		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		WorkflowExecutionTimeout: wpkgutil.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
 	}
 
 	// Trigger Site workflow
 	// Add context deadlines
-	ctxWithTimeout, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, wpkgutil.WorkflowContextTimeout)
 	defer cancel()
 
 	// Trigger Site workflow
@@ -1519,7 +1520,7 @@ func (ddesvh DeleteDpuExtensionServiceVersionHandler) Handle(c echo.Context) err
 
 	workflowOptions := tclient.StartWorkflowOptions{
 		ID:                       "dpu-extension-service-delete-version-" + dpuExtensionService.ID.String() + "-" + versionID,
-		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		WorkflowExecutionTimeout: wpkgutil.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
 	}
 
@@ -1541,13 +1542,13 @@ func (ddesvh DeleteDpuExtensionServiceVersionHandler) Handle(c echo.Context) err
 	if fetchLatestRemainingVersion {
 		workflowOptions := tclient.StartWorkflowOptions{
 			ID:                       "dpu-extension-service-get-versions-info-" + dpuExtensionService.ID.String() + "-" + remainingVersions[0],
-			WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+			WorkflowExecutionTimeout: wpkgutil.WorkflowExecutionTimeout,
 			TaskQueue:                queue.SiteTaskQueue,
 		}
 
 		// Trigger Site workflow
 		// Add context deadlines
-		ctxWithTimeout, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
+		ctxWithTimeout, cancel := context.WithTimeout(ctx, wpkgutil.WorkflowContextTimeout)
 		defer cancel()
 
 		getDpuVersionInfoRequest := &cwssaws.GetDpuExtensionServiceVersionsInfoRequest{
