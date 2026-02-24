@@ -47,14 +47,6 @@ import (
 	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
 )
 
-// Allowed query parameters for each tray handler
-var (
-	getTrayAllowedParams      = []string{"siteId"}
-	getAllTrayAllowedParams    = []string{"siteId", "rackId", "rackName", "type", "componentId", "id", "pageNumber", "pageSize", "orderBy"}
-	validateTrayAllowedParams  = []string{"siteId"}
-	validateTraysAllowedParams = []string{"siteId", "rackId", "rackName", "name", "manufacturer", "type", "componentId"}
-)
-
 // ~~~~~ Get Tray Handler ~~~~~ //
 
 // GetTrayHandler is the API Handler for getting a Tray by ID
@@ -93,10 +85,6 @@ func (gth GetTrayHandler) Handle(c echo.Context) error {
 	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Tray", "Get", c, gth.tracerSpan)
 	if handlerSpan != nil {
 		defer handlerSpan.End()
-	}
-
-	if apiErr := common.ValidateQueryParams(c.QueryParams(), getTrayAllowedParams); apiErr != nil {
-		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, nil)
 	}
 
 	// Is DB user missing?
@@ -257,10 +245,6 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 		defer handlerSpan.End()
 	}
 
-	if apiErr := common.ValidateQueryParams(c.QueryParams(), getAllTrayAllowedParams); apiErr != nil {
-		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, nil)
-	}
-
 	// Is DB user missing?
 	if dbUser == nil {
 		logger.Error().Msg("invalid User object found in request context")
@@ -292,14 +276,25 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
 	}
 
-	// Validate siteId is provided
-	siteStrID := c.QueryParam("siteId")
-	if siteStrID == "" {
+	// Bind and validate tray request from query params
+	var apiRequest model.APITrayGetAllRequest
+	pageRequest := pagination.PageRequest{}
+	if err := common.ValidateKnownQueryParams(c.QueryParams(), apiRequest, pageRequest); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+	}
+	if err := c.Bind(&apiRequest); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
+	}
+	if apiRequest.SiteID == "" {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
+	}
+	if verr := apiRequest.Validate(); verr != nil {
+		logger.Warn().Err(verr).Msg("invalid tray request parameters")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate request data", verr)
 	}
 
 	// Retrieve the Site from the DB
-	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, gath.dbSession)
+	site, err := common.GetSiteFromIDString(ctx, nil, apiRequest.SiteID, gath.dbSession)
 	if err != nil {
 		if errors.Is(err, cdb.ErrDoesNotExist) {
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
@@ -313,16 +308,7 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
-	// Build and validate tray request from query params
-	apiRequest := model.APITrayGetAllRequest{}
-	apiRequest.FromQueryParams(c.QueryParams())
-	if verr := apiRequest.Validate(); verr != nil {
-		logger.Warn().Err(verr).Msg("invalid tray request parameters")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate request data", verr)
-	}
-
 	// Validate pagination request (orderBy, pageNumber, pageSize)
-	pageRequest := pagination.PageRequest{}
 	err = c.Bind(&pageRequest)
 	if err != nil {
 		logger.Warn().Err(err).Msg("error binding pagination request data into API model")
@@ -357,9 +343,17 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 		}
 	}
 
+	hashValues := apiRequest.QueryValues()
+	for _, key := range []string{"pageNumber", "pageSize", "orderBy"} {
+		if v := c.QueryParam(key); v != "" {
+			hashValues.Set(key, v)
+		}
+	}
+	workflowID := fmt.Sprintf("tray-get-all-%s", common.QueryParamHash(hashValues))
+
 	// Execute workflow
 	workflowOptions := tClient.StartWorkflowOptions{
-		ID:                       fmt.Sprintf("tray-get-all-%s", common.QueryParamHash(c)),
+		ID:                       workflowID,
 		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
 		WorkflowIDReusePolicy:    temporalEnums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
@@ -380,7 +374,7 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 	if err != nil {
 		var timeoutErr *tp.TimeoutError
 		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
-			return common.TerminateWorkflowOnTimeOut(c, logger, stc, fmt.Sprintf("tray-get-all-%s", common.QueryParamHash(c)), err, "Tray", "GetTrays")
+			return common.TerminateWorkflowOnTimeOut(c, logger, stc, workflowID, err, "Tray", "GetTrays")
 		}
 		logger.Error().Err(err).Msg("failed to get result from GetTrays workflow")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to get Trays", nil)
@@ -447,10 +441,6 @@ func (vth ValidateTrayHandler) Handle(c echo.Context) error {
 	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Tray", "Validate", c, vth.tracerSpan)
 	if handlerSpan != nil {
 		defer handlerSpan.End()
-	}
-
-	if apiErr := common.ValidateQueryParams(c.QueryParams(), validateTrayAllowedParams); apiErr != nil {
-		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, nil)
 	}
 
 	// Is DB user missing?
@@ -620,8 +610,16 @@ func (vtsh ValidateTraysHandler) Handle(c echo.Context) error {
 		defer handlerSpan.End()
 	}
 
-	if apiErr := common.ValidateQueryParams(c.QueryParams(), validateTraysAllowedParams); apiErr != nil {
-		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, nil)
+	var apiRequest model.APITrayValidateAllRequest
+	if err := common.ValidateKnownQueryParams(c.QueryParams(), apiRequest); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+	}
+	if err := c.Bind(&apiRequest); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
+	}
+	if verr := apiRequest.Validate(); verr != nil {
+		logger.Warn().Err(verr).Msg("invalid tray validate request parameters")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate request data", verr)
 	}
 
 	// Is DB user missing?
@@ -655,14 +653,8 @@ func (vtsh ValidateTraysHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
 	}
 
-	// Get site ID from query param (required)
-	siteStrID := c.QueryParam("siteId")
-	if siteStrID == "" {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
-	}
-
 	// Validate the site
-	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, vtsh.dbSession)
+	site, err := common.GetSiteFromIDString(ctx, nil, apiRequest.SiteID, vtsh.dbSession)
 	if err != nil {
 		if errors.Is(err, cdb.ErrDoesNotExist) {
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
@@ -683,93 +675,13 @@ func (vtsh ValidateTraysHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
 	}
 
-	// Build filters and target spec from query params
-	rackID := c.QueryParam("rackId")
-	rackName := c.QueryParam("rackName")
-	componentIDs := c.QueryParams()["componentId"]
-	componentType := c.QueryParam("type")
-
-	if rackID != "" && rackName != "" {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "rackId and rackName are mutually exclusive", nil)
-	}
-
-	hasRackScope := rackID != "" || rackName != ""
-	if hasRackScope && len(componentIDs) > 0 {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "rackId/rackName and componentId are mutually exclusive", nil)
-	}
-
-	if len(componentIDs) > 0 && componentType == "" {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "type is required when componentId is provided", nil)
-	}
-
-	var targetSpec *rlav1.OperationTargetSpec
-	if rackID != "" {
-		if _, parseErr := uuid.Parse(rackID); parseErr != nil {
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid rackId: must be a valid UUID", nil)
-		}
-		targetSpec = &rlav1.OperationTargetSpec{
-			Targets: &rlav1.OperationTargetSpec_Racks{
-				Racks: &rlav1.RackTargets{
-					Targets: []*rlav1.RackTarget{
-						{Identifier: &rlav1.RackTarget_Id{Id: &rlav1.UUID{Id: rackID}}},
-					},
-				},
-			},
-		}
-	} else if rackName != "" {
-		targetSpec = &rlav1.OperationTargetSpec{
-			Targets: &rlav1.OperationTargetSpec_Racks{
-				Racks: &rlav1.RackTargets{
-					Targets: []*rlav1.RackTarget{
-						{Identifier: &rlav1.RackTarget_Name{Name: rackName}},
-					},
-				},
-			},
-		}
-	} else if len(componentIDs) > 0 {
-		protoName, ok := model.APIToProtoComponentTypeName[componentType]
-		if !ok {
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Invalid type: must be one of %v", slices.Collect(maps.Keys(model.APIToProtoComponentTypeName))), nil)
-		}
-		protoType := rlav1.ComponentType(rlav1.ComponentType_value[protoName])
-		targets := make([]*rlav1.ComponentTarget, 0, len(componentIDs))
-		for _, cid := range componentIDs {
-			targets = append(targets, &rlav1.ComponentTarget{
-				Identifier: &rlav1.ComponentTarget_External{
-					External: &rlav1.ExternalRef{
-						Type: protoType,
-						Id:   cid,
-					},
-				},
-			})
-		}
-		targetSpec = &rlav1.OperationTargetSpec{
-			Targets: &rlav1.OperationTargetSpec_Components{
-				Components: &rlav1.ComponentTargets{
-					Targets: targets,
-				},
-			},
-		}
-	}
-
-	var filters []*rlav1.Filter
-	qParams := c.QueryParams()
-	for field := range model.TrayFilterFieldMap {
-		if value := qParams.Get(field); value != "" {
-			if f := model.GetProtoTrayFilterFromQueryParam(field, value); f != nil {
-				filters = append(filters, f)
-			}
-		}
-	}
-
-	// Build RLA request with target spec and filters
+	// Build RLA request from validated request struct
 	rlaRequest := &rlav1.ValidateComponentsRequest{
-		TargetSpec: targetSpec,
-		Filters:    filters,
+		TargetSpec: apiRequest.ToTargetSpec(),
+		Filters:    apiRequest.ToFilters(),
 	}
 
-	// Execute workflow
-	workflowID := fmt.Sprintf("tray-validate-all-%s", common.QueryParamHash(c))
+	workflowID := fmt.Sprintf("tray-validate-all-%s", common.QueryParamHash(apiRequest.QueryValues()))
 
 	workflowOptions := tClient.StartWorkflowOptions{
 		ID:                       workflowID,
@@ -803,7 +715,7 @@ func (vtsh ValidateTraysHandler) Handle(c echo.Context) error {
 	// Convert to API model
 	apiResult := model.NewAPIRackValidationResult(&rlaResponse)
 
-	logger.Info().Int("FilterCount", len(filters)).Int32("TotalDiffs", rlaResponse.GetTotalDiffs()).Msg("finishing API handler")
+	logger.Info().Int32("TotalDiffs", rlaResponse.GetTotalDiffs()).Msg("finishing API handler")
 
 	return c.JSON(http.StatusOK, apiResult)
 }

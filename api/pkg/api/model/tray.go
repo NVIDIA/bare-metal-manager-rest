@@ -62,10 +62,11 @@ var TrayFilterFieldMap = map[string]rlav1.ComponentFilterField{
 	"type":         rlav1.ComponentFilterField_COMPONENT_FILTER_FIELD_TYPE,
 }
 
-// GetProtoTrayFilterFromQueryParam creates an RLA protobuf Filter from API query parameters for tray (component) queries
-func GetProtoTrayFilterFromQueryParam(fieldName, value string) *rlav1.Filter {
+// GetProtoTrayFilter creates an RLA protobuf Filter for the given tray field and patterns.
+// Multiple patterns are OR'd together.
+func GetProtoTrayFilter(fieldName string, patterns []string) *rlav1.Filter {
 	field, ok := TrayFilterFieldMap[fieldName]
-	if !ok {
+	if !ok || len(patterns) == 0 {
 		return nil
 	}
 	return &rlav1.Filter{
@@ -73,9 +74,9 @@ func GetProtoTrayFilterFromQueryParam(fieldName, value string) *rlav1.Filter {
 			ComponentField: field,
 		},
 		QueryInfo: &rlav1.StringQueryInfo{
-			Patterns:   []string{value},
+			Patterns:   patterns,
 			IsWildcard: false,
-			UseOr:      false,
+			UseOr:      len(patterns) > 1,
 		},
 	}
 }
@@ -104,30 +105,12 @@ func GetProtoTrayOrderByFromQueryParam(fieldName, direction string) *rlav1.Order
 
 // APITrayGetAllRequest captures query parameters for listing trays from RLA.
 type APITrayGetAllRequest struct {
-	RackID       *string
-	RackName     *string
-	Type         *string
-	ComponentIDs []string
-	IDs          []string
-}
-
-// FromQueryParams populates the request from URL query parameters.
-func (r *APITrayGetAllRequest) FromQueryParams(params url.Values) {
-	if v := params.Get("rackId"); v != "" {
-		r.RackID = &v
-	}
-	if v := params.Get("rackName"); v != "" {
-		r.RackName = &v
-	}
-	if v := params.Get("type"); v != "" {
-		r.Type = &v
-	}
-	if vals := params["componentId"]; len(vals) > 0 {
-		r.ComponentIDs = vals
-	}
-	if vals := params["id"]; len(vals) > 0 {
-		r.IDs = vals
-	}
+	SiteID       string   `query:"siteId"`
+	RackID       *string  `query:"rackId"`
+	RackName     *string  `query:"rackName"`
+	Type         *string  `query:"type"`
+	ComponentIDs []string `query:"componentId"`
+	IDs          []string `query:"id"`
 }
 
 // Validate checks field formats and enforces the RLA protobuf oneof constraints:
@@ -247,6 +230,161 @@ func (r *APITrayGetAllRequest) ToProto() *rlav1.GetComponentsRequest {
 	}
 
 	return rlaRequest
+}
+
+// QueryValues returns only the known query parameters as url.Values,
+// suitable for deterministic workflow ID hashing without unknown param interference.
+func (r *APITrayGetAllRequest) QueryValues() url.Values {
+	v := url.Values{}
+	v.Set("siteId", r.SiteID)
+	if r.RackID != nil {
+		v.Set("rackId", *r.RackID)
+	}
+	if r.RackName != nil {
+		v.Set("rackName", *r.RackName)
+	}
+	if r.Type != nil {
+		v.Set("type", *r.Type)
+	}
+	for _, cid := range r.ComponentIDs {
+		v.Add("componentId", cid)
+	}
+	for _, id := range r.IDs {
+		v.Add("id", id)
+	}
+	return v
+}
+
+// APITrayValidateAllRequest captures query parameters for validating trays.
+type APITrayValidateAllRequest struct {
+	SiteID       string   `query:"siteId"`
+	RackID       *string  `query:"rackId"`
+	RackName     *string  `query:"rackName"`
+	Name         []string `query:"name"`
+	Manufacturer []string `query:"manufacturer"`
+	Type         *string  `query:"type"`
+	ComponentIDs []string `query:"componentId"`
+}
+
+// Validate checks constraints on the request parameters.
+func (r *APITrayValidateAllRequest) Validate() error {
+	if r.SiteID == "" {
+		return fmt.Errorf("siteId query parameter is required")
+	}
+	if err := validation.ValidateStruct(r,
+		validation.Field(&r.RackID,
+			validation.When(r.RackID != nil, validationis.UUID.Error(validationErrorInvalidUUID))),
+		validation.Field(&r.Type,
+			validation.When(r.Type != nil, validation.In(validTrayTypesAny...).Error(
+				fmt.Sprintf("must be one of %v", slices.Collect(maps.Keys(APIToProtoComponentTypeName)))))),
+	); err != nil {
+		return err
+	}
+	if r.RackID != nil && r.RackName != nil {
+		return validation.Errors{"rackId": fmt.Errorf("rackId and rackName are mutually exclusive")}
+	}
+	hasRackScope := r.RackID != nil || r.RackName != nil
+	if hasRackScope && len(r.ComponentIDs) > 0 {
+		return validation.Errors{"rackId": fmt.Errorf("rackId/rackName and componentId are mutually exclusive")}
+	}
+	if len(r.ComponentIDs) > 0 && r.Type == nil {
+		return validation.Errors{"componentId": fmt.Errorf("type is required when componentId is provided")}
+	}
+	return nil
+}
+
+// ToTargetSpec converts the request's targeting fields to an RLA OperationTargetSpec.
+func (r *APITrayValidateAllRequest) ToTargetSpec() *rlav1.OperationTargetSpec {
+	if r.RackID != nil {
+		return &rlav1.OperationTargetSpec{
+			Targets: &rlav1.OperationTargetSpec_Racks{
+				Racks: &rlav1.RackTargets{
+					Targets: []*rlav1.RackTarget{
+						{Identifier: &rlav1.RackTarget_Id{Id: &rlav1.UUID{Id: *r.RackID}}},
+					},
+				},
+			},
+		}
+	}
+	if r.RackName != nil {
+		return &rlav1.OperationTargetSpec{
+			Targets: &rlav1.OperationTargetSpec_Racks{
+				Racks: &rlav1.RackTargets{
+					Targets: []*rlav1.RackTarget{
+						{Identifier: &rlav1.RackTarget_Name{Name: *r.RackName}},
+					},
+				},
+			},
+		}
+	}
+	if len(r.ComponentIDs) > 0 && r.Type != nil {
+		protoName, ok := APIToProtoComponentTypeName[*r.Type]
+		if !ok {
+			return nil
+		}
+		protoType := rlav1.ComponentType(rlav1.ComponentType_value[protoName])
+		targets := make([]*rlav1.ComponentTarget, 0, len(r.ComponentIDs))
+		for _, cid := range r.ComponentIDs {
+			targets = append(targets, &rlav1.ComponentTarget{
+				Identifier: &rlav1.ComponentTarget_External{
+					External: &rlav1.ExternalRef{
+						Type: protoType,
+						Id:   cid,
+					},
+				},
+			})
+		}
+		return &rlav1.OperationTargetSpec{
+			Targets: &rlav1.OperationTargetSpec_Components{
+				Components: &rlav1.ComponentTargets{
+					Targets: targets,
+				},
+			},
+		}
+	}
+	return nil
+}
+
+// ToFilters converts the request's filter fields to RLA protobuf filters.
+func (r *APITrayValidateAllRequest) ToFilters() []*rlav1.Filter {
+	var filters []*rlav1.Filter
+	if f := GetProtoTrayFilter("name", r.Name); f != nil {
+		filters = append(filters, f)
+	}
+	if f := GetProtoTrayFilter("manufacturer", r.Manufacturer); f != nil {
+		filters = append(filters, f)
+	}
+	if r.Type != nil {
+		if f := GetProtoTrayFilter("type", []string{*r.Type}); f != nil {
+			filters = append(filters, f)
+		}
+	}
+	return filters
+}
+
+// QueryValues returns only the known query parameters as url.Values.
+func (r *APITrayValidateAllRequest) QueryValues() url.Values {
+	v := url.Values{}
+	v.Set("siteId", r.SiteID)
+	if r.RackID != nil {
+		v.Set("rackId", *r.RackID)
+	}
+	if r.RackName != nil {
+		v.Set("rackName", *r.RackName)
+	}
+	for _, n := range r.Name {
+		v.Add("name", n)
+	}
+	for _, m := range r.Manufacturer {
+		v.Add("manufacturer", m)
+	}
+	if r.Type != nil {
+		v.Set("type", *r.Type)
+	}
+	for _, cid := range r.ComponentIDs {
+		v.Add("componentId", cid)
+	}
+	return v
 }
 
 // APITrayPosition represents the position of a tray within a rack
