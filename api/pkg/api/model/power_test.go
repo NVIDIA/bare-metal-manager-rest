@@ -18,7 +18,6 @@
 package model
 
 import (
-	"net/url"
 	"testing"
 
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
@@ -119,45 +118,13 @@ func TestNewAPIPowerControlResponse(t *testing.T) {
 	}
 }
 
-func TestAPIRackPowerControlBatchRequest_FromQueryParams(t *testing.T) {
-	tests := []struct {
-		name          string
-		params        url.Values
-		expectedNames []string
-	}{
-		{
-			name:          "empty params",
-			params:        url.Values{},
-			expectedNames: nil,
-		},
-		{
-			name: "with name filter",
-			params: url.Values{
-				"name": []string{"Rack-001"},
-			},
-			expectedNames: []string{"Rack-001"},
-		},
-		{
-			name: "with multiple names",
-			params: url.Values{
-				"name": []string{"Rack-001", "Rack-002"},
-			},
-			expectedNames: []string{"Rack-001", "Rack-002"},
-		},
+func TestAPIRackPowerControlBatchRequest_QueryTags(t *testing.T) {
+	r := &APIRackPowerControlBatchRequest{
+		SiteID: "site-1",
+		Names:  []string{"Rack-001", "Rack-002"},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r := &APIRackPowerControlBatchRequest{}
-			r.FromQueryParams(tt.params)
-
-			if tt.expectedNames != nil {
-				assert.Equal(t, tt.expectedNames, r.Names)
-			} else {
-				assert.Nil(t, r.Names)
-			}
-		})
-	}
+	assert.Equal(t, "site-1", r.SiteID)
+	assert.Equal(t, []string{"Rack-001", "Rack-002"}, r.Names)
 }
 
 func TestAPIRackPowerControlBatchRequest_ToTargetSpec(t *testing.T) {

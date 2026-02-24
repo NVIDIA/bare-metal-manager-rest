@@ -19,7 +19,6 @@ package model
 
 import (
 	"fmt"
-	"net/url"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 
@@ -78,14 +77,8 @@ func NewAPIPowerControlResponse(resp *rlav1.SubmitTaskResponse) *APIPowerControl
 // APIRackPowerControlBatchRequest captures query parameters for batch rack power control.
 // Supports filtering by rack name.
 type APIRackPowerControlBatchRequest struct {
-	Names []string
-}
-
-// FromQueryParams populates the request from URL query parameters.
-func (r *APIRackPowerControlBatchRequest) FromQueryParams(params url.Values) {
-	if vals := params["name"]; len(vals) > 0 {
-		r.Names = vals
-	}
+	SiteID string   `query:"siteId"`
+	Names  []string `query:"name"`
 }
 
 // ToTargetSpec converts the filter request to an RLA OperationTargetSpec

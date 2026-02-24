@@ -112,6 +112,8 @@ tags:
     description: Machine Capability operations
   - name: Rack
     description: Rack operations
+  - name: Tray
+    description: Tray operations
   - name: Network Security Group
     description: Network Security Group operations
   - name: IP Block
@@ -3285,7 +3287,7 @@ paths:
           $ref: '#/components/responses/NotFoundError'
       tags:
         - Expected Machine
-  '/v2/org/{org}/forge/expected-machine/batch':
+  '/v2/org/{org}/carbide/expected-machine/batch':
     parameters:
       - schema:
           type: string
@@ -8054,11 +8056,6 @@ paths:
           name: manufacturer
           description: Filter by manufacturer
         - schema:
-            type: string
-          in: query
-          name: model
-          description: Filter by model
-        - schema:
             type: integer
             example: 1
             default: 1
@@ -8213,9 +8210,9 @@ paths:
       description: |-
         Validate Rack components by comparing expected vs actual state.
 
-        If no filter is specified, validates all racks in the Site. Filters can narrow the scope to specific racks by name, manufacturer, or model.
+        If no filter is specified, validates all racks in the Site. Filters can narrow the scope to specific racks by name or manufacturer.
 
-        Compares the expected component configuration (stored in RLA) against the actual state from external systems (e.g., Carbide, PSM). Returns a detailed diff report showing missing, extra, and drifted components.
+        Compares the expected component configuration against the actual state from component management systems. Returns a detailed diff report showing missing, extra, and drifted components.
 
         Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
       parameters:
@@ -8238,12 +8235,6 @@ paths:
           in: query
           required: false
           description: Filter racks by manufacturer
-        - schema:
-            type: string
-          name: model
-          in: query
-          required: false
-          description: Filter racks by model
       responses:
         '200':
           description: OK
@@ -8285,6 +8276,85 @@ paths:
                     onlyInActualCount: 0
                     driftCount: 1
                     matchCount: 8
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Rack
+  '/v2/org/{org}/carbide/rack/{id}/validation':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+          format: uuid
+        name: id
+        in: path
+        required: true
+        description: ID of the Rack
+    get:
+      summary: Validate a Rack
+      operationId: validate-rack
+      description: |-
+        Validate a Rack's components by comparing expected vs actual state.
+
+        Compares the rack's expected component configuration against the actual state from component management systems. Returns a detailed diff report showing missing, extra, and drifted components.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RackValidationResult'
+              examples:
+                example-no-diffs:
+                  value:
+                    diffs: []
+                    totalDiffs: 0
+                    onlyInExpectedCount: 0
+                    onlyInActualCount: 0
+                    driftCount: 0
+                    matchCount: 5
+                example-with-diffs:
+                  value:
+                    diffs:
+                      - type: DIFF_TYPE_ONLY_IN_EXPECTED
+                        componentId: comp-1
+                        expected:
+                          id: 660e8400-e29b-41d4-a716-446655440001
+                          componentId: comp-1
+                          type: COMPONENT_TYPE_COMPUTE
+                          name: Server-01
+                          serialNumber: SN-SRV-001
+                          manufacturer: Dell
+                          firmwareVersion: 2.1.0
+                          position: 1
+                      - type: DIFF_TYPE_DRIFT
+                        componentId: comp-2
+                        fieldDiffs:
+                          - fieldName: firmware_version
+                            expectedValue: '1.0.0'
+                            actualValue: '2.0.0'
+                    totalDiffs: 2
+                    onlyInExpectedCount: 1
+                    onlyInActualCount: 0
+                    driftCount: 1
+                    matchCount: 3
         '400':
           $ref: '#/components/responses/ValidationError'
         '403':
@@ -8538,6 +8608,96 @@ paths:
                   value:
                     taskIds:
                       - 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Tray
+  '/v2/org/{org}/carbide/tray/validation':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+    get:
+      summary: Validate Trays
+      operationId: validate-trays
+      description: |-
+        Validate Tray components by comparing expected vs actual state via RLA.
+
+        If no filter is specified, validates all trays in the Site. Use rackId/rackName to scope to a specific rack, and name/manufacturer/type to filter by tray attributes.
+
+        Compares the expected component configuration (stored in RLA) against the actual state from external systems. Returns a detailed diff report showing missing, extra, and drifted components.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site
+        - schema:
+            type: string
+            format: uuid
+          name: rackId
+          in: query
+          required: false
+          description: Scope to a specific Rack by ID (mutually exclusive with rackName)
+        - schema:
+            type: string
+          name: rackName
+          in: query
+          required: false
+          description: Scope to a specific Rack by name (mutually exclusive with rackId)
+        - schema:
+            type: string
+          name: name
+          in: query
+          required: false
+          description: Filter trays by name
+        - schema:
+            type: string
+          name: manufacturer
+          in: query
+          required: false
+          description: Filter trays by manufacturer
+        - schema:
+            type: string
+            enum:
+              - compute
+              - switch
+              - powershelf
+          name: type
+          in: query
+          required: false
+          description: Filter trays by type
+        - schema:
+            type: string
+          name: componentId
+          in: query
+          required: false
+          description: Filter by external component ID (requires type; mutually exclusive with rackId/rackName; use repeated params for multiple values)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RackValidationResult'
+              examples:
+                example-no-diffs:
+                  value:
+                    diffs: []
+                    totalDiffs: 0
+                    onlyInExpectedCount: 0
+                    onlyInActualCount: 0
+                    driftCount: 0
+                    matchCount: 10
         '400':
           $ref: '#/components/responses/ValidationError'
         '403':
@@ -9028,7 +9188,7 @@ paths:
           $ref: '#/components/responses/ForbiddenError'
       tags:
         - Rack
-  '/v2/org/{org}/carbide/rack/{id}/validation':
+  '/v2/org/{org}/carbide/tray/{id}/validation':
     parameters:
       - schema:
           type: string
@@ -9042,14 +9202,14 @@ paths:
         name: id
         in: path
         required: true
-        description: ID of the Rack
+        description: ID of the Tray
     get:
-      summary: Validate a Rack
-      operationId: validate-rack
+      summary: Validate a Tray
+      operationId: validate-tray
       description: |-
-        Validate a Rack's components by comparing expected vs actual state.
+        Validate a Tray by comparing expected vs actual state via RLA.
 
-        Compares the rack's expected component configuration (stored in RLA) against the actual state from external systems (e.g., Carbide, PSM). Returns a detailed diff report showing missing, extra, and drifted components.
+        Compares the expected component configuration (stored in RLA) against the actual state from external systems. Returns a detailed diff report showing missing, extra, and drifted components.
 
         Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
       parameters:
@@ -9076,37 +9236,12 @@ paths:
                     onlyInActualCount: 0
                     driftCount: 0
                     matchCount: 5
-                example-with-diffs:
-                  value:
-                    diffs:
-                      - type: DIFF_TYPE_ONLY_IN_EXPECTED
-                        componentId: comp-1
-                        expected:
-                          id: 660e8400-e29b-41d4-a716-446655440001
-                          componentId: comp-1
-                          type: COMPONENT_TYPE_COMPUTE
-                          name: Server-01
-                          serialNumber: SN-SRV-001
-                          manufacturer: Dell
-                          firmwareVersion: 2.1.0
-                          position: 1
-                      - type: DIFF_TYPE_DRIFT
-                        componentId: comp-2
-                        fieldDiffs:
-                          - fieldName: firmware_version
-                            expectedValue: '1.0.0'
-                            actualValue: '2.0.0'
-                    totalDiffs: 2
-                    onlyInExpectedCount: 1
-                    onlyInActualCount: 0
-                    driftCount: 1
-                    matchCount: 3
         '400':
           $ref: '#/components/responses/ValidationError'
         '403':
           $ref: '#/components/responses/ForbiddenError'
       tags:
-        - Rack
+        - Tray
   '/v2/org/{org}/carbide/network-security-group':
     parameters:
       - schema:

@@ -783,6 +783,11 @@ func NewAPIRoutes(dbSession *cdb.Session, tc tClient.Client, tnc tClient.Namespa
 			Handler: apiHandler.NewFirmwareUpgradeTrayBatchHandler(dbSession, tc, scp, cfg),
 		},
 		{
+			Path:    apiPathPrefix + "/tray/validation",
+			Method:  http.MethodGet,
+			Handler: apiHandler.NewValidateTraysHandler(dbSession, tc, scp, cfg),
+		},
+		{
 			Path:    apiPathPrefix + "/tray/:id",
 			Method:  http.MethodGet,
 			Handler: apiHandler.NewGetTrayHandler(dbSession, tc, scp, cfg),
@@ -796,6 +801,11 @@ func NewAPIRoutes(dbSession *cdb.Session, tc tClient.Client, tnc tClient.Namespa
 			Path:    apiPathPrefix + "/tray/:id/firmware",
 			Method:  http.MethodPatch,
 			Handler: apiHandler.NewFirmwareUpgradeTrayHandler(dbSession, tc, scp, cfg),
+		},
+		{
+			Path:    apiPathPrefix + "/tray/:id/validation",
+			Method:  http.MethodGet,
+			Handler: apiHandler.NewValidateTrayHandler(dbSession, tc, scp, cfg),
 		},
 	}
 

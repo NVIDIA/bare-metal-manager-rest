@@ -18,8 +18,6 @@
 package model
 
 import (
-	"net/url"
-
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 )
 
@@ -54,14 +52,8 @@ func NewAPIFirmwareUpgradeResponse(resp *rlav1.SubmitTaskResponse) *APIFirmwareU
 // APIRackFirmwareUpgradeBatchRequest captures query parameters for batch rack firmware upgrade.
 // Supports filtering by rack name.
 type APIRackFirmwareUpgradeBatchRequest struct {
-	Names []string
-}
-
-// FromQueryParams populates the request from URL query parameters.
-func (r *APIRackFirmwareUpgradeBatchRequest) FromQueryParams(params url.Values) {
-	if vals := params["name"]; len(vals) > 0 {
-		r.Names = vals
-	}
+	SiteID string   `query:"siteId"`
+	Names  []string `query:"name"`
 }
 
 // ToTargetSpec converts the filter request to an RLA OperationTargetSpec

@@ -400,7 +400,7 @@ func (gaemh GetAllExpectedMachineHandler) Handle(c echo.Context) error {
 		// Get all Sites for the org's Infrastructure Provider
 		siteDAO := cdbm.NewSiteDAO(gaemh.dbSession)
 		sites, _, err := siteDAO.GetAll(ctx, nil,
-			cdbm.SiteFilterInput{InfrastructureProviderID: &infrastructureProvider.ID},
+			cdbm.SiteFilterInput{InfrastructureProviderIDs: []uuid.UUID{infrastructureProvider.ID}},
 			paginator.PageInput{Limit: cdb.GetIntPtr(math.MaxInt)},
 			nil,
 		)
@@ -980,7 +980,7 @@ func NewCreateExpectedMachinesHandler(dbSession *cdb.Session, tc tclient.Client,
 // @Param org path string true "Name of NGC organization"
 // @Param message body []model.APIExpectedMachineCreateRequest true "ExpectedMachine batch creation request"
 // @Success 201 {object} model.APIExpectedMachineBatchResponse
-// @Router /v2/org/{org}/forge/expected-machine/batch [post]
+// @Router /v2/org/{org}/carbide/expected-machine/batch [post]
 func (cemh CreateExpectedMachinesHandler) Handle(c echo.Context) error {
 	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("CreateMultiple", "ExpectedMachine", c, cemh.tracerSpan)
 	if handlerSpan != nil {
@@ -1319,7 +1319,7 @@ func NewUpdateExpectedMachinesHandler(dbSession *cdb.Session, tc tclient.Client,
 // @Param org path string true "Name of NGC organization"
 // @Param message body []model.APIExpectedMachineUpdateRequest true "ExpectedMachine UpdateExpectedMachines request"
 // @Success 200 {object} model.APIExpectedMachineBatchResponse
-// @Router /v2/org/{org}/forge/expected-machine/batch [patch]
+// @Router /v2/org/{org}/carbide/expected-machine/batch [patch]
 func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("UpdateMultiple", "ExpectedMachine", c, uemh.tracerSpan)
 	if handlerSpan != nil {

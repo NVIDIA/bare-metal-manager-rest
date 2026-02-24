@@ -18,7 +18,6 @@
 package model
 
 import (
-	"net/url"
 	"testing"
 
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
@@ -65,40 +64,13 @@ func TestNewAPIFirmwareUpgradeResponse(t *testing.T) {
 	}
 }
 
-func TestAPIRackFirmwareUpgradeBatchRequest_FromQueryParams(t *testing.T) {
-	tests := []struct {
-		name          string
-		params        url.Values
-		expectedNames []string
-	}{
-		{
-			name:          "no filters",
-			params:        url.Values{},
-			expectedNames: nil,
-		},
-		{
-			name: "with name filter",
-			params: url.Values{
-				"name": {"rack-1"},
-			},
-			expectedNames: []string{"rack-1"},
-		},
-		{
-			name: "with multiple name filters",
-			params: url.Values{
-				"name": {"rack-1", "rack-2"},
-			},
-			expectedNames: []string{"rack-1", "rack-2"},
-		},
+func TestAPIRackFirmwareUpgradeBatchRequest_QueryTags(t *testing.T) {
+	r := APIRackFirmwareUpgradeBatchRequest{
+		SiteID: "site-1",
+		Names:  []string{"rack-1", "rack-2"},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			r := APIRackFirmwareUpgradeBatchRequest{}
-			r.FromQueryParams(tt.params)
-			assert.Equal(t, tt.expectedNames, r.Names)
-		})
-	}
+	assert.Equal(t, "site-1", r.SiteID)
+	assert.Equal(t, []string{"rack-1", "rack-2"}, r.Names)
 }
 
 func TestAPIRackFirmwareUpgradeBatchRequest_ToTargetSpec(t *testing.T) {
