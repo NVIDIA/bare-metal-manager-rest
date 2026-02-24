@@ -32,7 +32,6 @@ type ApiGetAllRackRequest struct {
 	includeComponents *bool
 	name *string
 	manufacturer *string
-	model *string
 	pageNumber *int32
 	pageSize *int32
 	orderBy *string
@@ -59,12 +58,6 @@ func (r ApiGetAllRackRequest) Name(name string) ApiGetAllRackRequest {
 // Filter by manufacturer
 func (r ApiGetAllRackRequest) Manufacturer(manufacturer string) ApiGetAllRackRequest {
 	r.manufacturer = &manufacturer
-	return r
-}
-
-// Filter by model
-func (r ApiGetAllRackRequest) Model(model string) ApiGetAllRackRequest {
-	r.model = &model
 	return r
 }
 
@@ -143,9 +136,6 @@ func (a *RackAPIService) GetAllRackExecute(r ApiGetAllRackRequest) ([]Rack, *htt
 	}
 	if r.manufacturer != nil {
 		parameterAddToHeaderOrQuery(localVarQueryParams, "manufacturer", r.manufacturer, "form", "")
-	}
-	if r.model != nil {
-		parameterAddToHeaderOrQuery(localVarQueryParams, "model", r.model, "form", "")
 	}
 	if r.pageNumber != nil {
 		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", r.pageNumber, "form", "")
@@ -398,7 +388,7 @@ ValidateRack Validate a Rack
 
 Validate a Rack's components by comparing expected vs actual state.
 
-Compares the rack's expected component configuration (stored in RLA) against the actual state from external systems (e.g., Carbide, PSM). Returns a detailed diff report showing missing, extra, and drifted components.
+Compares the rack's expected component configuration against the actual state from component management systems. Returns a detailed diff report showing missing, extra, and drifted components.
 
 Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
 
@@ -525,7 +515,6 @@ type ApiValidateRacksRequest struct {
 	org string
 	name *string
 	manufacturer *string
-	model *string
 }
 
 // ID of the Site
@@ -546,12 +535,6 @@ func (r ApiValidateRacksRequest) Manufacturer(manufacturer string) ApiValidateRa
 	return r
 }
 
-// Filter racks by model
-func (r ApiValidateRacksRequest) Model(model string) ApiValidateRacksRequest {
-	r.model = &model
-	return r
-}
-
 func (r ApiValidateRacksRequest) Execute() (*RackValidationResult, *http.Response, error) {
 	return r.ApiService.ValidateRacksExecute(r)
 }
@@ -561,9 +544,9 @@ ValidateRacks Validate Racks
 
 Validate Rack components by comparing expected vs actual state.
 
-If no filter is specified, validates all racks in the Site. Filters can narrow the scope to specific racks by name, manufacturer, or model.
+If no filter is specified, validates all racks in the Site. Filters can narrow the scope to specific racks by name or manufacturer.
 
-Compares the expected component configuration (stored in RLA) against the actual state from external systems (e.g., Carbide, PSM). Returns a detailed diff report showing missing, extra, and drifted components.
+Compares the expected component configuration against the actual state from component management systems. Returns a detailed diff report showing missing, extra, and drifted components.
 
 Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
 
@@ -610,9 +593,6 @@ func (a *RackAPIService) ValidateRacksExecute(r ApiValidateRacksRequest) (*RackV
 	}
 	if r.manufacturer != nil {
 		parameterAddToHeaderOrQuery(localVarQueryParams, "manufacturer", r.manufacturer, "form", "")
-	}
-	if r.model != nil {
-		parameterAddToHeaderOrQuery(localVarQueryParams, "model", r.model, "form", "")
 	}
 	// to determine the Content-Type header
 	localVarHTTPContentTypes := []string{}
