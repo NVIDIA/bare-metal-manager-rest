@@ -33,6 +33,10 @@ POSTGRES_PASSWORD := postgres
 POSTGRES_DB := forgetest
 POSTGRES_IMAGE := postgres:14.4-alpine
 
+# PG env vars for tests - use Makefile defaults so tests connect to postgres-up container
+# even when PGUSER/PGPASSWORD are set in the shell (e.g. from another project)
+PGTEST := PGHOST=localhost PGPORT=$(POSTGRES_PORT) PGUSER=$(POSTGRES_USER) PGPASSWORD=$(POSTGRES_PASSWORD)
+
 postgres-up:
 	docker run -d --rm \
 		--name $(POSTGRES_CONTAINER_NAME) \
@@ -84,18 +88,18 @@ lint-go:
 
 test-ipam:
 	$(MAKE) ensure-postgres
-	cd ipam && go test ./... -count=1
+	cd ipam && $(PGTEST) go test ./... -count=1
 
 test-site-manager:
 	cd site-manager && CGO_ENABLED=1 go test -race -p 1 ./... -count=1
 
 test-workflow:
 	$(MAKE) ensure-postgres
-	cd workflow && go test -p 1 ./... -count=1
+	cd workflow && $(PGTEST) go test -p 1 ./... -count=1
 
 test-db:
 	$(MAKE) ensure-postgres
-	cd db && go test -p 1 ./... -count=1
+	cd db && $(PGTEST) go test -p 1 ./... -count=1
 
 carbide-mock-server-build:
 	mkdir -p build
@@ -149,11 +153,11 @@ test-site-agent: carbide-mock-server-start rla-mock-server-start
 
 test-api:
 	$(MAKE) ensure-postgres
-	cd api && go test -p 1 ./... -count=1
+	cd api && $(PGTEST) go test -p 1 ./... -count=1
 
 test-auth:
 	$(MAKE) ensure-postgres
-	cd auth && go test -p 1 ./... -count=1
+	cd auth && $(PGTEST) go test -p 1 ./... -count=1
 
 test-common:
 	cd common && go test -p 1 ./... -count=1
