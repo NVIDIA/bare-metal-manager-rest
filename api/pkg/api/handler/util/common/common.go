@@ -30,7 +30,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"time"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	sutil "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
@@ -58,17 +57,16 @@ import (
 	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 	cdbp "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
 	swe "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/error"
-	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
+
+	wpkgutil "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/util"
 )
 
 const (
 	// RECENT_STATUS_DETAIL_COUNT defines how many recent status detail records to retrieve when retrieving them as part of other records (e.g. allocation, instance, etc.)
-	RECENT_STATUS_DETAIL_COUNT     = 20
-	DefaultIpxeScript              = "#ipxe\ndefault"
-	WorkflowExecutionTimeout       = time.Minute * 1
-	WorkflowContextTimeout         = time.Second * 50
-	WorkflowContextNewAfterTimeout = time.Second * 5
+	RECENT_STATUS_DETAIL_COUNT = 20
+	DefaultIpxeScript          = "#ipxe\ndefault"
 
 	// Likely to be moved into cloud-db later, similar
 	// to machine status.
@@ -1063,7 +1061,7 @@ func TerminateWorkflowOnTimeOut(echoCtx echo.Context, logger zerolog.Logger, tem
 	logger.Error().Err(originalError).Msg(fmt.Sprintf("failed to perform %s for %s - timeout occurred executing workflow on Site.", workflowName, objectType))
 
 	// Create a new context deadline
-	newctx, newcancel := context.WithTimeout(context.Background(), WorkflowContextNewAfterTimeout)
+	newctx, newcancel := context.WithTimeout(context.Background(), wpkgutil.WorkflowContextNewAfterTimeout)
 	defer newcancel()
 
 	// Initiate termination workflow
@@ -1353,7 +1351,7 @@ func ExecuteSyncWorkflow(ctx context.Context, logger zerolog.Logger, tpClient tc
 	logger = logger.With().Str("Workflow Name", name).Logger()
 
 	// Add context deadlines
-	ctxWithTimeout, cancel := context.WithTimeout(ctx, WorkflowContextTimeout)
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, wpkgutil.WorkflowContextTimeout)
 	defer cancel()
 
 	// Trigger Site workflow
@@ -1624,11 +1622,11 @@ func ExecutePowerControlWorkflow(
 		ID:                       workflowID,
 		WorkflowIDReusePolicy:    temporalEnums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
 		WorkflowIDConflictPolicy: temporalEnums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
-		WorkflowExecutionTimeout: WorkflowExecutionTimeout,
+		WorkflowExecutionTimeout: wpkgutil.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, WorkflowContextTimeout)
+	ctx, cancel := context.WithTimeout(ctx, wpkgutil.WorkflowContextTimeout)
 	defer cancel()
 
 	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, workflowName, rlaRequest)
@@ -1673,11 +1671,11 @@ func ExecuteFirmwareUpdateWorkflow(
 		ID:                       workflowID,
 		WorkflowIDReusePolicy:    temporalEnums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
 		WorkflowIDConflictPolicy: temporalEnums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
-		WorkflowExecutionTimeout: WorkflowExecutionTimeout,
+		WorkflowExecutionTimeout: wpkgutil.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, WorkflowContextTimeout)
+	ctx, cancel := context.WithTimeout(ctx, wpkgutil.WorkflowContextTimeout)
 	defer cancel()
 
 	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "UpgradeFirmware", rlaRequest)

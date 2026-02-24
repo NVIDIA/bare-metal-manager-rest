@@ -49,6 +49,8 @@ import (
 
 	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
+
+	wpkgutil "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/util"
 )
 
 // ~~~~~ Create Handler ~~~~~ //
@@ -291,7 +293,7 @@ func (cibph CreateInfiniBandPartitionHandler) Handle(c echo.Context) error {
 	workflowOptions := temporalClient.StartWorkflowOptions{
 		ID:                       "infiniband-partition-create-" + ibp.ID.String(),
 		TaskQueue:                queue.SiteTaskQueue,
-		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		WorkflowExecutionTimeout: wpkgutil.WorkflowExecutionTimeout,
 	}
 
 	// InfiniBand Partition metadata info
@@ -323,7 +325,7 @@ func (cibph CreateInfiniBandPartitionHandler) Handle(c echo.Context) error {
 	logger.Info().Msg("triggering InfiniBand Partition create workflow")
 
 	// Add context deadlines
-	ctx, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
+	ctx, cancel := context.WithTimeout(ctx, wpkgutil.WorkflowContextTimeout)
 	defer cancel()
 
 	// Trigger Site workflow
@@ -345,7 +347,7 @@ func (cibph CreateInfiniBandPartitionHandler) Handle(c echo.Context) error {
 			logger.Error().Err(err).Msg("failed to create InfiniBand Partition, timeout occurred executing workflow on Site.")
 
 			// Create a new context deadlines
-			newctx, newcancel := context.WithTimeout(context.Background(), common.WorkflowContextNewAfterTimeout)
+			newctx, newcancel := context.WithTimeout(context.Background(), wpkgutil.WorkflowContextNewAfterTimeout)
 			defer newcancel()
 
 			// Initiate termination workflow
@@ -1130,13 +1132,13 @@ func (dibph DeleteInfiniBandPartitionHandler) Handle(c echo.Context) error {
 	workflowOptions := temporalClient.StartWorkflowOptions{
 		ID:                       "infiniband-partition-delete-" + ibp.ID.String(),
 		TaskQueue:                queue.SiteTaskQueue,
-		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		WorkflowExecutionTimeout: wpkgutil.WorkflowExecutionTimeout,
 	}
 
 	logger.Info().Msg("triggering InfiniBand Partition delete workflow")
 
 	// Add context deadlines
-	ctx, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
+	ctx, cancel := context.WithTimeout(ctx, wpkgutil.WorkflowContextTimeout)
 	defer cancel()
 
 	// Trigger Site workflow
@@ -1169,7 +1171,7 @@ func (dibph DeleteInfiniBandPartitionHandler) Handle(c echo.Context) error {
 			logger.Error().Err(err).Msg("failed to delete InfiniBand Partition, timeout occurred executing workflow on Site.")
 
 			// Create a new context deadlines
-			newctx, newcancel := context.WithTimeout(context.Background(), common.WorkflowContextNewAfterTimeout)
+			newctx, newcancel := context.WithTimeout(context.Background(), wpkgutil.WorkflowContextNewAfterTimeout)
 			defer newcancel()
 
 			// Initiate termination workflow

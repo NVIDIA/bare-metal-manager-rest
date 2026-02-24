@@ -33,7 +33,6 @@ import (
 
 	tp "go.temporal.io/sdk/temporal"
 
-	"github.com/nvidia/bare-metal-manager-rest/api/pkg/api/handler/util/common"
 	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
 	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 	cdbp "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
@@ -174,7 +173,7 @@ func (mskg ManageSSHKeyGroup) SyncSSHKeyGroupViaSiteAgent(ctx context.Context, s
 
 	// Execute the site workflow to create/update the SSH Key Group in synchronous
 	// Add context deadlines
-	ctx, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
+	ctx, cancel := context.WithTimeout(ctx, util.WorkflowContextTimeout)
 	defer cancel()
 
 	var we client.WorkflowRun
@@ -226,7 +225,7 @@ func (mskg ManageSSHKeyGroup) SyncSSHKeyGroupViaSiteAgent(ctx context.Context, s
 				logger.Error().Err(err).Msg(fmt.Sprintf("failed to %s SSHKeyGroup, timeout occurred executing workflow on Site.", workflowMethod))
 
 				// Create a new context deadlines
-				newctx, newcancel := context.WithTimeout(context.Background(), common.WorkflowContextNewAfterTimeout)
+				newctx, newcancel := context.WithTimeout(context.Background(), util.WorkflowContextNewAfterTimeout)
 				defer newcancel()
 
 				// Initiate termination workflow

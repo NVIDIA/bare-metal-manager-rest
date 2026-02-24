@@ -48,6 +48,8 @@ import (
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/attribute"
 	tclient "go.temporal.io/sdk/client"
+
+	wpkgutil "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/util"
 )
 
 // ValidateProviderOrTenantSiteAccess validates if the provider or tenant has access to the site
@@ -283,7 +285,7 @@ func (cemh CreateExpectedMachineHandler) Handle(c echo.Context) error {
 	// Create workflow options
 	workflowOptions := tclient.StartWorkflowOptions{
 		ID:                       "expected-machine-create-" + expectedMachine.ID.String(),
-		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		WorkflowExecutionTimeout: wpkgutil.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
 	}
 
@@ -769,7 +771,7 @@ func (uemh UpdateExpectedMachineHandler) Handle(c echo.Context) error {
 	// Create workflow options
 	workflowOptions := tclient.StartWorkflowOptions{
 		ID:                       "expected-machine-update-" + expectedMachine.ID.String(),
-		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		WorkflowExecutionTimeout: wpkgutil.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
 	}
 
@@ -917,7 +919,7 @@ func (demh DeleteExpectedMachineHandler) Handle(c echo.Context) error {
 	// Create workflow options
 	workflowOptions := tclient.StartWorkflowOptions{
 		ID:                       "expected-machine-delete-" + expectedMachine.ID.String(),
-		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		WorkflowExecutionTimeout: wpkgutil.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
 	}
 
@@ -1234,7 +1236,7 @@ func (cemh CreateExpectedMachinesHandler) Handle(c echo.Context) error {
 	workflowID := fmt.Sprintf("create-expected-machines-%s-%d", site.ID.String(), len(workflowMachines))
 	workflowOptions := tclient.StartWorkflowOptions{
 		ID:                       workflowID,
-		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		WorkflowExecutionTimeout: wpkgutil.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
 	}
 
@@ -1673,7 +1675,7 @@ func (uemh UpdateExpectedMachinesHandler) Handle(c echo.Context) error {
 	workflowID := fmt.Sprintf("expected-machines-update-batch-%s-%d", site.ID.String(), len(workflowMachines))
 	workflowOptions := tclient.StartWorkflowOptions{
 		ID:                       workflowID,
-		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		WorkflowExecutionTimeout: wpkgutil.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
 	}
 

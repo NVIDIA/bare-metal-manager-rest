@@ -48,6 +48,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	temporalClient "go.temporal.io/sdk/client"
 	tp "go.temporal.io/sdk/temporal"
+
+	wpkgutil "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/util"
 )
 
 // ~~~~~ Create Handler ~~~~~ //
@@ -331,14 +333,14 @@ func (cnsgh CreateNetworkSecurityGroupHandler) Handle(c echo.Context) error {
 
 	workflowOptions := temporalClient.StartWorkflowOptions{
 		ID:                       "network-security-group-create-" + networkSecurityGroup.ID,
-		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		WorkflowExecutionTimeout: wpkgutil.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
 	}
 
 	logger.Info().Msg("triggering network security group update workflow")
 
 	// Add context deadlines
-	ctx, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
+	ctx, cancel := context.WithTimeout(ctx, wpkgutil.WorkflowContextTimeout)
 	defer cancel()
 
 	// Trigger Site workflow to update networkSecurityGroup
@@ -1055,13 +1057,13 @@ func (dnsgh DeleteNetworkSecurityGroupHandler) Handle(c echo.Context) error {
 	workflowOptions := temporalClient.StartWorkflowOptions{
 		ID:                       "network-security-group-delete-" + nsg.ID,
 		TaskQueue:                queue.SiteTaskQueue,
-		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		WorkflowExecutionTimeout: wpkgutil.WorkflowExecutionTimeout,
 	}
 
 	logger.Info().Msg("triggering NetworkSecurityGroup delete workflow")
 
 	// Add context deadlines
-	ctx, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
+	ctx, cancel := context.WithTimeout(ctx, wpkgutil.WorkflowContextTimeout)
 	defer cancel()
 
 	// Trigger Site workflow
@@ -1390,13 +1392,13 @@ func (dnsgh UpdateNetworkSecurityGroupHandler) Handle(c echo.Context) error {
 	workflowOptions := temporalClient.StartWorkflowOptions{
 		ID:                       "network-security-group-update-" + nsg.ID,
 		TaskQueue:                queue.SiteTaskQueue,
-		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		WorkflowExecutionTimeout: wpkgutil.WorkflowExecutionTimeout,
 	}
 
 	logger.Info().Msg("triggering NetworkSecurityGroup update workflow")
 
 	// Add context deadlines
-	ctx, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
+	ctx, cancel := context.WithTimeout(ctx, wpkgutil.WorkflowContextTimeout)
 	defer cancel()
 
 	// Trigger Site workflow

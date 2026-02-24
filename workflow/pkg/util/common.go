@@ -40,7 +40,10 @@ var (
 const (
 	// InventoryReceiptInterval is the interval between 2 subsequent inventory receipts
 	// TODO: Move this to cloud-common so it can be used by Site Agent as well
-	InventoryReceiptInterval = 3 * time.Minute
+	InventoryReceiptInterval       = 3 * time.Minute
+	WorkflowExecutionTimeout       = time.Minute * 1
+	WorkflowContextTimeout         = time.Second * 50
+	WorkflowContextNewAfterTimeout = time.Second * 5
 )
 
 func PtrsEqual[T comparable](i1 *T, i2 *T) bool {
