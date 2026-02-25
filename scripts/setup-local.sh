@@ -253,8 +253,8 @@ configure_site_agent() {
             --from-literal=creds-url="http://carbide-rest-site-manager:8100/v1/site/credentials" \
             --from-literal=cacert=""
 
-    kubectl -n $NAMESPACE rollout restart deployment/carbide-rest-site-agent
-    kubectl -n $NAMESPACE rollout status deployment/carbide-rest-site-agent --timeout=240s
+    kubectl -n $NAMESPACE rollout restart sts/carbide-rest-site-agent
+    kubectl -n $NAMESPACE rollout status sts/carbide-rest-site-agent --timeout=240s
 }
 
 setup_site_agent() {
