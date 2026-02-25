@@ -15,7 +15,7 @@
 
 # carbide-rest-site-agent (elektra) Deployment
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: carbide-rest-site-agent
   labels:
@@ -34,7 +34,8 @@ spec:
         - name: image-pull-secret
       containers:
         - name: site-agent
-          image: carbide-rest-site-agent:latest
+          image: carbide-rest-site-agent
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
               name: http

@@ -40,6 +40,7 @@ spec:
       containers:
         - name: cloud-worker
           image: carbide-rest-workflow
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 9360
               name: metrics
@@ -127,6 +128,7 @@ spec:
       containers:
         - name: site-worker
           image: carbide-rest-workflow
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 9360
               name: metrics
