@@ -139,6 +139,10 @@ func (gth GetTrayHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
+	if site.Config == nil || !site.Config.RackLevelAdministration {
+		return cerr.NewAPIErrorResponse(c, http.StatusPreconditionFailed, "Site does not have Rack Level Administration enabled", nil)
+	}
+
 	// Get tray ID from URL param
 	trayStrID := c.Param("id")
 	if _, err := uuid.Parse(trayStrID); err != nil {
@@ -306,6 +310,10 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 	// Verify site belongs to the org's Infrastructure Provider
 	if site.InfrastructureProviderID != infrastructureProvider.ID {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
+	}
+
+	if site.Config == nil || !site.Config.RackLevelAdministration {
+		return cerr.NewAPIErrorResponse(c, http.StatusPreconditionFailed, "Site does not have Rack Level Administration enabled", nil)
 	}
 
 	// Validate pagination request (orderBy, pageNumber, pageSize)
@@ -502,6 +510,10 @@ func (vth ValidateTrayHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
+	if site.Config == nil || !site.Config.RackLevelAdministration {
+		return cerr.NewAPIErrorResponse(c, http.StatusPreconditionFailed, "Site does not have Rack Level Administration enabled", nil)
+	}
+
 	// Get the temporal client for the site
 	stc, err := vth.scp.GetClientByID(site.ID)
 	if err != nil {
@@ -666,6 +678,10 @@ func (vtsh ValidateTraysHandler) Handle(c echo.Context) error {
 	// Verify site belongs to the org's Infrastructure Provider
 	if site.InfrastructureProviderID != infrastructureProvider.ID {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
+	}
+
+	if site.Config == nil || !site.Config.RackLevelAdministration {
+		return cerr.NewAPIErrorResponse(c, http.StatusPreconditionFailed, "Site does not have Rack Level Administration enabled", nil)
 	}
 
 	// Get the temporal client for the site

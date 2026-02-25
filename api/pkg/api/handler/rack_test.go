@@ -83,13 +83,14 @@ func testRackSetupTestData(t *testing.T, dbSession *cdb.Session, org string) (*c
 	_, err := dbSession.DB.NewInsert().Model(ip).Exec(ctx)
 	assert.Nil(t, err)
 
-	// Create site
+	// Create site with RLA enabled
 	site := &cdbm.Site{
 		ID:                       uuid.New(),
 		Name:                     "test-site",
 		Org:                      org,
 		InfrastructureProviderID: ip.ID,
 		Status:                   cdbm.SiteStatusRegistered,
+		Config:                   &cdbm.SiteConfig{RackLevelAdministration: true},
 	}
 	_, err = dbSession.DB.NewInsert().Model(site).Exec(ctx)
 	assert.Nil(t, err)
@@ -159,6 +160,18 @@ func TestGetRackHandler_Handle(t *testing.T) {
 	org := "test-org"
 	_, site, _ := testRackSetupTestData(t, dbSession, org)
 
+	// Create a site without RLA enabled
+	siteNoRLA := &cdbm.Site{
+		ID:                       uuid.New(),
+		Name:                     "test-site-no-rla",
+		Org:                      org,
+		InfrastructureProviderID: site.InfrastructureProviderID,
+		Status:                   cdbm.SiteStatusRegistered,
+		Config:                   &cdbm.SiteConfig{},
+	}
+	_, err := dbSession.DB.NewInsert().Model(siteNoRLA).Exec(context.Background())
+	assert.Nil(t, err)
+
 	// Create provider user
 	providerUser := testRackBuildUser(t, dbSession, "provider-user-rack-get", org, []string{"FORGE_PROVIDER_ADMIN"})
 
@@ -201,6 +214,17 @@ func TestGetRackHandler_Handle(t *testing.T) {
 			mockRack:       mockRack,
 			expectedStatus: http.StatusOK,
 			wantErr:        false,
+		},
+		{
+			name:   "failure - RLA not enabled on site",
+			reqOrg: org,
+			user:   providerUser,
+			rackID: rackID,
+			queryParams: map[string]string{
+				"siteId": siteNoRLA.ID.String(),
+			},
+			expectedStatus: http.StatusPreconditionFailed,
+			wantErr:        true,
 		},
 		{
 			name:   "failure - missing siteId",
@@ -317,6 +341,18 @@ func TestGetAllRackHandler_Handle(t *testing.T) {
 
 	org := "test-org"
 	_, site, _ := testRackSetupTestData(t, dbSession, org)
+
+	// Create a site without RLA enabled
+	siteNoRLA := &cdbm.Site{
+		ID:                       uuid.New(),
+		Name:                     "test-site-no-rla",
+		Org:                      org,
+		InfrastructureProviderID: site.InfrastructureProviderID,
+		Status:                   cdbm.SiteStatusRegistered,
+		Config:                   &cdbm.SiteConfig{},
+	}
+	_, err := dbSession.DB.NewInsert().Model(siteNoRLA).Exec(context.Background())
+	assert.Nil(t, err)
 
 	// Create provider user
 	providerUser := testRackBuildUser(t, dbSession, "provider-user", org, []string{"FORGE_PROVIDER_ADMIN"})
@@ -470,6 +506,17 @@ func TestGetAllRackHandler_Handle(t *testing.T) {
 			wantErr:        false,
 		},
 		{
+			name:   "failure - RLA not enabled on site",
+			reqOrg: org,
+			user:   providerUser,
+			queryParams: map[string]string{
+				"siteId": siteNoRLA.ID.String(),
+			},
+			mockResponse:   nil,
+			expectedStatus: http.StatusPreconditionFailed,
+			wantErr:        true,
+		},
+		{
 			name:   "failure - tenant access denied",
 			reqOrg: org,
 			user:   tenantUser,
@@ -594,6 +641,18 @@ func TestValidateRackHandler_Handle(t *testing.T) {
 	org := "test-org"
 	_, site, _ := testRackSetupTestData(t, dbSession, org)
 
+	// Create a site without RLA enabled
+	siteNoRLA := &cdbm.Site{
+		ID:                       uuid.New(),
+		Name:                     "test-site-no-rla",
+		Org:                      org,
+		InfrastructureProviderID: site.InfrastructureProviderID,
+		Status:                   cdbm.SiteStatusRegistered,
+		Config:                   &cdbm.SiteConfig{},
+	}
+	_, err := dbSession.DB.NewInsert().Model(siteNoRLA).Exec(context.Background())
+	assert.Nil(t, err)
+
 	// Create provider user
 	providerUser := testRackBuildUser(t, dbSession, "provider-user-validate", org, []string{"FORGE_PROVIDER_ADMIN"})
 
@@ -659,6 +718,18 @@ func TestValidateRackHandler_Handle(t *testing.T) {
 			},
 			expectedStatus: http.StatusOK,
 			wantErr:        false,
+		},
+		{
+			name:   "failure - RLA not enabled on site",
+			reqOrg: org,
+			user:   providerUser,
+			rackID: rackID,
+			queryParams: map[string]string{
+				"siteId": siteNoRLA.ID.String(),
+			},
+			mockResponse:   nil,
+			expectedStatus: http.StatusPreconditionFailed,
+			wantErr:        true,
 		},
 		{
 			name:   "failure - tenant user forbidden",
@@ -775,6 +846,18 @@ func TestValidateRacksHandler_Handle(t *testing.T) {
 	org := "test-org"
 	_, site, _ := testRackSetupTestData(t, dbSession, org)
 
+	// Create a site without RLA enabled
+	siteNoRLA := &cdbm.Site{
+		ID:                       uuid.New(),
+		Name:                     "test-site-no-rla",
+		Org:                      org,
+		InfrastructureProviderID: site.InfrastructureProviderID,
+		Status:                   cdbm.SiteStatusRegistered,
+		Config:                   &cdbm.SiteConfig{},
+	}
+	_, err := dbSession.DB.NewInsert().Model(siteNoRLA).Exec(context.Background())
+	assert.Nil(t, err)
+
 	providerUser := testRackBuildUser(t, dbSession, "provider-user-validate-racks", org, []string{"FORGE_PROVIDER_ADMIN"})
 	tenantUser := testRackBuildUser(t, dbSession, "tenant-user-validate-racks", org, []string{"FORGE_TENANT_ADMIN"})
 
@@ -871,6 +954,15 @@ func TestValidateRacksHandler_Handle(t *testing.T) {
 				MatchCount: 3,
 			},
 			expectedStatus: http.StatusOK,
+		},
+		{
+			name:   "failure - RLA not enabled on site",
+			reqOrg: org,
+			user:   providerUser,
+			queryParams: map[string]string{
+				"siteId": siteNoRLA.ID.String(),
+			},
+			expectedStatus: http.StatusPreconditionFailed,
 		},
 		{
 			name:   "failure - tenant user forbidden",

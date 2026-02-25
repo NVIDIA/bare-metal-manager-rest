@@ -148,6 +148,10 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
+	if site.Config == nil || !site.Config.RackLevelAdministration {
+		return cerr.NewAPIErrorResponse(c, http.StatusPreconditionFailed, "Site does not have Rack Level Administration enabled", nil)
+	}
+
 	// Get the temporal client for the site
 	stc, err := grh.scp.GetClientByID(site.ID)
 	if err != nil {
@@ -303,6 +307,10 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 	// Verify site belongs to the org's Infrastructure Provider
 	if site.InfrastructureProviderID != infrastructureProvider.ID {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
+	}
+
+	if site.Config == nil || !site.Config.RackLevelAdministration {
+		return cerr.NewAPIErrorResponse(c, http.StatusPreconditionFailed, "Site does not have Rack Level Administration enabled", nil)
 	}
 
 	// Validate pagination request
@@ -499,6 +507,10 @@ func (vrh ValidateRackHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
+	if site.Config == nil || !site.Config.RackLevelAdministration {
+		return cerr.NewAPIErrorResponse(c, http.StatusPreconditionFailed, "Site does not have Rack Level Administration enabled", nil)
+	}
+
 	// Get the temporal client for the site
 	stc, err := vrh.scp.GetClientByID(site.ID)
 	if err != nil {
@@ -658,6 +670,10 @@ func (vrsh ValidateRacksHandler) Handle(c echo.Context) error {
 	// Verify site belongs to the org's Infrastructure Provider
 	if site.InfrastructureProviderID != infrastructureProvider.ID {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
+	}
+
+	if site.Config == nil || !site.Config.RackLevelAdministration {
+		return cerr.NewAPIErrorResponse(c, http.StatusPreconditionFailed, "Site does not have Rack Level Administration enabled", nil)
 	}
 
 	// Get the temporal client for the site
