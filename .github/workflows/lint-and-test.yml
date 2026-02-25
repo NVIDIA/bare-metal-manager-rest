@@ -121,7 +121,7 @@ jobs:
           - common
           - db
           - ipam
-          - psm
+          - powershelf_manager
           - rla
           - site-agent
           - site-manager
