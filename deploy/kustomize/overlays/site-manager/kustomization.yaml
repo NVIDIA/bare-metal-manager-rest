@@ -28,9 +28,18 @@ resources:
   - ../../base/site-manager
 
 images:
-  - name: carbide-rest-site-manager:latest
+  - name: carbide-rest-site-manager
     newName: localhost:5000/carbide-rest-site-manager
     newTag: latest
+
+patches:
+  - target:
+      kind: Deployment
+      name: carbide-rest-site-manager
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/imagePullSecrets
+        value: []
 
 commonLabels:
   app.kubernetes.io/part-of: carbide-rest

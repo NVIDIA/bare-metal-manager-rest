@@ -28,9 +28,25 @@ resources:
   - ../../base/workflow
 
 images:
-  - name: carbide-rest-workflow:latest
+  - name: carbide-rest-workflow
     newName: localhost:5000/carbide-rest-workflow
     newTag: latest
+
+patches:
+  - target:
+      kind: Deployment
+      name: carbide-rest-cloud-worker
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/imagePullSecrets
+        value: []
+  - target:
+      kind: Deployment
+      name: carbide-rest-site-worker
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/imagePullSecrets
+        value: []
 
 commonLabels:
   app.kubernetes.io/part-of: carbide-rest

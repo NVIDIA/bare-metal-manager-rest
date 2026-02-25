@@ -17,14 +17,14 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: cloud-worker
+  name: carbide-rest-cloud-worker
   labels:
-    app: cloud-worker
+    app: carbide-rest-cloud-worker
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: cloud-worker
+      app: carbide-rest-cloud-worker
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -33,13 +33,13 @@ spec:
   template:
     metadata:
       labels:
-        app: cloud-worker
+        app: carbide-rest-cloud-worker
     spec:
       imagePullSecrets:
         - name: image-pull-secret
       containers:
         - name: cloud-worker
-          image: carbide-rest-workflow:latest
+          image: carbide-rest-workflow
           ports:
             - containerPort: 9360
               name: metrics
@@ -104,14 +104,14 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: site-worker
+  name: carbide-rest-site-worker
   labels:
-    app: site-worker
+    app: carbide-rest-site-worker
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: site-worker
+      app: carbide-rest-site-worker
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -120,13 +120,13 @@ spec:
   template:
     metadata:
       labels:
-        app: site-worker
+        app: carbide-rest-site-worker
     spec:
       imagePullSecrets:
         - name: image-pull-secret
       containers:
         - name: site-worker
-          image: carbide-rest-workflow:latest
+          image: carbide-rest-workflow
           ports:
             - containerPort: 9360
               name: metrics

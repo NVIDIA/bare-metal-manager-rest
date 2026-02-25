@@ -28,9 +28,18 @@ resources:
   - ../../base/cert-manager
 
 images:
-  - name: carbide-rest-cert-manager:latest
+  - name: carbide-rest-cert-manager
     newName: localhost:5000/carbide-rest-cert-manager
     newTag: latest
+
+patches:
+  - target:
+      kind: Deployment
+      name: carbide-rest-cert-manager
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/imagePullSecrets
+        value: []
 
 commonLabels:
   app.kubernetes.io/part-of: carbide-rest
