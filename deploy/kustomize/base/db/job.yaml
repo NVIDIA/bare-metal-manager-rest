@@ -47,6 +47,7 @@ spec:
       containers:
         - name: migrations
           image: carbide-rest-db
+          imagePullPolicy: IfNotPresent
           env:
             - name: PGHOST
               value: postgres.postgres

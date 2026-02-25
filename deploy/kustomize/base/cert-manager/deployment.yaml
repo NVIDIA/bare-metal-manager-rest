@@ -42,6 +42,7 @@ spec:
       containers:
         - name: cert-manager
           image: carbide-rest-cert-manager
+          imagePullPolicy: IfNotPresent
           securityContext:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false

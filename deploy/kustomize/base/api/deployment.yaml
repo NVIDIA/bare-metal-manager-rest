@@ -35,6 +35,7 @@ spec:
       containers:
         - name: api
           image: carbide-rest-api
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8388
               name: http

@@ -36,6 +36,7 @@ spec:
       containers:
         - name: site-manager
           image: carbide-rest-site-manager
+          imagePullPolicy: IfNotPresent
           args:
             - --listen-port=8100
             - --creds-manager-url=https://carbide-rest-cert-manager.carbide-rest:8000

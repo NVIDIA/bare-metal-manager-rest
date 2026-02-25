@@ -409,14 +409,13 @@ kind-reset:
 
 	@echo "Setting up Carbide REST DB Migration..."
 	kubectl apply -k deploy/kustomize/overlays/db
-	kubectl -n carbide-rest wait --for=condition=complete job/carbide-rest-db-migration --timeout=240s
-	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-api --timeout=240s
+	kubectl -n carbide-rest wait --for=condition=complete job -l app=carbide-rest-db-migration --timeout=240s
 
 	@echo "Setting up Carbide REST Cloud and Site Workers..."
 	kubectl apply -k deploy/kustomize/overlays/workflow
 	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-workflow --timeout=240s
-	kubectl -n carbide-rest rollout status deployment/cloud-worker --timeout=240s
-	kubectl -n carbide-rest rollout status deployment/site-worker --timeout=240s
+	kubectl -n carbide-rest rollout status deployment/carbide-rest-cloud-worker --timeout=240s
+	kubectl -n carbide-rest rollout status deployment/carbide-rest-site-worker --timeout=240s
 
 	@echo "Setting up Carbide REST API..."
 	kubectl apply -k deploy/kustomize/overlays/api
