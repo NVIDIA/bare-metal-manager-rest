@@ -248,7 +248,7 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "VPC and Instance Type specified in request data do not belong to the same Site", nil)
 	}
 
-	ifcResult, apiErr := icv.ValidateInterfaces(ctx, tenant, vpc, apiRequest.Interfaces)
+	ifcResult, apiErr := icv.ValidateNetworkInterfaces(ctx, tenant, vpc, apiRequest.Interfaces)
 	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
@@ -264,7 +264,7 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 	logger.Info().Int("dpuExtensionServiceCount", len(apiRequest.DpuExtensionServiceDeployments)).
 		Msg("validated DPU Extension Service Deployments")
 
-	if apiErr := icv.ValidateNSG(ctx, tenant, site, apiRequest.NetworkSecurityGroupID); apiErr != nil {
+	if apiErr := icv.ValidateNetworkSecurityGroup(ctx, tenant, site, apiRequest.NetworkSecurityGroupID); apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
@@ -276,7 +276,7 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 	logger.Info().Int("sshKeyGroupCount", len(sshKeyGroups)).
 		Msg("validated SSH Key Groups")
 
-	osConfig, osID, apiErr := icv.BuildOsConfig(ctx, &apiRequest, site.ID)
+	osConfig, osID, apiErr := icv.ValidateAndBuildOsConfig(ctx, &apiRequest, site.ID)
 	if apiErr != nil {
 		logger.Error().Err(errors.New(apiErr.Message)).Msg("error building os config for creating Instances")
 		return c.JSON(apiErr.Code, apiErr)
@@ -426,12 +426,12 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 
 	// ==================== Step 5: Machine Capability Validation ====================
 
-	dbibic, apiErr := icv.ValidateIBInterfaces(ctx, tenant, site, apiRequest.InfiniBandInterfaces, apiInstanceTypeID)
+	dbibic, apiErr := icv.ValidateInfiniBandInterfaces(ctx, tenant, site, apiRequest.InfiniBandInterfaces, apiInstanceTypeID)
 	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	if apiErr := icv.ValidateDPUInterfaces(ctx, ifcResult.DBInterfaces, ifcResult.IsDeviceInfoPresent, apiInstanceTypeID); apiErr != nil {
+	if apiErr := icv.ValidateDPUCapabilities(ctx, ifcResult.DBInterfaces, ifcResult.IsDeviceInfoPresent, apiInstanceTypeID); apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 

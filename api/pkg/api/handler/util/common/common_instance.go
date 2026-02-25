@@ -37,7 +37,7 @@ import (
 )
 
 // InstanceOSConfigProvider abstracts OS-related fields shared between single and batch
-// instance create requests, allowing a single BuildOsConfig implementation.
+// instance create requests, allowing a single ValidateAndBuildOsConfig implementation.
 type InstanceOSConfigProvider interface {
 	GetOperatingSystemID() *string
 	GetTenantID() string
@@ -65,7 +65,7 @@ func NewInstanceCreateValidator(dbSession *cdb.Session, cfg *config.Config, logg
 	}
 }
 
-// InterfaceValidationResult holds the products of ValidateInterfaces.
+// InterfaceValidationResult holds the products of ValidateNetworkInterfaces.
 type InterfaceValidationResult struct {
 	DBInterfaces        []cdbm.Interface
 	SubnetIDMap         map[uuid.UUID]*cdbm.Subnet
@@ -142,8 +142,8 @@ func (icv *InstanceCreateValidator) ValidateTenantAndVPC(ctx context.Context, or
 	return tenant, vpc, site, defaultNvllpID, nil
 }
 
-// ValidateInterfaces validates subnet and VPC prefix interfaces.
-func (icv *InstanceCreateValidator) ValidateInterfaces(ctx context.Context, tenant *cdbm.Tenant, vpc *cdbm.Vpc, interfaces []cam.APIInterfaceCreateOrUpdateRequest) (*InterfaceValidationResult, *cerr.APIError) {
+// ValidateNetworkInterfaces validates subnet and VPC prefix interfaces.
+func (icv *InstanceCreateValidator) ValidateNetworkInterfaces(ctx context.Context, tenant *cdbm.Tenant, vpc *cdbm.Vpc, interfaces []cam.APIInterfaceCreateOrUpdateRequest) (*InterfaceValidationResult, *cerr.APIError) {
 	logger := icv.Logger
 
 	subnetDAO := cdbm.NewSubnetDAO(icv.DBSession)
@@ -368,8 +368,8 @@ func (icv *InstanceCreateValidator) ValidateDPUExtensionServices(ctx context.Con
 	return desIDMap, nil
 }
 
-// ValidateNSG validates the network security group, if specified.
-func (icv *InstanceCreateValidator) ValidateNSG(ctx context.Context, tenant *cdbm.Tenant, site *cdbm.Site, nsgID *string) *cerr.APIError {
+// ValidateNetworkSecurityGroup validates the network security group, if specified.
+func (icv *InstanceCreateValidator) ValidateNetworkSecurityGroup(ctx context.Context, tenant *cdbm.Tenant, site *cdbm.Site, nsgID *string) *cerr.APIError {
 	if nsgID == nil {
 		return nil
 	}
@@ -446,8 +446,8 @@ func (icv *InstanceCreateValidator) ValidateSSHKeyGroups(ctx context.Context, te
 	return sshKeyGroups, nil
 }
 
-// BuildOsConfig validates and builds the OS configuration for the Temporal workflow.
-func (icv *InstanceCreateValidator) BuildOsConfig(ctx context.Context, req InstanceOSConfigProvider, siteID uuid.UUID) (*cwssaws.OperatingSystem, *uuid.UUID, *cerr.APIError) {
+// ValidateAndBuildOsConfig validates and builds the OS configuration for the Temporal workflow.
+func (icv *InstanceCreateValidator) ValidateAndBuildOsConfig(ctx context.Context, req InstanceOSConfigProvider, siteID uuid.UUID) (*cwssaws.OperatingSystem, *uuid.UUID, *cerr.APIError) {
 	logger := icv.Logger
 
 	if req.GetOperatingSystemID() == nil || *req.GetOperatingSystemID() == "" {
@@ -558,9 +558,9 @@ func (icv *InstanceCreateValidator) BuildOsConfig(ctx context.Context, req Insta
 	return osConfig, osID, nil
 }
 
-// ValidateIBInterfaces validates InfiniBand interfaces against instance type capabilities,
+// ValidateInfiniBandInterfaces validates InfiniBand interfaces against instance type capabilities,
 // validates partition ownership and state.
-func (icv *InstanceCreateValidator) ValidateIBInterfaces(ctx context.Context, tenant *cdbm.Tenant, site *cdbm.Site, ibIfcs []cam.APIInfiniBandInterfaceCreateOrUpdateRequest, instanceTypeID uuid.UUID) ([]cdbm.InfiniBandInterface, *cerr.APIError) {
+func (icv *InstanceCreateValidator) ValidateInfiniBandInterfaces(ctx context.Context, tenant *cdbm.Tenant, site *cdbm.Site, ibIfcs []cam.APIInfiniBandInterfaceCreateOrUpdateRequest, instanceTypeID uuid.UUID) ([]cdbm.InfiniBandInterface, *cerr.APIError) {
 	logger := icv.Logger
 
 	if len(ibIfcs) == 0 {
@@ -761,8 +761,8 @@ func (icv *InstanceCreateValidator) ValidateNVLinkInterfaces(ctx context.Context
 	return nil, nil
 }
 
-// ValidateDPUInterfaces validates DPU interface capabilities against instance type machine capabilities.
-func (icv *InstanceCreateValidator) ValidateDPUInterfaces(ctx context.Context, dbInterfaces []cdbm.Interface, isDeviceInfoPresent bool, instanceTypeID uuid.UUID) *cerr.APIError {
+// ValidateDPUCapabilities validates DPU interface capabilities against instance type machine capabilities.
+func (icv *InstanceCreateValidator) ValidateDPUCapabilities(ctx context.Context, dbInterfaces []cdbm.Interface, isDeviceInfoPresent bool, instanceTypeID uuid.UUID) *cerr.APIError {
 	if !isDeviceInfoPresent {
 		return nil
 	}

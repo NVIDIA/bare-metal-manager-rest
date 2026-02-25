@@ -204,7 +204,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	ifcResult, apiErr := icv.ValidateInterfaces(ctx, tenant, vpc, apiRequest.Interfaces)
+	ifcResult, apiErr := icv.ValidateNetworkInterfaces(ctx, tenant, vpc, apiRequest.Interfaces)
 	if apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
@@ -214,7 +214,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	if apiErr := icv.ValidateNSG(ctx, tenant, site, apiRequest.NetworkSecurityGroupID); apiErr != nil {
+	if apiErr := icv.ValidateNetworkSecurityGroup(ctx, tenant, site, apiRequest.NetworkSecurityGroupID); apiErr != nil {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
@@ -223,7 +223,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	osConfig, osID, apiErr := icv.BuildOsConfig(ctx, &apiRequest, vpc.SiteID)
+	osConfig, osID, apiErr := icv.ValidateAndBuildOsConfig(ctx, &apiRequest, vpc.SiteID)
 	if apiErr != nil {
 		logger.Error().Err(errors.New(apiErr.Message)).Msg("error building os config for creating Instance")
 		return c.JSON(apiErr.Code, apiErr)
