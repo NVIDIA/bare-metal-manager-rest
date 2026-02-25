@@ -43,6 +43,7 @@ import (
 	cerr "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
 	sutil "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
 	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
+	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
 )
@@ -139,7 +140,13 @@ func (gth GetTrayHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
-	if site.Config == nil || !site.Config.RackLevelAdministration {
+	siteConfig := &cdbm.SiteConfig{}
+	if site.Config != nil {
+		siteConfig = site.Config
+	}
+
+	if !siteConfig.RackLevelAdministration {
+		logger.Warn().Msg("site does not have Rack Level Administration enabled")
 		return cerr.NewAPIErrorResponse(c, http.StatusPreconditionFailed, "Site does not have Rack Level Administration enabled", nil)
 	}
 
@@ -312,7 +319,13 @@ func (gath GetAllTrayHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
-	if site.Config == nil || !site.Config.RackLevelAdministration {
+	siteConfig := &cdbm.SiteConfig{}
+	if site.Config != nil {
+		siteConfig = site.Config
+	}
+
+	if !siteConfig.RackLevelAdministration {
+		logger.Warn().Msg("site does not have Rack Level Administration enabled")
 		return cerr.NewAPIErrorResponse(c, http.StatusPreconditionFailed, "Site does not have Rack Level Administration enabled", nil)
 	}
 
@@ -510,7 +523,13 @@ func (vth ValidateTrayHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
-	if site.Config == nil || !site.Config.RackLevelAdministration {
+	siteConfig := &cdbm.SiteConfig{}
+	if site.Config != nil {
+		siteConfig = site.Config
+	}
+
+	if !siteConfig.RackLevelAdministration {
+		logger.Warn().Msg("site does not have Rack Level Administration enabled")
 		return cerr.NewAPIErrorResponse(c, http.StatusPreconditionFailed, "Site does not have Rack Level Administration enabled", nil)
 	}
 
@@ -680,7 +699,13 @@ func (vtsh ValidateTraysHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
-	if site.Config == nil || !site.Config.RackLevelAdministration {
+	siteConfig := &cdbm.SiteConfig{}
+	if site.Config != nil {
+		siteConfig = site.Config
+	}
+
+	if !siteConfig.RackLevelAdministration {
+		logger.Warn().Msg("site does not have Rack Level Administration enabled")
 		return cerr.NewAPIErrorResponse(c, http.StatusPreconditionFailed, "Site does not have Rack Level Administration enabled", nil)
 	}
 
