@@ -852,7 +852,7 @@ func (pcth PowerControlTrayHandler) Handle(c echo.Context) error {
 		},
 	}
 
-	return executePowerControlWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.State,
+	return common.ExecutePowerControlWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.State,
 		fmt.Sprintf("tray-power-%s-%s", apiRequest.State, trayStrID), "Tray")
 }
 
@@ -986,7 +986,7 @@ func (pctbh PowerControlTrayBatchHandler) Handle(c echo.Context) error {
 	// Build TargetSpec from tray filters (reuses the same logic as GetAll Trays)
 	targetSpec := filterRequest.ToProto().GetTargetSpec()
 
-	return executePowerControlWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.State,
+	return common.ExecutePowerControlWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.State,
 		fmt.Sprintf("tray-power-batch-%s-%s", apiRequest.State, common.QueryParamHash(filterRequest.QueryValues())), "Tray")
 }
 
@@ -1117,7 +1117,7 @@ func (futh FirmwareUpgradeTrayHandler) Handle(c echo.Context) error {
 		},
 	}
 
-	return executeFirmwareUpgradeWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.Version,
+	return common.ExecuteFirmwareUpgradeWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.Version,
 		fmt.Sprintf("tray-fw-upgrade-%s", trayStrID), "Tray")
 }
 
@@ -1245,6 +1245,6 @@ func (futbh FirmwareUpgradeTrayBatchHandler) Handle(c echo.Context) error {
 
 	targetSpec := filterRequest.ToProto().GetTargetSpec()
 
-	return executeFirmwareUpgradeWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.Version,
+	return common.ExecuteFirmwareUpgradeWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.Version,
 		fmt.Sprintf("tray-fw-upgrade-batch-%s", common.QueryParamHash(filterRequest.QueryValues())), "Tray")
 }
