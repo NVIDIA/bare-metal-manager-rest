@@ -202,8 +202,8 @@ jobs:
     with:
       runner: ${{ inputs.runner }}
       service_name: carbide-rla
-      binary_name: credsmgr
-      binary_path: /app/credsmgr
+      binary_name: rla
+      binary_path: /app/rla
       dockerfile: ./docker/production/Dockerfile.carbide-rla
       semantic_version: ${{ inputs.semantic_version }}
       short_sha: ${{ inputs.short_sha }}
@@ -221,8 +221,8 @@ jobs:
     with:
       runner: ${{ inputs.runner }}
       service_name: carbide-psm
-      binary_name: credsmgr
-      binary_path: /app/credsmgr
+      binary_name: psm
+      binary_path: /app/psm
       dockerfile: ./docker/production/Dockerfile.carbide-psm
       semantic_version: ${{ inputs.semantic_version }}
       short_sha: ${{ inputs.short_sha }}

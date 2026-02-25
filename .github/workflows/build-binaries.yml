@@ -58,7 +58,7 @@ jobs:
           - name: rla
             path: ./rla
           - name: psm
-            path: ./powershelf_manager
+            path: ./powershelf-manager
 
     steps:
       - name: Checkout code

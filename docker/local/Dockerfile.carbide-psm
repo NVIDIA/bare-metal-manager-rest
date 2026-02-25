@@ -20,9 +20,9 @@ WORKDIR /workspace
 COPY go.mod go.sum VERSION ./
 RUN go mod download
 
-COPY powershelf_manager/ ./powershelf_manager/
+COPY powershelf-manager/ ./powershelf-manager/
 
-WORKDIR /workspace/powershelf_manager
+WORKDIR /workspace/powershelf-manager
 
 # Build with version information injected via ldflags
 RUN go build -ldflags "-extldflags '-static'" \
