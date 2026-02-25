@@ -761,9 +761,6 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 		instanceSshKeyGroupIds = append(instanceSshKeyGroupIds, skg.ID.String())
 	}
 
-	// Prepare interface details to pass to carbide call
-	interfaceConfigs := []*cwssaws.InstanceInterfaceConfig{}
-
 	// Create the instance subnet record in the db from info gathered earlier
 	// The first Subnet is automatically added to the physical interface
 	ifcs := []cdbm.Interface{}
@@ -787,54 +784,10 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Instance Subnet entry for Instance, DB error", nil)
 		}
 
-		ifc := *retifc
-		ifcs = append(ifcs, ifc)
-
-		interfaceConfig := &cwssaws.InstanceInterfaceConfig{
-			FunctionType: cwssaws.InterfaceFunctionType_VIRTUAL_FUNCTION,
-		}
-
-		// Assign InstanceInterfaceConfig_SegmentId in case of Subnet
-		if dbifc.SubnetID != nil {
-			interfaceConfig.NetworkSegmentId = &cwssaws.NetworkSegmentId{
-				Value: ifcResult.SubnetIDMap[*dbifc.SubnetID].ControllerNetworkSegmentID.String(),
-			}
-			interfaceConfig.NetworkDetails = &cwssaws.InstanceInterfaceConfig_SegmentId{
-				SegmentId: &cwssaws.NetworkSegmentId{
-					Value: ifcResult.SubnetIDMap[*dbifc.SubnetID].ControllerNetworkSegmentID.String(),
-				},
-			}
-		}
-
-		// Assign InstanceInterfaceConfig_VpcPrefixId in case of VpcPrefix
-		if dbifc.VpcPrefixID != nil {
-			interfaceConfig.NetworkDetails = &cwssaws.InstanceInterfaceConfig_VpcPrefixId{
-				VpcPrefixId: &cwssaws.VpcPrefixId{Value: dbifc.VpcPrefixID.String()},
-			}
-		}
-
-		if dbifc.IsPhysical {
-			interfaceConfig.FunctionType = cwssaws.InterfaceFunctionType_PHYSICAL_FUNCTION
-		}
-
-		// Assign Device and DeviceInstance in case of Multi DPU Interface
-		if dbifc.Device != nil && dbifc.DeviceInstance != nil {
-			interfaceConfig.Device = dbifc.Device
-			interfaceConfig.DeviceInstance = uint32(*dbifc.DeviceInstance)
-		}
-
-		if !dbifc.IsPhysical {
-			if dbifc.VirtualFunctionID != nil {
-				vfID := uint32(*dbifc.VirtualFunctionID)
-				interfaceConfig.VirtualFunctionId = &vfID
-			}
-		}
-
-		interfaceConfigs = append(interfaceConfigs, interfaceConfig)
+		ifcs = append(ifcs, *retifc)
 	}
 
-	//We'll need this later for the carbide call
-	ibInterfaceConfigs := []*cwssaws.InstanceIBInterfaceConfig{}
+	interfaceConfigs := common.BuildInterfaceConfigs(ifcs, ifcResult.SubnetIDMap)
 
 	// Create the instance infiniband interface record in the db from info gathered earlier IF instance type was used
 	ibifcs := []cdbm.InfiniBandInterface{}
@@ -862,32 +815,14 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Instance InfiniBand Interface entry for Instance, DB error", nil)
 		}
 
-		ifc := *retibifc
-		ibifcs = append(ibifcs, ifc)
-
-		ibInterfaceConfig := &cwssaws.InstanceIBInterfaceConfig{
-			Device:         ifc.Device,
-			Vendor:         ifc.Vendor,
-			DeviceInstance: uint32(ifc.DeviceInstance),
-			FunctionType:   cwssaws.InterfaceFunctionType_PHYSICAL_FUNCTION,
-			IbPartitionId:  &cwssaws.IBPartitionId{Value: ifc.InfiniBandPartitionID.String()},
-		}
-		ibInterfaceConfigs = append(ibInterfaceConfigs, ibInterfaceConfig)
-
-		if !ifc.IsPhysical {
-			ibInterfaceConfig.FunctionType = cwssaws.InterfaceFunctionType_VIRTUAL_FUNCTION
-
-			if ifc.VirtualFunctionID != nil {
-				vfID := uint32(*ifc.VirtualFunctionID)
-				ibInterfaceConfig.VirtualFunctionId = &vfID
-			}
-		}
+		ibifcs = append(ibifcs, *retibifc)
 	}
+
+	ibInterfaceConfigs := common.BuildIBInterfaceConfigs(ibifcs)
 
 	// Create the instance NVLink Interface record in the db from info gathered earlier IF instance type was used
 	nvlifcs := []cdbm.NVLinkInterface{}
 	nvlifcDAO := cdbm.NewNVLinkInterfaceDAO(cih.dbSession)
-	nvlInterfaceConfigs := []*cwssaws.InstanceNVLinkGpuConfig{}
 	for _, nvlifc := range dbnvlic {
 		retnvlifc, serr := nvlifcDAO.Create(
 			ctx,
@@ -907,19 +842,12 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Instance NVLink Interface entry for Instance, DB error", nil)
 		}
 
-		nvlfc := *retnvlifc
-		nvlifcs = append(nvlifcs, nvlfc)
-
-		nvlInterfaceConfig := &cwssaws.InstanceNVLinkGpuConfig{
-			DeviceInstance:     uint32(nvlifc.DeviceInstance),
-			LogicalPartitionId: &cwssaws.NVLinkLogicalPartitionId{Value: nvlfc.NVLinkLogicalPartitionID.String()},
-		}
-		nvlInterfaceConfigs = append(nvlInterfaceConfigs, nvlInterfaceConfig)
+		nvlifcs = append(nvlifcs, *retnvlifc)
 	}
 
-	// Create the DpuExtensionServiceDeployment records in DB
-	desdConfigs := []*cwssaws.InstanceDpuExtensionServiceConfig{}
+	nvlInterfaceConfigs := common.BuildNVLinkInterfaceConfigs(nvlifcs)
 
+	// Create the DpuExtensionServiceDeployment records in DB
 	desdDAO := cdbm.NewDpuExtensionServiceDeploymentDAO(cih.dbSession)
 	desds := []cdbm.DpuExtensionServiceDeployment{}
 
@@ -947,12 +875,9 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 		desd.DpuExtensionService = des
 
 		desds = append(desds, *desd)
-
-		desdConfigs = append(desdConfigs, &cwssaws.InstanceDpuExtensionServiceConfig{
-			ServiceId: desd.DpuExtensionServiceID.String(),
-			Version:   desd.Version,
-		})
 	}
+
+	desdConfigs := common.BuildDPUServiceConfigs(desds)
 
 	// Create the status detail record
 	sdDAO := cdbm.NewStatusDetailDAO(cih.dbSession)
@@ -976,54 +901,11 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
 	}
 
-	// Prepare the labels for the metadata of the carbide call.
-	createLabels := []*cwssaws.Label{}
-	for k, v := range instance.Labels {
-		createLabels = append(createLabels, &cwssaws.Label{
-			Key:   k,
-			Value: &v,
-		})
-	}
-
-	description := ""
-	if instance.Description != nil {
-		description = *instance.Description
-	}
-
-	// Prepare the create request workflow object
-	createInstanceRequest := &cwssaws.InstanceAllocationRequest{
-		InstanceId: &cwssaws.InstanceId{Value: common.GetSiteInstanceID(instance).String()},
-		MachineId:  &cwssaws.MachineId{Id: *instance.MachineID},
-		Metadata: &cwssaws.Metadata{
-			Name:        instance.Name,
-			Description: description,
-			Labels:      createLabels,
-		},
-		Config: &cwssaws.InstanceConfig{
-			NetworkSecurityGroupId: instance.NetworkSecurityGroupID,
-			Tenant: &cwssaws.TenantConfig{
-				TenantOrganizationId: tenant.Org,
-				TenantKeysetIds:      instanceSshKeyGroupIds,
-			},
-			Os: osConfig,
-			Network: &cwssaws.InstanceNetworkConfig{
-				Interfaces: interfaceConfigs,
-			},
-			Infiniband: &cwssaws.InstanceInfinibandConfig{
-				IbInterfaces: ibInterfaceConfigs,
-			},
-			DpuExtensionServices: &cwssaws.InstanceDpuExtensionServicesConfig{
-				ServiceConfigs: desdConfigs,
-			},
-			Nvlink: &cwssaws.InstanceNVLinkConfig{
-				GpuConfigs: nvlInterfaceConfigs,
-			},
-		},
-		AllowUnhealthyMachine: allowUnhealthyMachine,
-	}
-	if instanceTypeID != nil {
-		createInstanceRequest.InstanceTypeId = cdb.GetStrPtr(instanceTypeID.String())
-	}
+	createInstanceRequest := common.BuildInstanceAllocationRequest(
+		instance, tenant, osConfig, instanceSshKeyGroupIds,
+		interfaceConfigs, ibInterfaceConfigs,
+		nvlInterfaceConfigs, desdConfigs, allowUnhealthyMachine,
+	)
 
 	workflowOptions := temporalClient.StartWorkflowOptions{
 		ID:                       "instance-create-" + instance.ID.String(),

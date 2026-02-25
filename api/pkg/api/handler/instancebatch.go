@@ -699,8 +699,7 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 	}
 	logger.Info().Int("count", len(createdSdsAll)).Msg("batch created all status details")
 
-	// --- Organize created records by instance and build workflow configs ---
-	// Track all created data for building API responses and temporal workflow
+	// --- Organize created records by instance ---
 	type instanceData struct {
 		instance *cdbm.Instance
 		ifcs     []cdbm.Interface
@@ -708,28 +707,19 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 		nvlifcs  []cdbm.NVLinkInterface
 		desds    []cdbm.DpuExtensionServiceDeployment
 		ssd      *cdbm.StatusDetail
-		// Temporal workflow configs
-		interfaceConfigs    []*cwssaws.InstanceInterfaceConfig
-		ibInterfaceConfigs  []*cwssaws.InstanceIBInterfaceConfig
-		nvlInterfaceConfigs []*cwssaws.InstanceNVLinkGpuConfig
-		desdConfigs         []*cwssaws.InstanceDpuExtensionServiceConfig
 	}
 
 	createdInstancesData := make([]instanceData, len(updatedInstances))
 
 	// Initialize data structures for each instance
 	for i, inst := range updatedInstances {
-		instCopy := inst // Make a copy to avoid loop variable capture
+		instCopy := inst
 		createdInstancesData[i] = instanceData{
-			instance:            &instCopy,
-			ifcs:                make([]cdbm.Interface, 0, len(ifcResult.DBInterfaces)),
-			ibifcs:              make([]cdbm.InfiniBandInterface, 0, len(dbibic)),
-			nvlifcs:             make([]cdbm.NVLinkInterface, 0, len(dbnvlic)),
-			desds:               make([]cdbm.DpuExtensionServiceDeployment, 0, len(dpuServiceIDs)),
-			interfaceConfigs:    make([]*cwssaws.InstanceInterfaceConfig, 0, len(ifcResult.DBInterfaces)),
-			ibInterfaceConfigs:  make([]*cwssaws.InstanceIBInterfaceConfig, 0, len(dbibic)),
-			nvlInterfaceConfigs: make([]*cwssaws.InstanceNVLinkGpuConfig, 0, len(dbnvlic)),
-			desdConfigs:         make([]*cwssaws.InstanceDpuExtensionServiceConfig, 0, len(dpuServiceIDs)),
+			instance: &instCopy,
+			ifcs:     make([]cdbm.Interface, 0, len(ifcResult.DBInterfaces)),
+			ibifcs:   make([]cdbm.InfiniBandInterface, 0, len(dbibic)),
+			nvlifcs:  make([]cdbm.NVLinkInterface, 0, len(dbnvlic)),
+			desds:    make([]cdbm.DpuExtensionServiceDeployment, 0, len(dpuServiceIDs)),
 		}
 	}
 
@@ -739,96 +729,32 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 		instanceIDToIdx[inst.ID] = i
 	}
 
-	// Distribute Interfaces and build workflow configs
+	// Distribute Interfaces
 	for _, ifc := range createdIfcsAll {
 		idx := instanceIDToIdx[ifc.InstanceID]
 		createdInstancesData[idx].ifcs = append(createdInstancesData[idx].ifcs, ifc)
-
-		// Build temporal workflow config
-		interfaceConfig := &cwssaws.InstanceInterfaceConfig{
-			FunctionType: cwssaws.InterfaceFunctionType_VIRTUAL_FUNCTION,
-		}
-		if ifc.SubnetID != nil {
-			interfaceConfig.NetworkSegmentId = &cwssaws.NetworkSegmentId{
-				Value: ifcResult.SubnetIDMap[*ifc.SubnetID].ControllerNetworkSegmentID.String(),
-			}
-			interfaceConfig.NetworkDetails = &cwssaws.InstanceInterfaceConfig_SegmentId{
-				SegmentId: &cwssaws.NetworkSegmentId{
-					Value: ifcResult.SubnetIDMap[*ifc.SubnetID].ControllerNetworkSegmentID.String(),
-				},
-			}
-		}
-		if ifc.VpcPrefixID != nil {
-			interfaceConfig.NetworkDetails = &cwssaws.InstanceInterfaceConfig_VpcPrefixId{
-				VpcPrefixId: &cwssaws.VpcPrefixId{Value: ifc.VpcPrefixID.String()},
-			}
-		}
-		if ifc.IsPhysical {
-			interfaceConfig.FunctionType = cwssaws.InterfaceFunctionType_PHYSICAL_FUNCTION
-		}
-		if ifc.Device != nil && ifc.DeviceInstance != nil {
-			interfaceConfig.Device = ifc.Device
-			interfaceConfig.DeviceInstance = uint32(*ifc.DeviceInstance)
-		}
-		if !ifc.IsPhysical && ifc.VirtualFunctionID != nil {
-			vfID := uint32(*ifc.VirtualFunctionID)
-			interfaceConfig.VirtualFunctionId = &vfID
-		}
-		createdInstancesData[idx].interfaceConfigs = append(createdInstancesData[idx].interfaceConfigs, interfaceConfig)
 	}
 
-	// Distribute InfiniBand Interfaces and build workflow configs
+	// Distribute InfiniBand Interfaces
 	for _, ibifc := range createdIbIfcsAll {
 		idx := instanceIDToIdx[ibifc.InstanceID]
 		createdInstancesData[idx].ibifcs = append(createdInstancesData[idx].ibifcs, ibifc)
-
-		// Build temporal workflow config
-		ibInterfaceConfig := &cwssaws.InstanceIBInterfaceConfig{
-			Device:         ibifc.Device,
-			Vendor:         ibifc.Vendor,
-			DeviceInstance: uint32(ibifc.DeviceInstance),
-			FunctionType:   cwssaws.InterfaceFunctionType_PHYSICAL_FUNCTION,
-			IbPartitionId:  &cwssaws.IBPartitionId{Value: ibifc.InfiniBandPartitionID.String()},
-		}
-		if !ibifc.IsPhysical {
-			ibInterfaceConfig.FunctionType = cwssaws.InterfaceFunctionType_VIRTUAL_FUNCTION
-			if ibifc.VirtualFunctionID != nil {
-				vfID := uint32(*ibifc.VirtualFunctionID)
-				ibInterfaceConfig.VirtualFunctionId = &vfID
-			}
-		}
-		createdInstancesData[idx].ibInterfaceConfigs = append(createdInstancesData[idx].ibInterfaceConfigs, ibInterfaceConfig)
 	}
 
-	// Distribute NVLink Interfaces and build workflow configs
+	// Distribute NVLink Interfaces
 	for _, nvlifc := range createdNvlIfcsAll {
 		idx := instanceIDToIdx[nvlifc.InstanceID]
 		createdInstancesData[idx].nvlifcs = append(createdInstancesData[idx].nvlifcs, nvlifc)
-
-		// Build temporal workflow config
-		nvlInterfaceConfig := &cwssaws.InstanceNVLinkGpuConfig{
-			DeviceInstance:     uint32(nvlifc.DeviceInstance),
-			LogicalPartitionId: &cwssaws.NVLinkLogicalPartitionId{Value: nvlifc.NVLinkLogicalPartitionID.String()},
-		}
-		createdInstancesData[idx].nvlInterfaceConfigs = append(createdInstancesData[idx].nvlInterfaceConfigs, nvlInterfaceConfig)
 	}
 
-	// Distribute DPU Extension Service Deployments and build workflow configs
+	// Distribute DPU Extension Service Deployments
 	for _, desd := range createdDesdsAll {
 		idx := instanceIDToIdx[desd.InstanceID]
 		createdInstancesData[idx].desds = append(createdInstancesData[idx].desds, desd)
-
-		// Build temporal workflow config
-		desdConfig := &cwssaws.InstanceDpuExtensionServiceConfig{
-			ServiceId: desd.DpuExtensionServiceID.String(),
-			Version:   desd.Version,
-		}
-		createdInstancesData[idx].desdConfigs = append(createdInstancesData[idx].desdConfigs, desdConfig)
 	}
 
 	// Distribute Status Details
 	for i := range createdSdsAll {
-		// Status details are created in the same order as instances
 		createdInstancesData[i].ssd = &createdSdsAll[i]
 	}
 
@@ -857,8 +783,10 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 	for _, data := range createdInstancesData {
 		instanceRequest := common.BuildInstanceAllocationRequest(
 			data.instance, tenant, osConfig, instanceSshKeyGroupIds,
-			data.interfaceConfigs, data.ibInterfaceConfigs,
-			data.nvlInterfaceConfigs, data.desdConfigs, false,
+			common.BuildInterfaceConfigs(data.ifcs, ifcResult.SubnetIDMap),
+			common.BuildIBInterfaceConfigs(data.ibifcs),
+			common.BuildNVLinkInterfaceConfigs(data.nvlifcs),
+			common.BuildDPUServiceConfigs(data.desds), false,
 		)
 		batchRequest.InstanceRequests = append(batchRequest.InstanceRequests, instanceRequest)
 	}
