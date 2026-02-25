@@ -62,6 +62,10 @@ func (api *API) RegisterSubscriber() error {
 	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterWorkflow(sww.PowerResetRack)
 	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered PowerResetRack workflow")
 
+	// UpgradeFirmware
+	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterWorkflow(sww.UpgradeFirmware)
+	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered UpgradeFirmware workflow")
+
 	/// Register rack activities
 
 	// GetRack activity
@@ -87,10 +91,6 @@ func (api *API) RegisterSubscriber() error {
 	// PowerResetRack activity
 	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterActivity(rackManager.PowerResetRack)
 	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered PowerResetRack activity")
-
-	// UpgradeFirmware
-	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterWorkflow(sww.UpgradeFirmware)
-	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered UpgradeFirmware workflow")
 
 	// UpgradeFirmware activity
 	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterActivity(rackManager.UpgradeFirmware)

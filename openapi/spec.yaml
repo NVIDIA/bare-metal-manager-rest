@@ -8361,6 +8361,251 @@ paths:
           $ref: '#/components/responses/ForbiddenError'
       tags:
         - Rack
+  '/v2/org/{org}/carbide/rack/power':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+    patch:
+      summary: Power control Racks
+      operationId: power-control-racks
+      description: |-
+        Power control Racks with optional filters. If no filter is specified, targets all racks in the Site.
+
+        Supported power states: `on`, `off`, `cycle`, `forceoff`, `forcecycle`.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site
+        - schema:
+            type: string
+          name: name
+          in: query
+          description: Filter racks by name. Can be specified multiple times to filter on more than one rack name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PowerControlRequest'
+            examples:
+              power-off:
+                value:
+                  state: 'off'
+              force-off:
+                value:
+                  state: forceoff
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PowerControlResponse'
+              examples:
+                example-1:
+                  value:
+                    taskIds:
+                      - 550e8400-e29b-41d4-a716-446655440000
+                      - 660e8400-e29b-41d4-a716-446655440001
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Rack
+  '/v2/org/{org}/carbide/rack/{id}/power':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+          format: uuid
+        name: id
+        in: path
+        required: true
+        description: ID of the Rack
+    patch:
+      summary: Power control a Rack
+      operationId: power-control-rack
+      description: |-
+        Power control a single Rack by ID.
+
+        Supported power states: `on`, `off`, `cycle`, `forceoff`, `forcecycle`.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PowerControlRequest'
+            examples:
+              power-on:
+                value:
+                  state: 'on'
+              power-cycle:
+                value:
+                  state: cycle
+              force-cycle:
+                value:
+                  state: forcecycle
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PowerControlResponse'
+              examples:
+                example-1:
+                  value:
+                    taskIds:
+                      - 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Rack
+  '/v2/org/{org}/carbide/rack/firmware':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+    patch:
+      summary: Firmware upgrade Racks
+      operationId: firmware-upgrade-racks
+      description: |-
+        Upgrade firmware on Racks with optional name filter. Version is optional; omit to upgrade to the latest available. If no filter is specified, targets all racks in the Site.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site
+        - schema:
+            type: string
+          name: name
+          in: query
+          description: Filter racks by name. Can be specified multiple times to filter on more than one rack name.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FirmwareUpgradeRequest'
+            examples:
+              with-version:
+                value:
+                  version: '24.11.0'
+              without-version:
+                value: {}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirmwareUpgradeResponse'
+              examples:
+                example-1:
+                  value:
+                    taskIds:
+                      - 550e8400-e29b-41d4-a716-446655440000
+                      - 660e8400-e29b-41d4-a716-446655440001
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Rack
+  '/v2/org/{org}/carbide/rack/{id}/firmware':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+          format: uuid
+        name: id
+        in: path
+        required: true
+        description: ID of the Rack
+    patch:
+      summary: Firmware upgrade a Rack
+      operationId: firmware-upgrade-rack
+      description: |-
+        Upgrade firmware on a single Rack by ID. Version is optional; omit to upgrade to the latest available.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FirmwareUpgradeRequest'
+            examples:
+              with-version:
+                value:
+                  version: '24.11.0'
+              without-version:
+                value: {}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirmwareUpgradeResponse'
+              examples:
+                example-1:
+                  value:
+                    taskIds:
+                      - 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Rack
   '/v2/org/{org}/carbide/tray':
     parameters:
       - schema:
@@ -8548,72 +8793,6 @@ paths:
           $ref: '#/components/responses/NotFoundError'
       tags:
         - Tray
-  '/v2/org/{org}/carbide/tray/{id}/power':
-    parameters:
-      - schema:
-          type: string
-        name: org
-        in: path
-        required: true
-        description: Name of the Org
-      - schema:
-          type: string
-          format: uuid
-        name: id
-        in: path
-        required: true
-        description: ID of the Tray
-    patch:
-      summary: Power control a Tray
-      operationId: power-control-tray
-      description: |-
-        Power control a single Tray by ID.
-
-        Supported power states: `on`, `off`, `cycle`, `forceoff`, `forcecycle`.
-
-        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
-      parameters:
-        - schema:
-            type: string
-            format: uuid
-          name: siteId
-          in: query
-          required: true
-          description: ID of the Site
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PowerControlRequest'
-            examples:
-              power-on:
-                value:
-                  state: 'on'
-              power-off:
-                value:
-                  state: 'off'
-              power-cycle:
-                value:
-                  state: cycle
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PowerControlResponse'
-              examples:
-                example-1:
-                  value:
-                    taskIds:
-                      - 550e8400-e29b-41d4-a716-446655440000
-        '400':
-          $ref: '#/components/responses/ValidationError'
-        '403':
-          $ref: '#/components/responses/ForbiddenError'
-      tags:
-        - Tray
   '/v2/org/{org}/carbide/tray/validation':
     parameters:
       - schema:
@@ -8698,6 +8877,60 @@ paths:
                     onlyInActualCount: 0
                     driftCount: 0
                     matchCount: 10
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Tray
+  '/v2/org/{org}/carbide/tray/{id}/validation':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+          format: uuid
+        name: id
+        in: path
+        required: true
+        description: ID of the Tray
+    get:
+      summary: Validate a Tray
+      operationId: validate-tray
+      description: |-
+        Validate a Tray by comparing expected vs actual state via RLA.
+
+        Compares the expected component configuration (stored in RLA) against the actual state from external systems. Returns a detailed diff report showing missing, extra, and drifted components.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      parameters:
+        - schema:
+            type: string
+            format: uuid
+          name: siteId
+          in: query
+          required: true
+          description: ID of the Site
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RackValidationResult'
+              examples:
+                example-no-diffs:
+                  value:
+                    diffs: []
+                    totalDiffs: 0
+                    onlyInExpectedCount: 0
+                    onlyInActualCount: 0
+                    driftCount: 0
+                    matchCount: 5
         '400':
           $ref: '#/components/responses/ValidationError'
         '403':
@@ -8796,7 +9029,7 @@ paths:
           $ref: '#/components/responses/ForbiddenError'
       tags:
         - Tray
-  '/v2/org/{org}/carbide/rack/{id}/power':
+  '/v2/org/{org}/carbide/tray/{id}/power':
     parameters:
       - schema:
           type: string
@@ -8810,12 +9043,12 @@ paths:
         name: id
         in: path
         required: true
-        description: ID of the Rack
+        description: ID of the Tray
     patch:
-      summary: Power control a Rack
-      operationId: power-control-rack
+      summary: Power control a Tray
+      operationId: power-control-tray
       description: |-
-        Power control a single Rack by ID.
+        Power control a single Tray by ID.
 
         Supported power states: `on`, `off`, `cycle`, `forceoff`, `forcecycle`.
 
@@ -8838,73 +9071,12 @@ paths:
               power-on:
                 value:
                   state: 'on'
-              power-cycle:
-                value:
-                  state: cycle
-              force-cycle:
-                value:
-                  state: forcecycle
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PowerControlResponse'
-              examples:
-                example-1:
-                  value:
-                    taskIds:
-                      - 550e8400-e29b-41d4-a716-446655440000
-        '400':
-          $ref: '#/components/responses/ValidationError'
-        '403':
-          $ref: '#/components/responses/ForbiddenError'
-      tags:
-        - Rack
-  '/v2/org/{org}/carbide/rack/power':
-    parameters:
-      - schema:
-          type: string
-        name: org
-        in: path
-        required: true
-        description: Name of the Org
-    patch:
-      summary: Power control Racks
-      operationId: power-control-racks
-      description: |-
-        Power control Racks with optional filters. If no filter is specified, targets all racks in the Site.
-
-        Supported power states: `on`, `off`, `cycle`, `forceoff`, `forcecycle`.
-
-        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
-      parameters:
-        - schema:
-            type: string
-            format: uuid
-          name: siteId
-          in: query
-          required: true
-          description: ID of the Site
-        - schema:
-            type: string
-          name: name
-          in: query
-          description: Filter racks by name. Can be specified multiple times to filter on more than one rack name.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PowerControlRequest'
-            examples:
               power-off:
                 value:
                   state: 'off'
-              force-off:
+              power-cycle:
                 value:
-                  state: forceoff
+                  state: cycle
       responses:
         '200':
           description: OK
@@ -8912,66 +9084,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PowerControlResponse'
-              examples:
-                example-1:
-                  value:
-                    taskIds:
-                      - 550e8400-e29b-41d4-a716-446655440000
-                      - 660e8400-e29b-41d4-a716-446655440001
-        '400':
-          $ref: '#/components/responses/ValidationError'
-        '403':
-          $ref: '#/components/responses/ForbiddenError'
-      tags:
-        - Rack
-  '/v2/org/{org}/carbide/tray/{id}/firmware':
-    parameters:
-      - schema:
-          type: string
-        name: org
-        in: path
-        required: true
-        description: Name of the Org
-      - schema:
-          type: string
-          format: uuid
-        name: id
-        in: path
-        required: true
-        description: ID of the Tray
-    patch:
-      summary: Firmware upgrade a Tray
-      operationId: firmware-upgrade-tray
-      description: |-
-        Upgrade firmware on a single Tray by ID. Version is optional; omit to upgrade to the latest available.
-
-        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
-      parameters:
-        - schema:
-            type: string
-            format: uuid
-          name: siteId
-          in: query
-          required: true
-          description: ID of the Site
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/FirmwareUpgradeRequest'
-            examples:
-              with-version:
-                value:
-                  version: '24.11.0'
-              without-version:
-                value: {}
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FirmwareUpgradeResponse'
               examples:
                 example-1:
                   value:
@@ -9071,124 +9183,7 @@ paths:
           $ref: '#/components/responses/ForbiddenError'
       tags:
         - Tray
-  '/v2/org/{org}/carbide/rack/{id}/firmware':
-    parameters:
-      - schema:
-          type: string
-        name: org
-        in: path
-        required: true
-        description: Name of the Org
-      - schema:
-          type: string
-          format: uuid
-        name: id
-        in: path
-        required: true
-        description: ID of the Rack
-    patch:
-      summary: Firmware upgrade a Rack
-      operationId: firmware-upgrade-rack
-      description: |-
-        Upgrade firmware on a single Rack by ID. Version is optional; omit to upgrade to the latest available.
-
-        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
-      parameters:
-        - schema:
-            type: string
-            format: uuid
-          name: siteId
-          in: query
-          required: true
-          description: ID of the Site
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/FirmwareUpgradeRequest'
-            examples:
-              with-version:
-                value:
-                  version: '24.11.0'
-              without-version:
-                value: {}
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FirmwareUpgradeResponse'
-              examples:
-                example-1:
-                  value:
-                    taskIds:
-                      - 550e8400-e29b-41d4-a716-446655440000
-        '400':
-          $ref: '#/components/responses/ValidationError'
-        '403':
-          $ref: '#/components/responses/ForbiddenError'
-      tags:
-        - Rack
-  '/v2/org/{org}/carbide/rack/firmware':
-    parameters:
-      - schema:
-          type: string
-        name: org
-        in: path
-        required: true
-        description: Name of the Org
-    patch:
-      summary: Firmware upgrade Racks
-      operationId: firmware-upgrade-racks
-      description: |-
-        Upgrade firmware on Racks with optional name filter. Version is optional; omit to upgrade to the latest available. If no filter is specified, targets all racks in the Site.
-
-        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
-      parameters:
-        - schema:
-            type: string
-            format: uuid
-          name: siteId
-          in: query
-          required: true
-          description: ID of the Site
-        - schema:
-            type: string
-          name: name
-          in: query
-          description: Filter racks by name. Can be specified multiple times to filter on more than one rack name.
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/FirmwareUpgradeRequest'
-            examples:
-              with-version:
-                value:
-                  version: '24.11.0'
-              without-version:
-                value: {}
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/FirmwareUpgradeResponse'
-              examples:
-                example-1:
-                  value:
-                    taskIds:
-                      - 550e8400-e29b-41d4-a716-446655440000
-                      - 660e8400-e29b-41d4-a716-446655440001
-        '400':
-          $ref: '#/components/responses/ValidationError'
-        '403':
-          $ref: '#/components/responses/ForbiddenError'
-      tags:
-        - Rack
-  '/v2/org/{org}/carbide/tray/{id}/validation':
+  '/v2/org/{org}/carbide/tray/{id}/firmware':
     parameters:
       - schema:
           type: string
@@ -9203,13 +9198,11 @@ paths:
         in: path
         required: true
         description: ID of the Tray
-    get:
-      summary: Validate a Tray
-      operationId: validate-tray
+    patch:
+      summary: Firmware upgrade a Tray
+      operationId: firmware-upgrade-tray
       description: |-
-        Validate a Tray by comparing expected vs actual state via RLA.
-
-        Compares the expected component configuration (stored in RLA) against the actual state from external systems. Returns a detailed diff report showing missing, extra, and drifted components.
+        Upgrade firmware on a single Tray by ID. Version is optional; omit to upgrade to the latest available.
 
         Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
       parameters:
@@ -9220,22 +9213,29 @@ paths:
           in: query
           required: true
           description: ID of the Site
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FirmwareUpgradeRequest'
+            examples:
+              with-version:
+                value:
+                  version: '24.11.0'
+              without-version:
+                value: {}
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RackValidationResult'
+                $ref: '#/components/schemas/FirmwareUpgradeResponse'
               examples:
-                example-no-diffs:
+                example-1:
                   value:
-                    diffs: []
-                    totalDiffs: 0
-                    onlyInExpectedCount: 0
-                    onlyInActualCount: 0
-                    driftCount: 0
-                    matchCount: 5
+                    taskIds:
+                      - 550e8400-e29b-41d4-a716-446655440000
         '400':
           $ref: '#/components/responses/ValidationError'
         '403':

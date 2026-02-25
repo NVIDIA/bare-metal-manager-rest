@@ -18,6 +18,9 @@
 package model
 
 import (
+	"fmt"
+	"net/url"
+
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 )
 
@@ -35,16 +38,23 @@ type APIFirmwareUpgradeResponse struct {
 	TaskIDs []string `json:"taskIds"`
 }
 
+// FromProto converts an RLA SubmitTaskResponse to an APIFirmwareUpgradeResponse
+func (r *APIFirmwareUpgradeResponse) FromProto(resp *rlav1.SubmitTaskResponse) {
+	if resp == nil {
+		r.TaskIDs = []string{}
+		return
+	}
+	r.TaskIDs = make([]string, 0, len(resp.GetTaskIds()))
+	for _, id := range resp.GetTaskIds() {
+		r.TaskIDs = append(r.TaskIDs, id.GetId())
+	}
+}
+
 // NewAPIFirmwareUpgradeResponse creates an APIFirmwareUpgradeResponse from an RLA SubmitTaskResponse
 func NewAPIFirmwareUpgradeResponse(resp *rlav1.SubmitTaskResponse) *APIFirmwareUpgradeResponse {
-	if resp == nil {
-		return &APIFirmwareUpgradeResponse{TaskIDs: []string{}}
-	}
-	taskIDs := make([]string, 0, len(resp.GetTaskIds()))
-	for _, id := range resp.GetTaskIds() {
-		taskIDs = append(taskIDs, id.GetId())
-	}
-	return &APIFirmwareUpgradeResponse{TaskIDs: taskIDs}
+	r := &APIFirmwareUpgradeResponse{}
+	r.FromProto(resp)
+	return r
 }
 
 // ========== Rack Firmware Upgrade Batch Request ==========
@@ -54,6 +64,25 @@ func NewAPIFirmwareUpgradeResponse(resp *rlav1.SubmitTaskResponse) *APIFirmwareU
 type APIRackFirmwareUpgradeBatchRequest struct {
 	SiteID string   `query:"siteId"`
 	Names  []string `query:"name"`
+}
+
+// Validate checks required fields on the batch firmware upgrade request
+func (r *APIRackFirmwareUpgradeBatchRequest) Validate() error {
+	if r.SiteID == "" {
+		return fmt.Errorf("siteId query parameter is required")
+	}
+	return nil
+}
+
+// QueryValues returns only the known query parameters as url.Values,
+// suitable for deterministic workflow ID hashing without unknown param interference.
+func (r *APIRackFirmwareUpgradeBatchRequest) QueryValues() url.Values {
+	v := url.Values{}
+	v.Set("siteId", r.SiteID)
+	for _, n := range r.Names {
+		v.Add("name", n)
+	}
+	return v
 }
 
 // ToTargetSpec converts the filter request to an RLA OperationTargetSpec

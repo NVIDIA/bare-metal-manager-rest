@@ -824,8 +824,10 @@ func (pcth PowerControlTrayHandler) Handle(c echo.Context) error {
 	if err := c.Bind(&apiRequest); err != nil {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
 	}
-	if verr := apiRequest.Validate(); verr != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate request data", verr)
+	verr := apiRequest.Validate()
+	if verr != nil {
+		logger.Warn().Err(verr).Msg("error validating power control request data")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate power control request data", verr)
 	}
 
 	// Get the temporal client for the site
@@ -968,8 +970,10 @@ func (pctbh PowerControlTrayBatchHandler) Handle(c echo.Context) error {
 	if err := c.Bind(&apiRequest); err != nil {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
 	}
-	if verr := apiRequest.Validate(); verr != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate request data", verr)
+	verr := apiRequest.Validate()
+	if verr != nil {
+		logger.Warn().Err(verr).Msg("error validating power control request data")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate power control request data", verr)
 	}
 
 	// Get the temporal client for the site
@@ -1027,11 +1031,13 @@ func (futh FirmwareUpgradeTrayHandler) Handle(c echo.Context) error {
 		defer handlerSpan.End()
 	}
 
+	// Is DB user missing?
 	if dbUser == nil {
 		logger.Error().Msg("invalid User object found in request context")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
 	}
 
+	// Validate org membership
 	ok, err := auth.ValidateOrgMembership(dbUser, org)
 	if !ok {
 		if err != nil {
@@ -1042,23 +1048,27 @@ func (futh FirmwareUpgradeTrayHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
 	}
 
+	// Validate role, only Provider Admins are allowed to firmware upgrade Tray
 	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
 	if !ok {
 		logger.Warn().Msg("user does not have Provider Admin role, access denied")
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Provider Admin role with org", nil)
 	}
 
+	// Get Infrastructure Provider for org
 	infrastructureProvider, err := common.GetInfrastructureProviderForOrg(ctx, nil, futh.dbSession, org)
 	if err != nil {
 		logger.Warn().Err(err).Msg("error getting infrastructure provider for org")
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
 	}
 
+	// Validate siteId is provided
 	siteStrID := c.QueryParam("siteId")
 	if siteStrID == "" {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
 	}
 
+	// Retrieve the Site from the DB
 	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, futh.dbSession)
 	if err != nil {
 		if errors.Is(err, cdb.ErrDoesNotExist) {
@@ -1068,21 +1078,25 @@ func (futh FirmwareUpgradeTrayHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site due to DB error", nil)
 	}
 
+	// Verify site belongs to the org's Infrastructure Provider
 	if site.InfrastructureProviderID != infrastructureProvider.ID {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
+	// Get tray ID from URL param
 	trayStrID := c.Param("id")
 	if _, err := uuid.Parse(trayStrID); err != nil {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid Tray ID in URL", nil)
 	}
 	futh.tracerSpan.SetAttribute(handlerSpan, attribute.String("tray_id", trayStrID), logger)
 
+	// Parse request body
 	apiRequest := model.APIFirmwareUpgradeRequest{}
 	if err := c.Bind(&apiRequest); err != nil {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
 	}
 
+	// Get the temporal client for the site
 	stc, err := futh.scp.GetClientByID(site.ID)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to retrieve Temporal client for Site")
@@ -1164,11 +1178,13 @@ func (futbh FirmwareUpgradeTrayBatchHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate request data", verr)
 	}
 
+	// Is DB user missing?
 	if dbUser == nil {
 		logger.Error().Msg("invalid User object found in request context")
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
 	}
 
+	// Validate org membership
 	ok, err := auth.ValidateOrgMembership(dbUser, org)
 	if !ok {
 		if err != nil {
@@ -1179,23 +1195,27 @@ func (futbh FirmwareUpgradeTrayBatchHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
 	}
 
+	// Validate role, only Provider Admins are allowed to firmware upgrade Tray
 	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
 	if !ok {
 		logger.Warn().Msg("user does not have Provider Admin role, access denied")
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Provider Admin role with org", nil)
 	}
 
+	// Get Infrastructure Provider for org
 	infrastructureProvider, err := common.GetInfrastructureProviderForOrg(ctx, nil, futbh.dbSession, org)
 	if err != nil {
 		logger.Warn().Err(err).Msg("error getting infrastructure provider for org")
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
 	}
 
+	// Validate siteId is provided
 	siteStrID := filterRequest.SiteID
 	if siteStrID == "" {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
 	}
 
+	// Retrieve the Site from the DB
 	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, futbh.dbSession)
 	if err != nil {
 		if errors.Is(err, cdb.ErrDoesNotExist) {
@@ -1205,15 +1225,18 @@ func (futbh FirmwareUpgradeTrayBatchHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site due to DB error", nil)
 	}
 
+	// Verify site belongs to the org's Infrastructure Provider
 	if site.InfrastructureProviderID != infrastructureProvider.ID {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
+	// Parse request body
 	apiRequest := model.APIFirmwareUpgradeRequest{}
 	if err := c.Bind(&apiRequest); err != nil {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
 	}
 
+	// Get the temporal client for the site
 	stc, err := futbh.scp.GetClientByID(site.ID)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to retrieve Temporal client for Site")

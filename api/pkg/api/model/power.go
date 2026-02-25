@@ -19,6 +19,7 @@ package model
 
 import (
 	"fmt"
+	"net/url"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 
@@ -60,16 +61,23 @@ type APIPowerControlResponse struct {
 	TaskIDs []string `json:"taskIds"`
 }
 
+// FromProto converts an RLA SubmitTaskResponse to an APIPowerControlResponse
+func (r *APIPowerControlResponse) FromProto(resp *rlav1.SubmitTaskResponse) {
+	if resp == nil {
+		r.TaskIDs = []string{}
+		return
+	}
+	r.TaskIDs = make([]string, 0, len(resp.GetTaskIds()))
+	for _, id := range resp.GetTaskIds() {
+		r.TaskIDs = append(r.TaskIDs, id.GetId())
+	}
+}
+
 // NewAPIPowerControlResponse creates an APIPowerControlResponse from an RLA SubmitTaskResponse
 func NewAPIPowerControlResponse(resp *rlav1.SubmitTaskResponse) *APIPowerControlResponse {
-	if resp == nil {
-		return &APIPowerControlResponse{TaskIDs: []string{}}
-	}
-	taskIDs := make([]string, 0, len(resp.GetTaskIds()))
-	for _, id := range resp.GetTaskIds() {
-		taskIDs = append(taskIDs, id.GetId())
-	}
-	return &APIPowerControlResponse{TaskIDs: taskIDs}
+	r := &APIPowerControlResponse{}
+	r.FromProto(resp)
+	return r
 }
 
 // ========== Rack Power Control Batch Request ==========
@@ -79,6 +87,25 @@ func NewAPIPowerControlResponse(resp *rlav1.SubmitTaskResponse) *APIPowerControl
 type APIRackPowerControlBatchRequest struct {
 	SiteID string   `query:"siteId"`
 	Names  []string `query:"name"`
+}
+
+// Validate checks required fields on the batch power control request
+func (r *APIRackPowerControlBatchRequest) Validate() error {
+	if r.SiteID == "" {
+		return fmt.Errorf("siteId query parameter is required")
+	}
+	return nil
+}
+
+// QueryValues returns only the known query parameters as url.Values,
+// suitable for deterministic workflow ID hashing without unknown param interference.
+func (r *APIRackPowerControlBatchRequest) QueryValues() url.Values {
+	v := url.Values{}
+	v.Set("siteId", r.SiteID)
+	for _, n := range r.Names {
+		v.Add("name", n)
+	}
+	return v
 }
 
 // ToTargetSpec converts the filter request to an RLA OperationTargetSpec
