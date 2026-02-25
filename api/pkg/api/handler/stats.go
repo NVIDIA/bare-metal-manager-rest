@@ -18,7 +18,9 @@
 package handler
 
 import (
+	"maps"
 	"net/http"
+	"slices"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -70,83 +72,6 @@ func buildMachineUsageMaps(instances []cdbm.Instance, machineByID map[string]cdb
 	return itUsed, tenantITUsed
 }
 
-// buildConstraintsByIT groups allocation constraints by instance type ID
-func buildConstraintsByIT(constraints []cdbm.AllocationConstraint) map[uuid.UUID][]cdbm.AllocationConstraint {
-	result := make(map[uuid.UUID][]cdbm.AllocationConstraint)
-	for _, ac := range constraints {
-		result[ac.ResourceTypeID] = append(result[ac.ResourceTypeID], ac)
-	}
-	return result
-}
-
-// buildInstanceTypeStats builds a single APIMachineInstanceTypeStats for one instance type
-func buildInstanceTypeStats(
-	it cdbm.InstanceType,
-	itMachines []cdbm.Machine,
-	itConstraints []cdbm.AllocationConstraint,
-	itUsed map[uuid.UUID]*model.APIUsedMachineStats,
-	tenantITUsed map[uuid.UUID]map[uuid.UUID]*model.APIUsedMachineStats,
-) model.APIMachineInstanceTypeStats {
-	assignedStats := &model.APIUsedMachineStats{}
-	for _, m := range itMachines {
-		assignedStats.AddMachineStatusCounts(m)
-	}
-
-	allocated := lo.Reduce(itConstraints, func(acc int, ac cdbm.AllocationConstraint, _ int) int {
-		return acc + ac.ConstraintValue
-	}, 0)
-
-	used := model.APIUsedMachineStats{}
-	if itUsed[it.ID] != nil {
-		used = *itUsed[it.ID]
-	}
-
-	maxAlloc := (assignedStats.Total - assignedStats.Error - assignedStats.Maintenance) - used.Total
-
-	if maxAlloc < 0 {
-		maxAlloc = 0
-	}
-
-	tenantMap := make(map[uuid.UUID]*model.APIMachineInstanceTypeTenant)
-	for _, ac := range itConstraints {
-		tID := ac.Allocation.TenantID
-		tenantEntry, exists := tenantMap[tID]
-		if !exists {
-			tenantEntry = &model.APIMachineInstanceTypeTenant{
-				ID:   tID.String(),
-				Name: ac.Allocation.Tenant.Org,
-			}
-			tenantMap[tID] = tenantEntry
-		}
-		tenantEntry.Allocated += ac.ConstraintValue
-		tenantEntry.Allocations = append(tenantEntry.Allocations, model.APIMachineInstanceTypeTenantAllocation{
-			ID:        ac.Allocation.ID.String(),
-			Name:      ac.Allocation.Name,
-			Allocated: ac.ConstraintValue,
-		})
-	}
-
-	for tID, tenantEntry := range tenantMap {
-		if tenantITUsed[tID] != nil && tenantITUsed[tID][it.ID] != nil {
-			tenantEntry.UsedMachineStats = *tenantITUsed[tID][it.ID]
-		}
-	}
-
-	tenants := lo.MapToSlice(tenantMap, func(_ uuid.UUID, t *model.APIMachineInstanceTypeTenant) model.APIMachineInstanceTypeTenant {
-		return *t
-	})
-
-	return model.APIMachineInstanceTypeStats{
-		ID:                   it.ID.String(),
-		Name:                 it.Name,
-		AssignedMachineStats: *assignedStats,
-		Allocated:            allocated,
-		MaxAllocatable:       maxAlloc,
-		UsedMachineStats:     used,
-		Tenants:              tenants,
-	}
-}
-
 // ~~~~~ Machine GPU Stats Handler ~~~~~ //
 
 // GetMachineGPUStatsHandler is the API Handler for retrieving GPU stats for machines at a site
@@ -176,13 +101,13 @@ func NewGetMachineGPUStatsHandler(dbSession *cdb.Session, cfg *config.Config) Ge
 // @Param siteId query string true "Site ID"
 // @Success 200 {array} model.APIMachineGPUStats
 // @Router /v2/org/{orgName}/carbide/machine/gpu/stats [get]
-func (h GetMachineGPUStatsHandler) Handle(c echo.Context) error {
-	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Machine", "GetGPUStats", c, h.tracerSpan)
+func (gmgsh GetMachineGPUStatsHandler) Handle(c echo.Context) error {
+	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Machine", "GetGPUStats", c, gmgsh.tracerSpan)
 	if handlerSpan != nil {
 		defer handlerSpan.End()
 	}
 
-	infrastructureProvider, apiError := common.IsProvider(ctx, logger, h.dbSession, org, dbUser, false)
+	infrastructureProvider, apiError := common.IsProvider(ctx, logger, gmgsh.dbSession, org, dbUser, false)
 	if apiError != nil {
 		return cerr.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
 	}
@@ -191,7 +116,7 @@ func (h GetMachineGPUStatsHandler) Handle(c echo.Context) error {
 	if siteIDStr == "" {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
 	}
-	site, err := common.GetSiteFromIDString(ctx, nil, siteIDStr, h.dbSession)
+	site, err := common.GetSiteFromIDString(ctx, nil, siteIDStr, gmgsh.dbSession)
 	if err != nil {
 		logger.Error().Err(err).Str("siteId", siteIDStr).Msg("error parsing or retrieving site")
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid Site ID specified in query param", nil)
@@ -204,7 +129,7 @@ func (h GetMachineGPUStatsHandler) Handle(c echo.Context) error {
 	siteID := &site.ID
 
 	// Fetch all machines for the site (exclude metadata for performance)
-	machineDAO := cdbm.NewMachineDAO(h.dbSession)
+	machineDAO := cdbm.NewMachineDAO(gmgsh.dbSession)
 	machines, _, err := machineDAO.GetAll(ctx, nil, cdbm.MachineFilterInput{
 		SiteID:          siteID,
 		ExcludeMetadata: true,
@@ -221,7 +146,7 @@ func (h GetMachineGPUStatsHandler) Handle(c echo.Context) error {
 	machineIDs := lo.Map(machines, func(m cdbm.Machine, _ int) string { return m.ID })
 
 	// Fetch GPU capabilities for all machines
-	mcDAO := cdbm.NewMachineCapabilityDAO(h.dbSession)
+	mcDAO := cdbm.NewMachineCapabilityDAO(gmgsh.dbSession)
 	gpuType := cdbm.MachineCapabilityTypeGPU
 	capabilities, _, err := mcDAO.GetAll(ctx, nil, machineIDs, nil, &gpuType,
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
@@ -295,13 +220,13 @@ func NewGetTenantInstanceTypeStatsHandler(dbSession *cdb.Session, cfg *config.Co
 // @Param siteId query string true "Site ID"
 // @Success 200 {array} model.APITenantInstanceTypeStats
 // @Router /v2/org/{orgName}/carbide/tenant/instance-type/stats [get]
-func (h GetTenantInstanceTypeStatsHandler) Handle(c echo.Context) error {
-	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Tenant", "GetInstanceTypeStats", c, h.tracerSpan)
+func (gtitsh GetTenantInstanceTypeStatsHandler) Handle(c echo.Context) error {
+	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Tenant", "GetInstanceTypeStats", c, gtitsh.tracerSpan)
 	if handlerSpan != nil {
 		defer handlerSpan.End()
 	}
 
-	infrastructureProvider, apiError := common.IsProvider(ctx, logger, h.dbSession, org, dbUser, false)
+	infrastructureProvider, apiError := common.IsProvider(ctx, logger, gtitsh.dbSession, org, dbUser, false)
 	if apiError != nil {
 		return cerr.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
 	}
@@ -310,7 +235,7 @@ func (h GetTenantInstanceTypeStatsHandler) Handle(c echo.Context) error {
 	if siteIDStr == "" {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
 	}
-	site, err := common.GetSiteFromIDString(ctx, nil, siteIDStr, h.dbSession)
+	site, err := common.GetSiteFromIDString(ctx, nil, siteIDStr, gtitsh.dbSession)
 	if err != nil {
 		logger.Error().Err(err).Str("siteId", siteIDStr).Msg("error parsing or retrieving site")
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid Site ID specified in query param", nil)
@@ -324,7 +249,7 @@ func (h GetTenantInstanceTypeStatsHandler) Handle(c echo.Context) error {
 	siteIDs := []uuid.UUID{*siteID}
 
 	// 1. Fetch all instance types for the site
-	itDAO := cdbm.NewInstanceTypeDAO(h.dbSession)
+	itDAO := cdbm.NewInstanceTypeDAO(gtitsh.dbSession)
 	instanceTypes, _, err := itDAO.GetAll(ctx, nil, cdbm.InstanceTypeFilterInput{SiteIDs: siteIDs},
 		nil, nil, nil, nil)
 	if err != nil {
@@ -336,7 +261,7 @@ func (h GetTenantInstanceTypeStatsHandler) Handle(c echo.Context) error {
 	instanceTypeMap := lo.KeyBy(instanceTypes, func(it cdbm.InstanceType) uuid.UUID { return it.ID })
 
 	// 2. Fetch all allocations for the site (IDs needed to filter constraints)
-	aDAO := cdbm.NewAllocationDAO(h.dbSession)
+	aDAO := cdbm.NewAllocationDAO(gtitsh.dbSession)
 	allocations, _, err := aDAO.GetAll(ctx, nil, cdbm.AllocationFilterInput{SiteIDs: siteIDs},
 		cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
 	if err != nil {
@@ -349,7 +274,7 @@ func (h GetTenantInstanceTypeStatsHandler) Handle(c echo.Context) error {
 	// 3. Fetch allocation constraints with Allocation.Tenant
 	var constraints []cdbm.AllocationConstraint
 	if len(allocationIDs) > 0 {
-		acDAO := cdbm.NewAllocationConstraintDAO(h.dbSession)
+		acDAO := cdbm.NewAllocationConstraintDAO(gtitsh.dbSession)
 		constraints, _, err = acDAO.GetAll(ctx, nil, allocationIDs,
 			cdb.GetStrPtr(cdbm.AllocationResourceTypeInstanceType), instanceTypeIDs,
 			nil, nil, []string{"Allocation.Tenant"}, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
@@ -360,7 +285,7 @@ func (h GetTenantInstanceTypeStatsHandler) Handle(c echo.Context) error {
 	}
 
 	// 4. Fetch all instances for the site
-	iDAO := cdbm.NewInstanceDAO(h.dbSession)
+	iDAO := cdbm.NewInstanceDAO(gtitsh.dbSession)
 	instances, _, err := iDAO.GetAll(ctx, nil, cdbm.InstanceFilterInput{SiteIDs: siteIDs},
 		cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
 	if err != nil {
@@ -369,7 +294,7 @@ func (h GetTenantInstanceTypeStatsHandler) Handle(c echo.Context) error {
 	}
 
 	// 5. Fetch all machines with instance types for the site (exclude metadata)
-	machineDAO := cdbm.NewMachineDAO(h.dbSession)
+	machineDAO := cdbm.NewMachineDAO(gtitsh.dbSession)
 	machines, _, err := machineDAO.GetAll(ctx, nil, cdbm.MachineFilterInput{
 		SiteID:          siteID,
 		InstanceTypeIDs: instanceTypeIDs,
@@ -427,7 +352,7 @@ func (h GetTenantInstanceTypeStatsHandler) Handle(c echo.Context) error {
 	}
 
 	// Build response grouped by tenant
-	tenantStatsMap := make(map[uuid.UUID]*model.APITenantInstanceTypeStats)
+	tenantStatsMap := make(map[uuid.UUID]model.APITenantInstanceTypeStats)
 	for tID, itAllocs := range tenantITAllocs {
 		var t *cdbm.Tenant
 		for _, acs := range itAllocs {
@@ -442,7 +367,7 @@ func (h GetTenantInstanceTypeStatsHandler) Handle(c echo.Context) error {
 			tenantOrgDisplay = *t.OrgDisplayName
 		}
 
-		ts := &model.APITenantInstanceTypeStats{
+		ts := model.APITenantInstanceTypeStats{
 			ID:             t.ID.String(),
 			Org:            t.Org,
 			OrgDisplayName: tenantOrgDisplay,
@@ -488,9 +413,7 @@ func (h GetTenantInstanceTypeStatsHandler) Handle(c echo.Context) error {
 		tenantStatsMap[tID] = ts
 	}
 
-	result := lo.MapToSlice(tenantStatsMap, func(_ uuid.UUID, ts *model.APITenantInstanceTypeStats) model.APITenantInstanceTypeStats {
-		return *ts
-	})
+	result := slices.Collect(maps.Values(tenantStatsMap))
 
 	logger.Info().Msg("finishing API handler")
 	return c.JSON(http.StatusOK, result)
@@ -525,13 +448,13 @@ func NewGetMachineInstanceTypeSummaryHandler(dbSession *cdb.Session, cfg *config
 // @Param siteId query string true "Site ID"
 // @Success 200 {object} model.APIMachineInstanceTypeSummary
 // @Router /v2/org/{orgName}/carbide/machine/instance-type/stats/summary [get]
-func (h GetMachineInstanceTypeSummaryHandler) Handle(c echo.Context) error {
-	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Machine", "GetInstanceTypeSummary", c, h.tracerSpan)
+func (gmitsh GetMachineInstanceTypeSummaryHandler) Handle(c echo.Context) error {
+	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Machine", "GetInstanceTypeSummary", c, gmitsh.tracerSpan)
 	if handlerSpan != nil {
 		defer handlerSpan.End()
 	}
 
-	infrastructureProvider, apiError := common.IsProvider(ctx, logger, h.dbSession, org, dbUser, false)
+	infrastructureProvider, apiError := common.IsProvider(ctx, logger, gmitsh.dbSession, org, dbUser, false)
 	if apiError != nil {
 		return cerr.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
 	}
@@ -540,7 +463,7 @@ func (h GetMachineInstanceTypeSummaryHandler) Handle(c echo.Context) error {
 	if siteIDStr == "" {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
 	}
-	site, err := common.GetSiteFromIDString(ctx, nil, siteIDStr, h.dbSession)
+	site, err := common.GetSiteFromIDString(ctx, nil, siteIDStr, gmitsh.dbSession)
 	if err != nil {
 		logger.Error().Err(err).Str("siteId", siteIDStr).Msg("error parsing or retrieving site")
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid Site ID specified in query param", nil)
@@ -553,7 +476,7 @@ func (h GetMachineInstanceTypeSummaryHandler) Handle(c echo.Context) error {
 	siteID := &site.ID
 
 	// Fetch all machines for the site (exclude metadata for performance)
-	machineDAO := cdbm.NewMachineDAO(h.dbSession)
+	machineDAO := cdbm.NewMachineDAO(gmitsh.dbSession)
 	machines, _, err := machineDAO.GetAll(ctx, nil, cdbm.MachineFilterInput{
 		SiteID:          siteID,
 		ExcludeMetadata: true,
@@ -623,13 +546,13 @@ func NewGetMachineInstanceTypeStatsHandler(dbSession *cdb.Session, cfg *config.C
 // @Param siteId query string true "Site ID"
 // @Success 200 {array} model.APIMachineInstanceTypeStats
 // @Router /v2/org/{orgName}/carbide/machine/instance-type/stats [get]
-func (h GetMachineInstanceTypeStatsHandler) Handle(c echo.Context) error {
-	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Machine", "GetInstanceTypeStats", c, h.tracerSpan)
+func (gmitsh GetMachineInstanceTypeStatsHandler) Handle(c echo.Context) error {
+	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Machine", "GetInstanceTypeStats", c, gmitsh.tracerSpan)
 	if handlerSpan != nil {
 		defer handlerSpan.End()
 	}
 
-	infrastructureProvider, apiError := common.IsProvider(ctx, logger, h.dbSession, org, dbUser, false)
+	infrastructureProvider, apiError := common.IsProvider(ctx, logger, gmitsh.dbSession, org, dbUser, false)
 	if apiError != nil {
 		return cerr.NewAPIErrorResponse(c, apiError.Code, apiError.Message, apiError.Data)
 	}
@@ -638,7 +561,7 @@ func (h GetMachineInstanceTypeStatsHandler) Handle(c echo.Context) error {
 	if siteIDStr == "" {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
 	}
-	site, err := common.GetSiteFromIDString(ctx, nil, siteIDStr, h.dbSession)
+	site, err := common.GetSiteFromIDString(ctx, nil, siteIDStr, gmitsh.dbSession)
 	if err != nil {
 		logger.Error().Err(err).Str("siteId", siteIDStr).Msg("error parsing or retrieving site")
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid Site ID specified in query param", nil)
@@ -652,7 +575,7 @@ func (h GetMachineInstanceTypeStatsHandler) Handle(c echo.Context) error {
 	siteIDs := []uuid.UUID{*siteID}
 
 	// 1. Fetch all instance types for the site
-	itDAO := cdbm.NewInstanceTypeDAO(h.dbSession)
+	itDAO := cdbm.NewInstanceTypeDAO(gmitsh.dbSession)
 	instanceTypes, _, err := itDAO.GetAll(ctx, nil, cdbm.InstanceTypeFilterInput{SiteIDs: siteIDs},
 		nil, nil, nil, nil)
 	if err != nil {
@@ -667,7 +590,7 @@ func (h GetMachineInstanceTypeStatsHandler) Handle(c echo.Context) error {
 	instanceTypeIDs := lo.Map(instanceTypes, func(it cdbm.InstanceType, _ int) uuid.UUID { return it.ID })
 
 	// 2. Fetch all machines for the site (exclude metadata)
-	machineDAO := cdbm.NewMachineDAO(h.dbSession)
+	machineDAO := cdbm.NewMachineDAO(gmitsh.dbSession)
 	machines, _, err := machineDAO.GetAll(ctx, nil, cdbm.MachineFilterInput{
 		SiteID:          siteID,
 		ExcludeMetadata: true,
@@ -683,7 +606,7 @@ func (h GetMachineInstanceTypeStatsHandler) Handle(c echo.Context) error {
 	machinesByIT := lo.GroupBy(assignedMachines, func(m cdbm.Machine) uuid.UUID { return *m.InstanceTypeID })
 
 	// 3. Fetch all allocations for the site (IDs needed to filter constraints)
-	aDAO := cdbm.NewAllocationDAO(h.dbSession)
+	aDAO := cdbm.NewAllocationDAO(gmitsh.dbSession)
 	allocations, _, err := aDAO.GetAll(ctx, nil, cdbm.AllocationFilterInput{SiteIDs: siteIDs},
 		cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
 	if err != nil {
@@ -696,7 +619,7 @@ func (h GetMachineInstanceTypeStatsHandler) Handle(c echo.Context) error {
 	// 4. Fetch allocation constraints with Allocation.Tenant
 	var constraints []cdbm.AllocationConstraint
 	if len(allocationIDs) > 0 {
-		acDAO := cdbm.NewAllocationConstraintDAO(h.dbSession)
+		acDAO := cdbm.NewAllocationConstraintDAO(gmitsh.dbSession)
 		constraints, _, err = acDAO.GetAll(ctx, nil, allocationIDs,
 			cdb.GetStrPtr(cdbm.AllocationResourceTypeInstanceType), instanceTypeIDs,
 			nil, nil, []string{"Allocation.Tenant"}, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
@@ -707,7 +630,7 @@ func (h GetMachineInstanceTypeStatsHandler) Handle(c echo.Context) error {
 	}
 
 	// 5. Fetch all instances for the site
-	iDAO := cdbm.NewInstanceDAO(h.dbSession)
+	iDAO := cdbm.NewInstanceDAO(gmitsh.dbSession)
 	instances, _, err := iDAO.GetAll(ctx, nil, cdbm.InstanceFilterInput{SiteIDs: siteIDs},
 		cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
 	if err != nil {
@@ -717,11 +640,14 @@ func (h GetMachineInstanceTypeStatsHandler) Handle(c echo.Context) error {
 
 	// Build aggregation maps using shared helpers
 	itUsed, tenantITUsed := buildMachineUsageMaps(instances, machineByID)
-	constraintsByIT := buildConstraintsByIT(constraints)
+	constraintsByIT := make(map[uuid.UUID][]cdbm.AllocationConstraint)
+	for _, ac := range constraints {
+		constraintsByIT[ac.ResourceTypeID] = append(constraintsByIT[ac.ResourceTypeID], ac)
+	}
 
 	// Build response
 	result := lo.Map(instanceTypes, func(it cdbm.InstanceType, _ int) model.APIMachineInstanceTypeStats {
-		return buildInstanceTypeStats(it, machinesByIT[it.ID], constraintsByIT[it.ID], itUsed, tenantITUsed)
+		return model.NewAPIMachineInstanceTypeStats(it, machinesByIT[it.ID], constraintsByIT[it.ID], itUsed, tenantITUsed)
 	})
 
 	logger.Info().Msg("finishing API handler")

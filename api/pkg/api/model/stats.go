@@ -18,6 +18,9 @@
 package model
 
 import (
+	"github.com/google/uuid"
+	"github.com/samber/lo"
+
 	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 )
 
@@ -163,4 +166,72 @@ type APIMachineInstanceTypeTenantAllocation struct {
 	Name string `json:"name"`
 	// Allocated is the total number of machines in this allocation for the instance type
 	Allocated int `json:"allocated"`
+}
+
+// NewAPIMachineInstanceTypeStats builds a single APIMachineInstanceTypeStats for one instance type
+func NewAPIMachineInstanceTypeStats(
+	it cdbm.InstanceType,
+	itMachines []cdbm.Machine,
+	itConstraints []cdbm.AllocationConstraint,
+	itUsed map[uuid.UUID]*APIUsedMachineStats,
+	tenantITUsed map[uuid.UUID]map[uuid.UUID]*APIUsedMachineStats,
+) APIMachineInstanceTypeStats {
+	assignedStats := &APIUsedMachineStats{}
+	for _, m := range itMachines {
+		assignedStats.AddMachineStatusCounts(m)
+	}
+
+	allocated := lo.Reduce(itConstraints, func(acc int, ac cdbm.AllocationConstraint, _ int) int {
+		return acc + ac.ConstraintValue
+	}, 0)
+
+	used := APIUsedMachineStats{}
+	if itUsed[it.ID] != nil {
+		used = *itUsed[it.ID]
+	}
+
+	maxAlloc := (assignedStats.Total - assignedStats.Error - assignedStats.Maintenance) - used.Total
+
+	if maxAlloc < 0 {
+		maxAlloc = 0
+	}
+
+	tenantMap := make(map[uuid.UUID]*APIMachineInstanceTypeTenant)
+	for _, ac := range itConstraints {
+		tID := ac.Allocation.TenantID
+		tenantEntry, exists := tenantMap[tID]
+		if !exists {
+			tenantEntry = &APIMachineInstanceTypeTenant{
+				ID:   tID.String(),
+				Name: ac.Allocation.Tenant.Org,
+			}
+			tenantMap[tID] = tenantEntry
+		}
+		tenantEntry.Allocated += ac.ConstraintValue
+		tenantEntry.Allocations = append(tenantEntry.Allocations, APIMachineInstanceTypeTenantAllocation{
+			ID:        ac.Allocation.ID.String(),
+			Name:      ac.Allocation.Name,
+			Allocated: ac.ConstraintValue,
+		})
+	}
+
+	for tID, tenantEntry := range tenantMap {
+		if tenantITUsed[tID] != nil && tenantITUsed[tID][it.ID] != nil {
+			tenantEntry.UsedMachineStats = *tenantITUsed[tID][it.ID]
+		}
+	}
+
+	tenants := lo.MapToSlice(tenantMap, func(_ uuid.UUID, t *APIMachineInstanceTypeTenant) APIMachineInstanceTypeTenant {
+		return *t
+	})
+
+	return APIMachineInstanceTypeStats{
+		ID:                   it.ID.String(),
+		Name:                 it.Name,
+		AssignedMachineStats: *assignedStats,
+		Allocated:            allocated,
+		MaxAllocatable:       maxAlloc,
+		UsedMachineStats:     used,
+		Tenants:              tenants,
+	}
 }

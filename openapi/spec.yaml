@@ -16872,43 +16872,34 @@ components:
         maintenance:
           type: integer
           description: Number of used Machines in maintenance state
+    MachineStatusBreakdown:
+      title: MachineStatusBreakdown
+      description: Machine counts broken down by status
+      type: object
+      properties:
+        total:
+          type: integer
+        ready:
+          type: integer
+        inUse:
+          type: integer
+        error:
+          type: integer
+        maintenance:
+          type: integer
+        unknown:
+          type: integer
     MachineInstanceTypeSummary:
       title: MachineInstanceTypeSummary
       description: Summary of machines grouped by assigned vs unassigned instance type
       type: object
       properties:
         assigned:
-          type: object
           description: Machines that have been assigned to an instance type
-          properties:
-            total:
-              type: integer
-            ready:
-              type: integer
-            inUse:
-              type: integer
-            error:
-              type: integer
-            maintenance:
-              type: integer
-            unknown:
-              type: integer
+          $ref: '#/components/schemas/MachineStatusBreakdown'
         unassigned:
-          type: object
           description: Machines that have not been assigned to any instance type
-          properties:
-            total:
-              type: integer
-            ready:
-              type: integer
-            inUse:
-              type: integer
-            error:
-              type: integer
-            maintenance:
-              type: integer
-            unknown:
-              type: integer
+          $ref: '#/components/schemas/MachineStatusBreakdown'
     MachineInstanceTypeStats:
       title: MachineInstanceTypeStats
       description: Detailed stats for machines of a specific instance type
@@ -16934,29 +16925,39 @@ components:
         tenants:
           type: array
           items:
-            type: object
-            properties:
-              id:
-                type: string
-                format: uuid
-              name:
-                type: string
-              allocated:
-                type: integer
-              usedMachineStats:
-                $ref: '#/components/schemas/UsedMachineStats'
-              allocations:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    id:
-                      type: string
-                      format: uuid
-                    name:
-                      type: string
-                    allocated:
-                      type: integer
+            $ref: '#/components/schemas/InstanceTypeStats'
+    InstanceTypeStats:
+      title: InstanceTypeStats
+      description: Stats for an instance type including allocation details
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        allocated:
+          type: integer
+        usedMachineStats:
+          $ref: '#/components/schemas/UsedMachineStats'
+        maxAllocatable:
+          type: integer
+        allocations:
+          type: array
+          items:
+            $ref: '#/components/schemas/AllocationStats'
+    AllocationStats:
+      title: AllocationStats
+      description: Stats for a single allocation within an instance type
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        total:
+          type: integer
     TenantInstanceTypeStats:
       title: TenantInstanceTypeStats
       description: Per-tenant instance type allocation stats
@@ -16975,31 +16976,7 @@ components:
         instanceTypes:
           type: array
           items:
-            type: object
-            properties:
-              id:
-                type: string
-                format: uuid
-              name:
-                type: string
-              allocated:
-                type: integer
-              usedMachineStats:
-                $ref: '#/components/schemas/UsedMachineStats'
-              maxAllocatable:
-                type: integer
-              allocations:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    id:
-                      type: string
-                      format: uuid
-                    name:
-                      type: string
-                    total:
-                      type: integer
+            $ref: '#/components/schemas/InstanceTypeStats'
   securitySchemes:
     JWTBearerToken:
       type: http
