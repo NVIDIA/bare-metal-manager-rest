@@ -2494,56 +2494,103 @@ func TestUniqueChecker_ComplexScenario(t *testing.T) {
 	assert.Contains(t, duplicates, "mac-x")
 }
 
-func TestValidateQueryParams(t *testing.T) {
-	allowed := []string{"siteId", "name", "pageSize"}
+func TestValidateKnownQueryParams(t *testing.T) {
+	type rackRequest struct {
+		SiteID string `query:"siteId"`
+		Name   string `query:"name"`
+	}
+	type pageRequest struct {
+		PageNumber string `query:"pageNumber"`
+		PageSize   string `query:"pageSize"`
+	}
 
 	tests := []struct {
 		name    string
 		query   string
+		structs []any
 		wantErr bool
 		errMsg  string
 	}{
 		{
-			name:    "all params allowed",
+			name:    "all params known",
 			query:   "siteId=abc&name=rack1",
+			structs: []any{rackRequest{}},
 			wantErr: false,
 		},
 		{
 			name:    "no params",
 			query:   "",
+			structs: []any{rackRequest{}},
 			wantErr: false,
 		},
 		{
 			name:    "unknown param",
 			query:   "siteId=abc&foo=bar",
+			structs: []any{rackRequest{}},
 			wantErr: true,
 			errMsg:  "Unknown query parameter specified in request: foo",
 		},
 		{
 			name:    "all unknown",
 			query:   "bogus=1",
+			structs: []any{rackRequest{}},
 			wantErr: true,
 			errMsg:  "Unknown query parameter specified in request: bogus",
 		},
 		{
 			name:    "subset of allowed",
-			query:   "pageSize=20",
+			query:   "name=rack1",
+			structs: []any{rackRequest{}},
 			wantErr: false,
+		},
+		{
+			name:    "multiple structs merges allowed keys",
+			query:   "siteId=abc&pageNumber=1",
+			structs: []any{rackRequest{}, pageRequest{}},
+			wantErr: false,
+		},
+		{
+			name:    "multiple structs still rejects unknown",
+			query:   "siteId=abc&pageNumber=1&bogus=x",
+			structs: []any{rackRequest{}, pageRequest{}},
+			wantErr: true,
+			errMsg:  "Unknown query parameter specified in request: bogus",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			queryParams, _ := url.ParseQuery(tt.query)
-
-			apiErr := ValidateQueryParams(queryParams, allowed)
+			err := ValidateKnownQueryParams(queryParams, tt.structs...)
 			if tt.wantErr {
-				assert.NotNil(t, apiErr)
-				assert.Equal(t, http.StatusBadRequest, apiErr.Code)
-				assert.Equal(t, tt.errMsg, apiErr.Message)
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errMsg)
 			} else {
-				assert.Nil(t, apiErr)
+				assert.NoError(t, err)
 			}
 		})
 	}
+}
+
+func TestQueryTagsFor(t *testing.T) {
+	type withTags struct {
+		A string `query:"alpha"`
+		B string `query:"beta"`
+		C string
+	}
+	type empty struct{}
+
+	tags := QueryTagsFor(withTags{})
+	assert.ElementsMatch(t, []string{"alpha", "beta"}, tags)
+
+	// calling again should return cached result
+	tags2 := QueryTagsFor(withTags{})
+	assert.ElementsMatch(t, tags, tags2)
+
+	// struct with no query tags
+	assert.Empty(t, QueryTagsFor(empty{}))
+
+	// pointer to struct
+	tags3 := QueryTagsFor(&withTags{})
+	assert.ElementsMatch(t, []string{"alpha", "beta"}, tags3)
 }

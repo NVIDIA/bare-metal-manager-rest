@@ -18,6 +18,9 @@
 package model
 
 import (
+	"fmt"
+	"net/url"
+
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 )
 
@@ -37,10 +40,11 @@ var RackOrderByFieldMap = map[string]rlav1.RackOrderByField{
 	"model":        rlav1.RackOrderByField_RACK_ORDER_BY_FIELD_MODEL,
 }
 
-// GetProtoRackFilterFromQueryParam creates an RLA protobuf filter from API query parameters
-func GetProtoRackFilterFromQueryParam(fieldName, value string) *rlav1.Filter {
+// GetProtoRackFilter creates an RLA protobuf filter for the given rack field and patterns.
+// Multiple patterns are OR'd together.
+func GetProtoRackFilter(fieldName string, patterns []string) *rlav1.Filter {
 	field, ok := RackFilterFieldMap[fieldName]
-	if !ok {
+	if !ok || len(patterns) == 0 {
 		return nil
 	}
 	return &rlav1.Filter{
@@ -48,9 +52,9 @@ func GetProtoRackFilterFromQueryParam(fieldName, value string) *rlav1.Filter {
 			RackField: field,
 		},
 		QueryInfo: &rlav1.StringQueryInfo{
-			Patterns:   []string{value},
+			Patterns:   patterns,
 			IsWildcard: false,
-			UseOr:      false,
+			UseOr:      len(patterns) > 1,
 		},
 	}
 }
@@ -67,6 +71,116 @@ func GetProtoRackOrderByFromQueryParam(fieldName, direction string) *rlav1.Order
 		},
 		Direction: direction,
 	}
+}
+
+// ========== Rack Request Models ==========
+
+// APIRackGetRequest captures query parameters for getting a single rack.
+type APIRackGetRequest struct {
+	SiteID            string `query:"siteId"`
+	IncludeComponents bool   `query:"includeComponents"`
+}
+
+func (r *APIRackGetRequest) Validate() error {
+	if r.SiteID == "" {
+		return fmt.Errorf("siteId query parameter is required")
+	}
+	return nil
+}
+
+// APIRackGetAllRequest captures query parameters for listing racks.
+type APIRackGetAllRequest struct {
+	SiteID            string   `query:"siteId"`
+	IncludeComponents bool     `query:"includeComponents"`
+	Name              []string `query:"name"`
+	Manufacturer      []string `query:"manufacturer"`
+	PageNumber        string   `query:"pageNumber"`
+	PageSize          string   `query:"pageSize"`
+	OrderBy           string   `query:"orderBy"`
+}
+
+func (r *APIRackGetAllRequest) Validate() error {
+	if r.SiteID == "" {
+		return fmt.Errorf("siteId query parameter is required")
+	}
+	return nil
+}
+
+// ToFilters converts the request's filter fields to RLA protobuf filters.
+func (r *APIRackGetAllRequest) ToFilters() []*rlav1.Filter {
+	var filters []*rlav1.Filter
+	if f := GetProtoRackFilter("name", r.Name); f != nil {
+		filters = append(filters, f)
+	}
+	if f := GetProtoRackFilter("manufacturer", r.Manufacturer); f != nil {
+		filters = append(filters, f)
+	}
+	return filters
+}
+
+// QueryValues returns only the known query parameters as url.Values,
+// suitable for deterministic workflow ID hashing without unknown param interference.
+func (r *APIRackGetAllRequest) QueryValues() url.Values {
+	v := url.Values{}
+	v.Set("siteId", r.SiteID)
+	if r.IncludeComponents {
+		v.Set("includeComponents", "true")
+	}
+	for _, n := range r.Name {
+		v.Add("name", n)
+	}
+	for _, m := range r.Manufacturer {
+		v.Add("manufacturer", m)
+	}
+	if r.PageNumber != "" {
+		v.Set("pageNumber", r.PageNumber)
+	}
+	if r.PageSize != "" {
+		v.Set("pageSize", r.PageSize)
+	}
+	if r.OrderBy != "" {
+		v.Set("orderBy", r.OrderBy)
+	}
+	return v
+}
+
+// APIRackValidateAllRequest captures query parameters for validating racks.
+type APIRackValidateAllRequest struct {
+	SiteID       string   `query:"siteId"`
+	Name         []string `query:"name"`
+	Manufacturer []string `query:"manufacturer"`
+}
+
+func (r *APIRackValidateAllRequest) Validate() error {
+	if r.SiteID == "" {
+		return fmt.Errorf("siteId query parameter is required")
+	}
+	return nil
+}
+
+// ToFilters converts the request's filter fields to RLA protobuf filters.
+func (r *APIRackValidateAllRequest) ToFilters() []*rlav1.Filter {
+	var filters []*rlav1.Filter
+	if f := GetProtoRackFilter("name", r.Name); f != nil {
+		filters = append(filters, f)
+	}
+	if f := GetProtoRackFilter("manufacturer", r.Manufacturer); f != nil {
+		filters = append(filters, f)
+	}
+	return filters
+}
+
+// QueryValues returns only the known query parameters as url.Values.
+func (r *APIRackValidateAllRequest) QueryValues() url.Values {
+	v := url.Values{}
+	v.Set("siteId", r.SiteID)
+	for _, n := range r.Name {
+		v.Add("name", n)
+	}
+	for _, m := range r.Manufacturer {
+		v.Add("manufacturer", m)
+	}
+	return v
 }
 
 // ========== Rack API Models ==========

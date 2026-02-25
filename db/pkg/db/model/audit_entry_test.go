@@ -107,7 +107,7 @@ func makeAuditEntryCreateInput(orgName string, userID uuid.UUID, statusCode int)
 		return AuditEntryCreateInput{}, err
 	}
 	return AuditEntryCreateInput{
-		Endpoint: fmt.Sprintf("/v2/org/%s/forge/site", orgName),
+		Endpoint: fmt.Sprintf("/v2/org/%s/carbide/site", orgName),
 		QueryParams: url.Values{
 			"test": []string{"1234"},
 		},

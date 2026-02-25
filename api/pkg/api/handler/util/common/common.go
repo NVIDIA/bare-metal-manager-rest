@@ -25,8 +25,10 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
@@ -1500,22 +1502,51 @@ func AddToValidationErrors(errs validation.Errors, key string, err error) {
 	}
 }
 
-// ValidateQueryParams checks that all query parameters in the request are in the allowed set.
-// Returns an APIError naming the first unknown parameter found, or nil if all are valid.
-func ValidateQueryParams(queryParams url.Values, allowedParams []string) *cau.APIError {
-	for key := range queryParams {
-		if !slices.Contains(allowedParams, key) {
-			return cau.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Unknown query parameter specified in request: %s", key), nil)
+var queryTagCache sync.Map // map[reflect.Type][]string
+
+// QueryTagsFor returns the `query` struct tag values for all fields of the given struct.
+// Results are cached per type.
+func QueryTagsFor(v any) []string {
+	t := reflect.TypeOf(v)
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if cached, ok := queryTagCache.Load(t); ok {
+		return cached.([]string)
+	}
+	var tags []string
+	for i := 0; i < t.NumField(); i++ {
+		if tag := t.Field(i).Tag.Get("query"); tag != "" {
+			tags = append(tags, tag)
+		}
+	}
+	queryTagCache.Store(t, tags)
+	return tags
+}
+
+// ValidateKnownQueryParams checks that every key in rawParams appears as a `query` struct tag
+// in at least one of the provided structs. Returns an error for the first unknown parameter found.
+func ValidateKnownQueryParams(rawParams url.Values, structs ...any) error {
+	allowed := make(map[string]struct{})
+	for _, s := range structs {
+		for _, tag := range QueryTagsFor(s) {
+			allowed[tag] = struct{}{}
+		}
+	}
+	for key := range rawParams {
+		if _, ok := allowed[key]; !ok {
+			return fmt.Errorf("Unknown query parameter specified in request: %s", key)
 		}
 	}
 	return nil
 }
 
-// QueryParamHash builds a deterministic hash from query params for workflow ID dedup.
-// Sorts parameters to ensure consistent hash regardless of parameter order.
-func QueryParamHash(c echo.Context) string {
-	sortedParams := make([]string, 0, len(c.QueryParams()))
-	for k, v := range c.QueryParams() {
+// QueryParamHash builds a deterministic hash from the given query params for workflow ID dedup.
+// Accepts url.Values so callers can pass only the known/valid parameters,
+// preventing unknown query params from polluting the workflow ID.
+func QueryParamHash(params url.Values) string {
+	sortedParams := make([]string, 0, len(params))
+	for k, v := range params {
 		slices.Sort(v)
 		for _, val := range v {
 			sortedParams = append(sortedParams, k+"="+val)

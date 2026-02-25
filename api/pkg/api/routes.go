@@ -753,9 +753,19 @@ func NewAPIRoutes(dbSession *cdb.Session, tc tClient.Client, tnc tClient.Namespa
 			Handler: apiHandler.NewGetAllTrayHandler(dbSession, tc, scp, cfg),
 		},
 		{
+			Path:    apiPathPrefix + "/tray/validation",
+			Method:  http.MethodGet,
+			Handler: apiHandler.NewValidateTraysHandler(dbSession, tc, scp, cfg),
+		},
+		{
 			Path:    apiPathPrefix + "/tray/:id",
 			Method:  http.MethodGet,
 			Handler: apiHandler.NewGetTrayHandler(dbSession, tc, scp, cfg),
+		},
+		{
+			Path:    apiPathPrefix + "/tray/:id/validation",
+			Method:  http.MethodGet,
+			Handler: apiHandler.NewValidateTrayHandler(dbSession, tc, scp, cfg),
 		},
 	}
 

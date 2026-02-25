@@ -25,7 +25,6 @@ import (
 	"maps"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/labstack/echo/v4"
@@ -45,14 +44,6 @@ import (
 	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
-)
-
-// Allowed query parameters for each rack handler
-var (
-	getRackAllowedParams      = []string{"siteId", "includeComponents"}
-	getAllRackAllowedParams    = []string{"siteId", "includeComponents", "name", "manufacturer", "model", "pageNumber", "pageSize", "orderBy"}
-	validateRackAllowedParams = []string{"siteId"}
-	validateRacksAllowedParams = []string{"siteId", "name", "manufacturer", "model"}
 )
 
 // ~~~~~ Get Rack Handler ~~~~~ //
@@ -96,8 +87,15 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 		defer handlerSpan.End()
 	}
 
-	if apiErr := common.ValidateQueryParams(c.QueryParams(), getRackAllowedParams); apiErr != nil {
-		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, nil)
+	var apiRequest model.APIRackGetRequest
+	if err := common.ValidateKnownQueryParams(c.QueryParams(), apiRequest); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+	}
+	if err := c.Bind(&apiRequest); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
+	}
+	if err := apiRequest.Validate(); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
 	}
 
 	// Is DB user missing?
@@ -135,14 +133,8 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 	rackStrID := c.Param("id")
 	grh.tracerSpan.SetAttribute(handlerSpan, attribute.String("rack_id", rackStrID), logger)
 
-	// Get site ID from query param (required)
-	siteStrID := c.QueryParam("siteId")
-	if siteStrID == "" {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
-	}
-
 	// Validate the site
-	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, grh.dbSession)
+	site, err := common.GetSiteFromIDString(ctx, nil, apiRequest.SiteID, grh.dbSession)
 	if err != nil {
 		if errors.Is(err, cdb.ErrDoesNotExist) {
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
@@ -156,12 +148,6 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
-	// Check includeComponents query param (API uses includeComponents, RLA uses WithComponents)
-	includeComponents := false
-	if ic := c.QueryParam("includeComponents"); ic != "" {
-		includeComponents, _ = strconv.ParseBool(ic)
-	}
-
 	// Get the temporal client for the site
 	stc, err := grh.scp.GetClientByID(site.ID)
 	if err != nil {
@@ -172,7 +158,7 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 	// Build RLA request
 	rlaRequest := &rlav1.GetRackInfoByIDRequest{
 		Id:             &rlav1.UUID{Id: rackStrID},
-		WithComponents: includeComponents,
+		WithComponents: apiRequest.IncludeComponents,
 	}
 
 	// Execute workflow
@@ -207,7 +193,7 @@ func (grh GetRackHandler) Handle(c echo.Context) error {
 
 	// Convert to API model
 	protoRack := rlaResponse.GetRack()
-	apiRack := model.NewAPIRack(protoRack, includeComponents)
+	apiRack := model.NewAPIRack(protoRack, apiRequest.IncludeComponents)
 	if apiRack == nil {
 		return cerr.NewAPIErrorResponse(c, http.StatusNotFound, "Rack not found", nil)
 	}
@@ -251,7 +237,6 @@ func NewGetAllRackHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.Cli
 // @Param includeComponents query boolean false "Include rack components in response"
 // @Param name query string false "Filter by rack name"
 // @Param manufacturer query string false "Filter by manufacturer"
-// @Param model query string false "Filter by model"
 // @Param pageNumber query integer false "Page number of results returned"
 // @Param pageSize query integer false "Number of results per page"
 // @Param orderBy query string false "Order by field"
@@ -263,8 +248,15 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 		defer handlerSpan.End()
 	}
 
-	if apiErr := common.ValidateQueryParams(c.QueryParams(), getAllRackAllowedParams); apiErr != nil {
-		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, nil)
+	var apiRequest model.APIRackGetAllRequest
+	if err := common.ValidateKnownQueryParams(c.QueryParams(), apiRequest); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+	}
+	if err := c.Bind(&apiRequest); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
+	}
+	if err := apiRequest.Validate(); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
 	}
 
 	// Is DB user missing?
@@ -298,14 +290,8 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
 	}
 
-	// Get site ID from query param (required)
-	siteStrID := c.QueryParam("siteId")
-	if siteStrID == "" {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
-	}
-
 	// Validate the site
-	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, garh.dbSession)
+	site, err := common.GetSiteFromIDString(ctx, nil, apiRequest.SiteID, garh.dbSession)
 	if err != nil {
 		if errors.Is(err, cdb.ErrDoesNotExist) {
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
@@ -334,23 +320,6 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate pagination request data", err)
 	}
 
-	// Check includeComponents query param (API uses includeComponents, RLA uses WithComponents)
-	includeComponents := false
-	if ic := c.QueryParam("includeComponents"); ic != "" {
-		includeComponents, _ = strconv.ParseBool(ic)
-	}
-
-	// Build filters from query params
-	var filters []*rlav1.Filter
-	qParams := c.QueryParams()
-	for field := range model.RackFilterFieldMap {
-		if value := qParams.Get(field); value != "" {
-			if f := model.GetProtoRackFilterFromQueryParam(field, value); f != nil {
-				filters = append(filters, f)
-			}
-		}
-	}
-
 	// Build OrderBy from pagination
 	var orderBy *rlav1.OrderBy
 	if pageRequest.OrderBy != nil {
@@ -373,15 +342,15 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
 	}
 
-	// Build RLA request
+	// Build RLA request from validated params
 	rlaRequest := &rlav1.GetListOfRacksRequest{
-		Filters:        filters,
-		WithComponents: includeComponents,
+		Filters:        apiRequest.ToFilters(),
+		WithComponents: apiRequest.IncludeComponents,
 		Pagination:     paginationProto,
 		OrderBy:        orderBy,
 	}
 
-	workflowID := fmt.Sprintf("rack-get-all-%s", common.QueryParamHash(c))
+	workflowID := fmt.Sprintf("rack-get-all-%s", common.QueryParamHash(apiRequest.QueryValues()))
 
 	// Execute workflow
 	workflowOptions := tClient.StartWorkflowOptions{
@@ -416,7 +385,7 @@ func (garh GetAllRackHandler) Handle(c echo.Context) error {
 	// Convert to API model
 	apiRacks := make([]*model.APIRack, 0, len(rlaResponse.GetRacks()))
 	for _, rack := range rlaResponse.GetRacks() {
-		apiRacks = append(apiRacks, model.NewAPIRack(rack, includeComponents))
+		apiRacks = append(apiRacks, model.NewAPIRack(rack, apiRequest.IncludeComponents))
 	}
 
 	// Create pagination response header
@@ -472,10 +441,6 @@ func (vrh ValidateRackHandler) Handle(c echo.Context) error {
 	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "Validate", c, vrh.tracerSpan)
 	if handlerSpan != nil {
 		defer handlerSpan.End()
-	}
-
-	if apiErr := common.ValidateQueryParams(c.QueryParams(), validateRackAllowedParams); apiErr != nil {
-		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, nil)
 	}
 
 	// Is DB user missing?
@@ -630,7 +595,6 @@ func NewValidateRacksHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.
 // @Param siteId query string true "ID of the Site"
 // @Param name query string false "Filter racks by name"
 // @Param manufacturer query string false "Filter racks by manufacturer"
-// @Param model query string false "Filter racks by model"
 // @Success 200 {object} model.APIRackValidationResult
 // @Router /v2/org/{org}/carbide/rack/validation [get]
 func (vrsh ValidateRacksHandler) Handle(c echo.Context) error {
@@ -639,8 +603,15 @@ func (vrsh ValidateRacksHandler) Handle(c echo.Context) error {
 		defer handlerSpan.End()
 	}
 
-	if apiErr := common.ValidateQueryParams(c.QueryParams(), validateRacksAllowedParams); apiErr != nil {
-		return cerr.NewAPIErrorResponse(c, apiErr.Code, apiErr.Message, nil)
+	var apiRequest model.APIRackValidateAllRequest
+	if err := common.ValidateKnownQueryParams(c.QueryParams(), apiRequest); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
+	}
+	if err := c.Bind(&apiRequest); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
+	}
+	if err := apiRequest.Validate(); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
 	}
 
 	// Is DB user missing?
@@ -674,14 +645,8 @@ func (vrsh ValidateRacksHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
 	}
 
-	// Get site ID from query param (required)
-	siteStrID := c.QueryParam("siteId")
-	if siteStrID == "" {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
-	}
-
 	// Validate the site
-	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, vrsh.dbSession)
+	site, err := common.GetSiteFromIDString(ctx, nil, apiRequest.SiteID, vrsh.dbSession)
 	if err != nil {
 		if errors.Is(err, cdb.ErrDoesNotExist) {
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
@@ -702,24 +667,11 @@ func (vrsh ValidateRacksHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
 	}
 
-	// Build filters from query params
-	var filters []*rlav1.Filter
-	qParams := c.QueryParams()
-	for field := range model.RackFilterFieldMap {
-		if value := qParams.Get(field); value != "" {
-			if f := model.GetProtoRackFilterFromQueryParam(field, value); f != nil {
-				filters = append(filters, f)
-			}
-		}
-	}
-
-	// Build RLA request - no target_spec means validate all racks in site;
-	// filters narrow down the scope
 	rlaRequest := &rlav1.ValidateComponentsRequest{
-		Filters: filters,
+		Filters: apiRequest.ToFilters(),
 	}
 
-	workflowID := fmt.Sprintf("rack-validate-all-%s", common.QueryParamHash(c))
+	workflowID := fmt.Sprintf("rack-validate-all-%s", common.QueryParamHash(apiRequest.QueryValues()))
 
 	// Execute workflow
 	workflowOptions := tClient.StartWorkflowOptions{
@@ -754,7 +706,7 @@ func (vrsh ValidateRacksHandler) Handle(c echo.Context) error {
 	// Convert to API model
 	apiResult := model.NewAPIRackValidationResult(&rlaResponse)
 
-	logger.Info().Int("FilterCount", len(filters)).Int32("TotalDiffs", rlaResponse.GetTotalDiffs()).Msg("finishing API handler")
+	logger.Info().Int32("TotalDiffs", rlaResponse.GetTotalDiffs()).Msg("finishing API handler")
 
 	return c.JSON(http.StatusOK, apiResult)
 }
