@@ -46,7 +46,7 @@ spec:
             - postgres
       containers:
         - name: migrations
-          image: carbide-rest-db:latest
+          image: carbide-rest-db
           env:
             - name: PGHOST
               value: postgres.postgres

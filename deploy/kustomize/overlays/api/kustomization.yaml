@@ -28,9 +28,18 @@ resources:
   - ../../base/api
 
 images:
-  - name: carbide-rest-api:latest
+  - name: carbide-rest-api
     newName: localhost:5000/carbide-rest-api
     newTag: latest
+
+patches:
+  - target:
+      kind: Deployment
+      name: carbide-rest-api
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/imagePullSecrets
+        value: []
 
 commonLabels:
   app.kubernetes.io/part-of: carbide-rest

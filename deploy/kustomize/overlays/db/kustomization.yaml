@@ -24,14 +24,21 @@ resources:
   - ../../base/db
 
 images:
-  - name: carbide-rest-db:latest
+  - name: carbide-rest-db
     newName: localhost:5000/carbide-rest-db
     newTag: latest
 
 patches:
   - target:
       kind: Job
-      name: carbide-rest-db-migration.*
+      name: carbide-rest-db-migration
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/imagePullSecrets
+        value: []
+  - target:
+      kind: Job
+      name: carbide-rest-db-migration
     patch: |-
       - op: replace
         path: /metadata/name

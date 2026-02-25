@@ -41,7 +41,7 @@ spec:
         fsGroup: 65534
       containers:
         - name: cert-manager
-          image: carbide-rest-cert-manager:latest
+          image: carbide-rest-cert-manager
           securityContext:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false

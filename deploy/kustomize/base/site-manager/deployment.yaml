@@ -35,7 +35,7 @@ spec:
       serviceAccountName: carbide-rest-site-manager
       containers:
         - name: site-manager
-          image: carbide-rest-site-manager:latest
+          image: carbide-rest-site-manager
           args:
             - --listen-port=8100
             - --creds-manager-url=https://carbide-rest-cert-manager.carbide-rest:8000
