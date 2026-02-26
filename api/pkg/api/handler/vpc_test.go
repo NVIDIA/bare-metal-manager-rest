@@ -406,6 +406,36 @@ func TestCreateVPCHandler_Handle(t *testing.T) {
 					SiteID:                    st1.ID.String(),
 					NetworkVirtualizationType: cdb.GetStrPtr(cdbm.VpcFNN),
 					NetworkSecurityGroupID:    &nsgTenant1Site1.ID,
+					Vni:                       cdb.GetUint16Ptr(555),
+					Labels: map[string]string{
+						"vpc-dpu-zone": "east1",
+						"vpc-gpu-zone": "west1",
+					},
+					NVLinkLogicalPartitionID: cdb.GetStrPtr(nvllp1.ID.String()),
+				},
+				reqOrg:   tnOrg,
+				reqUser:  tnu,
+				respCode: http.StatusCreated,
+			},
+			wantErr:            false,
+			verifyChildSpanner: true,
+		},
+		{
+			name: "test VPC create API endpoint with explicit VPC ID success",
+			fields: fields{
+				dbSession: dbSession,
+				tc:        tc,
+				cfg:       cfg,
+			},
+			args: args{
+				reqData: &model.APIVpcCreateRequest{
+					ID:                        db.GetUUIDPtr(uuid.New()),
+					Name:                      "Test VPC 2",
+					Description:               cdb.GetStrPtr("Test VPC Description"),
+					SiteID:                    st1.ID.String(),
+					NetworkVirtualizationType: cdb.GetStrPtr(cdbm.VpcFNN),
+					NetworkSecurityGroupID:    &nsgTenant1Site1.ID,
+					Vni:                       cdb.GetUint16Ptr(555),
 					Labels: map[string]string{
 						"vpc-dpu-zone": "east1",
 						"vpc-gpu-zone": "west1",
@@ -695,6 +725,8 @@ func TestCreateVPCHandler_Handle(t *testing.T) {
 			}
 
 			assert.Equal(t, rst.Name, tt.args.reqData.Name)
+			assert.True(t, tt.args.reqData.ID == nil || rst.ID == tt.args.reqData.ID.String(), "%+v != %+v", rst.ID, tt.args.reqData.ID)
+			assert.True(t, rst.RequestedVni == nil || *rst.RequestedVni == int(*tt.args.reqData.Vni))
 			assert.Equal(t, *rst.Description, *tt.args.reqData.Description)
 			if tt.args.reqData.NetworkVirtualizationType != nil {
 				assert.Equal(t, rst.NetworkVirtualizationType, tt.args.reqData.NetworkVirtualizationType)

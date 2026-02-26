@@ -310,6 +310,7 @@ func (cvh CreateVPCHandler) Handle(c echo.Context) error {
 
 	// Create VPC
 	vpcInput := cdbm.VpcCreateInput{
+		ID:                        apiRequest.ID,
 		Name:                      apiRequest.Name,
 		Description:               apiRequest.Description,
 		Org:                       org,
@@ -322,6 +323,7 @@ func (cvh CreateVPCHandler) Handle(c echo.Context) error {
 		Labels:                    labels,
 		Status:                    cdbm.VpcStatusReady,
 		CreatedBy:                 *dbUser,
+		Vni:                       cdb.GetUint16PtrToIntPtr(apiRequest.Vni),
 	}
 
 	vpc, err := vpcDAO.Create(ctx, tx, vpcInput)
@@ -368,12 +370,14 @@ func (cvh CreateVPCHandler) Handle(c echo.Context) error {
 	if *vpc.NetworkVirtualizationType == cwssaws.VpcVirtualizationType_FNN.String() {
 		nwvt = cwssaws.VpcVirtualizationType_FNN
 	}
+
 	createVpcRequest := &cwssaws.VpcCreationRequest{
 		Id:                        &cwssaws.VpcId{Value: common.GetSiteVpcID(vpc).String()},
 		Name:                      vpc.Name,
 		TenantOrganizationId:      tenant.Org,
 		NetworkVirtualizationType: &nwvt,
 		NetworkSecurityGroupId:    vpc.NetworkSecurityGroupID,
+		Vni:                       cdb.GetUint16PtrToUint32Ptr(apiRequest.Vni),
 	}
 
 	// Add default NVLinkLogicalPartition ID if it is present
