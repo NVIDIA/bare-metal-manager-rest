@@ -427,6 +427,9 @@ kind-reset:
 
 	@echo "Setting up Carbide REST Site Agent..."
 	kubectl apply -k deploy/kustomize/overlays/site-agent
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-site-agent --timeout=240s
+
+	@echo "Setting up Site Agent secrets..."
 	./scripts/setup-local.sh site-agent
 
 	@echo ""
