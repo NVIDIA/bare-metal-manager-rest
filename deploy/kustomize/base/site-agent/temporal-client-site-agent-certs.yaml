@@ -23,6 +23,6 @@ metadata:
     app: carbide-rest-site-agent
 type: Opaque
 stringData:
-  ca.crt: "placeholder"
-  tls.crt: "placeholder"
-  tls.key: "placeholder"
+  ca.crt: ""
+  tls.crt: ""
+  tls.key: ""
