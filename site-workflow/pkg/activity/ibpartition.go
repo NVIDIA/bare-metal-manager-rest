@@ -122,6 +122,17 @@ func NewManageInfiniBandPartition(carbideClient *client.CarbideAtomicClient) Man
 	}
 }
 
+// ibpHasValidName returns true if the request has a non-empty name from Metadata or deprecated Config
+func ibpHasValidName(request *cwssaws.IBPartitionCreationRequest) bool {
+	if request.Metadata != nil && request.Metadata.Name != "" {
+		return true
+	}
+	if request.Config != nil && request.Config.Name != "" {
+		return true
+	}
+	return false
+}
+
 // Function to create InfiniBand Partition with Carbide
 func (mibp *ManageInfiniBandPartition) CreateInfiniBandPartitionOnSite(ctx context.Context, request *cwssaws.IBPartitionCreationRequest) error {
 	logger := log.With().Str("Activity", "CreateInfiniBandPartitionOnSite").Logger()
@@ -131,15 +142,16 @@ func (mibp *ManageInfiniBandPartition) CreateInfiniBandPartitionOnSite(ctx conte
 	var err error
 
 	// Validate request
+	// Backward compatibility: accept either deprecated Config or new Metadata for name/tenantOrganizationId
 	if request == nil {
 		err = errors.New("received empty create InfiniBand Partition request")
 	} else if request.Id == nil || request.GetId().GetValue() == "" {
 		err = errors.New("received create InfiniBand Partition request missing ID")
-	} else if request.Config == nil {
-		err = errors.New("received create InfiniBand Partition request missing Config")
-	} else if request.Config.Name == "" || request.Metadata == nil || request.Metadata.Name == "" {
+	} else if request.Config == nil && (request.Metadata == nil || request.Metadata.Name == "") {
+		err = errors.New("received create InfiniBand Partition request missing Config or Metadata with Name")
+	} else if !ibpHasValidName(request) {
 		err = errors.New("received create InfiniBand Partition request missing Name")
-	} else if request.Config.TenantOrganizationId == "" {
+	} else if request.Config != nil && request.Config.TenantOrganizationId == "" {
 		err = errors.New("received create InfiniBand Partition request missing TenantOrganizationId")
 	}
 
