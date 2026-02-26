@@ -178,6 +178,7 @@ done
 | carbide-site-agent | `elektra` | On-site agent |
 | carbide-rest-db | `migrations` | Database migrations |
 | carbide-rest-cert-manager | `credsmgr` | Native PKI certificate manager |
+| carbide-cli | `bmmcli` | [CLI client](cli/README.md) for the REST API |
 
 Supporting modules:
 - **common** - Shared utilities and configurations
