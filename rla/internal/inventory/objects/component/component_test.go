@@ -14,16 +14,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package component
 
 import (
 	"net"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/bmc"
 	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/deviceinfo"
 	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestNewComponent(t *testing.T) {

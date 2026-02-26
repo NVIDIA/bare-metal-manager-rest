@@ -14,14 +14,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package bmc
 
 import (
 	"net"
 	"testing"
 
-	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/credential"
 	"github.com/stretchr/testify/assert"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/credential"
 )
 
 func TestNew(t *testing.T) {

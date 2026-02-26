@@ -14,6 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package component
 
 import (
@@ -36,6 +37,7 @@ type Component struct {
 	BmcsByType      map[devicetypes.BMCType][]bmc.BMC `json:"bmcs_by_type"`
 	ComponentID     string                            `json:"component_id,omitempty"`
 	RackID          uuid.UUID                         `json:"rack_id"`
+	PowerState      string                            `json:"power_state,omitempty"`
 
 	bmcMacToID map[string]bmcID
 }

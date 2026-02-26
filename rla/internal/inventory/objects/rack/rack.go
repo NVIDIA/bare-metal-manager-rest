@@ -14,6 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package rack
 
 import (
@@ -48,13 +49,15 @@ type Rack struct {
 	sealed            bool
 }
 
-// SortBySlotID is used to sort components by their slot ID. It implements
-// the sort.Interface.
-type SortBySlotID []component.Component
+// ComponentsOrderBySlotID is a slice of components that can be sorted by slot ID.
+// It implements sort.Interface and orders components by their Position.SlotID
+// in descending order (higher slot IDs first, from top to bottom in the rack).
+type ComponentsOrderBySlotID []component.Component
 
-func (s SortBySlotID) Len() int      { return len(s) }
-func (s SortBySlotID) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
-func (s SortBySlotID) Less(i, j int) bool {
+func (s ComponentsOrderBySlotID) Len() int      { return len(s) }
+func (s ComponentsOrderBySlotID) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s ComponentsOrderBySlotID) Less(i, j int) bool {
+	// Compare by SlotID: returns true if s[i].SlotID > s[j].SlotID
 	return s[i].Position.Compare(s[j].Position, true)
 }
 
@@ -112,7 +115,7 @@ func (r *Rack) Seal() bool {
 }
 
 func (r *Rack) sortComponentsByPosition() {
-	sort.Sort(SortBySlotID(r.Components))
+	sort.Sort(ComponentsOrderBySlotID(r.Components))
 
 	// Rebuild the index map since component positions changed
 	for i, c := range r.Components {
