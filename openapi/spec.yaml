@@ -7216,6 +7216,11 @@ paths:
           name: instanceTypeId
           description: Filter Machines by Instance Type ID.  Can be specified multiple times to filter on more than one Instance Type ID.
         - schema:
+            type: string
+          in: query
+          name: tenantId
+          description: Filter Machines by ID of tenant of assigned instance.  Can be specified multiple times to filter on more than one Tenant ID.
+        - schema:
             type: boolean
           in: query
           name: includeMetadata
