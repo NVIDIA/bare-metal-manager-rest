@@ -78,6 +78,7 @@ func TestNewAPIRoutes(t *testing.T) {
 		"sku":                     2,
 		"rack":                    4,
 		"tray":                    4,
+		"stats":                   4,
 	}
 
 	totalRouteCount := 0
