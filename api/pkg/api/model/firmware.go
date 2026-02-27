@@ -25,20 +25,20 @@ import (
 
 // ========== Firmware Upgrade Request ==========
 
-// APIFirmwareUpdateRequest is the request body for firmware upgrade operations
-type APIFirmwareUpdateRequest struct {
+// APIUpdateFirmwareRequest is the request body for firmware upgrade operations
+type APIUpdateFirmwareRequest struct {
 	Version *string `json:"version,omitempty"`
 }
 
 // ========== Firmware Upgrade Response ==========
 
-// APIFirmwareUpdateResponse is the API response for firmware upgrade operations
-type APIFirmwareUpdateResponse struct {
+// APIUpdateFirmwareResponse is the API response for firmware upgrade operations
+type APIUpdateFirmwareResponse struct {
 	TaskIDs []string `json:"taskIds"`
 }
 
-// FromProto converts an RLA SubmitTaskResponse to an APIFirmwareUpdateResponse
-func (r *APIFirmwareUpdateResponse) FromProto(resp *rlav1.SubmitTaskResponse) {
+// FromProto converts an RLA SubmitTaskResponse to an APIUpdateFirmwareResponse
+func (r *APIUpdateFirmwareResponse) FromProto(resp *rlav1.SubmitTaskResponse) {
 	if resp == nil {
 		r.TaskIDs = []string{}
 		return
@@ -49,9 +49,9 @@ func (r *APIFirmwareUpdateResponse) FromProto(resp *rlav1.SubmitTaskResponse) {
 	}
 }
 
-// NewAPIFirmwareUpdateResponse creates an APIFirmwareUpdateResponse from an RLA SubmitTaskResponse
-func NewAPIFirmwareUpdateResponse(resp *rlav1.SubmitTaskResponse) *APIFirmwareUpdateResponse {
-	r := &APIFirmwareUpdateResponse{}
+// NewAPIUpdateFirmwareResponse creates an APIUpdateFirmwareResponse from an RLA SubmitTaskResponse
+func NewAPIUpdateFirmwareResponse(resp *rlav1.SubmitTaskResponse) *APIUpdateFirmwareResponse {
+	r := &APIUpdateFirmwareResponse{}
 	r.FromProto(resp)
 	return r
 }

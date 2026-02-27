@@ -52,13 +52,13 @@ var validPowerControlStatesAny = func() []interface{} {
 
 // ========== Power Control Request ==========
 
-// APIPowerControlRequest is the request body for power control operations
-type APIPowerControlRequest struct {
+// APIUpdatePowerStateRequest is the request body for power control operations
+type APIUpdatePowerStateRequest struct {
 	State string `json:"state"`
 }
 
 // Validate validates the power control request
-func (r *APIPowerControlRequest) Validate() error {
+func (r *APIUpdatePowerStateRequest) Validate() error {
 	return validation.ValidateStruct(r,
 		validation.Field(&r.State,
 			validation.Required.Error(validationErrorValueRequired),
@@ -69,13 +69,13 @@ func (r *APIPowerControlRequest) Validate() error {
 
 // ========== Power Control Response ==========
 
-// APIPowerControlResponse is the API response for power control operations
-type APIPowerControlResponse struct {
+// APIUpdatePowerStateResponse is the API response for power control operations
+type APIUpdatePowerStateResponse struct {
 	TaskIDs []string `json:"taskIds"`
 }
 
-// FromProto converts an RLA SubmitTaskResponse to an APIPowerControlResponse
-func (r *APIPowerControlResponse) FromProto(resp *rlav1.SubmitTaskResponse) {
+// FromProto converts an RLA SubmitTaskResponse to an APIUpdatePowerStateResponse
+func (r *APIUpdatePowerStateResponse) FromProto(resp *rlav1.SubmitTaskResponse) {
 	if resp == nil {
 		r.TaskIDs = []string{}
 		return
@@ -86,9 +86,9 @@ func (r *APIPowerControlResponse) FromProto(resp *rlav1.SubmitTaskResponse) {
 	}
 }
 
-// NewAPIPowerControlResponse creates an APIPowerControlResponse from an RLA SubmitTaskResponse
-func NewAPIPowerControlResponse(resp *rlav1.SubmitTaskResponse) *APIPowerControlResponse {
-	r := &APIPowerControlResponse{}
+// NewAPIUpdatePowerStateResponse creates an APIUpdatePowerStateResponse from an RLA SubmitTaskResponse
+func NewAPIUpdatePowerStateResponse(resp *rlav1.SubmitTaskResponse) *APIUpdatePowerStateResponse {
+	r := &APIUpdatePowerStateResponse{}
 	r.FromProto(resp)
 	return r
 }

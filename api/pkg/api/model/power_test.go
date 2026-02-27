@@ -24,45 +24,45 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestAPIPowerControlRequest_Validate(t *testing.T) {
+func TestAPIUpdatePowerStateRequest_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
-		request APIPowerControlRequest
+		request APIUpdatePowerStateRequest
 		wantErr bool
 	}{
 		{
 			name:    "valid - on",
-			request: APIPowerControlRequest{State: "on"},
+			request: APIUpdatePowerStateRequest{State: "on"},
 			wantErr: false,
 		},
 		{
 			name:    "valid - off",
-			request: APIPowerControlRequest{State: "off"},
+			request: APIUpdatePowerStateRequest{State: "off"},
 			wantErr: false,
 		},
 		{
 			name:    "valid - cycle",
-			request: APIPowerControlRequest{State: "cycle"},
+			request: APIUpdatePowerStateRequest{State: "cycle"},
 			wantErr: false,
 		},
 		{
 			name:    "valid - forceoff",
-			request: APIPowerControlRequest{State: "forceoff"},
+			request: APIUpdatePowerStateRequest{State: "forceoff"},
 			wantErr: false,
 		},
 		{
 			name:    "valid - forcecycle",
-			request: APIPowerControlRequest{State: "forcecycle"},
+			request: APIUpdatePowerStateRequest{State: "forcecycle"},
 			wantErr: false,
 		},
 		{
 			name:    "invalid - empty state",
-			request: APIPowerControlRequest{State: ""},
+			request: APIUpdatePowerStateRequest{State: ""},
 			wantErr: true,
 		},
 		{
 			name:    "invalid - unknown state",
-			request: APIPowerControlRequest{State: "reboot"},
+			request: APIUpdatePowerStateRequest{State: "reboot"},
 			wantErr: true,
 		},
 	}
@@ -79,16 +79,16 @@ func TestAPIPowerControlRequest_Validate(t *testing.T) {
 	}
 }
 
-func TestNewAPIPowerControlResponse(t *testing.T) {
+func TestNewAPIUpdatePowerStateResponse(t *testing.T) {
 	tests := []struct {
 		name     string
 		resp     *rlav1.SubmitTaskResponse
-		expected *APIPowerControlResponse
+		expected *APIUpdatePowerStateResponse
 	}{
 		{
 			name:     "nil response returns empty task IDs",
 			resp:     nil,
-			expected: &APIPowerControlResponse{TaskIDs: []string{}},
+			expected: &APIUpdatePowerStateResponse{TaskIDs: []string{}},
 		},
 		{
 			name: "response with task IDs",
@@ -98,20 +98,20 @@ func TestNewAPIPowerControlResponse(t *testing.T) {
 					{Id: "task-2"},
 				},
 			},
-			expected: &APIPowerControlResponse{TaskIDs: []string{"task-1", "task-2"}},
+			expected: &APIUpdatePowerStateResponse{TaskIDs: []string{"task-1", "task-2"}},
 		},
 		{
 			name: "response with empty task IDs",
 			resp: &rlav1.SubmitTaskResponse{
 				TaskIds: []*rlav1.UUID{},
 			},
-			expected: &APIPowerControlResponse{TaskIDs: []string{}},
+			expected: &APIUpdatePowerStateResponse{TaskIDs: []string{}},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := NewAPIPowerControlResponse(tt.resp)
+			got := NewAPIUpdatePowerStateResponse(tt.resp)
 			assert.NotNil(t, got)
 			assert.Equal(t, tt.expected.TaskIDs, got.TaskIDs)
 		})

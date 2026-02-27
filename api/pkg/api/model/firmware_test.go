@@ -24,41 +24,41 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNewAPIFirmwareUpdateResponse(t *testing.T) {
+func TestNewAPIUpdateFirmwareResponse(t *testing.T) {
 	tests := []struct {
 		name     string
 		resp     *rlav1.SubmitTaskResponse
-		expected *APIFirmwareUpdateResponse
+		expected *APIUpdateFirmwareResponse
 	}{
 		{
 			name:     "nil response returns empty task IDs",
 			resp:     nil,
-			expected: &APIFirmwareUpdateResponse{TaskIDs: []string{}},
+			expected: &APIUpdateFirmwareResponse{TaskIDs: []string{}},
 		},
 		{
 			name: "single task ID",
 			resp: &rlav1.SubmitTaskResponse{
 				TaskIds: []*rlav1.UUID{{Id: "task-1"}},
 			},
-			expected: &APIFirmwareUpdateResponse{TaskIDs: []string{"task-1"}},
+			expected: &APIUpdateFirmwareResponse{TaskIDs: []string{"task-1"}},
 		},
 		{
 			name: "multiple task IDs",
 			resp: &rlav1.SubmitTaskResponse{
 				TaskIds: []*rlav1.UUID{{Id: "task-1"}, {Id: "task-2"}},
 			},
-			expected: &APIFirmwareUpdateResponse{TaskIDs: []string{"task-1", "task-2"}},
+			expected: &APIUpdateFirmwareResponse{TaskIDs: []string{"task-1", "task-2"}},
 		},
 		{
 			name:     "empty task IDs",
 			resp:     &rlav1.SubmitTaskResponse{},
-			expected: &APIFirmwareUpdateResponse{TaskIDs: []string{}},
+			expected: &APIUpdateFirmwareResponse{TaskIDs: []string{}},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := NewAPIFirmwareUpdateResponse(tt.resp)
+			result := NewAPIUpdateFirmwareResponse(tt.resp)
 			assert.Equal(t, tt.expected, result)
 		})
 	}

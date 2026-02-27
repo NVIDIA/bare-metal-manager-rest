@@ -1275,7 +1275,7 @@ func TestUpdateTrayPowerStateHandler_Handle(t *testing.T) {
 				return
 			}
 
-			var apiResp model.APIPowerControlResponse
+			var apiResp model.APIUpdatePowerStateResponse
 			err = json.Unmarshal(rec.Body.Bytes(), &apiResp)
 			assert.NoError(t, err)
 			assert.NotEmpty(t, apiResp.TaskIDs)
@@ -1391,7 +1391,7 @@ func TestBatchUpdateTrayPowerStateHandler_Handle(t *testing.T) {
 				return
 			}
 
-			var apiResp model.APIPowerControlResponse
+			var apiResp model.APIUpdatePowerStateResponse
 			err = json.Unmarshal(rec.Body.Bytes(), &apiResp)
 			assert.NoError(t, err)
 			assert.NotEmpty(t, apiResp.TaskIDs)
@@ -1533,7 +1533,7 @@ func TestUpdateTrayFirmwareHandler_Handle(t *testing.T) {
 				return
 			}
 
-			var apiResp model.APIFirmwareUpdateResponse
+			var apiResp model.APIUpdateFirmwareResponse
 			err = json.Unmarshal(rec.Body.Bytes(), &apiResp)
 			assert.NoError(t, err)
 			assert.NotEmpty(t, apiResp.TaskIDs)
@@ -1642,7 +1642,7 @@ func TestBatchUpdateTrayFirmwareHandler_Handle(t *testing.T) {
 				return
 			}
 
-			var apiResp model.APIFirmwareUpdateResponse
+			var apiResp model.APIUpdateFirmwareResponse
 			err = json.Unmarshal(rec.Body.Bytes(), &apiResp)
 			assert.NoError(t, err)
 			assert.NotEmpty(t, apiResp.TaskIDs)

@@ -1569,7 +1569,7 @@ func QueryParamHash(params url.Values) string {
 }
 
 // ExecutePowerControlWorkflow determines the appropriate power control workflow based on state,
-// executes it via Temporal, and returns the API response with task IDs.
+// executes it via Temporal, and returns the raw SubmitTaskResponse.
 func ExecutePowerControlWorkflow(
 	ctx context.Context,
 	c echo.Context,
@@ -1579,7 +1579,7 @@ func ExecutePowerControlWorkflow(
 	state string,
 	workflowID string,
 	entityName string,
-) error {
+) (*rlav1.SubmitTaskResponse, error) {
 	var workflowName string
 	var rlaRequest interface{}
 
@@ -1617,7 +1617,7 @@ func ExecutePowerControlWorkflow(
 			Description: fmt.Sprintf("API force power cycle %s", entityName),
 		}
 	default:
-		return cau.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Invalid power control state: %s", state), nil)
+		return nil, cau.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Invalid power control state: %s", state), nil)
 	}
 
 	workflowOptions := tclient.StartWorkflowOptions{
@@ -1634,7 +1634,7 @@ func ExecutePowerControlWorkflow(
 	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, workflowName, rlaRequest)
 	if err != nil {
 		logger.Error().Err(err).Msg(fmt.Sprintf("failed to execute %s workflow", workflowName))
-		return cau.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed to power control %s", entityName), nil)
+		return nil, cau.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed to power control %s", entityName), nil)
 	}
 
 	var rlaResponse rlav1.SubmitTaskResponse
@@ -1642,21 +1642,17 @@ func ExecutePowerControlWorkflow(
 	if err != nil {
 		var timeoutErr *tp.TimeoutError
 		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
-			return TerminateWorkflowOnTimeOut(c, logger, stc, workflowID, err, entityName, workflowName)
+			return nil, TerminateWorkflowOnTimeOut(c, logger, stc, workflowID, err, entityName, workflowName)
 		}
 		logger.Error().Err(err).Msg(fmt.Sprintf("failed to get result from %s workflow", workflowName))
-		return cau.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed to power control %s", entityName), nil)
+		return nil, cau.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed to power control %s", entityName), nil)
 	}
 
-	apiResponse := cam.NewAPIPowerControlResponse(&rlaResponse)
-
-	logger.Info().Str("state", state).Msg("finishing API handler")
-
-	return c.JSON(http.StatusOK, apiResponse)
+	return &rlaResponse, nil
 }
 
 // ExecuteFirmwareUpdateWorkflow builds an UpgradeFirmwareRequest, executes the UpgradeFirmware
-// workflow via Temporal, and returns the API response with task IDs.
+// workflow via Temporal, and returns the raw SubmitTaskResponse.
 func ExecuteFirmwareUpdateWorkflow(
 	ctx context.Context,
 	c echo.Context,
@@ -1666,7 +1662,7 @@ func ExecuteFirmwareUpdateWorkflow(
 	version *string,
 	workflowID string,
 	entityName string,
-) error {
+) (*rlav1.SubmitTaskResponse, error) {
 	rlaRequest := &rlav1.UpgradeFirmwareRequest{
 		TargetSpec:    targetSpec,
 		TargetVersion: version,
@@ -1687,7 +1683,7 @@ func ExecuteFirmwareUpdateWorkflow(
 	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "UpgradeFirmware", rlaRequest)
 	if err != nil {
 		logger.Error().Err(err).Msg("failed to execute UpgradeFirmware workflow")
-		return cau.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed to upgrade firmware for %s", entityName), nil)
+		return nil, cau.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed to upgrade firmware for %s", entityName), nil)
 	}
 
 	var rlaResponse rlav1.SubmitTaskResponse
@@ -1695,15 +1691,11 @@ func ExecuteFirmwareUpdateWorkflow(
 	if err != nil {
 		var timeoutErr *tp.TimeoutError
 		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
-			return TerminateWorkflowOnTimeOut(c, logger, stc, workflowID, err, entityName, "UpgradeFirmware")
+			return nil, TerminateWorkflowOnTimeOut(c, logger, stc, workflowID, err, entityName, "UpgradeFirmware")
 		}
 		logger.Error().Err(err).Msg("failed to get result from UpgradeFirmware workflow")
-		return cau.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed to upgrade firmware for %s", entityName), nil)
+		return nil, cau.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed to upgrade firmware for %s", entityName), nil)
 	}
 
-	apiResponse := cam.NewAPIFirmwareUpdateResponse(&rlaResponse)
-
-	logger.Info().Msg("finishing API handler")
-
-	return c.JSON(http.StatusOK, apiResponse)
+	return &rlaResponse, nil
 }
