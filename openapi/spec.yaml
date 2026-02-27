@@ -8577,7 +8577,7 @@ paths:
       summary: Power control a Rack
       operationId: power-control-rack
       description: |-
-        Power control a single Rack by ID.
+        Power control a Rack identified by Rack UUID.
 
         Supported power states: `on`, `off`, `cycle`, `forceoff`, `forcecycle`.
 
@@ -8631,7 +8631,7 @@ paths:
       summary: Firmware update Racks
       operationId: firmware-update-racks
       description: |-
-        Update firmware on Racks with optional name filter. Version is optional; omit to upgrade to the latest available. If no filter is specified, targets all racks in the Site.
+        Update firmware on Racks with optional name filter. If no filter is specified, targets all racks in the Site.
 
         Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
       requestBody:
@@ -8689,7 +8689,7 @@ paths:
       summary: Firmware update a Rack
       operationId: firmware-update-rack
       description: |-
-        Update firmware on a single Rack by ID. Version is optional; omit to update to the latest available.
+        Update firmware on a Rack identified by Rack UUID.
 
         Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
       requestBody:
@@ -9131,7 +9131,7 @@ paths:
       summary: Power control a Tray
       operationId: power-control-tray
       description: |-
-        Power control a single Tray by ID.
+        Power control a Tray identified by Tray UUID.
 
         Supported power states: `on`, `off`, `cycle`, `forceoff`, `forcecycle`.
 
@@ -9185,7 +9185,7 @@ paths:
       summary: Firmware update Trays
       operationId: firmware-update-trays
       description: |-
-        Update firmware on Trays with optional filters. Version is optional; omit to upgrade to the latest available. If no filter is specified, targets all trays in the Site.
+        Update firmware on Trays with optional filters. If no filter is specified, targets all trays in the Site.
 
         **Filter constraints:**
         - `rackId` and `rackName` are mutually exclusive
@@ -9246,7 +9246,7 @@ paths:
       summary: Firmware update a Tray
       operationId: firmware-update-tray
       description: |-
-        Update firmware on a single Tray by ID. Version is optional; omit to update to the latest available.
+        Update firmware on a Tray identified by Tray UUID.
 
         Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
       requestBody:
@@ -14934,7 +14934,7 @@ components:
           $ref: '#/components/schemas/RackFilter'
         version:
           type: string
-          description: Target firmware version. If not specified, upgrades to the latest available version.
+          description: Target firmware version.
     BatchTrayFirmwareUpdateRequest:
       title: BatchTrayFirmwareUpdateRequest
       type: object
@@ -14950,7 +14950,7 @@ components:
           $ref: '#/components/schemas/TrayFilter'
         version:
           type: string
-          description: Target firmware version. If not specified, upgrades to the latest available version.
+          description: Target firmware version.
     UpdatePowerStateRequest:
       title: UpdatePowerStateRequest
       type: object
@@ -15002,7 +15002,7 @@ components:
     FirmwareUpdateRequest:
       title: FirmwareUpdateRequest
       type: object
-      description: Request body for firmware update operations. Version is optional; omit to update to the latest available.
+      description: Request body for firmware update operations.
       required:
         - siteId
       properties:
@@ -15012,7 +15012,7 @@ components:
           description: ID of the Site
         version:
           type: string
-          description: Target firmware version. If not specified, updates to the latest available version.
+          description: Target firmware version.
       examples:
         - siteId: 550e8400-e29b-41d4-a716-446655440000
           version: '24.11.0'

@@ -743,7 +743,7 @@ func NewUpdateTrayPowerStateHandler(dbSession *cdb.Session, tc tClient.Client, s
 
 // Handle godoc
 // @Summary Power control a Tray
-// @Description Power control a single Tray by ID (on, off, cycle, forceoff, forcecycle)
+// @Description Power control a Tray identified by Tray UUID (on, off, cycle, forceoff, forcecycle)
 // @Tags tray
 // @Accept json
 // @Produce json
@@ -994,7 +994,7 @@ func NewUpdateTrayFirmwareHandler(dbSession *cdb.Session, tc tClient.Client, scp
 
 // Handle godoc
 // @Summary Firmware update a Tray
-// @Description Upgrade firmware on a Tray identified by UUID. Version is optional; omit to upgrade to the latest available.
+// @Description Update firmware on a Tray identified by Tray UUID.
 // @Tags tray
 // @Accept json
 // @Produce json
@@ -1128,7 +1128,7 @@ func NewBatchUpdateTrayFirmwareHandler(dbSession *cdb.Session, tc tClient.Client
 
 // Handle godoc
 // @Summary Firmware update Trays
-// @Description Update firmware on Trays with optional filters. Version is optional; omit to upgrade to the latest available. If no filter is specified, targets all trays in the Site.
+// @Description Update firmware on Trays with optional filters. If no filter is specified, targets all trays in the Site.
 // @Tags tray
 // @Accept json
 // @Produce json

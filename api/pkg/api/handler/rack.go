@@ -735,7 +735,7 @@ func NewUpdateRackPowerStateHandler(dbSession *cdb.Session, tc tClient.Client, s
 
 // Handle godoc
 // @Summary Power control a Rack
-// @Description Power control a single Rack by ID (on, off, cycle, forceoff, forcecycle)
+// @Description Power control a Rack identified by Rack UUID (on, off, cycle, forceoff, forcecycle)
 // @Tags rack
 // @Accept json
 // @Produce json
@@ -983,7 +983,7 @@ func NewUpdateRackFirmwareHandler(dbSession *cdb.Session, tc tClient.Client, scp
 
 // Handle godoc
 // @Summary Firmware update a Rack
-// @Description Upgrade firmware on a Rack identified by UUID. Version is optional; omit to upgrade to the latest available.
+// @Description Update firmware on a Rack identified by Rack UUID.
 // @Tags rack
 // @Accept json
 // @Produce json
@@ -1114,7 +1114,7 @@ func NewBatchUpdateRackFirmwareHandler(dbSession *cdb.Session, tc tClient.Client
 
 // Handle godoc
 // @Summary Firmware update Racks
-// @Description Update firmware on Racks with optional name filter. Version is optional; omit to upgrade to the latest available. If no filter is specified, targets all racks in the Site.
+// @Description Update firmware on Racks with optional name filter. If no filter is specified, targets all racks in the Site.
 // @Tags rack
 // @Accept json
 // @Produce json
