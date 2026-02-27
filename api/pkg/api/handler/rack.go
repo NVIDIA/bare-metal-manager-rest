@@ -835,12 +835,12 @@ func (pcrh UpdateRackPowerStateHandler) Handle(c echo.Context) error {
 	}
 
 	rlaResp, err := common.ExecutePowerControlWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.State,
-		fmt.Sprintf("rack-power-%s-%s", apiRequest.State, rackStrID), "Rack")
+		fmt.Sprintf("rack-power-state-update-%s-%s", apiRequest.State, rackStrID), "Rack")
 	if err != nil {
 		return err
 	}
 
-	logger.Info().Str("state", apiRequest.State).Msg("finishing API handler")
+	logger.Info().Str("State", apiRequest.State).Msg("finishing API handler")
 	return c.JSON(http.StatusOK, model.NewAPIUpdatePowerStateResponse(rlaResp))
 }
 
@@ -874,7 +874,7 @@ func NewBatchUpdateRackPowerStateHandler(dbSession *cdb.Session, tc tClient.Clie
 // @Produce json
 // @Security ApiKeyAuth
 // @Param org path string true "Name of NGC organization"
-// @Param body body model.APIBatchRackPowerControlRequest true "Batch rack power control request"
+// @Param body body model.APIBatchUpdateRackPowerStateRequest true "Batch rack power control request"
 // @Success 200 {object} model.APIUpdatePowerStateResponse
 // @Router /v2/org/{org}/carbide/rack/power [patch]
 func (pcrbh BatchUpdateRackPowerStateHandler) Handle(c echo.Context) error {
@@ -884,7 +884,7 @@ func (pcrbh BatchUpdateRackPowerStateHandler) Handle(c echo.Context) error {
 	}
 
 	// Bind and validate the JSON body
-	var request model.APIBatchRackPowerControlRequest
+	var request model.APIBatchUpdateRackPowerStateRequest
 	if err := c.Bind(&request); err != nil {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
 	}
@@ -950,12 +950,12 @@ func (pcrbh BatchUpdateRackPowerStateHandler) Handle(c echo.Context) error {
 	targetSpec := request.Filter.ToTargetSpec()
 
 	rlaResp, err := common.ExecutePowerControlWorkflow(ctx, c, logger, stc, targetSpec, request.State,
-		fmt.Sprintf("rack-power-batch-%s-%s", request.State, common.RequestHash(request.Filter)), "Rack")
+		fmt.Sprintf("rack-power-state-batch-update-%s-%s", request.State, common.RequestHash(request.Filter)), "Rack")
 	if err != nil {
 		return err
 	}
 
-	logger.Info().Str("state", request.State).Msg("finishing API handler")
+	logger.Info().Str("State", request.State).Msg("finishing API handler")
 	return c.JSON(http.StatusOK, model.NewAPIUpdatePowerStateResponse(rlaResp))
 }
 
@@ -1081,7 +1081,7 @@ func (furh UpdateRackFirmwareHandler) Handle(c echo.Context) error {
 	}
 
 	rlaResp, err := common.ExecuteFirmwareUpdateWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.Version,
-		fmt.Sprintf("rack-fw-upgrade-%s", rackStrID), "Rack")
+		fmt.Sprintf("rack-firmware-update-%s", rackStrID), "Rack")
 	if err != nil {
 		return err
 	}
@@ -1196,7 +1196,7 @@ func (furbh BatchUpdateRackFirmwareHandler) Handle(c echo.Context) error {
 	targetSpec := request.Filter.ToTargetSpec()
 
 	rlaResp, err := common.ExecuteFirmwareUpdateWorkflow(ctx, c, logger, stc, targetSpec, request.Version,
-		fmt.Sprintf("rack-fw-update-batch-%s", common.RequestHash(request.Filter)), "Rack")
+		fmt.Sprintf("rack-firmware-batch-update-%s", common.RequestHash(request.Filter)), "Rack")
 	if err != nil {
 		return err
 	}

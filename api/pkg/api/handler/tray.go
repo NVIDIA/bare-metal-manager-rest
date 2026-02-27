@@ -846,12 +846,12 @@ func (pcth UpdateTrayPowerStateHandler) Handle(c echo.Context) error {
 	}
 
 	rlaResp, err := common.ExecutePowerControlWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.State,
-		fmt.Sprintf("tray-power-%s-%s", apiRequest.State, trayStrID), "Tray")
+		fmt.Sprintf("tray-power-state-update-%s-%s", apiRequest.State, trayStrID), "Tray")
 	if err != nil {
 		return err
 	}
 
-	logger.Info().Str("state", apiRequest.State).Msg("finishing API handler")
+	logger.Info().Str("State", apiRequest.State).Msg("finishing API handler")
 	return c.JSON(http.StatusOK, model.NewAPIUpdatePowerStateResponse(rlaResp))
 }
 
@@ -885,7 +885,7 @@ func NewBatchUpdateTrayPowerStateHandler(dbSession *cdb.Session, tc tClient.Clie
 // @Produce json
 // @Security ApiKeyAuth
 // @Param org path string true "Name of NGC organization"
-// @Param body body model.APIBatchTrayPowerControlRequest true "Batch tray power control request"
+// @Param body body model.APIBatchUpdateTrayPowerStateRequest true "Batch tray power control request"
 // @Success 200 {object} model.APIUpdatePowerStateResponse
 // @Router /v2/org/{org}/carbide/tray/power [patch]
 func (pctbh BatchUpdateTrayPowerStateHandler) Handle(c echo.Context) error {
@@ -895,7 +895,7 @@ func (pctbh BatchUpdateTrayPowerStateHandler) Handle(c echo.Context) error {
 	}
 
 	// Bind and validate the JSON body
-	var request model.APIBatchTrayPowerControlRequest
+	var request model.APIBatchUpdateTrayPowerStateRequest
 	if err := c.Bind(&request); err != nil {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
 	}
@@ -961,12 +961,12 @@ func (pctbh BatchUpdateTrayPowerStateHandler) Handle(c echo.Context) error {
 	targetSpec := request.Filter.ToTargetSpec()
 
 	rlaResp, err := common.ExecutePowerControlWorkflow(ctx, c, logger, stc, targetSpec, request.State,
-		fmt.Sprintf("tray-power-batch-%s-%s", request.State, common.RequestHash(request.Filter)), "Tray")
+		fmt.Sprintf("tray-power-state-batch-update-%s-%s", request.State, common.RequestHash(request.Filter)), "Tray")
 	if err != nil {
 		return err
 	}
 
-	logger.Info().Str("state", request.State).Msg("finishing API handler")
+	logger.Info().Str("State", request.State).Msg("finishing API handler")
 	return c.JSON(http.StatusOK, model.NewAPIUpdatePowerStateResponse(rlaResp))
 }
 
@@ -1095,7 +1095,7 @@ func (futh UpdateTrayFirmwareHandler) Handle(c echo.Context) error {
 	}
 
 	rlaResp, err := common.ExecuteFirmwareUpdateWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.Version,
-		fmt.Sprintf("tray-fw-upgrade-%s", trayStrID), "Tray")
+		fmt.Sprintf("tray-firmware-update-%s", trayStrID), "Tray")
 	if err != nil {
 		return err
 	}
@@ -1210,7 +1210,7 @@ func (futbh BatchUpdateTrayFirmwareHandler) Handle(c echo.Context) error {
 	targetSpec := request.Filter.ToTargetSpec()
 
 	rlaResp, err := common.ExecuteFirmwareUpdateWorkflow(ctx, c, logger, stc, targetSpec, request.Version,
-		fmt.Sprintf("tray-fw-update-batch-%s", common.RequestHash(request.Filter)), "Tray")
+		fmt.Sprintf("tray-firmware-batch-update-%s", common.RequestHash(request.Filter)), "Tray")
 	if err != nil {
 		return err
 	}

@@ -123,20 +123,20 @@ func TestNewAPIUpdatePowerStateResponse(t *testing.T) {
 	}
 }
 
-func TestAPIBatchRackPowerControlRequest_Validate(t *testing.T) {
+func TestAPIBatchUpdateRackPowerStateRequest_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
-		request APIBatchRackPowerControlRequest
+		request APIBatchUpdateRackPowerStateRequest
 		wantErr bool
 	}{
 		{
 			name:    "valid - on with siteId",
-			request: APIBatchRackPowerControlRequest{SiteID: "site-1", State: "on"},
+			request: APIBatchUpdateRackPowerStateRequest{SiteID: "site-1", State: "on"},
 			wantErr: false,
 		},
 		{
 			name: "valid - with filter",
-			request: APIBatchRackPowerControlRequest{
+			request: APIBatchUpdateRackPowerStateRequest{
 				SiteID: "site-1",
 				Filter: &RackFilter{Names: []string{"Rack-001"}},
 				State:  "off",
@@ -145,17 +145,17 @@ func TestAPIBatchRackPowerControlRequest_Validate(t *testing.T) {
 		},
 		{
 			name:    "invalid - missing siteId",
-			request: APIBatchRackPowerControlRequest{State: "on"},
+			request: APIBatchUpdateRackPowerStateRequest{State: "on"},
 			wantErr: true,
 		},
 		{
 			name:    "invalid - bad state",
-			request: APIBatchRackPowerControlRequest{SiteID: "site-1", State: "reboot"},
+			request: APIBatchUpdateRackPowerStateRequest{SiteID: "site-1", State: "reboot"},
 			wantErr: true,
 		},
 		{
 			name:    "invalid - empty state",
-			request: APIBatchRackPowerControlRequest{SiteID: "site-1"},
+			request: APIBatchUpdateRackPowerStateRequest{SiteID: "site-1"},
 			wantErr: true,
 		},
 	}

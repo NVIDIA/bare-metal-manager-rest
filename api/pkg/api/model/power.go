@@ -95,17 +95,17 @@ func NewAPIUpdatePowerStateResponse(resp *rlav1.SubmitTaskResponse) *APIUpdatePo
 	return r
 }
 
-// ========== Batch Rack Power Control Request ==========
+// ========== Batch Update Rack Power State Request ==========
 
-// APIBatchRackPowerControlRequest is the JSON body for batch rack power control.
-type APIBatchRackPowerControlRequest struct {
+// APIBatchUpdateRackPowerStateRequest is the JSON body for batch rack power control.
+type APIBatchUpdateRackPowerStateRequest struct {
 	SiteID string      `json:"siteId"`
 	Filter *RackFilter `json:"filter,omitempty"`
 	State  string      `json:"state"`
 }
 
 // Validate checks required fields and power state validity.
-func (r *APIBatchRackPowerControlRequest) Validate() error {
+func (r *APIBatchUpdateRackPowerStateRequest) Validate() error {
 	if r.SiteID == "" {
 		return fmt.Errorf("siteId is required")
 	}
@@ -117,17 +117,17 @@ func (r *APIBatchRackPowerControlRequest) Validate() error {
 	)
 }
 
-// ========== Batch Tray Power Control Request ==========
+// ========== Batch Update Tray Power State Request ==========
 
-// APIBatchTrayPowerControlRequest is the JSON body for batch tray power control.
-type APIBatchTrayPowerControlRequest struct {
+// APIBatchUpdateTrayPowerStateRequest is the JSON body for batch tray power control.
+type APIBatchUpdateTrayPowerStateRequest struct {
 	SiteID string      `json:"siteId"`
 	Filter *TrayFilter `json:"filter,omitempty"`
 	State  string      `json:"state"`
 }
 
 // Validate checks required fields, power state validity, and filter constraints.
-func (r *APIBatchTrayPowerControlRequest) Validate() error {
+func (r *APIBatchUpdateTrayPowerStateRequest) Validate() error {
 	if r.SiteID == "" {
 		return fmt.Errorf("siteId is required")
 	}
