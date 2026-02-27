@@ -242,7 +242,7 @@ func (gtitsh GetTenantInstanceTypeStatsHandler) Handle(c echo.Context) error {
 	machineByID := lo.KeyBy(machines, func(m cdbm.Machine) string { return m.ID })
 
 	// Build usage maps
-	tenantITUsed := make(map[uuid.UUID]map[uuid.UUID]*model.APIUsedMachineStats)
+	tenantITUsed := make(map[uuid.UUID]map[uuid.UUID]*model.APIMachineStatusBreakdown)
 	for _, inst := range instances {
 		if inst.InstanceTypeID == nil || inst.MachineID == nil {
 			continue
@@ -250,10 +250,10 @@ func (gtitsh GetTenantInstanceTypeStatsHandler) Handle(c echo.Context) error {
 		tID := inst.TenantID
 		itID := *inst.InstanceTypeID
 		if tenantITUsed[tID] == nil {
-			tenantITUsed[tID] = make(map[uuid.UUID]*model.APIUsedMachineStats)
+			tenantITUsed[tID] = make(map[uuid.UUID]*model.APIMachineStatusBreakdown)
 		}
 		if tenantITUsed[tID][itID] == nil {
-			tenantITUsed[tID][itID] = &model.APIUsedMachineStats{}
+			tenantITUsed[tID][itID] = &model.APIMachineStatusBreakdown{}
 		}
 		if m, ok := machineByID[*inst.MachineID]; ok {
 			tenantITUsed[tID][itID].AddMachineStatusCounts(m)
@@ -324,7 +324,7 @@ func (gtitsh GetTenantInstanceTypeStatsHandler) Handle(c echo.Context) error {
 				}
 			})
 
-			used := model.APIUsedMachineStats{}
+			used := model.APIMachineStatusBreakdown{}
 			if tenantITUsed[tID] != nil && tenantITUsed[tID][itID] != nil {
 				used = *tenantITUsed[tID][itID]
 			}
@@ -427,19 +427,7 @@ func (gmitsh GetMachineInstanceTypeSummaryHandler) Handle(c echo.Context) error 
 		if m.InstanceTypeID == nil {
 			bd = &unassigned
 		}
-		bd.Total++
-		switch m.Status {
-		case cdbm.MachineStatusReady:
-			bd.Ready++
-		case cdbm.MachineStatusInUse:
-			bd.InUse++
-		case cdbm.MachineStatusError:
-			bd.Error++
-		case cdbm.MachineStatusMaintenance:
-			bd.Maintenance++
-		case cdbm.MachineStatusUnknown:
-			bd.Unknown++
-		}
+		bd.AddMachineStatusCounts(m)
 	}
 
 	result := model.APIMachineInstanceTypeSummary{

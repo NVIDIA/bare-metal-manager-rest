@@ -93,33 +93,13 @@ type APITenantInstanceTypeStatsEntry struct {
 	// Allocated is the number of Machines of this Instance Type allocated to this Tenant
 	Allocated int `json:"allocated"`
 	// UsedMachineStats captures the usage status of machines for this instance type within the tenant
-	UsedMachineStats APIUsedMachineStats `json:"usedMachineStats"`
+	UsedMachineStats APIMachineStatusBreakdown `json:"usedMachineStats"`
 	// MaxAllocatable is the number of Ready Machines of this Instance Type available for additional allocation to Tenants
 	MaxAllocatable int `json:"maxAllocatable"`
 	// Allocations is the list of individual allocations for this instance type within the tenant
 	Allocations []APITenantInstanceTypeAllocation `json:"allocations"`
 }
 
-// APIUsedMachineStats captures machine usage counts including error and maintenance states
-type APIUsedMachineStats struct {
-	// Total is the number of Machines currently associated with Tenant Instances
-	Total int `json:"total"`
-	// Error is the number of used Machines in error state
-	Error int `json:"error"`
-	// Maintenance is the number of used Machines in maintenance state
-	Maintenance int `json:"maintenance"`
-}
-
-// AddMachineStatusCounts increments usage counters based on machine status
-func (ums *APIUsedMachineStats) AddMachineStatusCounts(m cdbm.Machine) {
-	ums.Total++
-	switch m.Status {
-	case cdbm.MachineStatusError:
-		ums.Error++
-	case cdbm.MachineStatusMaintenance:
-		ums.Maintenance++
-	}
-}
 
 // APITenantInstanceTypeAllocation represents a single allocation's stats for an instance type
 type APITenantInstanceTypeAllocation struct {
@@ -145,6 +125,8 @@ type APIMachineInstanceTypeSummary struct {
 type APIMachineStatusBreakdown struct {
 	// Total is the total number of machines in this group
 	Total int `json:"total"`
+	// Initializing is the number of machines being initialized
+	Initializing int `json:"initializing"`
 	// Ready is the number of machines in ready state
 	Ready int `json:"ready"`
 	// InUse is the number of machines currently in use
@@ -157,6 +139,25 @@ type APIMachineStatusBreakdown struct {
 	Unknown int `json:"unknown"`
 }
 
+// AddMachineStatusCounts increments counters based on machine status
+func (amsb *APIMachineStatusBreakdown) AddMachineStatusCounts(m cdbm.Machine) {
+	amsb.Total++
+	switch m.Status {
+	case cdbm.MachineStatusInitializing:
+		amsb.Initializing++
+	case cdbm.MachineStatusReady:
+		amsb.Ready++
+	case cdbm.MachineStatusInUse:
+		amsb.InUse++
+	case cdbm.MachineStatusError:
+		amsb.Error++
+	case cdbm.MachineStatusMaintenance:
+		amsb.Maintenance++
+	case cdbm.MachineStatusUnknown:
+		amsb.Unknown++
+	}
+}
+
 // ~~~~~ Machine Instance Type Detailed Stats ~~~~~ //
 
 // APIMachineInstanceTypeStats represents detailed stats for machines of a specific instance type
@@ -166,14 +167,14 @@ type APIMachineInstanceTypeStats struct {
 	// Name is the name of the InstanceType
 	Name string `json:"name"`
 	// AssignedMachineStats captures the status of all Machines assigned to this Instance Type
-	AssignedMachineStats APIUsedMachineStats `json:"assignedMachineStats"`
+	AssignedMachineStats APIMachineStatusBreakdown `json:"assignedMachineStats"`
 	// Allocated is the number of Machines of this Instance Type allocated to Tenants
 	Allocated int `json:"allocated"`
 	// MaxAllocatable is the number of Ready Machines of this Instance Type available for additional allocation to Tenants
 	MaxAllocatable int `json:"maxAllocatable"`
 	// UsedMachineStats captures the usage status of machines assigned to this instance type
 	// that are currently associated with Tenant Instances
-	UsedMachineStats APIUsedMachineStats `json:"usedMachineStats"`
+	UsedMachineStats APIMachineStatusBreakdown `json:"usedMachineStats"`
 	// Tenants is the per-tenant breakdown for this instance type
 	Tenants []APIMachineInstanceTypeTenant `json:"tenants"`
 }
@@ -187,7 +188,7 @@ type APIMachineInstanceTypeTenant struct {
 	// Allocated is the number of Machines allocated to this Tenant for this Instance Type
 	Allocated int `json:"allocated"`
 	// UsedMachineStats captures the usage status of machines for this tenant and instance type
-	UsedMachineStats APIUsedMachineStats `json:"usedMachineStats"`
+	UsedMachineStats APIMachineStatusBreakdown `json:"usedMachineStats"`
 	// Allocations is the list of individual allocations for this tenant and instance type
 	Allocations []APIMachineInstanceTypeTenantAllocation `json:"allocations"`
 }
@@ -207,10 +208,10 @@ func NewAPIMachineInstanceTypeStats(
 	it cdbm.InstanceType,
 	itMachines []cdbm.Machine,
 	itConstraints []cdbm.AllocationConstraint,
-	itUsed map[uuid.UUID]*APIUsedMachineStats,
-	tenantITUsed map[uuid.UUID]map[uuid.UUID]*APIUsedMachineStats,
+	itUsed map[uuid.UUID]*APIMachineStatusBreakdown,
+	tenantITUsed map[uuid.UUID]map[uuid.UUID]*APIMachineStatusBreakdown,
 ) APIMachineInstanceTypeStats {
-	assignedStats := &APIUsedMachineStats{}
+	assignedStats := &APIMachineStatusBreakdown{}
 	for _, m := range itMachines {
 		assignedStats.AddMachineStatusCounts(m)
 	}
@@ -219,7 +220,7 @@ func NewAPIMachineInstanceTypeStats(
 		return acc + ac.ConstraintValue
 	}, 0)
 
-	used := APIUsedMachineStats{}
+	used := APIMachineStatusBreakdown{}
 	if itUsed[it.ID] != nil {
 		used = *itUsed[it.ID]
 	}
@@ -272,11 +273,11 @@ func NewAPIMachineInstanceTypeStats(
 
 // GetInstanceTypeMachineUsageMap builds per-instance-type and per-tenant-instance-type usage maps from instances
 func GetInstanceTypeMachineUsageMap(instances []cdbm.Instance, machineByID map[string]cdbm.Machine) (
-	itUsed map[uuid.UUID]*APIUsedMachineStats,
-	tenantITUsed map[uuid.UUID]map[uuid.UUID]*APIUsedMachineStats,
+	itUsed map[uuid.UUID]*APIMachineStatusBreakdown,
+	tenantITUsed map[uuid.UUID]map[uuid.UUID]*APIMachineStatusBreakdown,
 ) {
-	itUsed = make(map[uuid.UUID]*APIUsedMachineStats)
-	tenantITUsed = make(map[uuid.UUID]map[uuid.UUID]*APIUsedMachineStats)
+	itUsed = make(map[uuid.UUID]*APIMachineStatusBreakdown)
+	tenantITUsed = make(map[uuid.UUID]map[uuid.UUID]*APIMachineStatusBreakdown)
 
 	for _, inst := range instances {
 		if inst.InstanceTypeID == nil || inst.MachineID == nil {
@@ -286,13 +287,13 @@ func GetInstanceTypeMachineUsageMap(instances []cdbm.Instance, machineByID map[s
 		tID := inst.TenantID
 
 		if itUsed[itID] == nil {
-			itUsed[itID] = &APIUsedMachineStats{}
+			itUsed[itID] = &APIMachineStatusBreakdown{}
 		}
 		if tenantITUsed[tID] == nil {
-			tenantITUsed[tID] = make(map[uuid.UUID]*APIUsedMachineStats)
+			tenantITUsed[tID] = make(map[uuid.UUID]*APIMachineStatusBreakdown)
 		}
 		if tenantITUsed[tID][itID] == nil {
-			tenantITUsed[tID][itID] = &APIUsedMachineStats{}
+			tenantITUsed[tID][itID] = &APIMachineStatusBreakdown{}
 		}
 
 		if m, ok := machineByID[*inst.MachineID]; ok {

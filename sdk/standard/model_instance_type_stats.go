@@ -23,7 +23,7 @@ type InstanceTypeStats struct {
 	Id *string `json:"id,omitempty"`
 	Name *string `json:"name,omitempty"`
 	Allocated *int32 `json:"allocated,omitempty"`
-	UsedMachineStats *UsedMachineStats `json:"usedMachineStats,omitempty"`
+	UsedMachineStats *MachineStatusBreakdown `json:"usedMachineStats,omitempty"`
 	MaxAllocatable *int32 `json:"maxAllocatable,omitempty"`
 	Allocations []AllocationStats `json:"allocations,omitempty"`
 }
@@ -142,9 +142,9 @@ func (o *InstanceTypeStats) SetAllocated(v int32) {
 }
 
 // GetUsedMachineStats returns the UsedMachineStats field value if set, zero value otherwise.
-func (o *InstanceTypeStats) GetUsedMachineStats() UsedMachineStats {
+func (o *InstanceTypeStats) GetUsedMachineStats() MachineStatusBreakdown {
 	if o == nil || IsNil(o.UsedMachineStats) {
-		var ret UsedMachineStats
+		var ret MachineStatusBreakdown
 		return ret
 	}
 	return *o.UsedMachineStats
@@ -152,7 +152,7 @@ func (o *InstanceTypeStats) GetUsedMachineStats() UsedMachineStats {
 
 // GetUsedMachineStatsOk returns a tuple with the UsedMachineStats field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-func (o *InstanceTypeStats) GetUsedMachineStatsOk() (*UsedMachineStats, bool) {
+func (o *InstanceTypeStats) GetUsedMachineStatsOk() (*MachineStatusBreakdown, bool) {
 	if o == nil || IsNil(o.UsedMachineStats) {
 		return nil, false
 	}
@@ -168,8 +168,8 @@ func (o *InstanceTypeStats) HasUsedMachineStats() bool {
 	return false
 }
 
-// SetUsedMachineStats gets a reference to the given UsedMachineStats and assigns it to the UsedMachineStats field.
-func (o *InstanceTypeStats) SetUsedMachineStats(v UsedMachineStats) {
+// SetUsedMachineStats gets a reference to the given MachineStatusBreakdown and assigns it to the UsedMachineStats field.
+func (o *InstanceTypeStats) SetUsedMachineStats(v MachineStatusBreakdown) {
 	o.UsedMachineStats = &v
 }
 

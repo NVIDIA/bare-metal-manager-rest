@@ -24,12 +24,12 @@ type MachineInstanceTypeStats struct {
 	Id *string `json:"id,omitempty"`
 	// Name of the InstanceType
 	Name *string `json:"name,omitempty"`
-	AssignedMachineStats *UsedMachineStats `json:"assignedMachineStats,omitempty"`
+	AssignedMachineStats *MachineStatusBreakdown `json:"assignedMachineStats,omitempty"`
 	// Number of Machines of this Instance Type allocated to Tenants
 	Allocated *int32 `json:"allocated,omitempty"`
 	// Number of Ready Machines of this Instance Type available for additional allocation to Tenants
 	MaxAllocatable *int32 `json:"maxAllocatable,omitempty"`
-	UsedMachineStats *UsedMachineStats `json:"usedMachineStats,omitempty"`
+	UsedMachineStats *MachineStatusBreakdown `json:"usedMachineStats,omitempty"`
 	Tenants []InstanceTypeStats `json:"tenants,omitempty"`
 }
 
@@ -115,9 +115,9 @@ func (o *MachineInstanceTypeStats) SetName(v string) {
 }
 
 // GetAssignedMachineStats returns the AssignedMachineStats field value if set, zero value otherwise.
-func (o *MachineInstanceTypeStats) GetAssignedMachineStats() UsedMachineStats {
+func (o *MachineInstanceTypeStats) GetAssignedMachineStats() MachineStatusBreakdown {
 	if o == nil || IsNil(o.AssignedMachineStats) {
-		var ret UsedMachineStats
+		var ret MachineStatusBreakdown
 		return ret
 	}
 	return *o.AssignedMachineStats
@@ -125,7 +125,7 @@ func (o *MachineInstanceTypeStats) GetAssignedMachineStats() UsedMachineStats {
 
 // GetAssignedMachineStatsOk returns a tuple with the AssignedMachineStats field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-func (o *MachineInstanceTypeStats) GetAssignedMachineStatsOk() (*UsedMachineStats, bool) {
+func (o *MachineInstanceTypeStats) GetAssignedMachineStatsOk() (*MachineStatusBreakdown, bool) {
 	if o == nil || IsNil(o.AssignedMachineStats) {
 		return nil, false
 	}
@@ -141,8 +141,8 @@ func (o *MachineInstanceTypeStats) HasAssignedMachineStats() bool {
 	return false
 }
 
-// SetAssignedMachineStats gets a reference to the given UsedMachineStats and assigns it to the AssignedMachineStats field.
-func (o *MachineInstanceTypeStats) SetAssignedMachineStats(v UsedMachineStats) {
+// SetAssignedMachineStats gets a reference to the given MachineStatusBreakdown and assigns it to the AssignedMachineStats field.
+func (o *MachineInstanceTypeStats) SetAssignedMachineStats(v MachineStatusBreakdown) {
 	o.AssignedMachineStats = &v
 }
 
@@ -211,9 +211,9 @@ func (o *MachineInstanceTypeStats) SetMaxAllocatable(v int32) {
 }
 
 // GetUsedMachineStats returns the UsedMachineStats field value if set, zero value otherwise.
-func (o *MachineInstanceTypeStats) GetUsedMachineStats() UsedMachineStats {
+func (o *MachineInstanceTypeStats) GetUsedMachineStats() MachineStatusBreakdown {
 	if o == nil || IsNil(o.UsedMachineStats) {
-		var ret UsedMachineStats
+		var ret MachineStatusBreakdown
 		return ret
 	}
 	return *o.UsedMachineStats
@@ -221,7 +221,7 @@ func (o *MachineInstanceTypeStats) GetUsedMachineStats() UsedMachineStats {
 
 // GetUsedMachineStatsOk returns a tuple with the UsedMachineStats field value if set, nil otherwise
 // and a boolean to check if the value has been set.
-func (o *MachineInstanceTypeStats) GetUsedMachineStatsOk() (*UsedMachineStats, bool) {
+func (o *MachineInstanceTypeStats) GetUsedMachineStatsOk() (*MachineStatusBreakdown, bool) {
 	if o == nil || IsNil(o.UsedMachineStats) {
 		return nil, false
 	}
@@ -237,8 +237,8 @@ func (o *MachineInstanceTypeStats) HasUsedMachineStats() bool {
 	return false
 }
 
-// SetUsedMachineStats gets a reference to the given UsedMachineStats and assigns it to the UsedMachineStats field.
-func (o *MachineInstanceTypeStats) SetUsedMachineStats(v UsedMachineStats) {
+// SetUsedMachineStats gets a reference to the given MachineStatusBreakdown and assigns it to the UsedMachineStats field.
+func (o *MachineInstanceTypeStats) SetUsedMachineStats(v MachineStatusBreakdown) {
 	o.UsedMachineStats = &v
 }
 

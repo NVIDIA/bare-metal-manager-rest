@@ -21,6 +21,7 @@ var _ MappedNullable = &MachineStatusBreakdown{}
 // MachineStatusBreakdown Machine counts broken down by status
 type MachineStatusBreakdown struct {
 	Total *int32 `json:"total,omitempty"`
+	Initializing *int32 `json:"initializing,omitempty"`
 	Ready *int32 `json:"ready,omitempty"`
 	InUse *int32 `json:"inUse,omitempty"`
 	Error *int32 `json:"error,omitempty"`
@@ -75,6 +76,38 @@ func (o *MachineStatusBreakdown) HasTotal() bool {
 // SetTotal gets a reference to the given int32 and assigns it to the Total field.
 func (o *MachineStatusBreakdown) SetTotal(v int32) {
 	o.Total = &v
+}
+
+// GetInitializing returns the Initializing field value if set, zero value otherwise.
+func (o *MachineStatusBreakdown) GetInitializing() int32 {
+	if o == nil || IsNil(o.Initializing) {
+		var ret int32
+		return ret
+	}
+	return *o.Initializing
+}
+
+// GetInitializingOk returns a tuple with the Initializing field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *MachineStatusBreakdown) GetInitializingOk() (*int32, bool) {
+	if o == nil || IsNil(o.Initializing) {
+		return nil, false
+	}
+	return o.Initializing, true
+}
+
+// HasInitializing returns a boolean if a field has been set.
+func (o *MachineStatusBreakdown) HasInitializing() bool {
+	if o != nil && !IsNil(o.Initializing) {
+		return true
+	}
+
+	return false
+}
+
+// SetInitializing gets a reference to the given int32 and assigns it to the Initializing field.
+func (o *MachineStatusBreakdown) SetInitializing(v int32) {
+	o.Initializing = &v
 }
 
 // GetReady returns the Ready field value if set, zero value otherwise.
@@ -249,6 +282,9 @@ func (o MachineStatusBreakdown) ToMap() (map[string]interface{}, error) {
 	toSerialize := map[string]interface{}{}
 	if !IsNil(o.Total) {
 		toSerialize["total"] = o.Total
+	}
+	if !IsNil(o.Initializing) {
+		toSerialize["initializing"] = o.Initializing
 	}
 	if !IsNil(o.Ready) {
 		toSerialize["ready"] = o.Ready

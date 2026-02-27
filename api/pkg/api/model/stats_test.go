@@ -64,38 +64,15 @@ func TestAPIMachineGPUStats_ZeroValues(t *testing.T) {
 	assert.Equal(t, float64(0), parsed["machines"])
 }
 
-func TestAPIUsedMachineStats_JSON(t *testing.T) {
-	stats := APIUsedMachineStats{
-		Total:       10,
-		Error:       2,
-		Maintenance: 3,
-	}
-
-	data, err := json.Marshal(stats)
-	require.Nil(t, err)
-
-	var parsed map[string]interface{}
-	err = json.Unmarshal(data, &parsed)
-	require.Nil(t, err)
-
-	assert.Equal(t, float64(10), parsed["total"])
-	assert.Equal(t, float64(2), parsed["error"])
-	assert.Equal(t, float64(3), parsed["maintenance"])
-
-	var roundTrip APIUsedMachineStats
-	err = json.Unmarshal(data, &roundTrip)
-	require.Nil(t, err)
-	assert.Equal(t, stats, roundTrip)
-}
-
 func TestAPIMachineStatusBreakdown_JSON(t *testing.T) {
 	bd := APIMachineStatusBreakdown{
-		Total:       23,
-		Ready:       13,
-		InUse:       3,
-		Error:       2,
-		Maintenance: 2,
-		Unknown:     3,
+		Total:        23,
+		Initializing: 1,
+		Ready:        12,
+		InUse:        3,
+		Error:        2,
+		Maintenance:  2,
+		Unknown:      3,
 	}
 
 	data, err := json.Marshal(bd)
@@ -106,7 +83,8 @@ func TestAPIMachineStatusBreakdown_JSON(t *testing.T) {
 	require.Nil(t, err)
 
 	assert.Equal(t, float64(23), parsed["total"])
-	assert.Equal(t, float64(13), parsed["ready"])
+	assert.Equal(t, float64(1), parsed["initializing"])
+	assert.Equal(t, float64(12), parsed["ready"])
 	assert.Equal(t, float64(3), parsed["inUse"])
 	assert.Equal(t, float64(2), parsed["error"])
 	assert.Equal(t, float64(2), parsed["maintenance"])
@@ -151,18 +129,24 @@ func TestAPIMachineInstanceTypeSummary_JSON(t *testing.T) {
 
 func TestAPIMachineInstanceTypeStats_JSON(t *testing.T) {
 	stats := APIMachineInstanceTypeStats{
-		ID:                   "it-123",
-		Name:                 "cpu.x100",
-		AssignedMachineStats: APIUsedMachineStats{Total: 8, Error: 1, Maintenance: 1},
-		Allocated:            45,
-		MaxAllocatable:       0,
-		UsedMachineStats:     APIUsedMachineStats{Total: 3, Error: 1, Maintenance: 1},
+		ID:   "it-123",
+		Name: "cpu.x100",
+		AssignedMachineStats: APIMachineStatusBreakdown{
+			Total: 8, Ready: 5, InUse: 1, Error: 1, Maintenance: 1,
+		},
+		Allocated:      45,
+		MaxAllocatable: 0,
+		UsedMachineStats: APIMachineStatusBreakdown{
+			Total: 3, InUse: 1, Error: 1, Maintenance: 1,
+		},
 		Tenants: []APIMachineInstanceTypeTenant{
 			{
-				ID:               "t-1",
-				Name:             "tenant-a-org",
-				Allocated:        30,
-				UsedMachineStats: APIUsedMachineStats{Total: 3, Error: 1, Maintenance: 1},
+				ID:        "t-1",
+				Name:      "tenant-a-org",
+				Allocated: 30,
+				UsedMachineStats: APIMachineStatusBreakdown{
+					Total: 3, InUse: 1, Error: 1, Maintenance: 1,
+				},
 				Allocations: []APIMachineInstanceTypeTenantAllocation{
 					{ID: "a-1", Name: "alloc-a-1", Allocated: 20},
 					{ID: "a-2", Name: "alloc-a-2", Allocated: 10},
@@ -172,7 +156,7 @@ func TestAPIMachineInstanceTypeStats_JSON(t *testing.T) {
 				ID:               "t-2",
 				Name:             "tenant-b-org",
 				Allocated:        15,
-				UsedMachineStats: APIUsedMachineStats{},
+				UsedMachineStats: APIMachineStatusBreakdown{},
 				Allocations: []APIMachineInstanceTypeTenantAllocation{
 					{ID: "b-1", Name: "alloc-b-1", Allocated: 15},
 				},
@@ -194,6 +178,16 @@ func TestAPIMachineInstanceTypeStats_JSON(t *testing.T) {
 
 	assignedStats := parsed["assignedMachineStats"].(map[string]interface{})
 	assert.Equal(t, float64(8), assignedStats["total"])
+	assert.Equal(t, float64(5), assignedStats["ready"])
+	assert.Equal(t, float64(1), assignedStats["inUse"])
+	assert.Equal(t, float64(1), assignedStats["error"])
+	assert.Equal(t, float64(1), assignedStats["maintenance"])
+
+	usedStats := parsed["usedMachineStats"].(map[string]interface{})
+	assert.Equal(t, float64(3), usedStats["total"])
+	assert.Equal(t, float64(1), usedStats["inUse"])
+	assert.Equal(t, float64(1), usedStats["error"])
+	assert.Equal(t, float64(1), usedStats["maintenance"])
 
 	tenants := parsed["tenants"].([]interface{})
 	assert.Equal(t, 2, len(tenants))
@@ -201,6 +195,10 @@ func TestAPIMachineInstanceTypeStats_JSON(t *testing.T) {
 	tenantA := tenants[0].(map[string]interface{})
 	assert.Equal(t, "tenant-a-org", tenantA["name"])
 	assert.Equal(t, float64(30), tenantA["allocated"])
+
+	tenantAUsed := tenantA["usedMachineStats"].(map[string]interface{})
+	assert.Equal(t, float64(3), tenantAUsed["total"])
+	assert.Equal(t, float64(1), tenantAUsed["inUse"])
 
 	allocs := tenantA["allocations"].([]interface{})
 	assert.Equal(t, 2, len(allocs))
@@ -217,7 +215,7 @@ func TestAPIMachineInstanceTypeStats_EmptyTenants(t *testing.T) {
 	stats := APIMachineInstanceTypeStats{
 		ID:                   "it-456",
 		Name:                 "storage.hdd",
-		AssignedMachineStats: APIUsedMachineStats{Total: 3},
+		AssignedMachineStats: APIMachineStatusBreakdown{Total: 3, Ready: 3},
 		MaxAllocatable:       3,
 		Tenants:              nil,
 	}
@@ -240,22 +238,26 @@ func TestAPITenantInstanceTypeStats_JSON(t *testing.T) {
 		OrgDisplayName: "Tenant A Org",
 		InstanceTypes: []APITenantInstanceTypeStatsEntry{
 			{
-				ID:               "it-1",
-				Name:             "cpu.x100",
-				Allocated:        30,
-				UsedMachineStats: APIUsedMachineStats{Total: 3, Error: 1, Maintenance: 1},
-				MaxAllocatable:   0,
+				ID:        "it-1",
+				Name:      "cpu.x100",
+				Allocated: 30,
+				UsedMachineStats: APIMachineStatusBreakdown{
+					Total: 3, InUse: 1, Error: 1, Maintenance: 1,
+				},
+				MaxAllocatable: 0,
 				Allocations: []APITenantInstanceTypeAllocation{
 					{ID: "a-1", Name: "alloc-a-1", Total: 20},
 					{ID: "a-2", Name: "alloc-a-2", Total: 10},
 				},
 			},
 			{
-				ID:               "it-2",
-				Name:             "gpu.a100",
-				Allocated:        3,
-				UsedMachineStats: APIUsedMachineStats{Total: 2},
-				MaxAllocatable:   2,
+				ID:        "it-2",
+				Name:      "gpu.a100",
+				Allocated: 3,
+				UsedMachineStats: APIMachineStatusBreakdown{
+					Total: 2, InUse: 2,
+				},
+				MaxAllocatable: 2,
 				Allocations: []APITenantInstanceTypeAllocation{
 					{ID: "a-1", Name: "alloc-a-1", Total: 3},
 				},
@@ -281,6 +283,18 @@ func TestAPITenantInstanceTypeStats_JSON(t *testing.T) {
 	assert.Equal(t, "cpu.x100", cpuEntry["name"])
 	assert.Equal(t, float64(30), cpuEntry["allocated"])
 	assert.Equal(t, float64(0), cpuEntry["maxAllocatable"])
+
+	cpuUsed := cpuEntry["usedMachineStats"].(map[string]interface{})
+	assert.Equal(t, float64(3), cpuUsed["total"])
+	assert.Equal(t, float64(1), cpuUsed["inUse"])
+	assert.Equal(t, float64(1), cpuUsed["error"])
+	assert.Equal(t, float64(1), cpuUsed["maintenance"])
+
+	gpuEntry := instanceTypes[1].(map[string]interface{})
+	assert.Equal(t, "gpu.a100", gpuEntry["name"])
+	gpuUsed := gpuEntry["usedMachineStats"].(map[string]interface{})
+	assert.Equal(t, float64(2), gpuUsed["total"])
+	assert.Equal(t, float64(2), gpuUsed["inUse"])
 
 	cpuAllocs := cpuEntry["allocations"].([]interface{})
 	assert.Equal(t, 2, len(cpuAllocs))
