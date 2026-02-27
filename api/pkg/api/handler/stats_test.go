@@ -616,7 +616,7 @@ func TestStatsHandlers(t *testing.T) {
 		handler := NewGetMachineGPUStatsHandler(dbSession, cfg)
 		err := handler.Handle(ec)
 		require.Nil(t, err)
-		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		assert.Equal(t, http.StatusForbidden, rec.Code)
 	})
 
 	// ~~~~~ Test: Missing siteId query param ~~~~~ //
