@@ -119,37 +119,7 @@ func (gmgsh GetMachineGPUStatsHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve GPU capabilities", nil)
 	}
 
-	// Aggregate: group by GPU name, sum counts, track distinct machines
-	type gpuAgg struct {
-		gpus     int
-		machines map[string]bool
-	}
-	gpuMap := make(map[string]*gpuAgg)
-
-	for _, cap := range capabilities {
-		name := cap.Name
-		agg, exists := gpuMap[name]
-		if !exists {
-			agg = &gpuAgg{machines: make(map[string]bool)}
-			gpuMap[name] = agg
-		}
-		if cap.Count != nil {
-			agg.gpus += *cap.Count
-		} else {
-			agg.gpus++
-		}
-		if cap.MachineID != nil {
-			agg.machines[*cap.MachineID] = true
-		}
-	}
-
-	result := lo.MapToSlice(gpuMap, func(name string, agg *gpuAgg) model.APIMachineGPUStats {
-		return model.APIMachineGPUStats{
-			Name:     name,
-			GPUs:     agg.gpus,
-			Machines: len(agg.machines),
-		}
-	})
+	result := model.NewAPIMachineGPUStatsList(capabilities)
 
 	logger.Info().Msg("finishing API handler")
 	return c.JSON(http.StatusOK, result)
