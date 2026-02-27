@@ -16858,26 +16858,14 @@ components:
         machines:
           type: integer
           description: Number of machines that have this GPU capability
-    UsedMachineStats:
-      title: UsedMachineStats
-      description: Machine usage counts including error and maintenance states
-      type: object
-      properties:
-        total:
-          type: integer
-          description: Number of Machines currently associated with Tenant Instances
-        error:
-          type: integer
-          description: Number of used Machines in error state
-        maintenance:
-          type: integer
-          description: Number of used Machines in maintenance state
     MachineStatusBreakdown:
       title: MachineStatusBreakdown
       description: Machine counts broken down by status
       type: object
       properties:
         total:
+          type: integer
+        initializing:
           type: integer
         ready:
           type: integer
@@ -16913,7 +16901,7 @@ components:
           type: string
           description: Name of the InstanceType
         assignedMachineStats:
-          $ref: '#/components/schemas/UsedMachineStats'
+          $ref: '#/components/schemas/MachineStatusBreakdown'
         allocated:
           type: integer
           description: Number of Machines of this Instance Type allocated to Tenants
@@ -16921,7 +16909,7 @@ components:
           type: integer
           description: Number of Ready Machines of this Instance Type available for additional allocation to Tenants
         usedMachineStats:
-          $ref: '#/components/schemas/UsedMachineStats'
+          $ref: '#/components/schemas/MachineStatusBreakdown'
         tenants:
           type: array
           items:
@@ -16939,7 +16927,7 @@ components:
         allocated:
           type: integer
         usedMachineStats:
-          $ref: '#/components/schemas/UsedMachineStats'
+          $ref: '#/components/schemas/MachineStatusBreakdown'
         maxAllocatable:
           type: integer
         allocations:
