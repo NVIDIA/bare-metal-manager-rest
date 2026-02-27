@@ -8403,7 +8403,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PowerControlResponse'
+                $ref: '#/components/schemas/UpdatePowerStateResponse'
               examples:
                 example-1:
                   value:
@@ -8453,7 +8453,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PowerControlRequest'
+              $ref: '#/components/schemas/UpdatePowerStateRequest'
             examples:
               power-on:
                 value:
@@ -8470,7 +8470,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PowerControlResponse'
+                $ref: '#/components/schemas/UpdatePowerStateResponse'
               examples:
                 example-1:
                   value:
@@ -8520,7 +8520,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FirmwareUpgradeResponse'
+                $ref: '#/components/schemas/FirmwareUpdateResponse'
               examples:
                 example-1:
                   value:
@@ -8549,10 +8549,10 @@ paths:
         required: true
         description: ID of the Rack
     patch:
-      summary: Firmware upgrade a Rack
-      operationId: firmware-upgrade-rack
+      summary: Firmware update a Rack
+      operationId: firmware-update-rack
       description: |-
-        Upgrade firmware on a single Rack by ID. Version is optional; omit to upgrade to the latest available.
+        Update firmware on a single Rack by ID. Version is optional; omit to update to the latest available.
 
         Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
       parameters:
@@ -8567,7 +8567,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/FirmwareUpgradeRequest'
+              $ref: '#/components/schemas/FirmwareUpdateRequest'
             examples:
               with-version:
                 value:
@@ -8580,7 +8580,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FirmwareUpgradeResponse'
+                $ref: '#/components/schemas/FirmwareUpdateResponse'
               examples:
                 example-1:
                   value:
@@ -8968,7 +8968,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PowerControlResponse'
+                $ref: '#/components/schemas/UpdatePowerStateResponse'
               examples:
                 example-1:
                   value:
@@ -9017,7 +9017,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PowerControlRequest'
+              $ref: '#/components/schemas/UpdatePowerStateRequest'
             examples:
               power-on:
                 value:
@@ -9034,7 +9034,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PowerControlResponse'
+                $ref: '#/components/schemas/UpdatePowerStateResponse'
               examples:
                 example-1:
                   value:
@@ -9088,7 +9088,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FirmwareUpgradeResponse'
+                $ref: '#/components/schemas/FirmwareUpdateResponse'
               examples:
                 example-1:
                   value:
@@ -9116,10 +9116,10 @@ paths:
         required: true
         description: ID of the Tray
     patch:
-      summary: Firmware upgrade a Tray
-      operationId: firmware-upgrade-tray
+      summary: Firmware update a Tray
+      operationId: firmware-update-tray
       description: |-
-        Upgrade firmware on a single Tray by ID. Version is optional; omit to upgrade to the latest available.
+        Update firmware on a single Tray by ID. Version is optional; omit to update to the latest available.
 
         Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
       parameters:
@@ -9134,7 +9134,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/FirmwareUpgradeRequest'
+              $ref: '#/components/schemas/FirmwareUpdateRequest'
             examples:
               with-version:
                 value:
@@ -9147,7 +9147,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FirmwareUpgradeResponse'
+                $ref: '#/components/schemas/FirmwareUpdateResponse'
               examples:
                 example-1:
                   value:
@@ -14829,8 +14829,8 @@ components:
         version:
           type: string
           description: Target firmware version. If not specified, upgrades to the latest available version.
-    PowerControlRequest:
-      title: PowerControlRequest
+    UpdatePowerStateRequest:
+      title: UpdatePowerStateRequest
       type: object
       description: Request body for single-resource power control operations
       required:
@@ -14855,8 +14855,8 @@ components:
         - state: 'on'
         - state: 'off'
         - state: cycle
-    PowerControlResponse:
-      title: PowerControlResponse
+    UpdatePowerStateResponse:
+      title: UpdatePowerStateResponse
       type: object
       description: Response for power control operations containing task IDs for tracking
       properties:
@@ -14869,10 +14869,10 @@ components:
       examples:
         - taskIds:
             - 550e8400-e29b-41d4-a716-446655440000
-    FirmwareUpgradeRequest:
-      title: FirmwareUpgradeRequest
+    FirmwareUpdateRequest:
+      title: FirmwareUpdateRequest
       type: object
-      description: Request body for firmware upgrade operations. Version is optional; omit to upgrade to the latest available.
+      description: Request body for firmware update operations. Version is optional; omit to upgrade to the latest available.
       properties:
         version:
           type: string
@@ -14880,17 +14880,17 @@ components:
       examples:
         - version: '24.11.0'
         - {}
-    FirmwareUpgradeResponse:
-      title: FirmwareUpgradeResponse
+    FirmwareUpdateResponse:
+      title: FirmwareUpdateResponse
       type: object
-      description: Response for firmware upgrade operations containing task IDs for tracking
+      description: Response for firmware update operations containing task IDs for tracking
       properties:
         taskIds:
           type: array
           items:
             type: string
             format: uuid
-          description: List of task IDs created for the firmware upgrade operation
+          description: List of task IDs created for the firmware update operation
       examples:
         - taskIds:
             - 550e8400-e29b-41d4-a716-446655440000

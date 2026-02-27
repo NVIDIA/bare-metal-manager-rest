@@ -1666,7 +1666,7 @@ func ExecuteFirmwareUpdateWorkflow(
 	rlaRequest := &rlav1.UpgradeFirmwareRequest{
 		TargetSpec:    targetSpec,
 		TargetVersion: version,
-		Description:   fmt.Sprintf("API firmware upgrade %s", entityName),
+		Description:   fmt.Sprintf("API firmware update %s", entityName),
 	}
 
 	workflowOptions := tclient.StartWorkflowOptions{

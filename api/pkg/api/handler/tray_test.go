@@ -1432,7 +1432,7 @@ func TestUpdateTrayFirmwareHandler_Handle(t *testing.T) {
 		expectedStatus int
 	}{
 		{
-			name:   "success - firmware upgrade with version",
+			name:   "success - firmware update with version",
 			reqOrg: org,
 			user:   providerUser,
 			trayID: trayID,
@@ -1444,7 +1444,7 @@ func TestUpdateTrayFirmwareHandler_Handle(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:   "success - firmware upgrade without version",
+			name:   "success - firmware update without version",
 			reqOrg: org,
 			user:   providerUser,
 			trayID: trayID,
@@ -1572,7 +1572,7 @@ func TestBatchUpdateTrayFirmwareHandler_Handle(t *testing.T) {
 		expectedStatus int
 	}{
 		{
-			name:           "success - firmware upgrade all trays (no filter)",
+			name:           "success - firmware update all trays (no filter)",
 			reqOrg:         org,
 			user:           providerUser,
 			body:           fmt.Sprintf(`{"siteId":"%s"}`, site.ID.String()),
@@ -1580,7 +1580,7 @@ func TestBatchUpdateTrayFirmwareHandler_Handle(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "success - firmware upgrade with rackId filter and version",
+			name:           "success - firmware update with rackId filter and version",
 			reqOrg:         org,
 			user:           providerUser,
 			body:           fmt.Sprintf(`{"siteId":"%s","filter":{"rackId":"%s"},"version":"24.11.0"}`, site.ID.String(), fwRackID),

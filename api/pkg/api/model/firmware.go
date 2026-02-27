@@ -23,16 +23,16 @@ import (
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 )
 
-// ========== Firmware Upgrade Request ==========
+// ========== Firmware Update Request ==========
 
-// APIUpdateFirmwareRequest is the request body for firmware upgrade operations
+// APIUpdateFirmwareRequest is the request body for firmware update operations
 type APIUpdateFirmwareRequest struct {
 	Version *string `json:"version,omitempty"`
 }
 
-// ========== Firmware Upgrade Response ==========
+// ========== Firmware Update Response ==========
 
-// APIUpdateFirmwareResponse is the API response for firmware upgrade operations
+// APIUpdateFirmwareResponse is the API response for firmware update operations
 type APIUpdateFirmwareResponse struct {
 	TaskIDs []string `json:"taskIds"`
 }

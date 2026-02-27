@@ -989,7 +989,7 @@ func NewUpdateRackFirmwareHandler(dbSession *cdb.Session, tc tClient.Client, scp
 }
 
 // Handle godoc
-// @Summary Firmware upgrade a Rack
+// @Summary Firmware update a Rack
 // @Description Upgrade firmware on a Rack identified by UUID. Version is optional; omit to upgrade to the latest available.
 // @Tags rack
 // @Accept json
@@ -998,7 +998,7 @@ func NewUpdateRackFirmwareHandler(dbSession *cdb.Session, tc tClient.Client, scp
 // @Param org path string true "Name of NGC organization"
 // @Param id path string true "UUID of the Rack"
 // @Param siteId query string true "ID of the Site"
-// @Param body body model.APIUpdateFirmwareRequest true "Firmware upgrade request"
+// @Param body body model.APIUpdateFirmwareRequest true "Firmware update request"
 // @Success 200 {object} model.APIUpdateFirmwareResponse
 // @Router /v2/org/{org}/carbide/rack/{id}/firmware [patch]
 func (furh UpdateRackFirmwareHandler) Handle(c echo.Context) error {
@@ -1024,7 +1024,7 @@ func (furh UpdateRackFirmwareHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
 	}
 
-	// Validate role, only Provider Admins are allowed to firmware upgrade Rack
+	// Validate role, only Provider Admins are allowed to firmware update Rack
 	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
 	if !ok {
 		logger.Warn().Msg("user does not have Provider Admin role, access denied")

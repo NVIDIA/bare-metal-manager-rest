@@ -1000,7 +1000,7 @@ func NewUpdateTrayFirmwareHandler(dbSession *cdb.Session, tc tClient.Client, scp
 }
 
 // Handle godoc
-// @Summary Firmware upgrade a Tray
+// @Summary Firmware update a Tray
 // @Description Upgrade firmware on a Tray identified by UUID. Version is optional; omit to upgrade to the latest available.
 // @Tags tray
 // @Accept json
@@ -1009,7 +1009,7 @@ func NewUpdateTrayFirmwareHandler(dbSession *cdb.Session, tc tClient.Client, scp
 // @Param org path string true "Name of NGC organization"
 // @Param id path string true "UUID of the Tray"
 // @Param siteId query string true "ID of the Site"
-// @Param body body model.APIUpdateFirmwareRequest true "Firmware upgrade request"
+// @Param body body model.APIUpdateFirmwareRequest true "Firmware update request"
 // @Success 200 {object} model.APIUpdateFirmwareResponse
 // @Router /v2/org/{org}/carbide/tray/{id}/firmware [patch]
 func (futh UpdateTrayFirmwareHandler) Handle(c echo.Context) error {
@@ -1035,7 +1035,7 @@ func (futh UpdateTrayFirmwareHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
 	}
 
-	// Validate role, only Provider Admins are allowed to firmware upgrade Tray
+	// Validate role, only Provider Admins are allowed to firmware update Tray
 	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
 	if !ok {
 		logger.Warn().Msg("user does not have Provider Admin role, access denied")
