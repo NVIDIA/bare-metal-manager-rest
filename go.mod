@@ -56,6 +56,7 @@ require (
 	github.com/prometheus/client_model v0.6.2
 	github.com/redis/go-redis/v9 v9.17.2
 	github.com/rs/zerolog v1.33.0
+	github.com/samber/lo v1.52.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cast v1.10.0
 	github.com/spf13/cobra v1.10.2
