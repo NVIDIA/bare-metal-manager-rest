@@ -19,27 +19,26 @@ package model
 
 import (
 	"fmt"
-	"net/url"
 
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 )
 
 // ========== Firmware Upgrade Request ==========
 
-// APIFirmwareUpgradeRequest is the request body for firmware upgrade operations
-type APIFirmwareUpgradeRequest struct {
+// APIFirmwareUpdateRequest is the request body for firmware upgrade operations
+type APIFirmwareUpdateRequest struct {
 	Version *string `json:"version,omitempty"`
 }
 
 // ========== Firmware Upgrade Response ==========
 
-// APIFirmwareUpgradeResponse is the API response for firmware upgrade operations
-type APIFirmwareUpgradeResponse struct {
+// APIFirmwareUpdateResponse is the API response for firmware upgrade operations
+type APIFirmwareUpdateResponse struct {
 	TaskIDs []string `json:"taskIds"`
 }
 
-// FromProto converts an RLA SubmitTaskResponse to an APIFirmwareUpgradeResponse
-func (r *APIFirmwareUpgradeResponse) FromProto(resp *rlav1.SubmitTaskResponse) {
+// FromProto converts an RLA SubmitTaskResponse to an APIFirmwareUpdateResponse
+func (r *APIFirmwareUpdateResponse) FromProto(resp *rlav1.SubmitTaskResponse) {
 	if resp == nil {
 		r.TaskIDs = []string{}
 		return
@@ -50,62 +49,43 @@ func (r *APIFirmwareUpgradeResponse) FromProto(resp *rlav1.SubmitTaskResponse) {
 	}
 }
 
-// NewAPIFirmwareUpgradeResponse creates an APIFirmwareUpgradeResponse from an RLA SubmitTaskResponse
-func NewAPIFirmwareUpgradeResponse(resp *rlav1.SubmitTaskResponse) *APIFirmwareUpgradeResponse {
-	r := &APIFirmwareUpgradeResponse{}
+// NewAPIFirmwareUpdateResponse creates an APIFirmwareUpdateResponse from an RLA SubmitTaskResponse
+func NewAPIFirmwareUpdateResponse(resp *rlav1.SubmitTaskResponse) *APIFirmwareUpdateResponse {
+	r := &APIFirmwareUpdateResponse{}
 	r.FromProto(resp)
 	return r
 }
 
-// ========== Rack Firmware Upgrade Batch Request ==========
+// ========== Batch Rack Firmware Update Request ==========
 
-// APIRackFirmwareUpgradeBatchRequest captures query parameters for batch rack firmware upgrade.
-// Supports filtering by rack name.
-type APIRackFirmwareUpgradeBatchRequest struct {
-	SiteID string   `query:"siteId"`
-	Names  []string `query:"name"`
+// APIBatchRackFirmwareUpdateRequest is the JSON body for batch rack firmware update.
+type APIBatchRackFirmwareUpdateRequest struct {
+	SiteID  string      `json:"siteId"`
+	Filter  *RackFilter `json:"filter,omitempty"`
+	Version *string     `json:"version,omitempty"`
 }
 
-// Validate checks required fields on the batch firmware upgrade request
-func (r *APIRackFirmwareUpgradeBatchRequest) Validate() error {
+// Validate checks required fields.
+func (r *APIBatchRackFirmwareUpdateRequest) Validate() error {
 	if r.SiteID == "" {
-		return fmt.Errorf("siteId query parameter is required")
+		return fmt.Errorf("siteId is required")
 	}
 	return nil
 }
 
-// QueryValues returns only the known query parameters as url.Values,
-// suitable for deterministic workflow ID hashing without unknown param interference.
-func (r *APIRackFirmwareUpgradeBatchRequest) QueryValues() url.Values {
-	v := url.Values{}
-	v.Set("siteId", r.SiteID)
-	for _, n := range r.Names {
-		v.Add("name", n)
-	}
-	return v
+// ========== Batch Tray Firmware Update Request ==========
+
+// APIBatchTrayFirmwareUpdateRequest is the JSON body for batch tray firmware update.
+type APIBatchTrayFirmwareUpdateRequest struct {
+	SiteID  string      `json:"siteId"`
+	Filter  *TrayFilter `json:"filter,omitempty"`
+	Version *string     `json:"version,omitempty"`
 }
 
-// ToTargetSpec converts the filter request to an RLA OperationTargetSpec
-func (r *APIRackFirmwareUpgradeBatchRequest) ToTargetSpec() *rlav1.OperationTargetSpec {
-	var rackTargets []*rlav1.RackTarget
-
-	for _, name := range r.Names {
-		rackTargets = append(rackTargets, &rlav1.RackTarget{
-			Identifier: &rlav1.RackTarget_Name{
-				Name: name,
-			},
-		})
+// Validate checks required fields and filter constraints.
+func (r *APIBatchTrayFirmwareUpdateRequest) Validate() error {
+	if r.SiteID == "" {
+		return fmt.Errorf("siteId is required")
 	}
-
-	if len(rackTargets) == 0 {
-		rackTargets = append(rackTargets, &rlav1.RackTarget{})
-	}
-
-	return &rlav1.OperationTargetSpec{
-		Targets: &rlav1.OperationTargetSpec_Racks{
-			Racks: &rlav1.RackTargets{
-				Targets: rackTargets,
-			},
-		},
-	}
+	return r.Filter.Validate()
 }

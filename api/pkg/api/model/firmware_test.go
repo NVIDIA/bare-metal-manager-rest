@@ -24,82 +24,83 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNewAPIFirmwareUpgradeResponse(t *testing.T) {
+func TestNewAPIFirmwareUpdateResponse(t *testing.T) {
 	tests := []struct {
 		name     string
 		resp     *rlav1.SubmitTaskResponse
-		expected *APIFirmwareUpgradeResponse
+		expected *APIFirmwareUpdateResponse
 	}{
 		{
 			name:     "nil response returns empty task IDs",
 			resp:     nil,
-			expected: &APIFirmwareUpgradeResponse{TaskIDs: []string{}},
+			expected: &APIFirmwareUpdateResponse{TaskIDs: []string{}},
 		},
 		{
 			name: "single task ID",
 			resp: &rlav1.SubmitTaskResponse{
 				TaskIds: []*rlav1.UUID{{Id: "task-1"}},
 			},
-			expected: &APIFirmwareUpgradeResponse{TaskIDs: []string{"task-1"}},
+			expected: &APIFirmwareUpdateResponse{TaskIDs: []string{"task-1"}},
 		},
 		{
 			name: "multiple task IDs",
 			resp: &rlav1.SubmitTaskResponse{
 				TaskIds: []*rlav1.UUID{{Id: "task-1"}, {Id: "task-2"}},
 			},
-			expected: &APIFirmwareUpgradeResponse{TaskIDs: []string{"task-1", "task-2"}},
+			expected: &APIFirmwareUpdateResponse{TaskIDs: []string{"task-1", "task-2"}},
 		},
 		{
 			name:     "empty task IDs",
 			resp:     &rlav1.SubmitTaskResponse{},
-			expected: &APIFirmwareUpgradeResponse{TaskIDs: []string{}},
+			expected: &APIFirmwareUpdateResponse{TaskIDs: []string{}},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := NewAPIFirmwareUpgradeResponse(tt.resp)
+			result := NewAPIFirmwareUpdateResponse(tt.resp)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
 
-func TestAPIRackFirmwareUpgradeBatchRequest_QueryTags(t *testing.T) {
-	r := APIRackFirmwareUpgradeBatchRequest{
-		SiteID: "site-1",
-		Names:  []string{"rack-1", "rack-2"},
-	}
-	assert.Equal(t, "site-1", r.SiteID)
-	assert.Equal(t, []string{"rack-1", "rack-2"}, r.Names)
-}
-
-func TestAPIRackFirmwareUpgradeBatchRequest_ToTargetSpec(t *testing.T) {
+func TestAPIBatchRackFirmwareUpdateRequest_Validate(t *testing.T) {
 	tests := []struct {
-		name          string
-		request       APIRackFirmwareUpgradeBatchRequest
-		expectRackLen int
+		name    string
+		request APIBatchRackFirmwareUpdateRequest
+		wantErr bool
 	}{
 		{
-			name:          "no filter - empty target",
-			request:       APIRackFirmwareUpgradeBatchRequest{},
-			expectRackLen: 1,
+			name:    "valid - with siteId only",
+			request: APIBatchRackFirmwareUpdateRequest{SiteID: "site-1"},
+			wantErr: false,
 		},
 		{
-			name: "with name filter",
-			request: APIRackFirmwareUpgradeBatchRequest{
-				Names: []string{"rack-1", "rack-2"},
+			name: "valid - with filter and version",
+			request: APIBatchRackFirmwareUpdateRequest{
+				SiteID:  "site-1",
+				Filter:  &RackFilter{Names: []string{"rack-1"}},
+				Version: strPtr("1.0"),
 			},
-			expectRackLen: 2,
+			wantErr: false,
+		},
+		{
+			name:    "invalid - missing siteId",
+			request: APIBatchRackFirmwareUpdateRequest{},
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			spec := tt.request.ToTargetSpec()
-			assert.NotNil(t, spec)
-			racks := spec.GetRacks()
-			assert.NotNil(t, racks)
-			assert.Len(t, racks.GetTargets(), tt.expectRackLen)
+			err := tt.request.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
 		})
 	}
 }
+
+func strPtr(s string) *string { return &s }

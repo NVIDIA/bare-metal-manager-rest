@@ -118,45 +118,86 @@ func TestNewAPIPowerControlResponse(t *testing.T) {
 	}
 }
 
-func TestAPIRackPowerControlBatchRequest_QueryTags(t *testing.T) {
-	r := &APIRackPowerControlBatchRequest{
-		SiteID: "site-1",
-		Names:  []string{"Rack-001", "Rack-002"},
+func TestAPIBatchRackPowerControlRequest_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		request APIBatchRackPowerControlRequest
+		wantErr bool
+	}{
+		{
+			name:    "valid - on with siteId",
+			request: APIBatchRackPowerControlRequest{SiteID: "site-1", State: "on"},
+			wantErr: false,
+		},
+		{
+			name: "valid - with filter",
+			request: APIBatchRackPowerControlRequest{
+				SiteID: "site-1",
+				Filter: &RackFilter{Names: []string{"Rack-001"}},
+				State:  "off",
+			},
+			wantErr: false,
+		},
+		{
+			name:    "invalid - missing siteId",
+			request: APIBatchRackPowerControlRequest{State: "on"},
+			wantErr: true,
+		},
+		{
+			name:    "invalid - bad state",
+			request: APIBatchRackPowerControlRequest{SiteID: "site-1", State: "reboot"},
+			wantErr: true,
+		},
+		{
+			name:    "invalid - empty state",
+			request: APIBatchRackPowerControlRequest{SiteID: "site-1"},
+			wantErr: true,
+		},
 	}
-	assert.Equal(t, "site-1", r.SiteID)
-	assert.Equal(t, []string{"Rack-001", "Rack-002"}, r.Names)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.request.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
 }
 
-func TestAPIRackPowerControlBatchRequest_ToTargetSpec(t *testing.T) {
+func TestRackFilter_ToTargetSpec(t *testing.T) {
 	tests := []struct {
 		name          string
-		request       APIRackPowerControlBatchRequest
+		filter        *RackFilter
 		expectedRacks int
 	}{
 		{
-			name:          "no filters - targets all racks",
-			request:       APIRackPowerControlBatchRequest{},
+			name:          "nil filter - targets all racks",
+			filter:        nil,
 			expectedRacks: 1,
 		},
 		{
-			name: "with name filter",
-			request: APIRackPowerControlBatchRequest{
-				Names: []string{"Rack-001"},
-			},
+			name:          "empty filter - targets all racks",
+			filter:        &RackFilter{},
 			expectedRacks: 1,
 		},
 		{
-			name: "with multiple name filters",
-			request: APIRackPowerControlBatchRequest{
-				Names: []string{"Rack-001", "Rack-002"},
-			},
+			name:          "with single name",
+			filter:        &RackFilter{Names: []string{"Rack-001"}},
+			expectedRacks: 1,
+		},
+		{
+			name:          "with multiple names",
+			filter:        &RackFilter{Names: []string{"Rack-001", "Rack-002"}},
 			expectedRacks: 2,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			spec := tt.request.ToTargetSpec()
+			spec := tt.filter.ToTargetSpec()
 			assert.NotNil(t, spec)
 
 			racks := spec.GetRacks()

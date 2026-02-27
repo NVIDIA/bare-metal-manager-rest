@@ -711,10 +711,10 @@ func (vrsh ValidateRacksHandler) Handle(c echo.Context) error {
 	return c.JSON(http.StatusOK, apiResult)
 }
 
-// ~~~~~ Power Control Rack Handler ~~~~~ //
+// ~~~~~ Update Rack Power State Handler ~~~~~ //
 
-// PowerControlRackHandler is the API Handler for power controlling a single Rack by ID
-type PowerControlRackHandler struct {
+// UpdateRackPowerStateHandler is the API Handler for power controlling a single Rack by ID
+type UpdateRackPowerStateHandler struct {
 	dbSession  *cdb.Session
 	tc         tClient.Client
 	scp        *sc.ClientPool
@@ -722,9 +722,9 @@ type PowerControlRackHandler struct {
 	tracerSpan *sutil.TracerSpan
 }
 
-// NewPowerControlRackHandler initializes and returns a new handler for power controlling a Rack
-func NewPowerControlRackHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) PowerControlRackHandler {
-	return PowerControlRackHandler{
+// NewUpdateRackPowerStateHandler initializes and returns a new handler for power controlling a Rack
+func NewUpdateRackPowerStateHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) UpdateRackPowerStateHandler {
+	return UpdateRackPowerStateHandler{
 		dbSession:  dbSession,
 		tc:         tc,
 		scp:        scp,
@@ -746,7 +746,7 @@ func NewPowerControlRackHandler(dbSession *cdb.Session, tc tClient.Client, scp *
 // @Param body body model.APIPowerControlRequest true "Power control request"
 // @Success 200 {object} model.APIPowerControlResponse
 // @Router /v2/org/{org}/carbide/rack/{id}/power [patch]
-func (pcrh PowerControlRackHandler) Handle(c echo.Context) error {
+func (pcrh UpdateRackPowerStateHandler) Handle(c echo.Context) error {
 	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "PowerControl", c, pcrh.tracerSpan)
 	if handlerSpan != nil {
 		defer handlerSpan.End()
@@ -845,10 +845,10 @@ func (pcrh PowerControlRackHandler) Handle(c echo.Context) error {
 		fmt.Sprintf("rack-power-%s-%s", apiRequest.State, rackStrID), "Rack")
 }
 
-// ~~~~~ Power Control Racks (Batch) Handler ~~~~~ //
+// ~~~~~ Batch Update Rack Power State Handler ~~~~~ //
 
-// PowerControlRackBatchHandler is the API Handler for power controlling Racks with optional filters
-type PowerControlRackBatchHandler struct {
+// BatchUpdateRackPowerStateHandler is the API Handler for power controlling Racks with optional filters
+type BatchUpdateRackPowerStateHandler struct {
 	dbSession  *cdb.Session
 	tc         tClient.Client
 	scp        *sc.ClientPool
@@ -856,9 +856,9 @@ type PowerControlRackBatchHandler struct {
 	tracerSpan *sutil.TracerSpan
 }
 
-// NewPowerControlRackBatchHandler initializes and returns a new handler for batch power controlling Racks
-func NewPowerControlRackBatchHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) PowerControlRackBatchHandler {
-	return PowerControlRackBatchHandler{
+// NewBatchUpdateRackPowerStateHandler initializes and returns a new handler for batch power controlling Racks
+func NewBatchUpdateRackPowerStateHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) BatchUpdateRackPowerStateHandler {
+	return BatchUpdateRackPowerStateHandler{
 		dbSession:  dbSession,
 		tc:         tc,
 		scp:        scp,
@@ -875,27 +875,23 @@ func NewPowerControlRackBatchHandler(dbSession *cdb.Session, tc tClient.Client, 
 // @Produce json
 // @Security ApiKeyAuth
 // @Param org path string true "Name of NGC organization"
-// @Param siteId query string true "ID of the Site"
-// @Param name query string false "Filter racks by name (use repeated params for multiple values)"
-// @Param body body model.APIPowerControlRequest true "Power control request"
+// @Param body body model.APIBatchRackPowerControlRequest true "Batch rack power control request"
 // @Success 200 {object} model.APIPowerControlResponse
 // @Router /v2/org/{org}/carbide/rack/power [patch]
-func (pcrbh PowerControlRackBatchHandler) Handle(c echo.Context) error {
+func (pcrbh BatchUpdateRackPowerStateHandler) Handle(c echo.Context) error {
 	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "PowerControlBatch", c, pcrbh.tracerSpan)
 	if handlerSpan != nil {
 		defer handlerSpan.End()
 	}
 
-	var filterRequest model.APIRackPowerControlBatchRequest
-	if err := common.ValidateKnownQueryParams(c.QueryParams(), filterRequest); err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
-	}
-	if err := (&echo.DefaultBinder{}).BindQueryParams(c, &filterRequest); err != nil {
+	// Bind and validate the JSON body
+	var request model.APIBatchRackPowerControlRequest
+	if err := c.Bind(&request); err != nil {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
 	}
-	if verr := filterRequest.Validate(); verr != nil {
-		logger.Warn().Err(verr).Msg("error validating power control filter parameters")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate power control filter parameters", verr)
+	if verr := request.Validate(); verr != nil {
+		logger.Warn().Err(verr).Msg("error validating batch rack power control request")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate request data", verr)
 	}
 
 	// Is DB user missing?
@@ -930,7 +926,7 @@ func (pcrbh PowerControlRackBatchHandler) Handle(c echo.Context) error {
 	}
 
 	// Validate the site
-	site, err := common.GetSiteFromIDString(ctx, nil, filterRequest.SiteID, pcrbh.dbSession)
+	site, err := common.GetSiteFromIDString(ctx, nil, request.SiteID, pcrbh.dbSession)
 	if err != nil {
 		if errors.Is(err, cdb.ErrDoesNotExist) {
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
@@ -944,17 +940,6 @@ func (pcrbh PowerControlRackBatchHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
-	// Parse and validate request body
-	apiRequest := model.APIPowerControlRequest{}
-	if err := c.Bind(&apiRequest); err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
-	}
-	verr := apiRequest.Validate()
-	if verr != nil {
-		logger.Warn().Err(verr).Msg("error validating power control request data")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate power control request data", verr)
-	}
-
 	// Get the temporal client for the site
 	stc, err := pcrbh.scp.GetClientByID(site.ID)
 	if err != nil {
@@ -962,17 +947,17 @@ func (pcrbh PowerControlRackBatchHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
 	}
 
-	// Build TargetSpec from rack filters
-	targetSpec := filterRequest.ToTargetSpec()
+	// Build TargetSpec from filter (nil filter = all racks)
+	targetSpec := request.Filter.ToTargetSpec()
 
-	return common.ExecutePowerControlWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.State,
-		fmt.Sprintf("rack-power-batch-%s-%s", apiRequest.State, common.QueryParamHash(filterRequest.QueryValues())), "Rack")
+	return common.ExecutePowerControlWorkflow(ctx, c, logger, stc, targetSpec, request.State,
+		fmt.Sprintf("rack-power-batch-%s-%s", request.State, common.RequestHash(request.Filter)), "Rack")
 }
 
-// ~~~~~ Firmware Upgrade Rack Handler ~~~~~ //
+// ~~~~~ Update Rack Firmware Handler ~~~~~ //
 
-// FirmwareUpgradeRackHandler is the API Handler for upgrading firmware on a single Rack by ID
-type FirmwareUpgradeRackHandler struct {
+// UpdateRackFirmwareHandler is the API Handler for upgrading firmware on a single Rack by ID
+type UpdateRackFirmwareHandler struct {
 	dbSession  *cdb.Session
 	tc         tClient.Client
 	scp        *sc.ClientPool
@@ -980,9 +965,9 @@ type FirmwareUpgradeRackHandler struct {
 	tracerSpan *sutil.TracerSpan
 }
 
-// NewFirmwareUpgradeRackHandler initializes and returns a new handler for firmware upgrading a Rack
-func NewFirmwareUpgradeRackHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) FirmwareUpgradeRackHandler {
-	return FirmwareUpgradeRackHandler{
+// NewUpdateRackFirmwareHandler initializes and returns a new handler for firmware upgrading a Rack
+func NewUpdateRackFirmwareHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) UpdateRackFirmwareHandler {
+	return UpdateRackFirmwareHandler{
 		dbSession:  dbSession,
 		tc:         tc,
 		scp:        scp,
@@ -1001,11 +986,11 @@ func NewFirmwareUpgradeRackHandler(dbSession *cdb.Session, tc tClient.Client, sc
 // @Param org path string true "Name of NGC organization"
 // @Param id path string true "UUID of the Rack"
 // @Param siteId query string true "ID of the Site"
-// @Param body body model.APIFirmwareUpgradeRequest true "Firmware upgrade request"
-// @Success 200 {object} model.APIFirmwareUpgradeResponse
+// @Param body body model.APIFirmwareUpdateRequest true "Firmware upgrade request"
+// @Success 200 {object} model.APIFirmwareUpdateResponse
 // @Router /v2/org/{org}/carbide/rack/{id}/firmware [patch]
-func (furh FirmwareUpgradeRackHandler) Handle(c echo.Context) error {
-	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "FirmwareUpgrade", c, furh.tracerSpan)
+func (furh UpdateRackFirmwareHandler) Handle(c echo.Context) error {
+	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "FirmwareUpdate", c, furh.tracerSpan)
 	if handlerSpan != nil {
 		defer handlerSpan.End()
 	}
@@ -1067,7 +1052,7 @@ func (furh FirmwareUpgradeRackHandler) Handle(c echo.Context) error {
 	}
 
 	// Parse request body
-	apiRequest := model.APIFirmwareUpgradeRequest{}
+	apiRequest := model.APIFirmwareUpdateRequest{}
 	if err := c.Bind(&apiRequest); err != nil {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
 	}
@@ -1093,14 +1078,14 @@ func (furh FirmwareUpgradeRackHandler) Handle(c echo.Context) error {
 		},
 	}
 
-	return common.ExecuteFirmwareUpgradeWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.Version,
+	return common.ExecuteFirmwareUpdateWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.Version,
 		fmt.Sprintf("rack-fw-upgrade-%s", rackStrID), "Rack")
 }
 
-// ~~~~~ Firmware Upgrade Racks (Batch) Handler ~~~~~ //
+// ~~~~~ Batch Update Rack Firmware Handler ~~~~~ //
 
-// FirmwareUpgradeRackBatchHandler is the API Handler for firmware upgrading Racks with optional filters
-type FirmwareUpgradeRackBatchHandler struct {
+// BatchUpdateRackFirmwareHandler is the API Handler for firmware upgrading Racks with optional filters
+type BatchUpdateRackFirmwareHandler struct {
 	dbSession  *cdb.Session
 	tc         tClient.Client
 	scp        *sc.ClientPool
@@ -1108,9 +1093,9 @@ type FirmwareUpgradeRackBatchHandler struct {
 	tracerSpan *sutil.TracerSpan
 }
 
-// NewFirmwareUpgradeRackBatchHandler initializes and returns a new handler for batch firmware upgrading Racks
-func NewFirmwareUpgradeRackBatchHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) FirmwareUpgradeRackBatchHandler {
-	return FirmwareUpgradeRackBatchHandler{
+// NewBatchUpdateRackFirmwareHandler initializes and returns a new handler for batch firmware upgrading Racks
+func NewBatchUpdateRackFirmwareHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) BatchUpdateRackFirmwareHandler {
+	return BatchUpdateRackFirmwareHandler{
 		dbSession:  dbSession,
 		tc:         tc,
 		scp:        scp,
@@ -1120,34 +1105,30 @@ func NewFirmwareUpgradeRackBatchHandler(dbSession *cdb.Session, tc tClient.Clien
 }
 
 // Handle godoc
-// @Summary Firmware upgrade Racks
-// @Description Upgrade firmware on Racks with optional name filter. Version is optional; omit to upgrade to the latest available. If no filter is specified, targets all racks in the Site.
+// @Summary Firmware update Racks
+// @Description Update firmware on Racks with optional name filter. Version is optional; omit to upgrade to the latest available. If no filter is specified, targets all racks in the Site.
 // @Tags rack
 // @Accept json
 // @Produce json
 // @Security ApiKeyAuth
 // @Param org path string true "Name of NGC organization"
-// @Param siteId query string true "ID of the Site"
-// @Param name query string false "Filter racks by name (use repeated params for multiple values)"
-// @Param body body model.APIFirmwareUpgradeRequest true "Firmware upgrade request"
-// @Success 200 {object} model.APIFirmwareUpgradeResponse
+// @Param body body model.APIBatchRackFirmwareUpdateRequest true "Batch rack firmware update request"
+// @Success 200 {object} model.APIFirmwareUpdateResponse
 // @Router /v2/org/{org}/carbide/rack/firmware [patch]
-func (furbh FirmwareUpgradeRackBatchHandler) Handle(c echo.Context) error {
-	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "FirmwareUpgradeBatch", c, furbh.tracerSpan)
+func (furbh BatchUpdateRackFirmwareHandler) Handle(c echo.Context) error {
+	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "FirmwareUpdateBatch", c, furbh.tracerSpan)
 	if handlerSpan != nil {
 		defer handlerSpan.End()
 	}
 
-	var filterRequest model.APIRackFirmwareUpgradeBatchRequest
-	if err := common.ValidateKnownQueryParams(c.QueryParams(), filterRequest); err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
-	}
-	if err := (&echo.DefaultBinder{}).BindQueryParams(c, &filterRequest); err != nil {
+	// Bind and validate the JSON body
+	var request model.APIBatchRackFirmwareUpdateRequest
+	if err := c.Bind(&request); err != nil {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
 	}
-	if verr := filterRequest.Validate(); verr != nil {
-		logger.Warn().Err(verr).Msg("error validating firmware upgrade filter parameters")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate firmware upgrade filter parameters", verr)
+	if verr := request.Validate(); verr != nil {
+		logger.Warn().Err(verr).Msg("error validating batch rack firmware update request")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate request data", verr)
 	}
 
 	// Is DB user missing?
@@ -1167,7 +1148,7 @@ func (furbh FirmwareUpgradeRackBatchHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
 	}
 
-	// Validate role, only Provider Admins are allowed to firmware upgrade Rack
+	// Validate role, only Provider Admins are allowed to firmware update Rack
 	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
 	if !ok {
 		logger.Warn().Msg("user does not have Provider Admin role, access denied")
@@ -1182,7 +1163,7 @@ func (furbh FirmwareUpgradeRackBatchHandler) Handle(c echo.Context) error {
 	}
 
 	// Validate the site
-	site, err := common.GetSiteFromIDString(ctx, nil, filterRequest.SiteID, furbh.dbSession)
+	site, err := common.GetSiteFromIDString(ctx, nil, request.SiteID, furbh.dbSession)
 	if err != nil {
 		if errors.Is(err, cdb.ErrDoesNotExist) {
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
@@ -1196,12 +1177,6 @@ func (furbh FirmwareUpgradeRackBatchHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
-	// Parse request body
-	apiRequest := model.APIFirmwareUpgradeRequest{}
-	if err := c.Bind(&apiRequest); err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
-	}
-
 	// Get the temporal client for the site
 	stc, err := furbh.scp.GetClientByID(site.ID)
 	if err != nil {
@@ -1209,9 +1184,9 @@ func (furbh FirmwareUpgradeRackBatchHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
 	}
 
-	// Build TargetSpec from rack filters
-	targetSpec := filterRequest.ToTargetSpec()
+	// Build TargetSpec from filter (nil filter = all racks)
+	targetSpec := request.Filter.ToTargetSpec()
 
-	return common.ExecuteFirmwareUpgradeWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.Version,
-		fmt.Sprintf("rack-fw-upgrade-batch-%s", common.QueryParamHash(filterRequest.QueryValues())), "Rack")
+	return common.ExecuteFirmwareUpdateWorkflow(ctx, c, logger, stc, targetSpec, request.Version,
+		fmt.Sprintf("rack-fw-update-batch-%s", common.RequestHash(request.Filter)), "Rack")
 }

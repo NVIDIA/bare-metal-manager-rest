@@ -1118,7 +1118,7 @@ func TestValidateTraysHandler_Handle(t *testing.T) {
 }
 
 
-func TestPowerControlTrayHandler_Handle(t *testing.T) {
+func TestUpdateTrayPowerStateHandler_Handle(t *testing.T) {
 	e := echo.New()
 	dbSession := testTrayInitDB(t)
 	defer dbSession.Close()
@@ -1133,7 +1133,7 @@ func TestPowerControlTrayHandler_Handle(t *testing.T) {
 	providerUser := testTrayBuildUser(t, dbSession, "provider-user-pc-tray", org, []string{"FORGE_PROVIDER_ADMIN"})
 	tenantUser := testTrayBuildUser(t, dbSession, "tenant-user-pc-tray", org, []string{"FORGE_TENANT_ADMIN"})
 
-	handler := NewPowerControlTrayHandler(dbSession, nil, scp, cfg)
+	handler := NewUpdateTrayPowerStateHandler(dbSession, nil, scp, cfg)
 
 	trayID := uuid.New().String()
 
@@ -1267,7 +1267,7 @@ func TestPowerControlTrayHandler_Handle(t *testing.T) {
 			err := handler.Handle(ec)
 
 			if tt.expectedStatus != rec.Code {
-				t.Errorf("PowerControlTrayHandler.Handle() status = %v, want %v, response: %v, err: %v", rec.Code, tt.expectedStatus, rec.Body.String(), err)
+				t.Errorf("UpdateTrayPowerStateHandler.Handle() status = %v, want %v, response: %v, err: %v", rec.Code, tt.expectedStatus, rec.Body.String(), err)
 			}
 
 			require.Equal(t, tt.expectedStatus, rec.Code)
@@ -1283,7 +1283,7 @@ func TestPowerControlTrayHandler_Handle(t *testing.T) {
 	}
 }
 
-func TestPowerControlTrayBatchHandler_Handle(t *testing.T) {
+func TestBatchUpdateTrayPowerStateHandler_Handle(t *testing.T) {
 	e := echo.New()
 	dbSession := testTrayInitDB(t)
 	defer dbSession.Close()
@@ -1298,71 +1298,56 @@ func TestPowerControlTrayBatchHandler_Handle(t *testing.T) {
 	providerUser := testTrayBuildUser(t, dbSession, "provider-user-pc-tray-batch", org, []string{"FORGE_PROVIDER_ADMIN"})
 	tenantUser := testTrayBuildUser(t, dbSession, "tenant-user-pc-tray-batch", org, []string{"FORGE_TENANT_ADMIN"})
 
-	handler := NewPowerControlTrayBatchHandler(dbSession, nil, scp, cfg)
+	handler := NewBatchUpdateTrayPowerStateHandler(dbSession, nil, scp, cfg)
 
 	tracer := oteltrace.NewNoopTracerProvider().Tracer("test")
 	ctx := context.Background()
+
+	rackID := uuid.NewString()
 
 	tests := []struct {
 		name           string
 		reqOrg         string
 		user           *cdbm.User
-		queryParams    map[string]string
 		body           string
 		mockTaskIDs    []*rlav1.UUID
 		expectedStatus int
 	}{
 		{
-			name:   "success - power on all trays (no filter)",
-			reqOrg: org,
-			user:   providerUser,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{"state":"on"}`,
+			name:           "success - power on all trays (no filter)",
+			reqOrg:         org,
+			user:           providerUser,
+			body:           fmt.Sprintf(`{"siteId":"%s","state":"on"}`, site.ID.String()),
 			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}, {Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:   "success - power cycle with rackId filter",
-			reqOrg: org,
-			user:   providerUser,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-				"rackId": uuid.NewString(),
-			},
-			body:           `{"state":"cycle"}`,
+			name:           "success - power cycle with rackId filter",
+			reqOrg:         org,
+			user:           providerUser,
+			body:           fmt.Sprintf(`{"siteId":"%s","filter":{"rackId":"%s"},"state":"cycle"}`, site.ID.String(), rackID),
 			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:   "failure - missing siteId",
-			reqOrg: org,
-			user:   providerUser,
-			queryParams: map[string]string{
-				// no siteId
-			},
+			name:           "failure - missing siteId",
+			reqOrg:         org,
+			user:           providerUser,
 			body:           `{"state":"on"}`,
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "failure - invalid state",
-			reqOrg: org,
-			user:   providerUser,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{"state":"unknown"}`,
+			name:           "failure - invalid state",
+			reqOrg:         org,
+			user:           providerUser,
+			body:           fmt.Sprintf(`{"siteId":"%s","state":"unknown"}`, site.ID.String()),
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "failure - tenant access denied",
-			reqOrg: org,
-			user:   tenantUser,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{"state":"on"}`,
+			name:           "failure - tenant access denied",
+			reqOrg:         org,
+			user:           tenantUser,
+			body:           fmt.Sprintf(`{"siteId":"%s","state":"on"}`, site.ID.String()),
 			expectedStatus: http.StatusForbidden,
 		},
 	}
@@ -1381,11 +1366,7 @@ func TestPowerControlTrayBatchHandler_Handle(t *testing.T) {
 			mockTemporalClient.Mock.On("ExecuteWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockWorkflowRun, nil)
 			scp.IDClientMap[site.ID.String()] = mockTemporalClient
 
-			q := url.Values{}
-			for k, v := range tt.queryParams {
-				q.Set(k, v)
-			}
-			path := fmt.Sprintf("/v2/org/%s/carbide/tray/power?%s", tt.reqOrg, q.Encode())
+			path := fmt.Sprintf("/v2/org/%s/carbide/tray/power", tt.reqOrg)
 
 			req := httptest.NewRequest(http.MethodPatch, path, strings.NewReader(tt.body))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
@@ -1402,7 +1383,7 @@ func TestPowerControlTrayBatchHandler_Handle(t *testing.T) {
 			err := handler.Handle(ec)
 
 			if tt.expectedStatus != rec.Code {
-				t.Errorf("PowerControlTrayBatchHandler.Handle() status = %v, want %v, response: %v, err: %v", rec.Code, tt.expectedStatus, rec.Body.String(), err)
+				t.Errorf("BatchUpdateTrayPowerStateHandler.Handle() status = %v, want %v, response: %v, err: %v", rec.Code, tt.expectedStatus, rec.Body.String(), err)
 			}
 
 			require.Equal(t, tt.expectedStatus, rec.Code)
@@ -1418,7 +1399,7 @@ func TestPowerControlTrayBatchHandler_Handle(t *testing.T) {
 	}
 }
 
-func TestFirmwareUpgradeTrayHandler_Handle(t *testing.T) {
+func TestUpdateTrayFirmwareHandler_Handle(t *testing.T) {
 	e := echo.New()
 	dbSession := testTrayInitDB(t)
 	defer dbSession.Close()
@@ -1433,7 +1414,7 @@ func TestFirmwareUpgradeTrayHandler_Handle(t *testing.T) {
 	providerUser := testTrayBuildUser(t, dbSession, "provider-user-fw-tray", org, []string{"FORGE_PROVIDER_ADMIN"})
 	tenantUser := testTrayBuildUser(t, dbSession, "tenant-user-fw-tray", org, []string{"FORGE_TENANT_ADMIN"})
 
-	handler := NewFirmwareUpgradeTrayHandler(dbSession, nil, scp, cfg)
+	handler := NewUpdateTrayFirmwareHandler(dbSession, nil, scp, cfg)
 
 	trayID := uuid.New().String()
 
@@ -1544,7 +1525,7 @@ func TestFirmwareUpgradeTrayHandler_Handle(t *testing.T) {
 			err := handler.Handle(ec)
 
 			if tt.expectedStatus != rec.Code {
-				t.Errorf("FirmwareUpgradeTrayHandler.Handle() status = %v, want %v, response: %v, err: %v", rec.Code, tt.expectedStatus, rec.Body.String(), err)
+				t.Errorf("UpdateTrayFirmwareHandler.Handle() status = %v, want %v, response: %v, err: %v", rec.Code, tt.expectedStatus, rec.Body.String(), err)
 			}
 
 			require.Equal(t, tt.expectedStatus, rec.Code)
@@ -1552,7 +1533,7 @@ func TestFirmwareUpgradeTrayHandler_Handle(t *testing.T) {
 				return
 			}
 
-			var apiResp model.APIFirmwareUpgradeResponse
+			var apiResp model.APIFirmwareUpdateResponse
 			err = json.Unmarshal(rec.Body.Bytes(), &apiResp)
 			assert.NoError(t, err)
 			assert.NotEmpty(t, apiResp.TaskIDs)
@@ -1560,7 +1541,7 @@ func TestFirmwareUpgradeTrayHandler_Handle(t *testing.T) {
 	}
 }
 
-func TestFirmwareUpgradeTrayBatchHandler_Handle(t *testing.T) {
+func TestBatchUpdateTrayFirmwareHandler_Handle(t *testing.T) {
 	e := echo.New()
 	dbSession := testTrayInitDB(t)
 	defer dbSession.Close()
@@ -1575,61 +1556,49 @@ func TestFirmwareUpgradeTrayBatchHandler_Handle(t *testing.T) {
 	providerUser := testTrayBuildUser(t, dbSession, "provider-user-fw-tray-batch", org, []string{"FORGE_PROVIDER_ADMIN"})
 	tenantUser := testTrayBuildUser(t, dbSession, "tenant-user-fw-tray-batch", org, []string{"FORGE_TENANT_ADMIN"})
 
-	handler := NewFirmwareUpgradeTrayBatchHandler(dbSession, nil, scp, cfg)
+	handler := NewBatchUpdateTrayFirmwareHandler(dbSession, nil, scp, cfg)
 
 	tracer := oteltrace.NewNoopTracerProvider().Tracer("test")
 	ctx := context.Background()
+
+	fwRackID := uuid.NewString()
 
 	tests := []struct {
 		name           string
 		reqOrg         string
 		user           *cdbm.User
-		queryParams    map[string]string
 		body           string
 		mockTaskIDs    []*rlav1.UUID
 		expectedStatus int
 	}{
 		{
-			name:   "success - firmware upgrade all trays (no filter)",
-			reqOrg: org,
-			user:   providerUser,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{}`,
+			name:           "success - firmware upgrade all trays (no filter)",
+			reqOrg:         org,
+			user:           providerUser,
+			body:           fmt.Sprintf(`{"siteId":"%s"}`, site.ID.String()),
 			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}, {Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:   "success - firmware upgrade with rackId filter and version",
-			reqOrg: org,
-			user:   providerUser,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-				"rackId": uuid.NewString(),
-			},
-			body:           `{"version":"24.11.0"}`,
+			name:           "success - firmware upgrade with rackId filter and version",
+			reqOrg:         org,
+			user:           providerUser,
+			body:           fmt.Sprintf(`{"siteId":"%s","filter":{"rackId":"%s"},"version":"24.11.0"}`, site.ID.String(), fwRackID),
 			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:   "failure - missing siteId",
-			reqOrg: org,
-			user:   providerUser,
-			queryParams: map[string]string{
-				// no siteId
-			},
+			name:           "failure - missing siteId",
+			reqOrg:         org,
+			user:           providerUser,
 			body:           `{}`,
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "failure - tenant access denied",
-			reqOrg: org,
-			user:   tenantUser,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{}`,
+			name:           "failure - tenant access denied",
+			reqOrg:         org,
+			user:           tenantUser,
+			body:           fmt.Sprintf(`{"siteId":"%s"}`, site.ID.String()),
 			expectedStatus: http.StatusForbidden,
 		},
 	}
@@ -1648,11 +1617,7 @@ func TestFirmwareUpgradeTrayBatchHandler_Handle(t *testing.T) {
 			mockTemporalClient.Mock.On("ExecuteWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockWorkflowRun, nil)
 			scp.IDClientMap[site.ID.String()] = mockTemporalClient
 
-			q := url.Values{}
-			for k, v := range tt.queryParams {
-				q.Set(k, v)
-			}
-			path := fmt.Sprintf("/v2/org/%s/carbide/tray/firmware?%s", tt.reqOrg, q.Encode())
+			path := fmt.Sprintf("/v2/org/%s/carbide/tray/firmware", tt.reqOrg)
 
 			req := httptest.NewRequest(http.MethodPatch, path, strings.NewReader(tt.body))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
@@ -1669,7 +1634,7 @@ func TestFirmwareUpgradeTrayBatchHandler_Handle(t *testing.T) {
 			err := handler.Handle(ec)
 
 			if tt.expectedStatus != rec.Code {
-				t.Errorf("FirmwareUpgradeTrayBatchHandler.Handle() status = %v, want %v, response: %v, err: %v", rec.Code, tt.expectedStatus, rec.Body.String(), err)
+				t.Errorf("BatchUpdateTrayFirmwareHandler.Handle() status = %v, want %v, response: %v, err: %v", rec.Code, tt.expectedStatus, rec.Body.String(), err)
 			}
 
 			require.Equal(t, tt.expectedStatus, rec.Code)
@@ -1677,7 +1642,7 @@ func TestFirmwareUpgradeTrayBatchHandler_Handle(t *testing.T) {
 				return
 			}
 
-			var apiResp model.APIFirmwareUpgradeResponse
+			var apiResp model.APIFirmwareUpdateResponse
 			err = json.Unmarshal(rec.Body.Bytes(), &apiResp)
 			assert.NoError(t, err)
 			assert.NotEmpty(t, apiResp.TaskIDs)

@@ -719,10 +719,10 @@ func (vtsh ValidateTraysHandler) Handle(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, apiResult)
 }
-// ~~~~~ Power Control Tray Handler ~~~~~ //
+// ~~~~~ Update Tray Power State Handler ~~~~~ //
 
-// PowerControlTrayHandler is the API Handler for power controlling a single Tray by ID
-type PowerControlTrayHandler struct {
+// UpdateTrayPowerStateHandler is the API Handler for power controlling a single Tray by ID
+type UpdateTrayPowerStateHandler struct {
 	dbSession  *cdb.Session
 	tc         tClient.Client
 	scp        *sc.ClientPool
@@ -730,9 +730,9 @@ type PowerControlTrayHandler struct {
 	tracerSpan *sutil.TracerSpan
 }
 
-// NewPowerControlTrayHandler initializes and returns a new handler for power controlling a Tray
-func NewPowerControlTrayHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) PowerControlTrayHandler {
-	return PowerControlTrayHandler{
+// NewUpdateTrayPowerStateHandler initializes and returns a new handler for power controlling a Tray
+func NewUpdateTrayPowerStateHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) UpdateTrayPowerStateHandler {
+	return UpdateTrayPowerStateHandler{
 		dbSession:  dbSession,
 		tc:         tc,
 		scp:        scp,
@@ -754,7 +754,7 @@ func NewPowerControlTrayHandler(dbSession *cdb.Session, tc tClient.Client, scp *
 // @Param body body model.APIPowerControlRequest true "Power control request"
 // @Success 200 {object} model.APIPowerControlResponse
 // @Router /v2/org/{org}/carbide/tray/{id}/power [patch]
-func (pcth PowerControlTrayHandler) Handle(c echo.Context) error {
+func (pcth UpdateTrayPowerStateHandler) Handle(c echo.Context) error {
 	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Tray", "PowerControl", c, pcth.tracerSpan)
 	if handlerSpan != nil {
 		defer handlerSpan.End()
@@ -856,10 +856,10 @@ func (pcth PowerControlTrayHandler) Handle(c echo.Context) error {
 		fmt.Sprintf("tray-power-%s-%s", apiRequest.State, trayStrID), "Tray")
 }
 
-// ~~~~~ Power Control Trays (Batch) Handler ~~~~~ //
+// ~~~~~ Batch Update Tray Power State Handler ~~~~~ //
 
-// PowerControlTrayBatchHandler is the API Handler for power controlling Trays with optional filters
-type PowerControlTrayBatchHandler struct {
+// BatchUpdateTrayPowerStateHandler is the API Handler for power controlling Trays with optional filters
+type BatchUpdateTrayPowerStateHandler struct {
 	dbSession  *cdb.Session
 	tc         tClient.Client
 	scp        *sc.ClientPool
@@ -867,9 +867,9 @@ type PowerControlTrayBatchHandler struct {
 	tracerSpan *sutil.TracerSpan
 }
 
-// NewPowerControlTrayBatchHandler initializes and returns a new handler for batch power controlling Trays
-func NewPowerControlTrayBatchHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) PowerControlTrayBatchHandler {
-	return PowerControlTrayBatchHandler{
+// NewBatchUpdateTrayPowerStateHandler initializes and returns a new handler for batch power controlling Trays
+func NewBatchUpdateTrayPowerStateHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) BatchUpdateTrayPowerStateHandler {
+	return BatchUpdateTrayPowerStateHandler{
 		dbSession:  dbSession,
 		tc:         tc,
 		scp:        scp,
@@ -886,30 +886,22 @@ func NewPowerControlTrayBatchHandler(dbSession *cdb.Session, tc tClient.Client, 
 // @Produce json
 // @Security ApiKeyAuth
 // @Param org path string true "Name of NGC organization"
-// @Param siteId query string true "ID of the Site"
-// @Param rackId query string false "Filter by Rack ID"
-// @Param rackName query string false "Filter by Rack name"
-// @Param type query string false "Filter by tray type (compute, switch, powershelf)"
-// @Param componentId query string false "Filter by component ID (use repeated params for multiple values)"
-// @Param id query string false "Filter by tray UUID (use repeated params for multiple values)"
-// @Param body body model.APIPowerControlRequest true "Power control request"
+// @Param body body model.APIBatchTrayPowerControlRequest true "Batch tray power control request"
 // @Success 200 {object} model.APIPowerControlResponse
 // @Router /v2/org/{org}/carbide/tray/power [patch]
-func (pctbh PowerControlTrayBatchHandler) Handle(c echo.Context) error {
+func (pctbh BatchUpdateTrayPowerStateHandler) Handle(c echo.Context) error {
 	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Tray", "PowerControlBatch", c, pctbh.tracerSpan)
 	if handlerSpan != nil {
 		defer handlerSpan.End()
 	}
 
-	var filterRequest model.APITrayGetAllRequest
-	if err := common.ValidateKnownQueryParams(c.QueryParams(), filterRequest); err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
-	}
-	if err := (&echo.DefaultBinder{}).BindQueryParams(c, &filterRequest); err != nil {
+	// Bind and validate the JSON body
+	var request model.APIBatchTrayPowerControlRequest
+	if err := c.Bind(&request); err != nil {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
 	}
-	if verr := filterRequest.Validate(); verr != nil {
-		logger.Warn().Err(verr).Msg("invalid tray filter parameters")
+	if verr := request.Validate(); verr != nil {
+		logger.Warn().Err(verr).Msg("error validating batch tray power control request")
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate request data", verr)
 	}
 
@@ -944,14 +936,8 @@ func (pctbh PowerControlTrayBatchHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
 	}
 
-	// Validate siteId is provided
-	siteStrID := filterRequest.SiteID
-	if siteStrID == "" {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
-	}
-
-	// Retrieve the Site from the DB
-	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, pctbh.dbSession)
+	// Validate the site
+	site, err := common.GetSiteFromIDString(ctx, nil, request.SiteID, pctbh.dbSession)
 	if err != nil {
 		if errors.Is(err, cdb.ErrDoesNotExist) {
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
@@ -965,17 +951,6 @@ func (pctbh PowerControlTrayBatchHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
-	// Parse and validate request body
-	apiRequest := model.APIPowerControlRequest{}
-	if err := c.Bind(&apiRequest); err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
-	}
-	verr := apiRequest.Validate()
-	if verr != nil {
-		logger.Warn().Err(verr).Msg("error validating power control request data")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate power control request data", verr)
-	}
-
 	// Get the temporal client for the site
 	stc, err := pctbh.scp.GetClientByID(site.ID)
 	if err != nil {
@@ -983,17 +958,17 @@ func (pctbh PowerControlTrayBatchHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
 	}
 
-	// Build TargetSpec from tray filters (reuses the same logic as GetAll Trays)
-	targetSpec := filterRequest.ToProto().GetTargetSpec()
+	// Build TargetSpec from filter (nil filter = all trays)
+	targetSpec := request.Filter.ToTargetSpec()
 
-	return common.ExecutePowerControlWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.State,
-		fmt.Sprintf("tray-power-batch-%s-%s", apiRequest.State, common.QueryParamHash(filterRequest.QueryValues())), "Tray")
+	return common.ExecutePowerControlWorkflow(ctx, c, logger, stc, targetSpec, request.State,
+		fmt.Sprintf("tray-power-batch-%s-%s", request.State, common.RequestHash(request.Filter)), "Tray")
 }
 
-// ~~~~~ Firmware Upgrade Tray Handler ~~~~~ //
+// ~~~~~ Update Tray Firmware Handler ~~~~~ //
 
-// FirmwareUpgradeTrayHandler is the API Handler for upgrading firmware on a single Tray by ID
-type FirmwareUpgradeTrayHandler struct {
+// UpdateTrayFirmwareHandler is the API Handler for upgrading firmware on a single Tray by ID
+type UpdateTrayFirmwareHandler struct {
 	dbSession  *cdb.Session
 	tc         tClient.Client
 	scp        *sc.ClientPool
@@ -1001,9 +976,9 @@ type FirmwareUpgradeTrayHandler struct {
 	tracerSpan *sutil.TracerSpan
 }
 
-// NewFirmwareUpgradeTrayHandler initializes and returns a new handler for firmware upgrading a Tray
-func NewFirmwareUpgradeTrayHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) FirmwareUpgradeTrayHandler {
-	return FirmwareUpgradeTrayHandler{
+// NewUpdateTrayFirmwareHandler initializes and returns a new handler for firmware upgrading a Tray
+func NewUpdateTrayFirmwareHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) UpdateTrayFirmwareHandler {
+	return UpdateTrayFirmwareHandler{
 		dbSession:  dbSession,
 		tc:         tc,
 		scp:        scp,
@@ -1022,11 +997,11 @@ func NewFirmwareUpgradeTrayHandler(dbSession *cdb.Session, tc tClient.Client, sc
 // @Param org path string true "Name of NGC organization"
 // @Param id path string true "UUID of the Tray"
 // @Param siteId query string true "ID of the Site"
-// @Param body body model.APIFirmwareUpgradeRequest true "Firmware upgrade request"
-// @Success 200 {object} model.APIFirmwareUpgradeResponse
+// @Param body body model.APIFirmwareUpdateRequest true "Firmware upgrade request"
+// @Success 200 {object} model.APIFirmwareUpdateResponse
 // @Router /v2/org/{org}/carbide/tray/{id}/firmware [patch]
-func (futh FirmwareUpgradeTrayHandler) Handle(c echo.Context) error {
-	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Tray", "FirmwareUpgrade", c, futh.tracerSpan)
+func (futh UpdateTrayFirmwareHandler) Handle(c echo.Context) error {
+	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Tray", "FirmwareUpdate", c, futh.tracerSpan)
 	if handlerSpan != nil {
 		defer handlerSpan.End()
 	}
@@ -1091,7 +1066,7 @@ func (futh FirmwareUpgradeTrayHandler) Handle(c echo.Context) error {
 	futh.tracerSpan.SetAttribute(handlerSpan, attribute.String("tray_id", trayStrID), logger)
 
 	// Parse request body
-	apiRequest := model.APIFirmwareUpgradeRequest{}
+	apiRequest := model.APIFirmwareUpdateRequest{}
 	if err := c.Bind(&apiRequest); err != nil {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
 	}
@@ -1117,14 +1092,14 @@ func (futh FirmwareUpgradeTrayHandler) Handle(c echo.Context) error {
 		},
 	}
 
-	return common.ExecuteFirmwareUpgradeWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.Version,
+	return common.ExecuteFirmwareUpdateWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.Version,
 		fmt.Sprintf("tray-fw-upgrade-%s", trayStrID), "Tray")
 }
 
-// ~~~~~ Firmware Upgrade Trays (Batch) Handler ~~~~~ //
+// ~~~~~ Batch Update Tray Firmware Handler ~~~~~ //
 
-// FirmwareUpgradeTrayBatchHandler is the API Handler for firmware upgrading Trays with optional filters
-type FirmwareUpgradeTrayBatchHandler struct {
+// BatchUpdateTrayFirmwareHandler is the API Handler for firmware upgrading Trays with optional filters
+type BatchUpdateTrayFirmwareHandler struct {
 	dbSession  *cdb.Session
 	tc         tClient.Client
 	scp        *sc.ClientPool
@@ -1132,9 +1107,9 @@ type FirmwareUpgradeTrayBatchHandler struct {
 	tracerSpan *sutil.TracerSpan
 }
 
-// NewFirmwareUpgradeTrayBatchHandler initializes and returns a new handler for batch firmware upgrading Trays
-func NewFirmwareUpgradeTrayBatchHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) FirmwareUpgradeTrayBatchHandler {
-	return FirmwareUpgradeTrayBatchHandler{
+// NewBatchUpdateTrayFirmwareHandler initializes and returns a new handler for batch firmware upgrading Trays
+func NewBatchUpdateTrayFirmwareHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) BatchUpdateTrayFirmwareHandler {
+	return BatchUpdateTrayFirmwareHandler{
 		dbSession:  dbSession,
 		tc:         tc,
 		scp:        scp,
@@ -1144,37 +1119,29 @@ func NewFirmwareUpgradeTrayBatchHandler(dbSession *cdb.Session, tc tClient.Clien
 }
 
 // Handle godoc
-// @Summary Firmware upgrade Trays
-// @Description Upgrade firmware on Trays with optional filters. Version is optional; omit to upgrade to the latest available. If no filter is specified, targets all trays in the Site.
+// @Summary Firmware update Trays
+// @Description Update firmware on Trays with optional filters. Version is optional; omit to upgrade to the latest available. If no filter is specified, targets all trays in the Site.
 // @Tags tray
 // @Accept json
 // @Produce json
 // @Security ApiKeyAuth
 // @Param org path string true "Name of NGC organization"
-// @Param siteId query string true "ID of the Site"
-// @Param rackId query string false "Filter by Rack ID"
-// @Param rackName query string false "Filter by Rack name"
-// @Param type query string false "Filter by tray type (compute, switch, powershelf)"
-// @Param componentId query string false "Filter by component ID (use repeated params for multiple values)"
-// @Param id query string false "Filter by tray UUID (use repeated params for multiple values)"
-// @Param body body model.APIFirmwareUpgradeRequest true "Firmware upgrade request"
-// @Success 200 {object} model.APIFirmwareUpgradeResponse
+// @Param body body model.APIBatchTrayFirmwareUpdateRequest true "Batch tray firmware update request"
+// @Success 200 {object} model.APIFirmwareUpdateResponse
 // @Router /v2/org/{org}/carbide/tray/firmware [patch]
-func (futbh FirmwareUpgradeTrayBatchHandler) Handle(c echo.Context) error {
-	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Tray", "FirmwareUpgradeBatch", c, futbh.tracerSpan)
+func (futbh BatchUpdateTrayFirmwareHandler) Handle(c echo.Context) error {
+	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Tray", "FirmwareUpdateBatch", c, futbh.tracerSpan)
 	if handlerSpan != nil {
 		defer handlerSpan.End()
 	}
 
-	var filterRequest model.APITrayGetAllRequest
-	if err := common.ValidateKnownQueryParams(c.QueryParams(), filterRequest); err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, err.Error(), nil)
-	}
-	if err := (&echo.DefaultBinder{}).BindQueryParams(c, &filterRequest); err != nil {
+	// Bind and validate the JSON body
+	var request model.APIBatchTrayFirmwareUpdateRequest
+	if err := c.Bind(&request); err != nil {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
 	}
-	if verr := filterRequest.Validate(); verr != nil {
-		logger.Warn().Err(verr).Msg("invalid tray filter parameters")
+	if verr := request.Validate(); verr != nil {
+		logger.Warn().Err(verr).Msg("error validating batch tray firmware update request")
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate request data", verr)
 	}
 
@@ -1195,7 +1162,7 @@ func (futbh FirmwareUpgradeTrayBatchHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
 	}
 
-	// Validate role, only Provider Admins are allowed to firmware upgrade Tray
+	// Validate role, only Provider Admins are allowed to firmware update Tray
 	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
 	if !ok {
 		logger.Warn().Msg("user does not have Provider Admin role, access denied")
@@ -1209,14 +1176,8 @@ func (futbh FirmwareUpgradeTrayBatchHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
 	}
 
-	// Validate siteId is provided
-	siteStrID := filterRequest.SiteID
-	if siteStrID == "" {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
-	}
-
-	// Retrieve the Site from the DB
-	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, futbh.dbSession)
+	// Validate the site
+	site, err := common.GetSiteFromIDString(ctx, nil, request.SiteID, futbh.dbSession)
 	if err != nil {
 		if errors.Is(err, cdb.ErrDoesNotExist) {
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
@@ -1230,12 +1191,6 @@ func (futbh FirmwareUpgradeTrayBatchHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
-	// Parse request body
-	apiRequest := model.APIFirmwareUpgradeRequest{}
-	if err := c.Bind(&apiRequest); err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
-	}
-
 	// Get the temporal client for the site
 	stc, err := futbh.scp.GetClientByID(site.ID)
 	if err != nil {
@@ -1243,8 +1198,9 @@ func (futbh FirmwareUpgradeTrayBatchHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
 	}
 
-	targetSpec := filterRequest.ToProto().GetTargetSpec()
+	// Build TargetSpec from filter (nil filter = all trays)
+	targetSpec := request.Filter.ToTargetSpec()
 
-	return common.ExecuteFirmwareUpgradeWorkflow(ctx, c, logger, stc, targetSpec, apiRequest.Version,
-		fmt.Sprintf("tray-fw-upgrade-batch-%s", common.QueryParamHash(filterRequest.QueryValues())), "Tray")
+	return common.ExecuteFirmwareUpdateWorkflow(ctx, c, logger, stc, targetSpec, request.Version,
+		fmt.Sprintf("tray-fw-update-batch-%s", common.RequestHash(request.Filter)), "Tray")
 }

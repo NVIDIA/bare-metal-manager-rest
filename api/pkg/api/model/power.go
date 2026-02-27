@@ -19,15 +19,28 @@ package model
 
 import (
 	"fmt"
-	"net/url"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 )
 
+const (
+	PowerControlStateOn         = "on"
+	PowerControlStateOff        = "off"
+	PowerControlStateCycle      = "cycle"
+	PowerControlStateForceOff   = "forceoff"
+	PowerControlStateForceCycle = "forcecycle"
+)
+
 // ValidPowerControlStates defines the valid states for power control operations
-var ValidPowerControlStates = []string{"on", "off", "cycle", "forceoff", "forcecycle"}
+var ValidPowerControlStates = []string{
+	PowerControlStateOn,
+	PowerControlStateOff,
+	PowerControlStateCycle,
+	PowerControlStateForceOff,
+	PowerControlStateForceCycle,
+}
 
 var validPowerControlStatesAny = func() []interface{} {
 	result := make([]interface{}, len(ValidPowerControlStates))
@@ -80,55 +93,49 @@ func NewAPIPowerControlResponse(resp *rlav1.SubmitTaskResponse) *APIPowerControl
 	return r
 }
 
-// ========== Rack Power Control Batch Request ==========
+// ========== Batch Rack Power Control Request ==========
 
-// APIRackPowerControlBatchRequest captures query parameters for batch rack power control.
-// Supports filtering by rack name.
-type APIRackPowerControlBatchRequest struct {
-	SiteID string   `query:"siteId"`
-	Names  []string `query:"name"`
+// APIBatchRackPowerControlRequest is the JSON body for batch rack power control.
+type APIBatchRackPowerControlRequest struct {
+	SiteID string      `json:"siteId"`
+	Filter *RackFilter `json:"filter,omitempty"`
+	State  string      `json:"state"`
 }
 
-// Validate checks required fields on the batch power control request
-func (r *APIRackPowerControlBatchRequest) Validate() error {
+// Validate checks required fields and power state validity.
+func (r *APIBatchRackPowerControlRequest) Validate() error {
 	if r.SiteID == "" {
-		return fmt.Errorf("siteId query parameter is required")
+		return fmt.Errorf("siteId is required")
 	}
-	return nil
+	return validation.ValidateStruct(r,
+		validation.Field(&r.State,
+			validation.Required.Error(validationErrorValueRequired),
+			validation.In(validPowerControlStatesAny...).Error(
+				fmt.Sprintf("must be one of %v", ValidPowerControlStates))),
+	)
 }
 
-// QueryValues returns only the known query parameters as url.Values,
-// suitable for deterministic workflow ID hashing without unknown param interference.
-func (r *APIRackPowerControlBatchRequest) QueryValues() url.Values {
-	v := url.Values{}
-	v.Set("siteId", r.SiteID)
-	for _, n := range r.Names {
-		v.Add("name", n)
-	}
-	return v
+// ========== Batch Tray Power Control Request ==========
+
+// APIBatchTrayPowerControlRequest is the JSON body for batch tray power control.
+type APIBatchTrayPowerControlRequest struct {
+	SiteID string      `json:"siteId"`
+	Filter *TrayFilter `json:"filter,omitempty"`
+	State  string      `json:"state"`
 }
 
-// ToTargetSpec converts the filter request to an RLA OperationTargetSpec
-func (r *APIRackPowerControlBatchRequest) ToTargetSpec() *rlav1.OperationTargetSpec {
-	var rackTargets []*rlav1.RackTarget
-
-	for _, name := range r.Names {
-		rackTargets = append(rackTargets, &rlav1.RackTarget{
-			Identifier: &rlav1.RackTarget_Name{
-				Name: name,
-			},
-		})
+// Validate checks required fields, power state validity, and filter constraints.
+func (r *APIBatchTrayPowerControlRequest) Validate() error {
+	if r.SiteID == "" {
+		return fmt.Errorf("siteId is required")
 	}
-
-	if len(rackTargets) == 0 {
-		rackTargets = append(rackTargets, &rlav1.RackTarget{})
+	if err := r.Filter.Validate(); err != nil {
+		return err
 	}
-
-	return &rlav1.OperationTargetSpec{
-		Targets: &rlav1.OperationTargetSpec_Racks{
-			Racks: &rlav1.RackTargets{
-				Targets: rackTargets,
-			},
-		},
-	}
+	return validation.ValidateStruct(r,
+		validation.Field(&r.State,
+			validation.Required.Error(validationErrorValueRequired),
+			validation.In(validPowerControlStatesAny...).Error(
+				fmt.Sprintf("must be one of %v", ValidPowerControlStates))),
+	)
 }

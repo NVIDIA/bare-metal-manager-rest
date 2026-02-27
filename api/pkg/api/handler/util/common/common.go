@@ -20,6 +20,7 @@ package common
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -1545,6 +1546,13 @@ func ValidateKnownQueryParams(rawParams url.Values, structs ...any) error {
 	return nil
 }
 
+// RequestHash builds a deterministic hash from any struct by JSON-marshaling it.
+// Used for workflow ID deduplication when request data comes from JSON body instead of query params.
+func RequestHash(v interface{}) string {
+	b, _ := json.Marshal(v)
+	return fmt.Sprintf("%x", sha256.Sum256(b))[:12]
+}
+
 // QueryParamHash builds a deterministic hash from the given query params for workflow ID dedup.
 // Accepts url.Values so callers can pass only the known/valid parameters,
 // preventing unknown query params from polluting the workflow ID.
@@ -1576,32 +1584,32 @@ func ExecutePowerControlWorkflow(
 	var rlaRequest interface{}
 
 	switch state {
-	case "on":
+	case cam.PowerControlStateOn:
 		workflowName = "PowerOnRack"
 		rlaRequest = &rlav1.PowerOnRackRequest{
 			TargetSpec:  targetSpec,
 			Description: fmt.Sprintf("API power on %s", entityName),
 		}
-	case "off":
+	case cam.PowerControlStateOff:
 		workflowName = "PowerOffRack"
 		rlaRequest = &rlav1.PowerOffRackRequest{
 			TargetSpec:  targetSpec,
 			Description: fmt.Sprintf("API power off %s", entityName),
 		}
-	case "cycle":
+	case cam.PowerControlStateCycle:
 		workflowName = "PowerResetRack"
 		rlaRequest = &rlav1.PowerResetRackRequest{
 			TargetSpec:  targetSpec,
 			Description: fmt.Sprintf("API power cycle %s", entityName),
 		}
-	case "forceoff":
+	case cam.PowerControlStateForceOff:
 		workflowName = "PowerOffRack"
 		rlaRequest = &rlav1.PowerOffRackRequest{
 			TargetSpec:  targetSpec,
 			Forced:      true,
 			Description: fmt.Sprintf("API force power off %s", entityName),
 		}
-	case "forcecycle":
+	case cam.PowerControlStateForceCycle:
 		workflowName = "PowerResetRack"
 		rlaRequest = &rlav1.PowerResetRackRequest{
 			TargetSpec:  targetSpec,
@@ -1647,9 +1655,9 @@ func ExecutePowerControlWorkflow(
 	return c.JSON(http.StatusOK, apiResponse)
 }
 
-// ExecuteFirmwareUpgradeWorkflow builds an UpgradeFirmwareRequest, executes the UpgradeFirmware
+// ExecuteFirmwareUpdateWorkflow builds an UpgradeFirmwareRequest, executes the UpgradeFirmware
 // workflow via Temporal, and returns the API response with task IDs.
-func ExecuteFirmwareUpgradeWorkflow(
+func ExecuteFirmwareUpdateWorkflow(
 	ctx context.Context,
 	c echo.Context,
 	logger zerolog.Logger,
@@ -1693,7 +1701,7 @@ func ExecuteFirmwareUpgradeWorkflow(
 		return cau.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed to upgrade firmware for %s", entityName), nil)
 	}
 
-	apiResponse := cam.NewAPIFirmwareUpgradeResponse(&rlaResponse)
+	apiResponse := cam.NewAPIFirmwareUpdateResponse(&rlaResponse)
 
 	logger.Info().Msg("finishing API handler")
 

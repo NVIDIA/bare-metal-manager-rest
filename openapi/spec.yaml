@@ -8378,32 +8378,25 @@ paths:
         Supported power states: `on`, `off`, `cycle`, `forceoff`, `forcecycle`.
 
         Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
-      parameters:
-        - schema:
-            type: string
-            format: uuid
-          name: siteId
-          in: query
-          required: true
-          description: ID of the Site
-        - schema:
-            type: string
-          name: name
-          in: query
-          description: Filter racks by name. Can be specified multiple times to filter on more than one rack name.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PowerControlRequest'
+              $ref: '#/components/schemas/BatchRackPowerControlRequest'
             examples:
-              power-off:
+              power-off-all:
                 value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
                   state: 'off'
-              force-off:
+              power-on-filtered:
                 value:
-                  state: forceoff
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+                  filter:
+                    names:
+                      - Rack-001
+                      - Rack-002
+                  state: 'on'
       responses:
         '200':
           description: OK
@@ -8498,36 +8491,29 @@ paths:
         required: true
         description: Name of the Org
     patch:
-      summary: Firmware upgrade Racks
-      operationId: firmware-upgrade-racks
+      summary: Firmware update Racks
+      operationId: firmware-update-racks
       description: |-
-        Upgrade firmware on Racks with optional name filter. Version is optional; omit to upgrade to the latest available. If no filter is specified, targets all racks in the Site.
+        Update firmware on Racks with optional name filter. Version is optional; omit to upgrade to the latest available. If no filter is specified, targets all racks in the Site.
 
         Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
-      parameters:
-        - schema:
-            type: string
-            format: uuid
-          name: siteId
-          in: query
-          required: true
-          description: ID of the Site
-        - schema:
-            type: string
-          name: name
-          in: query
-          description: Filter racks by name. Can be specified multiple times to filter on more than one rack name.
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/FirmwareUpgradeRequest'
+              $ref: '#/components/schemas/BatchRackFirmwareUpdateRequest'
             examples:
-              with-version:
+              all-racks-latest:
                 value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+              filtered-with-version:
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+                  filter:
+                    names:
+                      - Rack-001
                   version: '24.11.0'
-              without-version:
-                value: {}
       responses:
         '200':
           description: OK
@@ -8955,62 +8941,27 @@ paths:
 
         **Filter constraints:**
         - `rackId` and `rackName` are mutually exclusive
-        - `rackId`/`rackName` cannot be combined with `id`/`componentId` (rack-level vs component-level targeting)
-        - `componentId` requires `type` to be specified
+        - `rackId`/`rackName` cannot be combined with `ids`/`componentIds` (rack-level vs component-level targeting)
+        - `componentIds` requires `type` to be specified
 
         Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
-      parameters:
-        - schema:
-            type: string
-            format: uuid
-          name: siteId
-          in: query
-          required: true
-          description: ID of the Site
-        - schema:
-            type: string
-            format: uuid
-          name: rackId
-          in: query
-          description: Filter by Rack ID
-        - schema:
-            type: string
-          name: rackName
-          in: query
-          description: Filter by Rack name
-        - schema:
-            type: string
-            enum:
-              - compute
-              - switch
-              - powershelf
-          name: type
-          in: query
-          description: Filter by tray type
-        - schema:
-            type: string
-          name: componentId
-          in: query
-          description: Filter by component ID. Can be specified multiple times to filter on more than one component ID. Requires 'type' parameter.
-        - schema:
-            type: string
-            format: uuid
-          name: id
-          in: query
-          description: Filter by tray UUID. Can be specified multiple times to filter on more than one tray ID.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PowerControlRequest'
+              $ref: '#/components/schemas/BatchTrayPowerControlRequest'
             examples:
-              power-on:
+              power-on-all:
                 value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
                   state: 'on'
-              force-off:
+              power-off-by-rack:
                 value:
-                  state: forceoff
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+                  filter:
+                    rackId: 660e8400-e29b-41d4-a716-446655440001
+                  state: 'off'
       responses:
         '200':
           description: OK
@@ -9104,67 +9055,33 @@ paths:
         required: true
         description: Name of the Org
     patch:
-      summary: Firmware upgrade Trays
-      operationId: firmware-upgrade-trays
+      summary: Firmware update Trays
+      operationId: firmware-update-trays
       description: |-
-        Upgrade firmware on Trays with optional filters. Version is optional; omit to upgrade to the latest available. If no filter is specified, targets all trays in the Site.
+        Update firmware on Trays with optional filters. Version is optional; omit to upgrade to the latest available. If no filter is specified, targets all trays in the Site.
 
         **Filter constraints:**
         - `rackId` and `rackName` are mutually exclusive
-        - `rackId`/`rackName` cannot be combined with `id`/`componentId` (rack-level vs component-level targeting)
-        - `componentId` requires `type` to be specified
+        - `rackId`/`rackName` cannot be combined with `ids`/`componentIds` (rack-level vs component-level targeting)
+        - `componentIds` requires `type` to be specified
 
         Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
-      parameters:
-        - schema:
-            type: string
-            format: uuid
-          name: siteId
-          in: query
-          required: true
-          description: ID of the Site
-        - schema:
-            type: string
-            format: uuid
-          name: rackId
-          in: query
-          description: Filter by Rack ID
-        - schema:
-            type: string
-          name: rackName
-          in: query
-          description: Filter by Rack name
-        - schema:
-            type: string
-            enum:
-              - compute
-              - switch
-              - powershelf
-          name: type
-          in: query
-          description: Filter by tray type
-        - schema:
-            type: string
-          name: componentId
-          in: query
-          description: Filter by component ID. Can be specified multiple times to filter on more than one component ID. Requires 'type' parameter.
-        - schema:
-            type: string
-            format: uuid
-          name: id
-          in: query
-          description: Filter by tray UUID. Can be specified multiple times to filter on more than one tray ID.
       requestBody:
+        required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/FirmwareUpgradeRequest'
+              $ref: '#/components/schemas/BatchTrayFirmwareUpdateRequest'
             examples:
-              with-version:
+              all-trays-latest:
                 value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+              filtered-with-version:
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+                  filter:
+                    rackId: 660e8400-e29b-41d4-a716-446655440001
                   version: '24.11.0'
-              without-version:
-                value: {}
       responses:
         '200':
           description: OK
@@ -14791,10 +14708,131 @@ components:
         hostId:
           type: integer
           description: Host ID associated with the tray
+    RackFilter:
+      title: RackFilter
+      type: object
+      description: Filter criteria for selecting racks in batch operations. If omitted or empty, all racks in the site are targeted.
+      properties:
+        names:
+          type: array
+          items:
+            type: string
+          description: Filter racks by name
+    TrayFilter:
+      title: TrayFilter
+      type: object
+      description: |-
+        Filter criteria for selecting trays in batch operations. If omitted or empty, all trays in the site are targeted.
+
+        Constraints: `rackId` and `rackName` are mutually exclusive. `rackId`/`rackName` cannot be combined with `ids`/`componentIds`. `componentIds` requires `type`.
+      properties:
+        rackId:
+          type: string
+          format: uuid
+          description: Filter by Rack ID
+        rackName:
+          type: string
+          description: Filter by Rack name
+        type:
+          type: string
+          enum:
+            - compute
+            - switch
+            - powershelf
+          description: Filter by tray type
+        componentIds:
+          type: array
+          items:
+            type: string
+          description: Filter by component ID. Requires 'type'.
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Filter by tray UUID
+    BatchRackPowerControlRequest:
+      title: BatchRackPowerControlRequest
+      type: object
+      description: Request body for batch rack power control operations
+      required:
+        - siteId
+        - state
+      properties:
+        siteId:
+          type: string
+          format: uuid
+          description: ID of the Site
+        filter:
+          $ref: '#/components/schemas/RackFilter'
+        state:
+          type: string
+          enum:
+            - 'on'
+            - 'off'
+            - cycle
+            - forceoff
+            - forcecycle
+          description: Target power state
+    BatchTrayPowerControlRequest:
+      title: BatchTrayPowerControlRequest
+      type: object
+      description: Request body for batch tray power control operations
+      required:
+        - siteId
+        - state
+      properties:
+        siteId:
+          type: string
+          format: uuid
+          description: ID of the Site
+        filter:
+          $ref: '#/components/schemas/TrayFilter'
+        state:
+          type: string
+          enum:
+            - 'on'
+            - 'off'
+            - cycle
+            - forceoff
+            - forcecycle
+          description: Target power state
+    BatchRackFirmwareUpdateRequest:
+      title: BatchRackFirmwareUpdateRequest
+      type: object
+      description: Request body for batch rack firmware update operations
+      required:
+        - siteId
+      properties:
+        siteId:
+          type: string
+          format: uuid
+          description: ID of the Site
+        filter:
+          $ref: '#/components/schemas/RackFilter'
+        version:
+          type: string
+          description: Target firmware version. If not specified, upgrades to the latest available version.
+    BatchTrayFirmwareUpdateRequest:
+      title: BatchTrayFirmwareUpdateRequest
+      type: object
+      description: Request body for batch tray firmware update operations
+      required:
+        - siteId
+      properties:
+        siteId:
+          type: string
+          format: uuid
+          description: ID of the Site
+        filter:
+          $ref: '#/components/schemas/TrayFilter'
+        version:
+          type: string
+          description: Target firmware version. If not specified, upgrades to the latest available version.
     PowerControlRequest:
       title: PowerControlRequest
       type: object
-      description: Request body for power control operations
+      description: Request body for single-resource power control operations
       required:
         - state
       properties:
