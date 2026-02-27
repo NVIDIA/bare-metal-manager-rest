@@ -235,3 +235,37 @@ func NewAPIMachineInstanceTypeStats(
 		Tenants:              tenants,
 	}
 }
+
+// GetInstanceTypeMachineUsageMap builds per-instance-type and per-tenant-instance-type usage maps from instances
+func GetInstanceTypeMachineUsageMap(instances []cdbm.Instance, machineByID map[string]cdbm.Machine) (
+	itUsed map[uuid.UUID]*APIUsedMachineStats,
+	tenantITUsed map[uuid.UUID]map[uuid.UUID]*APIUsedMachineStats,
+) {
+	itUsed = make(map[uuid.UUID]*APIUsedMachineStats)
+	tenantITUsed = make(map[uuid.UUID]map[uuid.UUID]*APIUsedMachineStats)
+
+	for _, inst := range instances {
+		if inst.InstanceTypeID == nil || inst.MachineID == nil {
+			continue
+		}
+		itID := *inst.InstanceTypeID
+		tID := inst.TenantID
+
+		if itUsed[itID] == nil {
+			itUsed[itID] = &APIUsedMachineStats{}
+		}
+		if tenantITUsed[tID] == nil {
+			tenantITUsed[tID] = make(map[uuid.UUID]*APIUsedMachineStats)
+		}
+		if tenantITUsed[tID][itID] == nil {
+			tenantITUsed[tID][itID] = &APIUsedMachineStats{}
+		}
+
+		if m, ok := machineByID[*inst.MachineID]; ok {
+			itUsed[itID].AddMachineStatusCounts(m)
+			tenantITUsed[tID][itID].AddMachineStatusCounts(m)
+		}
+	}
+
+	return itUsed, tenantITUsed
+}

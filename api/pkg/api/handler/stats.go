@@ -36,42 +36,6 @@ import (
 	cdbp "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
 )
 
-// ~~~~~ Shared Types and Helpers ~~~~~ //
-
-// buildMachineUsageMaps builds per-instance-type and per-tenant-instance-type usage maps from instances
-func buildMachineUsageMaps(instances []cdbm.Instance, machineByID map[string]cdbm.Machine) (
-	itUsed map[uuid.UUID]*model.APIUsedMachineStats,
-	tenantITUsed map[uuid.UUID]map[uuid.UUID]*model.APIUsedMachineStats,
-) {
-	itUsed = make(map[uuid.UUID]*model.APIUsedMachineStats)
-	tenantITUsed = make(map[uuid.UUID]map[uuid.UUID]*model.APIUsedMachineStats)
-
-	for _, inst := range instances {
-		if inst.InstanceTypeID == nil || inst.MachineID == nil {
-			continue
-		}
-		itID := *inst.InstanceTypeID
-		tID := inst.TenantID
-
-		if itUsed[itID] == nil {
-			itUsed[itID] = &model.APIUsedMachineStats{}
-		}
-		if tenantITUsed[tID] == nil {
-			tenantITUsed[tID] = make(map[uuid.UUID]*model.APIUsedMachineStats)
-		}
-		if tenantITUsed[tID][itID] == nil {
-			tenantITUsed[tID][itID] = &model.APIUsedMachineStats{}
-		}
-
-		if m, ok := machineByID[*inst.MachineID]; ok {
-			itUsed[itID].AddMachineStatusCounts(m)
-			tenantITUsed[tID][itID].AddMachineStatusCounts(m)
-		}
-	}
-
-	return itUsed, tenantITUsed
-}
-
 // ~~~~~ Machine GPU Stats Handler ~~~~~ //
 
 // GetMachineGPUStatsHandler is the API Handler for retrieving GPU stats for machines at a site
@@ -639,7 +603,7 @@ func (gmitsh GetMachineInstanceTypeStatsHandler) Handle(c echo.Context) error {
 	}
 
 	// Build aggregation maps using shared helpers
-	itUsed, tenantITUsed := buildMachineUsageMaps(instances, machineByID)
+	itUsed, tenantITUsed := model.GetInstanceTypeMachineUsageMap(instances, machineByID)
 	constraintsByIT := make(map[uuid.UUID][]cdbm.AllocationConstraint)
 	for _, ac := range constraints {
 		constraintsByIT[ac.ResourceTypeID] = append(constraintsByIT[ac.ResourceTypeID], ac)
