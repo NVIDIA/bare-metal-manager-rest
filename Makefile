@@ -271,30 +271,30 @@ kind-load:
 kind-apply:
 	kubectl apply -k $(KUSTOMIZE_OVERLAY)
 	@echo "Waiting for PostgreSQL..."
-	kubectl -n carbide-rest wait --for=condition=ready pod -l app=postgres --timeout=120s
+	kubectl -n postgres rollout status statefulset/postgres --timeout=120s
 	@echo "Waiting for Cert Manager..."
-	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=180s
+	kubectl -n carbide-rest rollout status deployment/carbide-rest-cert-manager --timeout=180s
 	@echo "Waiting for Temporal..."
-	kubectl -n temporal wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=frontend --timeout=120s
+	kubectl -n temporal rollout status deployment/temporal-frontend --timeout=120s || true
 	@echo "Waiting for Keycloak..."
-	kubectl -n carbide-rest wait --for=condition=ready pod -l app=keycloak --timeout=180s
+	kubectl -n carbide-rest rollout status deployment/keycloak --timeout=180s
 	@echo "Running database migrations..."
 	kubectl -n carbide-rest wait --for=condition=complete job/carbide-rest-db-migration --timeout=120s
 	@echo "Waiting for API service..."
-	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-api --timeout=120s || true
+	kubectl -n carbide-rest rollout status deployment/carbide-rest-api --timeout=120s || true
 	@echo "Waiting for Site Manager..."
 	kubectl -n carbide-rest rollout restart deployment/carbide-rest-site-manager || true
-	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=120s || true
+	kubectl -n carbide-rest rollout status deployment/carbide-rest-site-manager --timeout=120s || true
 	@echo "Waiting for Site Agent..."
-	kubectl -n carbide-rest rollout restart deployment/carbide-rest-site-agent || true
-	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-site-agent --timeout=120s || true
+	kubectl -n carbide-rest rollout restart statefulset/carbide-rest-site-agent || true
+	kubectl -n carbide-rest rollout status statefulset/carbide-rest-site-agent --timeout=120s || true
 
 # Rebuild and redeploy apps only (faster iteration)
 kind-redeploy: docker-build-local kind-load
 	kubectl -n carbide-rest rollout restart deployment/carbide-rest-api
 	kubectl -n carbide-rest rollout restart deployment/cloud-worker
 	kubectl -n carbide-rest rollout restart deployment/site-worker
-	kubectl -n carbide-rest rollout restart deployment/carbide-rest-site-agent
+	kubectl -n carbide-rest rollout restart statefulset/carbide-rest-site-agent
 	kubectl -n carbide-rest rollout restart deployment/carbide-rest-mock-core
 	kubectl -n carbide-rest rollout restart deployment/carbide-rest-cert-manager
 	kubectl -n carbide-rest rollout restart deployment/carbide-rest-site-manager
@@ -353,7 +353,7 @@ kind-reset:
 
 	@echo "Setting up PostgreSQL..."
 	kubectl apply -k deploy/kustomize/base/postgres/
-	kubectl -n postgres wait --for=condition=ready pod -l app=postgres --timeout=240s
+	kubectl -n postgres rollout status statefulset/postgres --timeout=240s
 
 	@echo "Configuring cert-manager.io ClusterIssuer..."
 	kubectl apply -k deploy/kustomize/base/cert-manager-io/
@@ -375,10 +375,10 @@ kind-reset:
 		--values ./temporal-helm/temporal/values-kind.yaml \
 		--wait --timeout 16m || true
 	@echo "Waiting for Temporal services..."
-	kubectl -n temporal wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=frontend --timeout=360s || true
-	kubectl -n temporal wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=history --timeout=360s || true
-	kubectl -n temporal wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=matching --timeout=360s || true
-	kubectl -n temporal wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=worker --timeout=360s || true
+	kubectl -n temporal rollout status deployment/temporal-frontend --timeout=360s || true
+	kubectl -n temporal rollout status deployment/temporal-history --timeout=360s || true
+	kubectl -n temporal rollout status deployment/temporal-matching --timeout=360s || true
+	kubectl -n temporal rollout status deployment/temporal-worker --timeout=360s || true
 	@echo "Creating Temporal namespaces with TLS..."
 	kubectl -n temporal exec deploy/temporal-admintools -- temporal operator namespace create --namespace cloud --address temporal-frontend.temporal:7233 \
 		--tls-cert-path /var/secrets/temporal/certs/server-interservice/tls.crt \
@@ -394,18 +394,18 @@ kind-reset:
 
 	@echo "Setting up Keycloak..."
 	kubectl apply -k deploy/kustomize/base/keycloak
-	kubectl -n carbide-rest wait --for=condition=ready pod -l app=keycloak --timeout=240s
+	kubectl -n carbide-rest rollout status deployment/keycloak --timeout=240s
 
 	@echo "Setting up Carbide REST services..."
 	kubectl apply -k deploy/kustomize/base/common
 
 	@echo "Setting up Carbide REST Cert Manager..."
 	kubectl apply -k deploy/kustomize/overlays/cert-manager
-	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=240s
+	kubectl -n carbide-rest rollout status deployment/carbide-rest-cert-manager --timeout=240s
 
 	@echo "Waiting for Carbide REST Site Manager..."
 	kubectl apply -k deploy/kustomize/overlays/site-manager
-	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=240s
+	kubectl -n carbide-rest rollout status deployment/carbide-rest-site-manager --timeout=240s
 
 	@echo "Setting up Carbide REST DB Migration..."
 	kubectl apply -k deploy/kustomize/overlays/db
@@ -413,21 +413,20 @@ kind-reset:
 
 	@echo "Setting up Carbide REST Cloud and Site Workers..."
 	kubectl apply -k deploy/kustomize/overlays/workflow
-	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-workflow --timeout=240s
 	kubectl -n carbide-rest rollout status deployment/carbide-rest-cloud-worker --timeout=240s
 	kubectl -n carbide-rest rollout status deployment/carbide-rest-site-worker --timeout=240s
 
 	@echo "Setting up Carbide REST API..."
 	kubectl apply -k deploy/kustomize/overlays/api
-	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-api --timeout=240s
+	kubectl -n carbide-rest rollout status deployment/carbide-rest-api --timeout=240s
 
 	@echo "Setting up Carbide Mock Core..."
 	kubectl apply -k deploy/kustomize/overlays/mock-core
-	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-mock-core --timeout=240s
+	kubectl -n carbide-rest rollout status deployment/carbide-rest-mock-core --timeout=240s
 
 	@echo "Setting up Carbide REST Site Agent..."
 	kubectl apply -k deploy/kustomize/overlays/site-agent
-	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-site-agent --timeout=240s
+	kubectl -n carbide-rest rollout status statefulset/carbide-rest-site-agent --timeout=240s
 
 	@echo "Setting up Site Agent secrets..."
 	./scripts/setup-local.sh site-agent

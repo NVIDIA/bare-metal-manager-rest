@@ -233,7 +233,7 @@ create_site() {
 configure_site_agent() {
     local site_id=$1
 
-    kubectl -n $NAMESPACE exec deploy/temporal-admintools -- temporal operator namespace create --namespace "$site_id"
+    kubectl -n temporal exec deploy/temporal-admintools -- temporal operator namespace create --namespace "$site_id"
 
     kubectl -n $NAMESPACE get configmap carbide-rest-site-agent-config -o yaml | \
         sed "s/CLUSTER_ID: .*/CLUSTER_ID: \"$site_id\"/" | \
