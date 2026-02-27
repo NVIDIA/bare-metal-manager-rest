@@ -742,7 +742,6 @@ func NewUpdateRackPowerStateHandler(dbSession *cdb.Session, tc tClient.Client, s
 // @Security ApiKeyAuth
 // @Param org path string true "Name of NGC organization"
 // @Param id path string true "ID of Rack"
-// @Param siteId query string true "ID of the Site"
 // @Param body body model.APIUpdatePowerStateRequest true "Power control request"
 // @Success 200 {object} model.APIUpdatePowerStateResponse
 // @Router /v2/org/{org}/carbide/rack/{id}/power [patch]
@@ -787,14 +786,19 @@ func (pcrh UpdateRackPowerStateHandler) Handle(c echo.Context) error {
 	rackStrID := c.Param("id")
 	pcrh.tracerSpan.SetAttribute(handlerSpan, attribute.String("rack_id", rackStrID), logger)
 
-	// Get site ID from query param (required)
-	siteStrID := c.QueryParam("siteId")
-	if siteStrID == "" {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
+	// Parse and validate request body
+	apiRequest := model.APIUpdatePowerStateRequest{}
+	if err := c.Bind(&apiRequest); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
+	}
+	verr := apiRequest.Validate()
+	if verr != nil {
+		logger.Warn().Err(verr).Msg("error validating power control request data")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate power control request data", verr)
 	}
 
 	// Validate the site
-	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, pcrh.dbSession)
+	site, err := common.GetSiteFromIDString(ctx, nil, apiRequest.SiteID, pcrh.dbSession)
 	if err != nil {
 		if errors.Is(err, cdb.ErrDoesNotExist) {
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
@@ -806,17 +810,6 @@ func (pcrh UpdateRackPowerStateHandler) Handle(c echo.Context) error {
 	// Verify site belongs to the org's Infrastructure Provider
 	if site.InfrastructureProviderID != infrastructureProvider.ID {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
-	}
-
-	// Parse and validate request body
-	apiRequest := model.APIUpdatePowerStateRequest{}
-	if err := c.Bind(&apiRequest); err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
-	}
-	verr := apiRequest.Validate()
-	if verr != nil {
-		logger.Warn().Err(verr).Msg("error validating power control request data")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate power control request data", verr)
 	}
 
 	// Get the temporal client for the site
@@ -997,7 +990,6 @@ func NewUpdateRackFirmwareHandler(dbSession *cdb.Session, tc tClient.Client, scp
 // @Security ApiKeyAuth
 // @Param org path string true "Name of NGC organization"
 // @Param id path string true "UUID of the Rack"
-// @Param siteId query string true "ID of the Site"
 // @Param body body model.APIUpdateFirmwareRequest true "Firmware update request"
 // @Success 200 {object} model.APIUpdateFirmwareResponse
 // @Router /v2/org/{org}/carbide/rack/{id}/firmware [patch]
@@ -1042,14 +1034,18 @@ func (furh UpdateRackFirmwareHandler) Handle(c echo.Context) error {
 	rackStrID := c.Param("id")
 	furh.tracerSpan.SetAttribute(handlerSpan, attribute.String("rack_id", rackStrID), logger)
 
-	// Get site ID from query param (required)
-	siteStrID := c.QueryParam("siteId")
-	if siteStrID == "" {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
+	// Parse and validate request body
+	apiRequest := model.APIUpdateFirmwareRequest{}
+	if err := c.Bind(&apiRequest); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
+	}
+	if verr := apiRequest.Validate(); verr != nil {
+		logger.Warn().Err(verr).Msg("error validating firmware update request data")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate firmware update request data", verr)
 	}
 
 	// Validate the site
-	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, furh.dbSession)
+	site, err := common.GetSiteFromIDString(ctx, nil, apiRequest.SiteID, furh.dbSession)
 	if err != nil {
 		if errors.Is(err, cdb.ErrDoesNotExist) {
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
@@ -1061,12 +1057,6 @@ func (furh UpdateRackFirmwareHandler) Handle(c echo.Context) error {
 	// Verify site belongs to the org's Infrastructure Provider
 	if site.InfrastructureProviderID != infrastructureProvider.ID {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
-	}
-
-	// Parse request body
-	apiRequest := model.APIUpdateFirmwareRequest{}
-	if err := c.Bind(&apiRequest); err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
 	}
 
 	// Get the temporal client for the site

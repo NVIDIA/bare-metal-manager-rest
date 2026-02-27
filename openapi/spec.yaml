@@ -8440,14 +8440,6 @@ paths:
         Supported power states: `on`, `off`, `cycle`, `forceoff`, `forcecycle`.
 
         Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
-      parameters:
-        - schema:
-            type: string
-            format: uuid
-          name: siteId
-          in: query
-          required: true
-          description: ID of the Site
       requestBody:
         required: true
         content:
@@ -8457,12 +8449,15 @@ paths:
             examples:
               power-on:
                 value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
                   state: 'on'
               power-cycle:
                 value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
                   state: cycle
               force-cycle:
                 value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
                   state: forcecycle
       responses:
         '200':
@@ -8555,15 +8550,8 @@ paths:
         Update firmware on a single Rack by ID. Version is optional; omit to update to the latest available.
 
         Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
-      parameters:
-        - schema:
-            type: string
-            format: uuid
-          name: siteId
-          in: query
-          required: true
-          description: ID of the Site
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -8571,9 +8559,11 @@ paths:
             examples:
               with-version:
                 value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
                   version: '24.11.0'
               without-version:
-                value: {}
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
       responses:
         '200':
           description: OK
@@ -9004,14 +8994,6 @@ paths:
         Supported power states: `on`, `off`, `cycle`, `forceoff`, `forcecycle`.
 
         Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
-      parameters:
-        - schema:
-            type: string
-            format: uuid
-          name: siteId
-          in: query
-          required: true
-          description: ID of the Site
       requestBody:
         required: true
         content:
@@ -9021,12 +9003,15 @@ paths:
             examples:
               power-on:
                 value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
                   state: 'on'
               power-off:
                 value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
                   state: 'off'
               power-cycle:
                 value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
                   state: cycle
       responses:
         '200':
@@ -9122,15 +9107,8 @@ paths:
         Update firmware on a single Tray by ID. Version is optional; omit to update to the latest available.
 
         Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
-      parameters:
-        - schema:
-            type: string
-            format: uuid
-          name: siteId
-          in: query
-          required: true
-          description: ID of the Site
       requestBody:
+        required: true
         content:
           application/json:
             schema:
@@ -9138,9 +9116,11 @@ paths:
             examples:
               with-version:
                 value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
                   version: '24.11.0'
               without-version:
-                value: {}
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
       responses:
         '200':
           description: OK
@@ -14834,8 +14814,13 @@ components:
       type: object
       description: Request body for single-resource power control operations
       required:
+        - siteId
         - state
       properties:
+        siteId:
+          type: string
+          format: uuid
+          description: ID of the Site
         state:
           type: string
           enum:
@@ -14852,9 +14837,12 @@ components:
             - `forceoff`: Forced power off (immediate)
             - `forcecycle`: Forced power cycle (immediate restart)
       examples:
-        - state: 'on'
-        - state: 'off'
-        - state: cycle
+        - siteId: 550e8400-e29b-41d4-a716-446655440000
+          state: 'on'
+        - siteId: 550e8400-e29b-41d4-a716-446655440000
+          state: 'off'
+        - siteId: 550e8400-e29b-41d4-a716-446655440000
+          state: cycle
     UpdatePowerStateResponse:
       title: UpdatePowerStateResponse
       type: object
@@ -14872,14 +14860,21 @@ components:
     FirmwareUpdateRequest:
       title: FirmwareUpdateRequest
       type: object
-      description: Request body for firmware update operations. Version is optional; omit to upgrade to the latest available.
+      description: Request body for firmware update operations. Version is optional; omit to update to the latest available.
+      required:
+        - siteId
       properties:
+        siteId:
+          type: string
+          format: uuid
+          description: ID of the Site
         version:
           type: string
-          description: Target firmware version. If not specified, upgrades to the latest available version.
+          description: Target firmware version. If not specified, updates to the latest available version.
       examples:
-        - version: '24.11.0'
-        - {}
+        - siteId: 550e8400-e29b-41d4-a716-446655440000
+          version: '24.11.0'
+        - siteId: 550e8400-e29b-41d4-a716-446655440000
     FirmwareUpdateResponse:
       title: FirmwareUpdateResponse
       type: object

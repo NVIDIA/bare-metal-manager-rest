@@ -24,6 +24,41 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestAPIUpdateFirmwareRequest_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		request APIUpdateFirmwareRequest
+		wantErr bool
+	}{
+		{
+			name:    "valid - with siteId and version",
+			request: APIUpdateFirmwareRequest{SiteID: "site-1", Version: strPtr("24.11.0")},
+			wantErr: false,
+		},
+		{
+			name:    "valid - with siteId only (no version)",
+			request: APIUpdateFirmwareRequest{SiteID: "site-1"},
+			wantErr: false,
+		},
+		{
+			name:    "invalid - missing siteId",
+			request: APIUpdateFirmwareRequest{Version: strPtr("24.11.0")},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.request.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestNewAPIUpdateFirmwareResponse(t *testing.T) {
 	tests := []struct {
 		name     string

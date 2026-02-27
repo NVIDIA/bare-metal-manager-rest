@@ -750,7 +750,6 @@ func NewUpdateTrayPowerStateHandler(dbSession *cdb.Session, tc tClient.Client, s
 // @Security ApiKeyAuth
 // @Param org path string true "Name of NGC organization"
 // @Param id path string true "ID of Tray"
-// @Param siteId query string true "ID of the Site"
 // @Param body body model.APIUpdatePowerStateRequest true "Power control request"
 // @Success 200 {object} model.APIUpdatePowerStateResponse
 // @Router /v2/org/{org}/carbide/tray/{id}/power [patch]
@@ -791,27 +790,6 @@ func (pcth UpdateTrayPowerStateHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
 	}
 
-	// Validate siteId is provided
-	siteStrID := c.QueryParam("siteId")
-	if siteStrID == "" {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
-	}
-
-	// Retrieve the Site from the DB
-	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, pcth.dbSession)
-	if err != nil {
-		if errors.Is(err, cdb.ErrDoesNotExist) {
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
-		}
-		logger.Error().Err(err).Msg("error retrieving Site from DB")
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site due to DB error", nil)
-	}
-
-	// Verify site belongs to the org's Infrastructure Provider
-	if site.InfrastructureProviderID != infrastructureProvider.ID {
-		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
-	}
-
 	// Get tray ID from URL param
 	trayStrID := c.Param("id")
 	if _, err := uuid.Parse(trayStrID); err != nil {
@@ -828,6 +806,21 @@ func (pcth UpdateTrayPowerStateHandler) Handle(c echo.Context) error {
 	if verr != nil {
 		logger.Warn().Err(verr).Msg("error validating power control request data")
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate power control request data", verr)
+	}
+
+	// Retrieve the Site from the DB
+	site, err := common.GetSiteFromIDString(ctx, nil, apiRequest.SiteID, pcth.dbSession)
+	if err != nil {
+		if errors.Is(err, cdb.ErrDoesNotExist) {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
+		}
+		logger.Error().Err(err).Msg("error retrieving Site from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site due to DB error", nil)
+	}
+
+	// Verify site belongs to the org's Infrastructure Provider
+	if site.InfrastructureProviderID != infrastructureProvider.ID {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
 	}
 
 	// Get the temporal client for the site
@@ -1008,7 +1001,6 @@ func NewUpdateTrayFirmwareHandler(dbSession *cdb.Session, tc tClient.Client, scp
 // @Security ApiKeyAuth
 // @Param org path string true "Name of NGC organization"
 // @Param id path string true "UUID of the Tray"
-// @Param siteId query string true "ID of the Site"
 // @Param body body model.APIUpdateFirmwareRequest true "Firmware update request"
 // @Success 200 {object} model.APIUpdateFirmwareResponse
 // @Router /v2/org/{org}/carbide/tray/{id}/firmware [patch]
@@ -1049,14 +1041,25 @@ func (futh UpdateTrayFirmwareHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
 	}
 
-	// Validate siteId is provided
-	siteStrID := c.QueryParam("siteId")
-	if siteStrID == "" {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "siteId query parameter is required", nil)
+	// Get tray ID from URL param
+	trayStrID := c.Param("id")
+	if _, err := uuid.Parse(trayStrID); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid Tray ID in URL", nil)
+	}
+	futh.tracerSpan.SetAttribute(handlerSpan, attribute.String("tray_id", trayStrID), logger)
+
+	// Parse and validate request body
+	apiRequest := model.APIUpdateFirmwareRequest{}
+	if err := c.Bind(&apiRequest); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
+	}
+	if verr := apiRequest.Validate(); verr != nil {
+		logger.Warn().Err(verr).Msg("error validating firmware update request data")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate firmware update request data", verr)
 	}
 
 	// Retrieve the Site from the DB
-	site, err := common.GetSiteFromIDString(ctx, nil, siteStrID, futh.dbSession)
+	site, err := common.GetSiteFromIDString(ctx, nil, apiRequest.SiteID, futh.dbSession)
 	if err != nil {
 		if errors.Is(err, cdb.ErrDoesNotExist) {
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
@@ -1068,19 +1071,6 @@ func (futh UpdateTrayFirmwareHandler) Handle(c echo.Context) error {
 	// Verify site belongs to the org's Infrastructure Provider
 	if site.InfrastructureProviderID != infrastructureProvider.ID {
 		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
-	}
-
-	// Get tray ID from URL param
-	trayStrID := c.Param("id")
-	if _, err := uuid.Parse(trayStrID); err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid Tray ID in URL", nil)
-	}
-	futh.tracerSpan.SetAttribute(handlerSpan, attribute.String("tray_id", trayStrID), logger)
-
-	// Parse request body
-	apiRequest := model.APIUpdateFirmwareRequest{}
-	if err := c.Bind(&apiRequest); err != nil {
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
 	}
 
 	// Get the temporal client for the site

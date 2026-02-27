@@ -32,37 +32,42 @@ func TestAPIUpdatePowerStateRequest_Validate(t *testing.T) {
 	}{
 		{
 			name:    "valid - on",
-			request: APIUpdatePowerStateRequest{State: "on"},
+			request: APIUpdatePowerStateRequest{SiteID: "site-1", State: "on"},
 			wantErr: false,
 		},
 		{
 			name:    "valid - off",
-			request: APIUpdatePowerStateRequest{State: "off"},
+			request: APIUpdatePowerStateRequest{SiteID: "site-1", State: "off"},
 			wantErr: false,
 		},
 		{
 			name:    "valid - cycle",
-			request: APIUpdatePowerStateRequest{State: "cycle"},
+			request: APIUpdatePowerStateRequest{SiteID: "site-1", State: "cycle"},
 			wantErr: false,
 		},
 		{
 			name:    "valid - forceoff",
-			request: APIUpdatePowerStateRequest{State: "forceoff"},
+			request: APIUpdatePowerStateRequest{SiteID: "site-1", State: "forceoff"},
 			wantErr: false,
 		},
 		{
 			name:    "valid - forcecycle",
-			request: APIUpdatePowerStateRequest{State: "forcecycle"},
+			request: APIUpdatePowerStateRequest{SiteID: "site-1", State: "forcecycle"},
 			wantErr: false,
 		},
 		{
+			name:    "invalid - missing siteId",
+			request: APIUpdatePowerStateRequest{State: "on"},
+			wantErr: true,
+		},
+		{
 			name:    "invalid - empty state",
-			request: APIUpdatePowerStateRequest{State: ""},
+			request: APIUpdatePowerStateRequest{SiteID: "site-1", State: ""},
 			wantErr: true,
 		},
 		{
 			name:    "invalid - unknown state",
-			request: APIUpdatePowerStateRequest{State: "reboot"},
+			request: APIUpdatePowerStateRequest{SiteID: "site-1", State: "reboot"},
 			wantErr: true,
 		},
 	}

@@ -991,124 +991,93 @@ func TestUpdateRackPowerStateHandler_Handle(t *testing.T) {
 		reqOrg         string
 		user           *cdbm.User
 		rackID         string
-		queryParams    map[string]string
 		body           string
 		mockTaskIDs    []*rlav1.UUID
 		expectedStatus int
 	}{
 		{
-			name:   "success - power on rack",
-			reqOrg: org,
-			user:   providerUser,
-			rackID: rackID,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{"state":"on"}`,
+			name:           "success - power on rack",
+			reqOrg:         org,
+			user:           providerUser,
+			rackID:         rackID,
+			body:           fmt.Sprintf(`{"siteId":"%s","state":"on"}`, site.ID.String()),
 			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:   "success - power off rack",
-			reqOrg: org,
-			user:   providerUser,
-			rackID: rackID,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{"state":"off"}`,
+			name:           "success - power off rack",
+			reqOrg:         org,
+			user:           providerUser,
+			rackID:         rackID,
+			body:           fmt.Sprintf(`{"siteId":"%s","state":"off"}`, site.ID.String()),
 			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:   "success - power cycle rack",
-			reqOrg: org,
-			user:   providerUser,
-			rackID: rackID,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{"state":"cycle"}`,
+			name:           "success - power cycle rack",
+			reqOrg:         org,
+			user:           providerUser,
+			rackID:         rackID,
+			body:           fmt.Sprintf(`{"siteId":"%s","state":"cycle"}`, site.ID.String()),
 			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:   "success - force power off rack",
-			reqOrg: org,
-			user:   providerUser,
-			rackID: rackID,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{"state":"forceoff"}`,
+			name:           "success - force power off rack",
+			reqOrg:         org,
+			user:           providerUser,
+			rackID:         rackID,
+			body:           fmt.Sprintf(`{"siteId":"%s","state":"forceoff"}`, site.ID.String()),
 			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:   "success - force power cycle rack",
-			reqOrg: org,
-			user:   providerUser,
-			rackID: rackID,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{"state":"forcecycle"}`,
+			name:           "success - force power cycle rack",
+			reqOrg:         org,
+			user:           providerUser,
+			rackID:         rackID,
+			body:           fmt.Sprintf(`{"siteId":"%s","state":"forcecycle"}`, site.ID.String()),
 			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:   "failure - invalid state",
-			reqOrg: org,
-			user:   providerUser,
-			rackID: rackID,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{"state":"reboot"}`,
+			name:           "failure - invalid state",
+			reqOrg:         org,
+			user:           providerUser,
+			rackID:         rackID,
+			body:           fmt.Sprintf(`{"siteId":"%s","state":"reboot"}`, site.ID.String()),
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "failure - empty state",
-			reqOrg: org,
-			user:   providerUser,
-			rackID: rackID,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{"state":""}`,
+			name:           "failure - empty state",
+			reqOrg:         org,
+			user:           providerUser,
+			rackID:         rackID,
+			body:           fmt.Sprintf(`{"siteId":"%s","state":""}`, site.ID.String()),
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "failure - missing siteId",
-			reqOrg: org,
-			user:   providerUser,
-			rackID: rackID,
-			queryParams: map[string]string{
-				// no siteId
-			},
+			name:           "failure - missing siteId",
+			reqOrg:         org,
+			user:           providerUser,
+			rackID:         rackID,
 			body:           `{"state":"on"}`,
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "failure - invalid siteId",
-			reqOrg: org,
-			user:   providerUser,
-			rackID: rackID,
-			queryParams: map[string]string{
-				"siteId": uuid.New().String(),
-			},
-			body:           `{"state":"on"}`,
+			name:           "failure - invalid siteId",
+			reqOrg:         org,
+			user:           providerUser,
+			rackID:         rackID,
+			body:           fmt.Sprintf(`{"siteId":"%s","state":"on"}`, uuid.New().String()),
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "failure - tenant access denied",
-			reqOrg: org,
-			user:   tenantUser,
-			rackID: rackID,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{"state":"on"}`,
+			name:           "failure - tenant access denied",
+			reqOrg:         org,
+			user:           tenantUser,
+			rackID:         rackID,
+			body:           fmt.Sprintf(`{"siteId":"%s","state":"on"}`, site.ID.String()),
 			expectedStatus: http.StatusForbidden,
 		},
 	}
@@ -1127,11 +1096,7 @@ func TestUpdateRackPowerStateHandler_Handle(t *testing.T) {
 			mockTemporalClient.Mock.On("ExecuteWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockWorkflowRun, nil)
 			scp.IDClientMap[site.ID.String()] = mockTemporalClient
 
-			q := url.Values{}
-			for k, v := range tt.queryParams {
-				q.Set(k, v)
-			}
-			path := fmt.Sprintf("/v2/org/%s/carbide/rack/%s/power?%s", tt.reqOrg, tt.rackID, q.Encode())
+			path := fmt.Sprintf("/v2/org/%s/carbide/rack/%s/power", tt.reqOrg, tt.rackID)
 
 			req := httptest.NewRequest(http.MethodPatch, path, strings.NewReader(tt.body))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
@@ -1312,66 +1277,50 @@ func TestUpdateRackFirmwareHandler_Handle(t *testing.T) {
 		reqOrg         string
 		user           *cdbm.User
 		rackID         string
-		queryParams    map[string]string
 		body           string
 		mockTaskIDs    []*rlav1.UUID
 		expectedStatus int
 	}{
 		{
-			name:   "success - firmware update with version",
-			reqOrg: org,
-			user:   providerUser,
-			rackID: rackID,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{"version":"24.11.0"}`,
+			name:           "success - firmware update with version",
+			reqOrg:         org,
+			user:           providerUser,
+			rackID:         rackID,
+			body:           fmt.Sprintf(`{"siteId":"%s","version":"24.11.0"}`, site.ID.String()),
 			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:   "success - firmware update without version",
-			reqOrg: org,
-			user:   providerUser,
-			rackID: rackID,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{}`,
+			name:           "success - firmware update without version",
+			reqOrg:         org,
+			user:           providerUser,
+			rackID:         rackID,
+			body:           fmt.Sprintf(`{"siteId":"%s"}`, site.ID.String()),
 			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:   "failure - missing siteId",
-			reqOrg: org,
-			user:   providerUser,
-			rackID: rackID,
-			queryParams: map[string]string{
-				// no siteId
-			},
+			name:           "failure - missing siteId",
+			reqOrg:         org,
+			user:           providerUser,
+			rackID:         rackID,
 			body:           `{}`,
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "failure - invalid siteId",
-			reqOrg: org,
-			user:   providerUser,
-			rackID: rackID,
-			queryParams: map[string]string{
-				"siteId": uuid.New().String(),
-			},
-			body:           `{}`,
+			name:           "failure - invalid siteId",
+			reqOrg:         org,
+			user:           providerUser,
+			rackID:         rackID,
+			body:           fmt.Sprintf(`{"siteId":"%s"}`, uuid.New().String()),
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "failure - tenant access denied",
-			reqOrg: org,
-			user:   tenantUser,
-			rackID: rackID,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{}`,
+			name:           "failure - tenant access denied",
+			reqOrg:         org,
+			user:           tenantUser,
+			rackID:         rackID,
+			body:           fmt.Sprintf(`{"siteId":"%s"}`, site.ID.String()),
 			expectedStatus: http.StatusForbidden,
 		},
 	}
@@ -1390,11 +1339,7 @@ func TestUpdateRackFirmwareHandler_Handle(t *testing.T) {
 			mockTemporalClient.Mock.On("ExecuteWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockWorkflowRun, nil)
 			scp.IDClientMap[site.ID.String()] = mockTemporalClient
 
-			q := url.Values{}
-			for k, v := range tt.queryParams {
-				q.Set(k, v)
-			}
-			path := fmt.Sprintf("/v2/org/%s/carbide/rack/%s/firmware?%s", tt.reqOrg, tt.rackID, q.Encode())
+			path := fmt.Sprintf("/v2/org/%s/carbide/rack/%s/firmware", tt.reqOrg, tt.rackID)
 
 			req := httptest.NewRequest(http.MethodPatch, path, strings.NewReader(tt.body))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)

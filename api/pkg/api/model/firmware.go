@@ -27,7 +27,16 @@ import (
 
 // APIUpdateFirmwareRequest is the request body for firmware update operations
 type APIUpdateFirmwareRequest struct {
+	SiteID  string  `json:"siteId"`
 	Version *string `json:"version,omitempty"`
+}
+
+// Validate validates the firmware update request
+func (r *APIUpdateFirmwareRequest) Validate() error {
+	if r.SiteID == "" {
+		return fmt.Errorf("siteId is required")
+	}
+	return nil
 }
 
 // ========== Firmware Update Response ==========

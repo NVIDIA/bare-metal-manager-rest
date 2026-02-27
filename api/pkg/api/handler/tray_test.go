@@ -1145,89 +1145,67 @@ func TestUpdateTrayPowerStateHandler_Handle(t *testing.T) {
 		reqOrg         string
 		user           *cdbm.User
 		trayID         string
-		queryParams    map[string]string
 		body           string
 		mockTaskIDs    []*rlav1.UUID
 		expectedStatus int
 	}{
 		{
-			name:   "success - power on tray",
-			reqOrg: org,
-			user:   providerUser,
-			trayID: trayID,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{"state":"on"}`,
+			name:           "success - power on tray",
+			reqOrg:         org,
+			user:           providerUser,
+			trayID:         trayID,
+			body:           fmt.Sprintf(`{"siteId":"%s","state":"on"}`, site.ID.String()),
 			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:   "success - power off tray",
-			reqOrg: org,
-			user:   providerUser,
-			trayID: trayID,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{"state":"off"}`,
+			name:           "success - power off tray",
+			reqOrg:         org,
+			user:           providerUser,
+			trayID:         trayID,
+			body:           fmt.Sprintf(`{"siteId":"%s","state":"off"}`, site.ID.String()),
 			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:   "success - force power cycle tray",
-			reqOrg: org,
-			user:   providerUser,
-			trayID: trayID,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{"state":"forcecycle"}`,
+			name:           "success - force power cycle tray",
+			reqOrg:         org,
+			user:           providerUser,
+			trayID:         trayID,
+			body:           fmt.Sprintf(`{"siteId":"%s","state":"forcecycle"}`, site.ID.String()),
 			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:   "failure - invalid state",
-			reqOrg: org,
-			user:   providerUser,
-			trayID: trayID,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{"state":"reboot"}`,
+			name:           "failure - invalid state",
+			reqOrg:         org,
+			user:           providerUser,
+			trayID:         trayID,
+			body:           fmt.Sprintf(`{"siteId":"%s","state":"reboot"}`, site.ID.String()),
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "failure - missing siteId",
-			reqOrg: org,
-			user:   providerUser,
-			trayID: trayID,
-			queryParams: map[string]string{
-				// no siteId
-			},
+			name:           "failure - missing siteId",
+			reqOrg:         org,
+			user:           providerUser,
+			trayID:         trayID,
 			body:           `{"state":"on"}`,
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "failure - invalid tray ID (not UUID)",
-			reqOrg: org,
-			user:   providerUser,
-			trayID: "not-a-uuid",
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{"state":"on"}`,
+			name:           "failure - invalid tray ID (not UUID)",
+			reqOrg:         org,
+			user:           providerUser,
+			trayID:         "not-a-uuid",
+			body:           fmt.Sprintf(`{"siteId":"%s","state":"on"}`, site.ID.String()),
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "failure - tenant access denied",
-			reqOrg: org,
-			user:   tenantUser,
-			trayID: trayID,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{"state":"on"}`,
+			name:           "failure - tenant access denied",
+			reqOrg:         org,
+			user:           tenantUser,
+			trayID:         trayID,
+			body:           fmt.Sprintf(`{"siteId":"%s","state":"on"}`, site.ID.String()),
 			expectedStatus: http.StatusForbidden,
 		},
 	}
@@ -1246,11 +1224,7 @@ func TestUpdateTrayPowerStateHandler_Handle(t *testing.T) {
 			mockTemporalClient.Mock.On("ExecuteWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockWorkflowRun, nil)
 			scp.IDClientMap[site.ID.String()] = mockTemporalClient
 
-			q := url.Values{}
-			for k, v := range tt.queryParams {
-				q.Set(k, v)
-			}
-			path := fmt.Sprintf("/v2/org/%s/carbide/tray/%s/power?%s", tt.reqOrg, tt.trayID, q.Encode())
+			path := fmt.Sprintf("/v2/org/%s/carbide/tray/%s/power", tt.reqOrg, tt.trayID)
 
 			req := httptest.NewRequest(http.MethodPatch, path, strings.NewReader(tt.body))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
@@ -1426,66 +1400,50 @@ func TestUpdateTrayFirmwareHandler_Handle(t *testing.T) {
 		reqOrg         string
 		user           *cdbm.User
 		trayID         string
-		queryParams    map[string]string
 		body           string
 		mockTaskIDs    []*rlav1.UUID
 		expectedStatus int
 	}{
 		{
-			name:   "success - firmware update with version",
-			reqOrg: org,
-			user:   providerUser,
-			trayID: trayID,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{"version":"24.11.0"}`,
+			name:           "success - firmware update with version",
+			reqOrg:         org,
+			user:           providerUser,
+			trayID:         trayID,
+			body:           fmt.Sprintf(`{"siteId":"%s","version":"24.11.0"}`, site.ID.String()),
 			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:   "success - firmware update without version",
-			reqOrg: org,
-			user:   providerUser,
-			trayID: trayID,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{}`,
+			name:           "success - firmware update without version",
+			reqOrg:         org,
+			user:           providerUser,
+			trayID:         trayID,
+			body:           fmt.Sprintf(`{"siteId":"%s"}`, site.ID.String()),
 			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:   "failure - missing siteId",
-			reqOrg: org,
-			user:   providerUser,
-			trayID: trayID,
-			queryParams: map[string]string{
-				// no siteId
-			},
+			name:           "failure - missing siteId",
+			reqOrg:         org,
+			user:           providerUser,
+			trayID:         trayID,
 			body:           `{}`,
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "failure - invalid tray ID (not UUID)",
-			reqOrg: org,
-			user:   providerUser,
-			trayID: "not-a-uuid",
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{}`,
+			name:           "failure - invalid tray ID (not UUID)",
+			reqOrg:         org,
+			user:           providerUser,
+			trayID:         "not-a-uuid",
+			body:           fmt.Sprintf(`{"siteId":"%s"}`, site.ID.String()),
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:   "failure - tenant access denied",
-			reqOrg: org,
-			user:   tenantUser,
-			trayID: trayID,
-			queryParams: map[string]string{
-				"siteId": site.ID.String(),
-			},
-			body:           `{}`,
+			name:           "failure - tenant access denied",
+			reqOrg:         org,
+			user:           tenantUser,
+			trayID:         trayID,
+			body:           fmt.Sprintf(`{"siteId":"%s"}`, site.ID.String()),
 			expectedStatus: http.StatusForbidden,
 		},
 	}
@@ -1504,11 +1462,7 @@ func TestUpdateTrayFirmwareHandler_Handle(t *testing.T) {
 			mockTemporalClient.Mock.On("ExecuteWorkflow", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(mockWorkflowRun, nil)
 			scp.IDClientMap[site.ID.String()] = mockTemporalClient
 
-			q := url.Values{}
-			for k, v := range tt.queryParams {
-				q.Set(k, v)
-			}
-			path := fmt.Sprintf("/v2/org/%s/carbide/tray/%s/firmware?%s", tt.reqOrg, tt.trayID, q.Encode())
+			path := fmt.Sprintf("/v2/org/%s/carbide/tray/%s/firmware", tt.reqOrg, tt.trayID)
 
 			req := httptest.NewRequest(http.MethodPatch, path, strings.NewReader(tt.body))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)

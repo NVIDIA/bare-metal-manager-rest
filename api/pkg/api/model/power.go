@@ -54,12 +54,14 @@ var validPowerControlStatesAny = func() []interface{} {
 
 // APIUpdatePowerStateRequest is the request body for power control operations
 type APIUpdatePowerStateRequest struct {
-	State string `json:"state"`
+	SiteID string `json:"siteId"`
+	State  string `json:"state"`
 }
 
 // Validate validates the power control request
 func (r *APIUpdatePowerStateRequest) Validate() error {
 	return validation.ValidateStruct(r,
+		validation.Field(&r.SiteID, validation.Required.Error("siteId is required")),
 		validation.Field(&r.State,
 			validation.Required.Error(validationErrorValueRequired),
 			validation.In(validPowerControlStatesAny...).Error(
