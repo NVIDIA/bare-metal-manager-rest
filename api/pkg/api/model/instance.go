@@ -759,6 +759,15 @@ func (icr *APIInstanceCreateRequest) ValidateAndSetOperatingSystemData(cfg *conf
 	return nil
 }
 
+// InstanceOSConfigProvider interface implementation for APIInstanceCreateRequest
+
+func (icr *APIInstanceCreateRequest) GetOperatingSystemID() *string   { return icr.OperatingSystemID }
+func (icr *APIInstanceCreateRequest) GetTenantID() string             { return icr.TenantID }
+func (icr *APIInstanceCreateRequest) GetAlwaysBootWithCustomIpxe() *bool { return icr.AlwaysBootWithCustomIpxe }
+func (icr *APIInstanceCreateRequest) GetPhoneHomeEnabled() *bool      { return icr.PhoneHomeEnabled }
+func (icr *APIInstanceCreateRequest) GetIpxeScript() *string          { return icr.IpxeScript }
+func (icr *APIInstanceCreateRequest) GetUserData() *string            { return icr.UserData }
+
 // ValidateMultiEthernetDeviceInterfaces validates the Multi-Ethernet Device Interfaces for the Instance
 func (icr *APIInstanceCreateRequest) ValidateMultiEthernetDeviceInterfaces(itNetworkCaps []cdbm.MachineCapability, dbifcs []cdbm.Interface) error {
 	return ValidateMultiEthernetDeviceInterfaces(itNetworkCaps, dbifcs)
@@ -1073,6 +1082,15 @@ func (bicr *APIBatchInstanceCreateRequest) ValidateAndSetOperatingSystemData(cfg
 func (icr *APIInstanceCreateRequest) ValidateNVLinkInterfaces(itNvlCaps []cdbm.MachineCapability) error {
 	return ValidateNVLinkInterfaces(itNvlCaps, icr.NVLinkInterfaces)
 }
+
+// InstanceOSConfigProvider interface implementation for APIBatchInstanceCreateRequest
+
+func (bicr *APIBatchInstanceCreateRequest) GetOperatingSystemID() *string   { return bicr.OperatingSystemID }
+func (bicr *APIBatchInstanceCreateRequest) GetTenantID() string             { return bicr.TenantID }
+func (bicr *APIBatchInstanceCreateRequest) GetAlwaysBootWithCustomIpxe() *bool { return bicr.AlwaysBootWithCustomIpxe }
+func (bicr *APIBatchInstanceCreateRequest) GetPhoneHomeEnabled() *bool      { return bicr.PhoneHomeEnabled }
+func (bicr *APIBatchInstanceCreateRequest) GetIpxeScript() *string          { return bicr.IpxeScript }
+func (bicr *APIBatchInstanceCreateRequest) GetUserData() *string            { return bicr.UserData }
 
 // APIInstanceUpdateRequest is the data structure to capture request to update an Instance
 type APIInstanceUpdateRequest struct {

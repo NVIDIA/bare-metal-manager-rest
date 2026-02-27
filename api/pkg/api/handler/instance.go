@@ -77,136 +77,6 @@ func NewCreateInstanceHandler(dbSession *cdb.Session, tc temporalClient.Client, 
 	}
 }
 
-// Returns either a default OS or an existing instance OS config.
-// apiRequest will be mutated for use in createFromParams.
-// osConfig will hold the struct/data for use with Temporal/Carbide calls.
-// Errors should be returned in the form of cerr.NewAPIErrorResponse
-func (cih CreateInstanceHandler) buildInstanceCreateRequestOsConfig(c echo.Context, logger *zerolog.Logger, apiRequest *model.APIInstanceCreateRequest, siteID uuid.UUID) (*cwssaws.OperatingSystem, *uuid.UUID, *cerr.APIError) {
-
-	ctx := c.Request().Context()
-
-	// If no OS was selected
-	if apiRequest.OperatingSystemID == nil || *apiRequest.OperatingSystemID == "" {
-
-		if err := apiRequest.ValidateAndSetOperatingSystemData(cih.cfg, nil); err != nil {
-			logger.Error().Err(err).Msg("failed to validate OperatingSystem")
-			return nil, nil, cerr.NewAPIError(http.StatusBadRequest, "Failed to validate OperatingSystem data", err)
-		}
-
-		return &cwssaws.OperatingSystem{
-			RunProvisioningInstructionsOnEveryBoot: *apiRequest.AlwaysBootWithCustomIpxe, // Set by the earlier call to ValidateAndSetOperatingSystemData
-			PhoneHomeEnabled:                       *apiRequest.PhoneHomeEnabled,         // Set by the earlier call to ValidateAndSetOperatingSystemData
-			Variant: &cwssaws.OperatingSystem_Ipxe{
-				Ipxe: &cwssaws.IpxeOperatingSystem{
-					IpxeScript: *apiRequest.IpxeScript,
-				},
-			},
-			UserData: apiRequest.UserData,
-		}, nil, nil
-	}
-
-	// Otherwise, we'll use the OS sent by the caller
-
-	var id uuid.UUID
-	var err error
-
-	if id, err = uuid.Parse(*apiRequest.OperatingSystemID); err != nil {
-		logger.Error().Err(err).Msg("failed to parse OperatingSystemID")
-		return nil, nil, cerr.NewAPIError(http.StatusBadRequest, "Unable to parse `operatingSystemId` specified", validation.Errors{
-			"operatingSystemId": errors.New(*apiRequest.OperatingSystemID),
-		})
-	}
-
-	osID := &id
-
-	// Retrieve the details for the OS
-	osDAO := cdbm.NewOperatingSystemDAO(cih.dbSession)
-	os, serr := osDAO.GetByID(ctx, nil, *osID, nil)
-	if serr != nil {
-		if serr == cdb.ErrDoesNotExist {
-			return nil, nil, cerr.NewAPIError(http.StatusBadRequest, "Could not find OperatingSystem with ID specified in request data", validation.Errors{
-				"id": errors.New(osID.String()),
-			})
-		}
-		logger.Error().Err(serr).Msg("error retrieving OperatingSystem from DB by ID")
-		return nil, nil, cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve OperatingSystem with ID specified in request data, DB error", validation.Errors{
-			"id": errors.New(osID.String()),
-		})
-	}
-
-	// Add the OS ID to the log fields now that we know we have a valid one.
-	logger.UpdateContext(func(c zerolog.Context) zerolog.Context {
-		return c.Str("OperatingSystem ID", os.ID.String())
-	})
-
-	// Confirm ownership between tenant and OS.
-	if os.TenantID.String() != apiRequest.TenantID {
-		logger.Error().Msg("OperatingSystem in request is not owned by tenant")
-		return nil, nil, cerr.NewAPIError(http.StatusBadRequest, "OperatingSystem specified in request is not owned by Tenant", nil)
-	}
-
-	// Confirm match between site and OS (only for Image type).
-	if os.Type == cdbm.OperatingSystemTypeImage {
-		ossaDAO := cdbm.NewOperatingSystemSiteAssociationDAO(cih.dbSession)
-		_, ossaCount, err := ossaDAO.GetAll(
-			ctx,
-			nil,
-			cdbm.OperatingSystemSiteAssociationFilterInput{
-				OperatingSystemIDs: []uuid.UUID{id},
-				SiteIDs:            []uuid.UUID{siteID},
-			},
-			cdbp.PageInput{Limit: cdb.GetIntPtr(1)},
-			nil,
-		)
-		if err != nil {
-			logger.Error().Msgf("Error retrieving OperatingSystemAssociations for OS: %s", err)
-			return nil, nil, cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve OperatingSystemAssociations for OS with ID specified in request data, DB error", validation.Errors{
-				"id": errors.New(osID.String()),
-			})
-		}
-		if ossaCount == 0 {
-			logger.Error().Msg("OperatingSystem does not belong to VPC site")
-			return nil, nil, cerr.NewAPIError(http.StatusBadRequest, "OperatingSystem specified in request is not in VPC site", nil)
-		}
-	}
-
-	// Validate any additional properties.
-	// `os` could still be nil here if no OS ID was sent
-	// in the request.
-
-	err = apiRequest.ValidateAndSetOperatingSystemData(cih.cfg, os)
-	if err != nil {
-		logger.Error().Msgf("OperatingSystem options validation failed: %s", err)
-		return nil, nil, cerr.NewAPIError(http.StatusBadRequest, "OperatingSystem options validation failed", err)
-	}
-
-	// Options below should all have been set by the
-	// earlier call to ValidateAndSetOperatingSystemData
-
-	if os.Type == cdbm.OperatingSystemTypeIPXE {
-		return &cwssaws.OperatingSystem{
-			RunProvisioningInstructionsOnEveryBoot: *apiRequest.AlwaysBootWithCustomIpxe,
-			PhoneHomeEnabled:                       *apiRequest.PhoneHomeEnabled,
-			Variant: &cwssaws.OperatingSystem_Ipxe{
-				Ipxe: &cwssaws.IpxeOperatingSystem{
-					IpxeScript: *apiRequest.IpxeScript,
-				},
-			},
-			UserData: apiRequest.UserData,
-		}, osID, nil
-	} else {
-		return &cwssaws.OperatingSystem{
-			PhoneHomeEnabled: *apiRequest.PhoneHomeEnabled,
-			Variant: &cwssaws.OperatingSystem_OsImageId{
-				OsImageId: &cwssaws.UUID{
-					Value: os.ID.String(),
-				},
-			},
-			UserData: apiRequest.UserData,
-		}, osID, nil
-	}
-}
-
 // Handle godoc
 // @Summary Create an Instance
 // @Description Create an Instance for the org.
@@ -327,360 +197,36 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Error validating Instance creation request data", verr)
 	}
 
-	// Validate the tenant for which this Instance is being created
-	tenant, err := common.GetTenantForOrg(ctx, nil, cih.dbSession, org)
-	if err != nil {
-		if err == common.ErrOrgTenantNotFound {
-			logger.Warn().Err(err).Msg("Org does not have a Tenant associated")
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Org does not have a Tenant associated", nil)
-		}
-		logger.Error().Err(err).Msg("unable to retrieve tenant for org")
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve tenant for org", nil)
+	icv := common.NewInstanceCreateValidator(cih.dbSession, cih.cfg, &logger)
+
+	tenant, vpc, site, defaultNvllpID, apiErr := icv.ValidateTenantAndVPC(ctx, org, apiRequest.TenantID, apiRequest.VpcID)
+	if apiErr != nil {
+		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	// verify tenant-id in request, the api validation ensures non-nil tenantID in request
-	apiTenant, err := common.GetTenantFromIDString(ctx, nil, apiRequest.TenantID, cih.dbSession)
-	if err != nil {
-		logger.Warn().Err(err).Msg("error retrieving tenant from request")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "TenantID in request is not valid", nil)
-	}
-	if apiTenant.ID != tenant.ID {
-		logger.Warn().Msg("tenant id in request does not match tenant in org")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "TenantID in request does not match tenant in org", nil)
+	ifcResult, apiErr := icv.ValidateNetworkInterfaces(ctx, tenant, vpc, apiRequest.Interfaces)
+	if apiErr != nil {
+		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	// Validate the VPC state
-	vpc, err := common.GetVpcFromIDString(ctx, nil, apiRequest.VpcID, []string{cdbm.NVLinkLogicalPartitionRelationName}, cih.dbSession)
-	if err != nil {
-		if err == cdb.ErrDoesNotExist {
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Could not find VPC with ID specified in request data", nil)
-		}
-		logger.Warn().Err(err).Msg("error retrieving VPC from request")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "VpcID in request is not valid", nil)
+	desIDMap, apiErr := icv.ValidateDPUExtensionServices(ctx, tenant, site, apiRequest.DpuExtensionServiceDeployments)
+	if apiErr != nil {
+		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	if vpc.TenantID != tenant.ID {
-		logger.Warn().Msg("tenant id in request does not match tenant in VPC")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "VPC specified in request is not owned by Tenant", nil)
+	if apiErr := icv.ValidateNetworkSecurityGroup(ctx, tenant, site, apiRequest.NetworkSecurityGroupID); apiErr != nil {
+		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	if vpc.ControllerVpcID == nil || vpc.Status != cdbm.VpcStatusReady {
-		logger.Warn().Msg("VPC specified in request data is not ready")
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "VPC specified in request data is not ready", nil)
+	sshKeyGroups, apiErr := icv.ValidateSSHKeyGroups(ctx, tenant, site, apiRequest.SSHKeyGroupIDs)
+	if apiErr != nil {
+		return c.JSON(apiErr.Code, apiErr)
 	}
 
-	var defaultNvllpID *uuid.UUID
-	if vpc.NVLinkLogicalPartitionID != nil {
-		// NOTE: No validation needed here because the VPC validation ensures the NVLink Logical Partition is valid for this instance
-		defaultNvllpID = vpc.NVLinkLogicalPartitionID
-	}
-
-	// Verify if site is ready
-	stDAO := cdbm.NewSiteDAO(cih.dbSession)
-	site, err := stDAO.GetByID(ctx, nil, vpc.SiteID, nil, false)
-	if err != nil {
-		if err == cdb.ErrDoesNotExist {
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "The Site where this Instance is being created could not be found", nil)
-		}
-		logger.Error().Err(err).Msg("error retrieving Site from DB by ID")
-		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "The Site where this Instance is being created could not be retrieved", nil)
-	}
-
-	if site.Status != cdbm.SiteStatusRegistered {
-		logger.Warn().Msg(fmt.Sprintf("The Site: %v where this Instance is being created is not in Registered state", vpc.SiteID.String()))
-		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "The Site where this Instance is being created is not in Registered state", nil)
-	}
-
-	// Begin validating interfaces
-	// Fetch and validate Subnet or VPC Prefixes
-	sbDAO := cdbm.NewSubnetDAO(cih.dbSession)
-	vpDAO := cdbm.NewVpcPrefixDAO(cih.dbSession)
-
-	subnetIDs := []uuid.UUID{}
-	vpcPrefixIDs := []uuid.UUID{}
-
-	for _, ifc := range apiRequest.Interfaces {
-		if ifc.SubnetID != nil {
-			subnetID, err := uuid.Parse(*ifc.SubnetID)
-			if err != nil {
-				logger.Warn().Err(err).Msg("error parsing subnet id in instance subnet request")
-				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Subnet ID: %s specified in interfaces data in request is not valid", *ifc.SubnetID), nil)
-			}
-			subnetIDs = append(subnetIDs, subnetID)
-		}
-		if ifc.VpcPrefixID != nil {
-			vpcPrefixID, err := uuid.Parse(*ifc.VpcPrefixID)
-			if err != nil {
-				logger.Warn().Err(err).Msg("error parsing vpcprefix id in instance vpcprefix request")
-				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("VPC Prefix ID: %s specified in interfaces data in request is not valid", *ifc.VpcPrefixID), nil)
-			}
-			vpcPrefixIDs = append(vpcPrefixIDs, vpcPrefixID)
-		}
-	}
-
-	// Fetch Subnets from DB by IDs
-	subnetIDMap := make(map[uuid.UUID]*cdbm.Subnet)
-	if len(subnetIDs) > 0 {
-		subnets, _, err := sbDAO.GetAll(ctx, nil, cdbm.SubnetFilterInput{SubnetIDs: subnetIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
-		if err != nil {
-			logger.Error().Err(err).Msg("error retrieving Subnets from DB by IDs")
-			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Subnets from DB by IDs", nil)
-		}
-		for i := range subnets {
-			subnetIDMap[subnets[i].ID] = &subnets[i]
-		}
-	}
-
-	// Fetch VPC Prefixes from DB by IDs
-	vpcPrefixIDMap := make(map[uuid.UUID]*cdbm.VpcPrefix)
-	if len(vpcPrefixIDs) > 0 {
-		vpcPrefixes, _, err := vpDAO.GetAll(ctx, nil, cdbm.VpcPrefixFilterInput{VpcPrefixIDs: vpcPrefixIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
-		if err != nil {
-			logger.Error().Err(err).Msg("error retrieving VPC Prefixes from DB by IDs")
-			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve VPC Prefixes from DB by IDs", nil)
-		}
-		for i := range vpcPrefixes {
-			vpcPrefixIDMap[vpcPrefixes[i].ID] = &vpcPrefixes[i]
-		}
-	}
-
-	dbInterfaces := []cdbm.Interface{}
-	isInterfaceDeviceInfoPresent := false
-
-	for _, ifc := range apiRequest.Interfaces {
-		if ifc.SubnetID != nil {
-			subnetID := uuid.MustParse(*ifc.SubnetID)
-
-			subnet, ok := subnetIDMap[subnetID]
-			if !ok {
-				logger.Warn().Msg(fmt.Sprintf("Subnet: %v specified in request data is not found in DB", subnetID))
-				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Subnet: %v specified in request data is not found in DB", subnetID), nil)
-			}
-
-			if subnet.TenantID != tenant.ID {
-				logger.Warn().Msg(fmt.Sprintf("Subnet: %v specified in request is not owned by Tenant", subnetID))
-				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Subnet: %v specified in request is not owned by Tenant", subnetID), nil)
-			}
-
-			if subnet.ControllerNetworkSegmentID == nil || subnet.Status != cdbm.SubnetStatusReady {
-				logger.Warn().Msg(fmt.Sprintf("Subnet: %v specified in request data is not in Ready state", subnetID))
-				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Subnet: %v specified in request data is not in Ready state", subnetID), nil)
-			}
-
-			if subnet.VpcID != vpc.ID {
-				logger.Warn().Msg(fmt.Sprintf("Subnet: %v specified in request does not match with VPC", subnetID))
-				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Subnet: %v specified in request does not match with VPC", subnetID), nil)
-			}
-
-			if vpc.NetworkVirtualizationType != nil && *vpc.NetworkVirtualizationType != cdbm.VpcEthernetVirtualizer {
-				logger.Warn().Msg(fmt.Sprintf("VPC: %v specified in request must have Ethernet network virtualization type in order to create Subnet based interfaces", vpc.ID))
-				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("VPC: %v specified in request must have Ethernet network virtualization type in order to create Subnet based interfaces", vpc.ID), nil)
-			}
-
-			dbInterfaces = append(dbInterfaces, cdbm.Interface{SubnetID: &subnetID, IsPhysical: ifc.IsPhysical, Status: cdbm.InterfaceStatusPending})
-		}
-
-		if ifc.VpcPrefixID != nil {
-			vpcPrefixID := uuid.MustParse(*ifc.VpcPrefixID)
-
-			vpcPrefix, ok := vpcPrefixIDMap[vpcPrefixID]
-			if !ok {
-				logger.Warn().Msg(fmt.Sprintf("VPC Prefix: %v specified in request data is not found in DB", vpcPrefixID))
-				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("VPC Prefix: %v specified in request data is not found in DB", vpcPrefixID), nil)
-			}
-
-			if vpcPrefix.TenantID != tenant.ID {
-				logger.Warn().Msg(fmt.Sprintf("VPC Prefix: %v specified in request is not owned by Tenant", vpcPrefixID))
-				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("VPC Prefix: %v specified in request is not owned by Tenant", vpcPrefixID), nil)
-			}
-
-			if vpcPrefix.Status != cdbm.VpcPrefixStatusReady {
-				logger.Warn().Msg(fmt.Sprintf("VPC Prefix: %v specified in request data is not in Ready state", vpcPrefixID))
-				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("VPC Prefix: %v specified in request data is not in Ready state", vpcPrefixID), nil)
-			}
-
-			if vpcPrefix.VpcID != vpc.ID {
-				logger.Warn().Msg(fmt.Sprintf("VPC Prefix: %v specified in request does not match with VPC", vpcPrefixID))
-				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("VPC Prefix: %v specified in request does not match with VPC", vpcPrefixID), nil)
-			}
-
-			if vpc.NetworkVirtualizationType == nil || *vpc.NetworkVirtualizationType != cdbm.VpcFNN {
-				logger.Warn().Msg(fmt.Sprintf("VPC: %v specified in request must have FNN network virtualization type in order to create VPC Prefix based interfaces", vpc.ID))
-				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("VPC: %v specified in request must have FNN network virtualization type in order to create VPC Prefix based interfaces", vpc.ID), nil)
-			}
-
-			if ifc.Device != nil && ifc.DeviceInstance != nil {
-				isInterfaceDeviceInfoPresent = true
-			}
-
-			dbInterfaces = append(dbInterfaces, cdbm.Interface{
-				VpcPrefixID:       &vpcPrefixID,
-				Device:            ifc.Device,
-				DeviceInstance:    ifc.DeviceInstance,
-				VirtualFunctionID: ifc.VirtualFunctionID,
-				IsPhysical:        ifc.IsPhysical,
-				Status:            cdbm.InterfaceStatusPending,
-			})
-		}
-	}
-	// End validating interfaces
-
-	// Begin validating DPU Extension Service Deployments
-	desIDs := []uuid.UUID{}
-	for _, adesdr := range apiRequest.DpuExtensionServiceDeployments {
-		desID, err := uuid.Parse(adesdr.DpuExtensionServiceID)
-		if err != nil {
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Invalid DPU Extension Service ID: %s specified in request", adesdr.DpuExtensionServiceID), nil)
-		}
-		desIDs = append(desIDs, desID)
-	}
-
-	desDAO := cdbm.NewDpuExtensionServiceDAO(cih.dbSession)
-	desIDMap := map[uuid.UUID]*cdbm.DpuExtensionService{}
-	if len(desIDs) > 0 {
-		dess, _, err := desDAO.GetAll(ctx, nil, cdbm.DpuExtensionServiceFilterInput{DpuExtensionServiceIDs: desIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
-		if err != nil {
-			logger.Error().Err(err).Msg("error retrieving DPU Extension Services from DB by IDs")
-			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve DPU Extension Services from DB by IDs", nil)
-		}
-		for i := range dess {
-			desIDMap[dess[i].ID] = &dess[i]
-		}
-	}
-
-	for _, apiDesd := range apiRequest.DpuExtensionServiceDeployments {
-		desID := uuid.MustParse(apiDesd.DpuExtensionServiceID)
-
-		des, ok := desIDMap[desID]
-		if !ok {
-			logger.Warn().Msg(fmt.Sprintf("DPU Extension Service: %v specified in request data is not found in DB", desID))
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("DPU Extension Service: %v specified in request data is not found in DB", desID), nil)
-		}
-
-		if des.TenantID != tenant.ID {
-			logger.Warn().Str("Tenant ID", tenant.ID.String()).Str("DPU Extension Service ID", desID.String()).Msg("DPU Extension Service does not belong to current Tenant")
-			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("DPU Extension Service: %s does not belong to current Tenant", desID.String()), nil)
-		}
-
-		if des.SiteID != site.ID {
-			logger.Warn().Str("Site ID", site.ID.String()).Str("DPU Extension Service ID", desID.String()).Msg("DPU Extension Service does not belong to Site")
-			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("DPU Extension Service: %s does not belong to Site where Instance is being created", desID.String()), nil)
-		}
-
-		versionFound := false
-		for _, version := range des.ActiveVersions {
-			if version == apiDesd.Version {
-				versionFound = true
-				break
-			}
-		}
-		if !versionFound {
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Version: %s was not found for DPU Extension Service: %s", apiDesd.Version, desID.String()), nil)
-		}
-	}
-	// End validating DPU Extension Service Deployments
-
-	// Begin validating Network Security Group
-	if apiRequest.NetworkSecurityGroupID != nil {
-		nsgDAO := cdbm.NewNetworkSecurityGroupDAO(cih.dbSession)
-
-		nsg, err := nsgDAO.GetByID(ctx, nil, *apiRequest.NetworkSecurityGroupID, nil)
-		if err != nil {
-			if err == cdb.ErrDoesNotExist {
-				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Could not find NetworkSecurityGroup with ID: %s specified in request", *apiRequest.NetworkSecurityGroupID), nil)
-			}
-
-			logger.Error().Err(err).Msg("error retrieving NetworkSecurityGroup with ID specified in request data")
-			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve NetworkSecurityGroup with ID specified in request data", nil)
-		}
-
-		if nsg.SiteID != site.ID {
-			logger.Error().Msg("NetworkSecurityGroup in request does not belong to Site")
-			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "NetworkSecurityGroup with ID specified in request data does not belong to Site", nil)
-		}
-
-		if nsg.TenantID != tenant.ID {
-			logger.Error().Msg("NetworkSecurityGroup in request does not belong to Tenant")
-			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "NetworkSecurityGroup with ID specified in request data does not belong to Tenant", nil)
-		}
-	}
-	// End validating Network Security Group
-
-	// Begin validating SSH Key Group
-	sshKeyGroupIDs := []uuid.UUID{}
-	for _, skgStrID := range apiRequest.SSHKeyGroupIDs {
-		skgID, err := uuid.Parse(skgStrID)
-		if err != nil {
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Invalid SSH Key Group ID: %s specified in request", skgStrID), nil)
-		}
-		sshKeyGroupIDs = append(sshKeyGroupIDs, skgID)
-	}
-
-	skgDAO := cdbm.NewSSHKeyGroupDAO(cih.dbSession)
-	skgsaDAO := cdbm.NewSSHKeyGroupSiteAssociationDAO(cih.dbSession)
-
-	sshKeyGroupIDMap := map[uuid.UUID]*cdbm.SSHKeyGroup{}
-	skgs := []cdbm.SSHKeyGroup{}
-	skgsas := []cdbm.SSHKeyGroupSiteAssociation{}
-	if len(sshKeyGroupIDs) > 0 {
-		var err error
-		skgs, _, err = skgDAO.GetAll(ctx, nil, cdbm.SSHKeyGroupFilterInput{SSHKeyGroupIDs: sshKeyGroupIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
-		if err != nil {
-			logger.Error().Err(err).Msg("error retrieving SSH Key Groups from DB by IDs")
-			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve SSH Key Groups from DB by IDs", nil)
-		}
-		for i := range skgs {
-			sshKeyGroupIDMap[skgs[i].ID] = &skgs[i]
-		}
-
-		skgsas, _, err = skgsaDAO.GetAll(ctx, nil, sshKeyGroupIDs, &site.ID, nil, nil, nil, nil, cdb.GetIntPtr(cdbp.TotalLimit), nil)
-		if err != nil {
-			logger.Error().Err(err).Msg("error retrieving SSH Key Group Site Associations from DB by SSH Key Group IDs & Site ID")
-			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve SSH Key Group Site Associations from DB", nil)
-		}
-	}
-
-	skgSiteAssociationIDMap := map[uuid.UUID]*cdbm.SSHKeyGroupSiteAssociation{}
-	for _, skgsa := range skgsas {
-		skgSiteAssociationIDMap[skgsa.SSHKeyGroupID] = &skgsa
-	}
-
-	for _, skgStrID := range apiRequest.SSHKeyGroupIDs {
-		skgID := uuid.MustParse(skgStrID)
-
-		skg, ok := sshKeyGroupIDMap[skgID]
-		if !ok {
-			logger.Warn().Msg(fmt.Sprintf("SSH Key Group: %v specified in request data is not found in DB", skgID))
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("SSH Key Group: %s specified in request data was not found in DB", skgID.String()), nil)
-		}
-
-		if skg.TenantID != tenant.ID {
-			logger.Warn().Str("Tenant ID", tenant.ID.String()).Str("SSH Key Group ID", skgID.String()).Msg("SSH Key Group does not belong to current Tenant")
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Failed to create Instance, SSH Key Group with ID: %s does not belong to Tenant", skgID), nil)
-		}
-
-		// Verify if SSH Key Group Site Association exists
-		_, ok = skgSiteAssociationIDMap[skg.ID]
-		if !ok {
-			logger.Warn().Msg(fmt.Sprintf("SSH Key Group: %s specified in request data is not associated with the Site where Instance is being created", skgID.String()))
-			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("SSH Key Group: %s specified in request data is not associated with the Site where Instance is being created", skgID.String()), nil)
-		}
-	}
-
-	// apiRequest will be mutated for use in CreateFromParams.
-	// osConfig will hold the struct/data for use with Temporal/Carbide calls.
-	// Errors will be returned already in the form of cerr.NewAPIErrorResponse
-	osConfig, osID, oserr := cih.buildInstanceCreateRequestOsConfig(c, &logger, &apiRequest, vpc.SiteID)
-	if oserr != nil {
-		// buildInstanceCreateRequestOsConfig already handles logging,
-		// so this is a bit redundant, but this log brings you to the
-		// actual call site.  I think buildInstanceCreateRequestOsConfig
-		// would ideally return only `error` and let the logging and
-		// and cerr.NewAPIErrorResponse(...) happen here, but we
-		// have at least one StatusInternalServerError case that would
-		// be hidden if we merge it all under StatusBadRequest here.
-		logger.Error().Err(errors.New(oserr.Message)).Msg("error building os config for creating Instance")
-		return c.JSON(oserr.Code, oserr)
+	osConfig, osID, apiErr := icv.ValidateAndBuildOsConfig(ctx, &apiRequest, vpc.SiteID)
+	if apiErr != nil {
+		logger.Error().Err(errors.New(apiErr.Message)).Msg("error building os config for creating Instance")
+		return c.JSON(apiErr.Code, apiErr)
 	}
 
 	// Ensure we have one and only one of InstanceTypeID or MachineID
@@ -1016,7 +562,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 	}
 
 	// Validate DPU Interfaces if Instance Type has Network Capability with DPU device type
-	if isInterfaceDeviceInfoPresent {
+	if ifcResult.IsDeviceInfoPresent {
 		var dpuNetworkCapCount int
 		var dpuNetworkCaps []cdbm.MachineCapability
 
@@ -1041,7 +587,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 		}
 
 		// Validate DPU Interfaces if Instance Type DPU capability is present and matches with the request
-		err = apiRequest.ValidateMultiEthernetDeviceInterfaces(dpuNetworkCaps, dbInterfaces)
+		err = apiRequest.ValidateMultiEthernetDeviceInterfaces(dpuNetworkCaps, ifcResult.DBInterfaces)
 		if err != nil {
 			logger.Error().Err(err).Msg("Failed to validate DPU aware interfaces in request data")
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate DPU aware interfaces specified in request data", err)
@@ -1205,7 +751,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 
 	// create the ssh key group instance association in the db
 	skgiaDAO := cdbm.NewSSHKeyGroupInstanceAssociationDAO(cih.dbSession)
-	for _, skg := range skgs {
+	for _, skg := range sshKeyGroups {
 		_, err := skgiaDAO.CreateFromParams(ctx, tx, skg.ID, site.ID, instance.ID, dbUser.ID)
 		if err != nil {
 			logger.Error().Err(err).Msg("failed to create the SSH Key Group Instance Association record in DB")
@@ -1215,14 +761,11 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 		instanceSshKeyGroupIds = append(instanceSshKeyGroupIds, skg.ID.String())
 	}
 
-	// Prepare interface details to pass to carbide call
-	interfaceConfigs := []*cwssaws.InstanceInterfaceConfig{}
-
 	// Create the instance subnet record in the db from info gathered earlier
 	// The first Subnet is automatically added to the physical interface
 	ifcs := []cdbm.Interface{}
 	ifcDAO := cdbm.NewInterfaceDAO(cih.dbSession)
-	for _, dbifc := range dbInterfaces {
+	for _, dbifc := range ifcResult.DBInterfaces {
 		input := cdbm.InterfaceCreateInput{
 			InstanceID:        instance.ID,
 			SubnetID:          dbifc.SubnetID,
@@ -1241,54 +784,10 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Instance Subnet entry for Instance, DB error", nil)
 		}
 
-		ifc := *retifc
-		ifcs = append(ifcs, ifc)
-
-		interfaceConfig := &cwssaws.InstanceInterfaceConfig{
-			FunctionType: cwssaws.InterfaceFunctionType_VIRTUAL_FUNCTION,
-		}
-
-		// Assign InstanceInterfaceConfig_SegmentId in case of Subnet
-		if dbifc.SubnetID != nil {
-			interfaceConfig.NetworkSegmentId = &cwssaws.NetworkSegmentId{
-				Value: subnetIDMap[*dbifc.SubnetID].ControllerNetworkSegmentID.String(),
-			}
-			interfaceConfig.NetworkDetails = &cwssaws.InstanceInterfaceConfig_SegmentId{
-				SegmentId: &cwssaws.NetworkSegmentId{
-					Value: subnetIDMap[*dbifc.SubnetID].ControllerNetworkSegmentID.String(),
-				},
-			}
-		}
-
-		// Assign InstanceInterfaceConfig_VpcPrefixId in case of VpcPrefix
-		if dbifc.VpcPrefixID != nil {
-			interfaceConfig.NetworkDetails = &cwssaws.InstanceInterfaceConfig_VpcPrefixId{
-				VpcPrefixId: &cwssaws.VpcPrefixId{Value: dbifc.VpcPrefixID.String()},
-			}
-		}
-
-		if dbifc.IsPhysical {
-			interfaceConfig.FunctionType = cwssaws.InterfaceFunctionType_PHYSICAL_FUNCTION
-		}
-
-		// Assign Device and DeviceInstance in case of Multi DPU Interface
-		if dbifc.Device != nil && dbifc.DeviceInstance != nil {
-			interfaceConfig.Device = dbifc.Device
-			interfaceConfig.DeviceInstance = uint32(*dbifc.DeviceInstance)
-		}
-
-		if !dbifc.IsPhysical {
-			if dbifc.VirtualFunctionID != nil {
-				vfID := uint32(*dbifc.VirtualFunctionID)
-				interfaceConfig.VirtualFunctionId = &vfID
-			}
-		}
-
-		interfaceConfigs = append(interfaceConfigs, interfaceConfig)
+		ifcs = append(ifcs, *retifc)
 	}
 
-	//We'll need this later for the carbide call
-	ibInterfaceConfigs := []*cwssaws.InstanceIBInterfaceConfig{}
+	interfaceConfigs := common.BuildInterfaceConfigs(ifcs, ifcResult.SubnetIDMap)
 
 	// Create the instance infiniband interface record in the db from info gathered earlier IF instance type was used
 	ibifcs := []cdbm.InfiniBandInterface{}
@@ -1316,32 +815,14 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Instance InfiniBand Interface entry for Instance, DB error", nil)
 		}
 
-		ifc := *retibifc
-		ibifcs = append(ibifcs, ifc)
-
-		ibInterfaceConfig := &cwssaws.InstanceIBInterfaceConfig{
-			Device:         ifc.Device,
-			Vendor:         ifc.Vendor,
-			DeviceInstance: uint32(ifc.DeviceInstance),
-			FunctionType:   cwssaws.InterfaceFunctionType_PHYSICAL_FUNCTION,
-			IbPartitionId:  &cwssaws.IBPartitionId{Value: ifc.InfiniBandPartitionID.String()},
-		}
-		ibInterfaceConfigs = append(ibInterfaceConfigs, ibInterfaceConfig)
-
-		if !ifc.IsPhysical {
-			ibInterfaceConfig.FunctionType = cwssaws.InterfaceFunctionType_VIRTUAL_FUNCTION
-
-			if ifc.VirtualFunctionID != nil {
-				vfID := uint32(*ifc.VirtualFunctionID)
-				ibInterfaceConfig.VirtualFunctionId = &vfID
-			}
-		}
+		ibifcs = append(ibifcs, *retibifc)
 	}
+
+	ibInterfaceConfigs := common.BuildIBInterfaceConfigs(ibifcs)
 
 	// Create the instance NVLink Interface record in the db from info gathered earlier IF instance type was used
 	nvlifcs := []cdbm.NVLinkInterface{}
 	nvlifcDAO := cdbm.NewNVLinkInterfaceDAO(cih.dbSession)
-	nvlInterfaceConfigs := []*cwssaws.InstanceNVLinkGpuConfig{}
 	for _, nvlifc := range dbnvlic {
 		retnvlifc, serr := nvlifcDAO.Create(
 			ctx,
@@ -1361,19 +842,12 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create Instance NVLink Interface entry for Instance, DB error", nil)
 		}
 
-		nvlfc := *retnvlifc
-		nvlifcs = append(nvlifcs, nvlfc)
-
-		nvlInterfaceConfig := &cwssaws.InstanceNVLinkGpuConfig{
-			DeviceInstance:     uint32(nvlifc.DeviceInstance),
-			LogicalPartitionId: &cwssaws.NVLinkLogicalPartitionId{Value: nvlfc.NVLinkLogicalPartitionID.String()},
-		}
-		nvlInterfaceConfigs = append(nvlInterfaceConfigs, nvlInterfaceConfig)
+		nvlifcs = append(nvlifcs, *retnvlifc)
 	}
 
-	// Create the DpuExtensionServiceDeployment records in DB
-	desdConfigs := []*cwssaws.InstanceDpuExtensionServiceConfig{}
+	nvlInterfaceConfigs := common.BuildNVLinkInterfaceConfigs(nvlifcs)
 
+	// Create the DpuExtensionServiceDeployment records in DB
 	desdDAO := cdbm.NewDpuExtensionServiceDeploymentDAO(cih.dbSession)
 	desds := []cdbm.DpuExtensionServiceDeployment{}
 
@@ -1397,16 +871,13 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to create DPU Extension Service Deployment for Instance, DB error", nil)
 		}
 
-		des, _ := desIDMap[desdID]
+		des := desIDMap[desdID.String()]
 		desd.DpuExtensionService = des
 
 		desds = append(desds, *desd)
-
-		desdConfigs = append(desdConfigs, &cwssaws.InstanceDpuExtensionServiceConfig{
-			ServiceId: desd.DpuExtensionServiceID.String(),
-			Version:   desd.Version,
-		})
 	}
+
+	desdConfigs := common.BuildDPUServiceConfigs(desds)
 
 	// Create the status detail record
 	sdDAO := cdbm.NewStatusDetailDAO(cih.dbSession)
@@ -1430,54 +901,11 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
 	}
 
-	// Prepare the labels for the metadata of the carbide call.
-	createLabels := []*cwssaws.Label{}
-	for k, v := range instance.Labels {
-		createLabels = append(createLabels, &cwssaws.Label{
-			Key:   k,
-			Value: &v,
-		})
-	}
-
-	description := ""
-	if instance.Description != nil {
-		description = *instance.Description
-	}
-
-	// Prepare the create request workflow object
-	createInstanceRequest := &cwssaws.InstanceAllocationRequest{
-		InstanceId: &cwssaws.InstanceId{Value: common.GetSiteInstanceID(instance).String()},
-		MachineId:  &cwssaws.MachineId{Id: *instance.MachineID},
-		Metadata: &cwssaws.Metadata{
-			Name:        instance.Name,
-			Description: description,
-			Labels:      createLabels,
-		},
-		Config: &cwssaws.InstanceConfig{
-			NetworkSecurityGroupId: instance.NetworkSecurityGroupID,
-			Tenant: &cwssaws.TenantConfig{
-				TenantOrganizationId: tenant.Org,
-				TenantKeysetIds:      instanceSshKeyGroupIds,
-			},
-			Os: osConfig,
-			Network: &cwssaws.InstanceNetworkConfig{
-				Interfaces: interfaceConfigs,
-			},
-			Infiniband: &cwssaws.InstanceInfinibandConfig{
-				IbInterfaces: ibInterfaceConfigs,
-			},
-			DpuExtensionServices: &cwssaws.InstanceDpuExtensionServicesConfig{
-				ServiceConfigs: desdConfigs,
-			},
-			Nvlink: &cwssaws.InstanceNVLinkConfig{
-				GpuConfigs: nvlInterfaceConfigs,
-			},
-		},
-		AllowUnhealthyMachine: allowUnhealthyMachine,
-	}
-	if instanceTypeID != nil {
-		createInstanceRequest.InstanceTypeId = cdb.GetStrPtr(instanceTypeID.String())
-	}
+	createInstanceRequest := common.BuildInstanceAllocationRequest(
+		instance, tenant, osConfig, instanceSshKeyGroupIds,
+		interfaceConfigs, ibInterfaceConfigs,
+		nvlInterfaceConfigs, desdConfigs, allowUnhealthyMachine,
+	)
 
 	workflowOptions := temporalClient.StartWorkflowOptions{
 		ID:                       "instance-create-" + instance.ID.String(),
@@ -1546,7 +974,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 	txCommitted = true
 
 	// Create response
-	apiInstance := model.NewAPIInstance(instance, site, ifcs, ibifcs, desds, nvlifcs, skgs, []cdbm.StatusDetail{*ssd})
+	apiInstance := model.NewAPIInstance(instance, site, ifcs, ibifcs, desds, nvlifcs, sshKeyGroups, []cdbm.StatusDetail{*ssd})
 
 	logger.Info().Msg("finishing API handler")
 	return c.JSON(http.StatusCreated, apiInstance)

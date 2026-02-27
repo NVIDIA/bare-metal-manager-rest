@@ -1690,7 +1690,7 @@ func TestCreateInstanceHandler_Handle(t *testing.T) {
 				reqOrg:      tnOrg,
 				reqUser:     tnu1,
 				respCode:    http.StatusBadRequest,
-				respMessage: "DPU Extension Service:",
+				respMessage: "Could not find DPU Extension Service with ID:",
 			},
 			wantErr: false,
 		},
