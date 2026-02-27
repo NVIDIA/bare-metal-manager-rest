@@ -1,9 +1,9 @@
 /*
-Carbide REST API
+NVIDIA Bare Metal Manager REST API
 
-Carbide REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all Carbide Sites.
+NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to as Sites.
 
-API version: 1.0.2
+API version: 1.0.4
 Contact: carbide-dev@exchange.nvidia.com
 */
 
@@ -20,7 +20,7 @@ var _ MappedNullable = &ExpectedMachineUpdateRequest{}
 
 // ExpectedMachineUpdateRequest Request data to update an existing Expected Machine.  Note: BMC credentials (username/password) are only accepted during creation and updates but are not returned in responses.  For single updates (PATCH /expected-machine/{id}), the id field is optional in body and will be ignored if provided (the ID from the URL path is used).  For batch updates (PATCH /expected-machine/batch), the id field is required to identify which Expected Machine to update.
 type ExpectedMachineUpdateRequest struct {
-	// ID of the Expected Machine to update.  Optional for single updates (ignored if provided, URL path ID is used).  Required for batch update operations.
+	// ID of the Expected Machine to update.  Optional for individual Expected Machine update (ignored if provided, ID from URL path is used).  Required for batch update operations.
 	Id NullableString `json:"id,omitempty"`
 	// MAC address of the Expected Machine's BMC (Baseboard Management Controller)
 	BmcMacAddress NullableString `json:"bmcMacAddress,omitempty" validate:"regexp=^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$"`
@@ -34,7 +34,6 @@ type ExpectedMachineUpdateRequest struct {
 	FallbackDPUSerialNumbers []string `json:"fallbackDPUSerialNumbers,omitempty"`
 	// Optional ID of the SKU to associate with this Expected Machine
 	SkuId NullableString `json:"skuId,omitempty"`
-	// User-defined key-value pairs for organizing and categorizing Expected Machines
 	Labels map[string]string `json:"labels,omitempty"`
 }
 

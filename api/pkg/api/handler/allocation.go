@@ -1464,6 +1464,7 @@ func (dah DeleteAllocationHandler) Handle(c echo.Context) error {
 
 	iDAO := cdbm.NewInstanceDAO(dah.dbSession)
 	sDAO := cdbm.NewSubnetDAO(dah.dbSession)
+	vpDAO := cdbm.NewVpcPrefixDAO(dah.dbSession)
 	ipbDAO := cdbm.NewIPBlockDAO(dah.dbSession)
 
 	imAcDel := []cdbm.AllocationConstraint{}
@@ -1504,7 +1505,7 @@ func (dah DeleteAllocationHandler) Handle(c echo.Context) error {
 				imAcDel = append(imAcDel, ac)
 			}
 		case cdbm.AllocationResourceTypeIPBlock:
-			// check if the tenant has subnets using this ipblock
+			// check if the tenant has subnets or VpcPrefixes using this ipblock
 			if ac.DerivedResourceID != nil {
 				parentIPBlock, serr := ipbDAO.GetByID(ctx, tx, ac.ResourceTypeID, nil)
 				if serr != nil {
@@ -1532,15 +1533,23 @@ func (dah DeleteAllocationHandler) Handle(c echo.Context) error {
 					TenantIDs: []uuid.UUID{a.TenantID},
 				}
 
+				vpcPrefixFilter := cdbm.VpcPrefixFilterInput{
+					TenantIDs: []uuid.UUID{a.TenantID},
+				}
+
 				if childIPBlock != nil {
 					switch childIPBlock.ProtocolVersion {
 					case cdbm.IPBlockProtocolVersionV4:
 						ipv4IPBlockID = &childIPBlock.ID
 						subnetFilter.IPv4BlockIDs = []uuid.UUID{*ipv4IPBlockID}
+						vpcPrefixFilter.IpBlockIDs = []uuid.UUID{*ipv4IPBlockID}
 					case cdbm.IPBlockProtocolVersionV6:
 						ipv6IPBlockID = &childIPBlock.ID
 						subnetFilter.IPv6BlockIDs = []uuid.UUID{*ipv6IPBlockID}
+						vpcPrefixFilter.IpBlockIDs = []uuid.UUID{*ipv6IPBlockID}
 					}
+
+					// Get count of subnets for the IP Block
 					_, sbCount, sserr := sDAO.GetAll(ctx, tx, subnetFilter, cdbp.PageInput{Limit: cdb.GetIntPtr(0)}, []string{})
 					if sserr != nil {
 						logger.Error().Err(sserr).Str("Constraint ID", ac.DerivedResourceID.String()).Msg("error getting Subnets for Allocation Constraint's IP Block")
@@ -1549,6 +1558,17 @@ func (dah DeleteAllocationHandler) Handle(c echo.Context) error {
 					if sbCount > 0 {
 						logger.Warn().Msg("failed to delete Allocation, Subnets present for Allocation Constraint")
 						return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("%v Subnets exist for Allocation", sbCount), nil)
+					}
+
+					// Get count of Vpc Prefixes for the IP Block
+					_, vpCount, sserr := vpDAO.GetAll(ctx, tx, vpcPrefixFilter, cdbp.PageInput{Limit: cdb.GetIntPtr(0)}, []string{})
+					if sserr != nil {
+						logger.Error().Err(sserr).Str("Constraint ID", ac.DerivedResourceID.String()).Msg("error getting Vpc Prefixes for Allocation Constraint's IP Block")
+						return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Error retrieving Vpc Prefixes for Allocation's IP Block'", nil)
+					}
+					if vpCount > 0 {
+						logger.Warn().Msg("failed to delete Allocation, VPC Prefixes present for Allocation Constraint")
+						return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("%v VPC Prefixes exist for Allocation", vpCount), nil)
 					}
 
 					sserr = ipbDAO.Delete(ctx, tx, childIPBlock.ID)

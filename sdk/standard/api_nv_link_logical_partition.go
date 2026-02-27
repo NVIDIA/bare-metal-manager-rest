@@ -1,9 +1,9 @@
 /*
-Carbide REST API
+NVIDIA Bare Metal Manager REST API
 
-Carbide REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all Carbide Sites.
+NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to as Sites.
 
-API version: 1.0.2
+API version: 1.0.4
 Contact: carbide-dev@exchange.nvidia.com
 */
 
@@ -281,7 +281,7 @@ type ApiGetAllNvlinkInterfaceRequest struct {
 	orderBy *string
 }
 
-// Filter NVLink Interfaces by Status
+// Filter NVLink Interfaces by Status. Can be specified multiple times to filter on more than one status.
 func (r ApiGetAllNvlinkInterfaceRequest) Status(status string) ApiGetAllNvlinkInterfaceRequest {
 	r.status = &status
 	return r
@@ -402,7 +402,6 @@ func (a *NVLinkLogicalPartitionAPIService) GetAllNvlinkInterfaceExecute(r ApiGet
 		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", r.pageNumber, "form", "")
 	} else {
 		var defaultValue int32 = 1
-		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", defaultValue, "form", "")
 		r.pageNumber = &defaultValue
 	}
 	if r.pageSize != nil {
@@ -621,7 +620,6 @@ func (a *NVLinkLogicalPartitionAPIService) GetAllNvlinkLogicalPartitionExecute(r
 		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", r.pageNumber, "form", "")
 	} else {
 		var defaultValue int32 = 1
-		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", defaultValue, "form", "")
 		r.pageNumber = &defaultValue
 	}
 	if r.pageSize != nil {

@@ -1,0 +1,589 @@
+/*
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package model
+
+import (
+	"testing"
+
+	"github.com/google/uuid"
+	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestProtoToAPIComponentTypeName(t *testing.T) {
+	tests := []struct {
+		name string
+		ct   rlav1.ComponentType
+		want string
+	}{
+		{
+			name: "compute type",
+			ct:   rlav1.ComponentType_COMPONENT_TYPE_COMPUTE,
+			want: "compute",
+		},
+		{
+			name: "nvlswitch type",
+			ct:   rlav1.ComponentType_COMPONENT_TYPE_NVLSWITCH,
+			want: "switch",
+		},
+		{
+			name: "powershelf type",
+			ct:   rlav1.ComponentType_COMPONENT_TYPE_POWERSHELF,
+			want: "powershelf",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ProtoToAPIComponentTypeName[rlav1.ComponentType_name[int32(tt.ct)]]
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestNewAPITray(t *testing.T) {
+	description := "Test tray description"
+	model := "GB200"
+
+	tests := []struct {
+		name string
+		comp *rlav1.Component
+		want *APITray
+	}{
+		{
+			name: "nil component returns nil",
+			comp: nil,
+			want: nil,
+		},
+		{
+			name: "basic compute tray",
+			comp: &rlav1.Component{
+				Type: rlav1.ComponentType_COMPONENT_TYPE_COMPUTE,
+				Info: &rlav1.DeviceInfo{
+					Id:           &rlav1.UUID{Id: "tray-id-123"},
+					Name:         "compute-tray-1",
+					Manufacturer: "NVIDIA",
+					Model:        &model,
+					SerialNumber: "TSN001",
+					Description:  &description,
+				},
+				FirmwareVersion: "2.1.0",
+				ComponentId:     "carbide-machine-456",
+				Position: &rlav1.RackPosition{
+					SlotId:  1,
+					TrayIdx: 0,
+					HostId:  1,
+				},
+				RackId: &rlav1.UUID{Id: "rack-id-789"},
+			},
+			want: &APITray{
+				ID:              "tray-id-123",
+				ComponentID:     "carbide-machine-456",
+				Type:            "compute",
+				Name:            "compute-tray-1",
+				Manufacturer:    "NVIDIA",
+				Model:           "GB200",
+				SerialNumber:    "TSN001",
+				Description:     "Test tray description",
+				FirmwareVersion: "2.1.0",
+				Position: &APITrayPosition{
+					SlotID:  1,
+					TrayIdx: 0,
+					HostID:  1,
+				},
+				RackID: "rack-id-789",
+			},
+		},
+		{
+			name: "switch tray without optional fields",
+			comp: &rlav1.Component{
+				Type: rlav1.ComponentType_COMPONENT_TYPE_NVLSWITCH,
+				Info: &rlav1.DeviceInfo{
+					Id:           &rlav1.UUID{Id: "switch-tray-id"},
+					Name:         "switch-tray-1",
+					Manufacturer: "NVIDIA",
+					SerialNumber: "SSN001",
+				},
+				FirmwareVersion: "1.5.0",
+				Position: &rlav1.RackPosition{
+					SlotId:  24,
+					TrayIdx: 1,
+				},
+			},
+			want: &APITray{
+				ID:              "switch-tray-id",
+				Type:            "switch",
+				Name:            "switch-tray-1",
+				Manufacturer:    "NVIDIA",
+				SerialNumber:    "SSN001",
+				FirmwareVersion: "1.5.0",
+				Position: &APITrayPosition{
+					SlotID:  24,
+					TrayIdx: 1,
+					HostID:  0,
+				},
+			},
+		},
+		{
+			name: "powershelf tray",
+			comp: &rlav1.Component{
+				Type: rlav1.ComponentType_COMPONENT_TYPE_POWERSHELF,
+				Info: &rlav1.DeviceInfo{
+					Id:           &rlav1.UUID{Id: "power-tray-id"},
+					Name:         "powershelf-1",
+					Manufacturer: "NVIDIA",
+					SerialNumber: "PSN001",
+				},
+				Position: &rlav1.RackPosition{
+					SlotId: 48,
+				},
+				RackId: &rlav1.UUID{Id: "rack-abc"},
+			},
+			want: &APITray{
+				ID:           "power-tray-id",
+				Type:         "powershelf",
+				Name:         "powershelf-1",
+				Manufacturer: "NVIDIA",
+				SerialNumber: "PSN001",
+				Position: &APITrayPosition{
+					SlotID:  48,
+					TrayIdx: 0,
+					HostID:  0,
+				},
+				RackID: "rack-abc",
+			},
+		},
+		{
+			name: "tray with minimal info",
+			comp: &rlav1.Component{
+				Type: rlav1.ComponentType_COMPONENT_TYPE_COMPUTE,
+				Info: &rlav1.DeviceInfo{
+					Id: &rlav1.UUID{Id: "minimal-tray"},
+				},
+			},
+			want: &APITray{
+				ID:   "minimal-tray",
+				Type: "compute",
+			},
+		},
+		{
+			name: "tray without info",
+			comp: &rlav1.Component{
+				Type:        rlav1.ComponentType_COMPONENT_TYPE_COMPUTE,
+				ComponentId: "compute-component-123",
+			},
+			want: &APITray{
+				Type:        "compute",
+				ComponentID: "compute-component-123",
+			},
+		},
+		{
+			name: "tray without position",
+			comp: &rlav1.Component{
+				Type: rlav1.ComponentType_COMPONENT_TYPE_NVLSWITCH,
+				Info: &rlav1.DeviceInfo{
+					Id:   &rlav1.UUID{Id: "switch-tray-id"},
+					Name: "switch-1",
+				},
+			},
+			want: &APITray{
+				ID:       "switch-tray-id",
+				Type:     "switch",
+				Name:     "switch-1",
+				Position: nil,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := NewAPITray(tt.comp)
+
+			if tt.want == nil {
+				assert.Nil(t, got)
+				return
+			}
+
+			assert.NotNil(t, got)
+			assert.Equal(t, tt.want.ID, got.ID)
+			assert.Equal(t, tt.want.ComponentID, got.ComponentID)
+			assert.Equal(t, tt.want.Type, got.Type)
+			assert.Equal(t, tt.want.Name, got.Name)
+			assert.Equal(t, tt.want.Manufacturer, got.Manufacturer)
+			assert.Equal(t, tt.want.Model, got.Model)
+			assert.Equal(t, tt.want.SerialNumber, got.SerialNumber)
+			assert.Equal(t, tt.want.Description, got.Description)
+			assert.Equal(t, tt.want.FirmwareVersion, got.FirmwareVersion)
+			assert.Equal(t, tt.want.RackID, got.RackID)
+
+			if tt.want.Position != nil {
+				assert.NotNil(t, got.Position)
+				assert.Equal(t, tt.want.Position.SlotID, got.Position.SlotID)
+				assert.Equal(t, tt.want.Position.TrayIdx, got.Position.TrayIdx)
+				assert.Equal(t, tt.want.Position.HostID, got.Position.HostID)
+			} else {
+				assert.Nil(t, got.Position)
+			}
+		})
+	}
+}
+
+func TestAPITrayPosition_FromProto(t *testing.T) {
+	pos := &APITrayPosition{}
+	pos.FromProto(&rlav1.RackPosition{SlotId: 2, TrayIdx: 1, HostId: 0})
+	assert.Equal(t, int32(2), pos.SlotID)
+	assert.Equal(t, int32(1), pos.TrayIdx)
+	assert.Equal(t, int32(0), pos.HostID)
+
+	pos.FromProto(nil) // no-op
+	assert.Equal(t, int32(2), pos.SlotID)
+}
+
+func TestAPITray_FromProto(t *testing.T) {
+	comp := &rlav1.Component{
+		Type:            rlav1.ComponentType_COMPONENT_TYPE_COMPUTE,
+		ComponentId:     "comp-1",
+		FirmwareVersion: "1.0",
+		Info: &rlav1.DeviceInfo{
+			Id:   &rlav1.UUID{Id: "tray-uuid"},
+			Name: "My Tray",
+		},
+		Position: &rlav1.RackPosition{SlotId: 3, TrayIdx: 0, HostId: 1},
+		RackId:   &rlav1.UUID{Id: "rack-uuid"},
+	}
+	at := &APITray{}
+	at.FromProto(comp)
+	assert.Equal(t, "compute", at.Type)
+	assert.Equal(t, "comp-1", at.ComponentID)
+	assert.Equal(t, "tray-uuid", at.ID)
+	assert.Equal(t, "My Tray", at.Name)
+	assert.Equal(t, "rack-uuid", at.RackID)
+	assert.NotNil(t, at.Position)
+	assert.Equal(t, int32(3), at.Position.SlotID)
+	assert.Equal(t, int32(0), at.Position.TrayIdx)
+	assert.Equal(t, int32(1), at.Position.HostID)
+
+	at.FromProto(nil) // no-op, fields unchanged
+	assert.Equal(t, "tray-uuid", at.ID)
+}
+
+func TestAPITrayGetAllRequest_Validate(t *testing.T) {
+	validUUID := uuid.New().String()
+	validUUID2 := uuid.New().String()
+	strPtr := func(s string) *string { return &s }
+
+	tests := []struct {
+		name    string
+		req     APITrayGetAllRequest
+		wantErr bool
+		check   func(t *testing.T, req *APITrayGetAllRequest)
+	}{
+		{
+			name:    "empty request is valid",
+			req:     APITrayGetAllRequest{},
+			wantErr: false,
+		},
+		{
+			name:    "valid rackId only",
+			req:     APITrayGetAllRequest{RackID: strPtr(validUUID)},
+			wantErr: false,
+		},
+		{
+			name:    "valid rackName only",
+			req:     APITrayGetAllRequest{RackName: strPtr("Rack-001")},
+			wantErr: false,
+		},
+		{
+			name:    "invalid rackId - not a UUID",
+			req:     APITrayGetAllRequest{RackID: strPtr("not-a-uuid")},
+			wantErr: true,
+		},
+		{
+			name:    "rackId and rackName mutually exclusive",
+			req:     APITrayGetAllRequest{RackID: strPtr(validUUID), RackName: strPtr("Rack-001")},
+			wantErr: true,
+		},
+		{
+			name:    "valid type - compute",
+			req:     APITrayGetAllRequest{Type: strPtr("compute")},
+			wantErr: false,
+		},
+		{
+			name:    "valid type - switch",
+			req:     APITrayGetAllRequest{Type: strPtr("switch")},
+			wantErr: false,
+		},
+		{
+			name:    "valid type - powershelf",
+			req:     APITrayGetAllRequest{Type: strPtr("powershelf")},
+			wantErr: false,
+		},
+		{
+			name:    "invalid type",
+			req:     APITrayGetAllRequest{Type: strPtr("invalid-type")},
+			wantErr: true,
+		},
+		{
+			name:    "unsupported type - torswitch",
+			req:     APITrayGetAllRequest{Type: strPtr("torswitch")},
+			wantErr: true,
+		},
+		{
+			name:    "unsupported type - ums",
+			req:     APITrayGetAllRequest{Type: strPtr("ums")},
+			wantErr: true,
+		},
+		{
+			name:    "unsupported type - cdu",
+			req:     APITrayGetAllRequest{Type: strPtr("cdu")},
+			wantErr: true,
+		},
+		{
+			name:    "valid IDs",
+			req:     APITrayGetAllRequest{IDs: []string{validUUID, validUUID2}},
+			wantErr: false,
+		},
+		{
+			name:    "invalid UUID in IDs",
+			req:     APITrayGetAllRequest{IDs: []string{"not-a-uuid"}},
+			wantErr: true,
+		},
+		{
+			name:    "componentIDs with type is valid",
+			req:     APITrayGetAllRequest{ComponentIDs: []string{"comp-1", "comp-2"}, Type: strPtr("compute")},
+			wantErr: false,
+		},
+		{
+			name:    "componentIDs without type is invalid",
+			req:     APITrayGetAllRequest{ComponentIDs: []string{"comp-1"}},
+			wantErr: true,
+		},
+		{
+			name:    "IDs and componentIDs can coexist (both component-level)",
+			req:     APITrayGetAllRequest{IDs: []string{validUUID}, ComponentIDs: []string{"comp-1"}, Type: strPtr("compute")},
+			wantErr: false,
+		},
+		{
+			name:    "rackId conflicts with IDs",
+			req:     APITrayGetAllRequest{RackID: strPtr(validUUID), IDs: []string{validUUID2}},
+			wantErr: true,
+		},
+		{
+			name:    "rackName conflicts with componentIDs",
+			req:     APITrayGetAllRequest{RackName: strPtr("Rack-001"), ComponentIDs: []string{"comp-1"}, Type: strPtr("compute")},
+			wantErr: true,
+		},
+		{
+			name:    "rackId conflicts with componentIDs",
+			req:     APITrayGetAllRequest{RackID: strPtr(validUUID), ComponentIDs: []string{"comp-1"}, Type: strPtr("compute")},
+			wantErr: true,
+		},
+		{
+			name:    "rackName conflicts with IDs",
+			req:     APITrayGetAllRequest{RackName: strPtr("Rack-001"), IDs: []string{validUUID}},
+			wantErr: true,
+		},
+		{
+			name:    "rackId with type is valid (rack-level)",
+			req:     APITrayGetAllRequest{RackID: strPtr(validUUID), Type: strPtr("compute")},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.req.Validate()
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			if tt.check != nil {
+				tt.check(t, &tt.req)
+			}
+		})
+	}
+}
+
+func TestAPITrayGetAllRequest_ToProto(t *testing.T) {
+	rackID := uuid.New().String()
+	rackName := "Rack-001"
+	trayType := "compute"
+	id1 := uuid.New().String()
+	id2 := uuid.New().String()
+
+	tests := []struct {
+		name     string
+		request  *APITrayGetAllRequest
+		validate func(t *testing.T, req *rlav1.GetComponentsRequest)
+	}{
+		{
+			name:    "empty request - defaults to supported types",
+			request: &APITrayGetAllRequest{},
+			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
+				require.NotNil(t, req.TargetSpec)
+				rackTargets := req.TargetSpec.GetRacks()
+				require.NotNil(t, rackTargets)
+				require.Len(t, rackTargets.Targets, 1)
+				assert.ElementsMatch(t, ValidProtoComponentTypes, rackTargets.Targets[0].ComponentTypes)
+			},
+		},
+		{
+			name: "rackId only - rack-level targeting with supported types",
+			request: &APITrayGetAllRequest{
+				RackID: &rackID,
+			},
+			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
+				require.NotNil(t, req.TargetSpec)
+				rackTargets := req.TargetSpec.GetRacks()
+				require.NotNil(t, rackTargets)
+				require.Len(t, rackTargets.Targets, 1)
+				assert.Equal(t, rackID, rackTargets.Targets[0].GetId().GetId())
+				assert.ElementsMatch(t, ValidProtoComponentTypes, rackTargets.Targets[0].ComponentTypes)
+			},
+		},
+		{
+			name: "rackName only - rack-level targeting with supported types",
+			request: &APITrayGetAllRequest{
+				RackName: &rackName,
+			},
+			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
+				require.NotNil(t, req.TargetSpec)
+				rackTargets := req.TargetSpec.GetRacks()
+				require.NotNil(t, rackTargets)
+				require.Len(t, rackTargets.Targets, 1)
+				assert.Equal(t, rackName, rackTargets.Targets[0].GetName())
+				assert.ElementsMatch(t, ValidProtoComponentTypes, rackTargets.Targets[0].ComponentTypes)
+			},
+		},
+		{
+			name: "type only - rack-level targeting with component type",
+			request: &APITrayGetAllRequest{
+				Type: &trayType,
+			},
+			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
+				require.NotNil(t, req.TargetSpec)
+				rackTargets := req.TargetSpec.GetRacks()
+				require.NotNil(t, rackTargets)
+				require.Len(t, rackTargets.Targets, 1)
+				assert.Contains(t, rackTargets.Targets[0].ComponentTypes, rlav1.ComponentType_COMPONENT_TYPE_COMPUTE)
+			},
+		},
+		{
+			name: "rackId with type - rack-level targeting with filter",
+			request: &APITrayGetAllRequest{
+				RackID: &rackID,
+				Type:   &trayType,
+			},
+			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
+				require.NotNil(t, req.TargetSpec)
+				rackTargets := req.TargetSpec.GetRacks()
+				require.NotNil(t, rackTargets)
+				require.Len(t, rackTargets.Targets, 1)
+				assert.Equal(t, rackID, rackTargets.Targets[0].GetId().GetId())
+				assert.Contains(t, rackTargets.Targets[0].ComponentTypes, rlav1.ComponentType_COMPONENT_TYPE_COMPUTE)
+			},
+		},
+		{
+			name: "IDs - component-level targeting",
+			request: &APITrayGetAllRequest{
+				IDs: []string{id1, id2},
+			},
+			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
+				require.NotNil(t, req.TargetSpec)
+				compTargets := req.TargetSpec.GetComponents()
+				require.NotNil(t, compTargets)
+				assert.Len(t, compTargets.Targets, 2)
+				assert.Equal(t, id1, compTargets.Targets[0].GetId().GetId())
+				assert.Equal(t, id2, compTargets.Targets[1].GetId().GetId())
+			},
+		},
+		{
+			name: "componentIDs with type - component-level targeting via ExternalRef",
+			request: &APITrayGetAllRequest{
+				ComponentIDs: []string{"comp-1", "comp-2"},
+				Type:         &trayType,
+			},
+			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
+				require.NotNil(t, req.TargetSpec)
+				compTargets := req.TargetSpec.GetComponents()
+				require.NotNil(t, compTargets)
+				assert.Len(t, compTargets.Targets, 2)
+				for _, target := range compTargets.Targets {
+					ext := target.GetExternal()
+					require.NotNil(t, ext)
+					assert.Equal(t, rlav1.ComponentType_COMPONENT_TYPE_COMPUTE, ext.Type)
+				}
+			},
+		},
+		{
+			name: "IDs and componentIDs with type - mixed component-level targeting",
+			request: &APITrayGetAllRequest{
+				IDs:          []string{id1},
+				ComponentIDs: []string{"comp-1"},
+				Type:         &trayType,
+			},
+			validate: func(t *testing.T, req *rlav1.GetComponentsRequest) {
+				require.NotNil(t, req.TargetSpec)
+				compTargets := req.TargetSpec.GetComponents()
+				require.NotNil(t, compTargets)
+				assert.Len(t, compTargets.Targets, 2)
+				assert.Equal(t, id1, compTargets.Targets[0].GetId().GetId())
+				assert.NotNil(t, compTargets.Targets[1].GetExternal())
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := tt.request.ToProto()
+			require.NotNil(t, req)
+			if tt.validate != nil {
+				tt.validate(t, req)
+			}
+		})
+	}
+}
+
+func TestGetProtoTrayOrderByFromQueryParam(t *testing.T) {
+	tests := []struct {
+		field     string
+		direction string
+		wantNil   bool
+	}{
+		{"name", "ASC", false},
+		{"manufacturer", "DESC", false},
+		{"model", "ASC", false},
+		{"type", "DESC", false},
+		{"invalid", "ASC", true},
+		{"name", "asc", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.field+"_"+tt.direction, func(t *testing.T) {
+			got := GetProtoTrayOrderByFromQueryParam(tt.field, tt.direction)
+			if tt.wantNil {
+				assert.Nil(t, got)
+				return
+			}
+			assert.NotNil(t, got)
+			assert.Equal(t, tt.direction, got.Direction)
+			assert.NotNil(t, got.GetComponentField())
+		})
+	}
+}

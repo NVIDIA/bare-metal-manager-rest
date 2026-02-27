@@ -22,7 +22,7 @@ import (
 	sww "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/workflow"
 )
 
-// RegisterSubscriber registers the RLA Rack workflows with the Temporal client
+// RegisterSubscriber registers the RLA Rack and Tray workflows with the Temporal client
 func (api *API) RegisterSubscriber() error {
 	// Check if RLA is enabled
 	if !ManagerAccess.Conf.EB.RLA.Enabled {
@@ -31,11 +31,12 @@ func (api *API) RegisterSubscriber() error {
 	}
 
 	rackManager := swa.NewManageRack(ManagerAccess.Data.EB.Managers.RLA.Client)
+	trayManager := swa.NewManageTray(ManagerAccess.Data.EB.Managers.RLA.Client)
 
 	// Register the subscribers here
 	ManagerAccess.Data.EB.Log.Info().Msg("RLA: Registering the rack workflows")
 
-	/// Register workflows
+	/// Register rack workflows
 
 	// GetRack
 	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterWorkflow(sww.GetRack)
@@ -45,7 +46,11 @@ func (api *API) RegisterSubscriber() error {
 	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterWorkflow(sww.GetRacks)
 	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered GetRacks workflow")
 
-	/// Register activities
+	// ValidateRackComponents
+	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterWorkflow(sww.ValidateRackComponents)
+	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered ValidateRackComponents workflow")
+
+	/// Register rack activities
 
 	// GetRack activity
 	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterActivity(rackManager.GetRack)
@@ -54,6 +59,33 @@ func (api *API) RegisterSubscriber() error {
 	// GetRacks activity
 	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterActivity(rackManager.GetRacks)
 	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered GetRacks activity")
+
+	// ValidateRackComponents activity
+	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterActivity(rackManager.ValidateRackComponents)
+	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered ValidateRackComponents activity")
+
+	// Register the tray subscribers here
+	ManagerAccess.Data.EB.Log.Info().Msg("RLA: Registering the tray workflows")
+
+	/// Register tray workflows
+
+	// GetTray
+	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterWorkflow(sww.GetTray)
+	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered GetTray workflow")
+
+	// GetTrays
+	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterWorkflow(sww.GetTrays)
+	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered GetTrays workflow")
+
+	/// Register tray activities
+
+	// GetTray activity
+	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterActivity(trayManager.GetTray)
+	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered GetTray activity")
+
+	// GetTrays activity
+	ManagerAccess.Data.EB.Managers.Workflow.Temporal.Worker.RegisterActivity(trayManager.GetTrays)
+	ManagerAccess.Data.EB.Log.Info().Msg("RLA: successfully registered GetTrays activity")
 
 	return nil
 }

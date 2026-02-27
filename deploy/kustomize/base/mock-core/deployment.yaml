@@ -13,26 +13,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# carbide-rest-elektraserver (mock carbide gRPC server) Deployment
+# carbide-rest-mock-core (mock carbide gRPC server) Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: carbide-rest-elektraserver
+  name: carbide-rest-mock-core
   labels:
-    app: carbide-rest-elektraserver
+    app: carbide-rest-mock-core
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: carbide-rest-elektraserver
+      app: carbide-rest-mock-core
   template:
     metadata:
       labels:
-        app: carbide-rest-elektraserver
+        app: carbide-rest-mock-core
     spec:
       containers:
-        - name: elektraserver
-          image: localhost:5000/carbide-rest-elektraserver:latest
+        - name: mock-core
+          image: localhost:5000/carbide-rest-mock-core:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 11079
@@ -54,4 +54,3 @@ spec:
               port: 11079
             initialDelaySeconds: 2
             periodSeconds: 5
-

@@ -177,11 +177,16 @@ func (wp *WorkerPool) GetMetrics() Metrics {
 		return Metrics{}
 	}
 
+	metrics := Metrics{
+		JobsSubmitted: atomic.LoadInt64(&wp.metrics.JobsSubmitted),
+		JobsCompleted: atomic.LoadInt64(&wp.metrics.JobsCompleted),
+		JobsFailed:    atomic.LoadInt64(&wp.metrics.JobsFailed),
+		WorkersActive: atomic.LoadInt32(&wp.metrics.WorkersActive),
+		TotalWorkers:  wp.metrics.TotalWorkers,
+	}
+
 	wp.metrics.mu.RLock()
 	defer wp.metrics.mu.RUnlock()
-
-	// Create a copy of the public metrics
-	metrics := wp.metrics.Metrics
 
 	// Calculate average execution time
 	if len(wp.metrics.execTimes) > 0 {
@@ -253,7 +258,6 @@ func (w *worker) executeJob(job *Job) {
 
 	// Update metrics
 	if w.pool.config.EnableMetrics {
-		w.pool.metrics.mu.Lock()
 		if job.Error != nil {
 			atomic.AddInt64(&w.pool.metrics.JobsFailed, 1)
 		} else {
@@ -261,6 +265,7 @@ func (w *worker) executeJob(job *Job) {
 		}
 
 		// Store execution time for average calculation
+		w.pool.metrics.mu.Lock()
 		if len(w.pool.metrics.execTimes) >= 1000 {
 			// Rotate out old times to prevent unlimited growth
 			w.pool.metrics.execTimes = w.pool.metrics.execTimes[100:]

@@ -1,9 +1,9 @@
 /*
-Carbide REST API
+NVIDIA Bare Metal Manager REST API
 
-Carbide REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all Carbide Sites.
+NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to as Sites.
 
-API version: 1.0.2
+API version: 1.0.4
 Contact: carbide-dev@exchange.nvidia.com
 */
 
@@ -71,7 +71,7 @@ SKUs represent unique hardware configurations discovered at sites. They are auto
 
 A `siteId` query parameter is required for all requests.
 
-For Infrastructure Providers: Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` or `CARBIDE_PROVIDER_VIEWER` role.
+For Infrastructure Providers: Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` or `FORGE_PROVIDER_VIEWER` role.
 
 For Tenants: Org must have a Tenant with `TargetedInstanceCreation` capability enabled. User must have `FORGE_TENANT_ADMIN` role. The Tenant must have an account with the Site's Infrastructure Provider.
 
@@ -117,7 +117,6 @@ func (a *SKUAPIService) GetAllSkuExecute(r ApiGetAllSkuRequest) ([]Sku, *http.Re
 		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", r.pageNumber, "form", "")
 	} else {
 		var defaultValue int32 = 1
-		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", defaultValue, "form", "")
 		r.pageNumber = &defaultValue
 	}
 	if r.pageSize != nil {
@@ -219,7 +218,7 @@ Retrieve a specific SKU (Stock Keeping Unit) by ID.
 
 SKUs represent unique hardware configurations discovered at sites. They are automatically derived from machine characteristics.
 
-For Infrastructure Providers: Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` or `CARBIDE_PROVIDER_VIEWER` role.
+For Infrastructure Providers: Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` or `FORGE_PROVIDER_VIEWER` role.
 
 For Tenants: Org must have a Tenant with `TargetedInstanceCreation` capability enabled. User must have `FORGE_TENANT_ADMIN` role. The Tenant must have an account with the SKU's Site's Infrastructure Provider.
 

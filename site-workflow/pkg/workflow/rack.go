@@ -102,3 +102,40 @@ func GetRacks(ctx workflow.Context, request *rlav1.GetListOfRacksRequest) (*rlav
 
 	return &response, nil
 }
+
+// ValidateRackComponents is a workflow to validate rack components by comparing expected vs actual state via RLA.
+// Supports validating a single rack, multiple racks with filters, or all racks in a site.
+func ValidateRackComponents(ctx workflow.Context, request *rlav1.ValidateComponentsRequest) (*rlav1.ValidateComponentsResponse, error) {
+	logger := log.With().Str("Workflow", "Rack").Str("Action", "ValidateRackComponents").Logger()
+
+	logger.Info().Msg("Starting workflow")
+
+	// RetryPolicy specifies how to automatically handle retries if an Activity fails.
+	retrypolicy := &temporal.RetryPolicy{
+		InitialInterval:    1 * time.Second,
+		BackoffCoefficient: 2.0,
+		MaximumInterval:    10 * time.Second,
+		MaximumAttempts:    2,
+	}
+	options := workflow.ActivityOptions{
+		// Timeout options specify when to automatically timeout Activity functions.
+		StartToCloseTimeout: 2 * time.Minute,
+		// Optionally provide a customized RetryPolicy.
+		RetryPolicy: retrypolicy,
+	}
+
+	ctx = workflow.WithActivityOptions(ctx, options)
+
+	var rackManager activity.ManageRack
+	var response rlav1.ValidateComponentsResponse
+
+	err := workflow.ExecuteActivity(ctx, rackManager.ValidateRackComponents, request).Get(ctx, &response)
+	if err != nil {
+		logger.Error().Err(err).Str("Activity", "ValidateRackComponents").Msg("Failed to execute activity from workflow")
+		return nil, err
+	}
+
+	logger.Info().Int32("TotalDiffs", response.GetTotalDiffs()).Msg("Completing workflow")
+
+	return &response, nil
+}

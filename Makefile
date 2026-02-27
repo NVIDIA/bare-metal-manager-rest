@@ -175,6 +175,13 @@ build:
 	cd site-agent && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-extldflags '-static'" -o ../$(BUILD_DIR)/elektra ./cmd/elektra
 	cd db && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-extldflags '-static'" -o ../$(BUILD_DIR)/migrations ./cmd/migrations
 	cd cert-manager && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-extldflags '-static'" -o ../$(BUILD_DIR)/credsmgr ./cmd/credsmgr
+	cd cli && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-extldflags '-static'" -o ../$(BUILD_DIR)/bmmcli ./cmd/bmmcli
+
+INSTALL_DIR ?= $(shell go env GOPATH)/bin
+
+install-bmmcli:
+	cd cli && go build -o $(INSTALL_DIR)/bmmcli ./cmd/bmmcli
+	@echo "Installed bmmcli to $(INSTALL_DIR)/bmmcli"
 
 docker-build:
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-api:$(IMAGE_TAG) -f $(DOCKERFILE_DIR)/Dockerfile.carbide-rest-api .
@@ -220,7 +227,7 @@ rla-protogen:
 .PHONY: kind-up kind-down kind-deploy kind-load kind-apply kind-redeploy kind-status kind-logs kind-reset kind-verify setup-site-agent
 
 # Kind cluster configuration
-KIND_CLUSTER_NAME := carbide-local
+KIND_CLUSTER_NAME := carbide-rest-local
 KUSTOMIZE_OVERLAY := deploy/kustomize/overlays/local
 LOCAL_DOCKERFILE_DIR := docker/local
 
@@ -233,7 +240,7 @@ docker-build-local:
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-workflow:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-workflow .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-site-manager:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-manager .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-site-agent:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-agent .
-	docker build -t $(IMAGE_REGISTRY)/carbide-rest-elektraserver:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-elektraserver .
+	docker build -t $(IMAGE_REGISTRY)/carbide-rest-mock-core:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-mock-core .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-db .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-cert-manager .
 
@@ -256,7 +263,7 @@ kind-load:
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-workflow:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-site-manager:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-site-agent:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
-	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-elektraserver:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
+	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-mock-core:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 
@@ -264,41 +271,41 @@ kind-load:
 kind-apply:
 	kubectl apply -k $(KUSTOMIZE_OVERLAY)
 	@echo "Waiting for PostgreSQL..."
-	kubectl -n carbide wait --for=condition=ready pod -l app=postgres --timeout=120s
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=postgres --timeout=120s
 	@echo "Waiting for Cert Manager..."
-	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=180s
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=180s
 	@echo "Waiting for Temporal..."
-	kubectl -n carbide wait --for=condition=ready pod -l app=temporal --timeout=120s
+	kubectl -n temporal wait --for=condition=ready pod -l app.kubernetes.io/name=temporal,app.kubernetes.io/component=frontend --timeout=120s
 	@echo "Waiting for Keycloak..."
-	kubectl -n carbide wait --for=condition=ready pod -l app=keycloak --timeout=180s
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=keycloak --timeout=180s
 	@echo "Running database migrations..."
-	kubectl -n carbide wait --for=condition=complete job/db-migrations --timeout=120s
+	kubectl -n carbide-rest wait --for=condition=complete job/db --timeout=120s
 	@echo "Waiting for API service..."
-	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-api --timeout=120s || true
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-api --timeout=120s || true
 	@echo "Waiting for Site Manager..."
-	kubectl -n carbide rollout restart deployment/carbide-rest-site-manager || true
-	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=120s || true
+	kubectl -n carbide-rest rollout restart deployment/carbide-rest-site-manager || true
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=120s || true
 	@echo "Waiting for Site Agent..."
-	kubectl -n carbide rollout restart deployment/carbide-rest-site-agent || true
-	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-site-agent --timeout=120s || true
+	kubectl -n carbide-rest rollout restart deployment/carbide-rest-site-agent || true
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-site-agent --timeout=120s || true
 
 # Rebuild and redeploy apps only (faster iteration)
 kind-redeploy: docker-build-local kind-load
-	kubectl -n carbide rollout restart deployment/carbide-rest-api
-	kubectl -n carbide rollout restart deployment/cloud-worker
-	kubectl -n carbide rollout restart deployment/site-worker
-	kubectl -n carbide rollout restart deployment/carbide-rest-site-agent
-	kubectl -n carbide rollout restart deployment/carbide-rest-elektraserver
-	kubectl -n carbide rollout restart deployment/carbide-rest-cert-manager
-	kubectl -n carbide rollout restart deployment/carbide-rest-site-manager
+	kubectl -n carbide-rest rollout restart deployment/carbide-rest-api
+	kubectl -n carbide-rest rollout restart deployment/cloud-worker
+	kubectl -n carbide-rest rollout restart deployment/site-worker
+	kubectl -n carbide-rest rollout restart deployment/carbide-rest-site-agent
+	kubectl -n carbide-rest rollout restart deployment/carbide-rest-mock-core
+	kubectl -n carbide-rest rollout restart deployment/carbide-rest-cert-manager
+	kubectl -n carbide-rest rollout restart deployment/carbide-rest-site-manager
 
 # Show status of all pods and services
 kind-status:
-	kubectl -n carbide get pods,svc,jobs
+	kubectl -n carbide-rest get pods,svc,jobs
 
 # View logs from API service
 kind-logs:
-	kubectl -n carbide logs -l app=carbide-rest-api -f --tail=100
+	kubectl -n carbide-rest logs -l app=carbide-rest-api -f --tail=100
 
 # Full reset: tear down cluster, rebuild images, and redeploy everything
 kind-reset:
@@ -315,21 +322,21 @@ kind-reset:
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-workflow:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-workflow .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-site-manager:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-manager .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-site-agent:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-agent .
-	docker build -t $(IMAGE_REGISTRY)/carbide-rest-elektraserver:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-elektraserver .
+	docker build -t $(IMAGE_REGISTRY)/carbide-rest-mock-core:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-mock-core .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-db .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-cert-manager .
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-api:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-workflow:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-site-manager:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-site-agent:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
-	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-elektraserver:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
+	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-mock-core:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	@echo "Setting up PKI secrets for cert-manager..."
-	NAMESPACE=carbide ./scripts/setup-local.sh pki
+	NAMESPACE=carbide-rest ./scripts/setup-local.sh pki
 	kubectl apply -k $(KUSTOMIZE_OVERLAY)
-	kubectl -n carbide wait --for=condition=ready pod -l app=postgres --timeout=240s
-	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=360s
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=postgres --timeout=240s
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-cert-manager --timeout=360s
 	@echo "Configuring cert-manager.io ClusterIssuer..."
 	kubectl apply -k deploy/kustomize/base/cert-manager-io/
 	@echo "Creating temporal namespace..."
@@ -340,11 +347,11 @@ kind-reset:
 	kubectl -n temporal wait --for=condition=Ready certificate/server-interservice-cert --timeout=240s || true
 	kubectl -n temporal wait --for=condition=Ready certificate/server-cloud-cert --timeout=240s || true
 	kubectl -n temporal wait --for=condition=Ready certificate/server-site-cert --timeout=240s || true
-	kubectl -n carbide wait --for=condition=Ready certificate/temporal-client-cert --timeout=240s || true
+	kubectl -n carbide-rest wait --for=condition=Ready certificate/temporal-client-cert --timeout=240s || true
 	@echo "Creating postgres-auth secret for Temporal Helm chart..."
 	kubectl -n temporal create secret generic postgres-auth --from-literal=password=temporal || true
 	@echo "Granting temporal user CREATEDB permission..."
-	kubectl -n carbide exec -it postgres-0 -- psql -U postgres -c "ALTER USER temporal CREATEDB; ALTER DATABASE temporal OWNER TO temporal; ALTER DATABASE temporal_visibility OWNER TO temporal;" || true
+	kubectl -n carbide-rest exec -it postgres-0 -- psql -U postgres -c "ALTER USER temporal CREATEDB; ALTER DATABASE temporal OWNER TO temporal; ALTER DATABASE temporal_visibility OWNER TO temporal;" || true
 	@echo "Updating Helm chart dependencies..."
 	helm dependency update temporal-helm/temporal/
 	@echo "Installing Temporal via Helm chart..."
@@ -369,14 +376,14 @@ kind-reset:
 		--tls-ca-path /var/secrets/temporal/certs/server-interservice/ca.crt \
 		--tls-server-name interservice.server.temporal.local || true
 	@echo "Temporal Helm deployment ready"
-	kubectl -n carbide wait --for=condition=ready pod -l app=keycloak --timeout=360s
-	kubectl -n carbide wait --for=condition=complete job/db-migrations --timeout=240s
-	-kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-api --timeout=240s
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=keycloak --timeout=360s
+	kubectl -n carbide-rest wait --for=condition=complete job/db --timeout=240s
+	-kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-api --timeout=240s
 	@echo "Waiting for workflow workers..."
-	-kubectl -n carbide wait --for=condition=ready pod -l app=cloud-worker --timeout=240s
-	-kubectl -n carbide wait --for=condition=ready pod -l app=site-worker --timeout=240s
+	-kubectl -n carbide-rest wait --for=condition=ready pod -l app=cloud-worker --timeout=240s
+	-kubectl -n carbide-rest wait --for=condition=ready pod -l app=site-worker --timeout=240s
 	@echo "Waiting for Site Manager..."
-	kubectl -n carbide wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=360s
+	kubectl -n carbide-rest wait --for=condition=ready pod -l app=carbide-rest-site-manager --timeout=360s
 	./scripts/setup-local.sh site-agent
 	@echo ""
 	@echo "================================================================================"
@@ -423,9 +430,9 @@ test-temporal-e2e:
 # Generated Go API Client
 # =============================================================================
 
-# Generate Go API client from OpenAPI spec using openapi-generator
+# Generate Go API SDK from OpenAPI spec using openapi-generator
 # Requires: brew install openapi-generator
-generate-client:
+generate-sdk:
 	openapi-generator generate \
 		-i openapi/spec.yaml \
 		-g go \

@@ -1790,7 +1790,7 @@ func TestCreateExpectedMachinesHandler_Handle(t *testing.T) {
 			workflowFailures = tt.workflowErrors
 			// Create request
 			reqBody, _ := json.Marshal(tt.requestBody)
-			req := httptest.NewRequest(http.MethodPost, "/v2/org/test-org/forge/expected-machine/batch", bytes.NewReader(reqBody))
+			req := httptest.NewRequest(http.MethodPost, "/v2/org/test-org/carbide/expected-machine/batch", bytes.NewReader(reqBody))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 			req = req.WithContext(context.Background())
 
@@ -2165,7 +2165,7 @@ func TestUpdateExpectedMachinesHandler_Handle(t *testing.T) {
 			workflowFailures = tt.workflowErrors
 			// Create request
 			reqBody, _ := json.Marshal(tt.requestBody)
-			req := httptest.NewRequest(http.MethodPatch, "/v2/org/test-org/forge/expected-machine/batch", bytes.NewReader(reqBody))
+			req := httptest.NewRequest(http.MethodPatch, "/v2/org/test-org/carbide/expected-machine/batch", bytes.NewReader(reqBody))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 			req = req.WithContext(context.Background())
 

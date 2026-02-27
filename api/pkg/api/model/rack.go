@@ -18,6 +18,9 @@
 package model
 
 import (
+	"fmt"
+	"net/url"
+
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 )
 
@@ -37,10 +40,11 @@ var RackOrderByFieldMap = map[string]rlav1.RackOrderByField{
 	"model":        rlav1.RackOrderByField_RACK_ORDER_BY_FIELD_MODEL,
 }
 
-// GetProtoRackFilterFromQueryParam creates an RLA protobuf filter from API query parameters
-func GetProtoRackFilterFromQueryParam(fieldName, value string) *rlav1.Filter {
+// GetProtoRackFilter creates an RLA protobuf filter for the given rack field and patterns.
+// Multiple patterns are OR'd together.
+func GetProtoRackFilter(fieldName string, patterns []string) *rlav1.Filter {
 	field, ok := RackFilterFieldMap[fieldName]
-	if !ok {
+	if !ok || len(patterns) == 0 {
 		return nil
 	}
 	return &rlav1.Filter{
@@ -48,9 +52,9 @@ func GetProtoRackFilterFromQueryParam(fieldName, value string) *rlav1.Filter {
 			RackField: field,
 		},
 		QueryInfo: &rlav1.StringQueryInfo{
-			Patterns:   []string{value},
+			Patterns:   patterns,
 			IsWildcard: false,
-			UseOr:      false,
+			UseOr:      len(patterns) > 1,
 		},
 	}
 }
@@ -67,6 +71,116 @@ func GetProtoRackOrderByFromQueryParam(fieldName, direction string) *rlav1.Order
 		},
 		Direction: direction,
 	}
+}
+
+// ========== Rack Request Models ==========
+
+// APIRackGetRequest captures query parameters for getting a single rack.
+type APIRackGetRequest struct {
+	SiteID            string `query:"siteId"`
+	IncludeComponents bool   `query:"includeComponents"`
+}
+
+func (r *APIRackGetRequest) Validate() error {
+	if r.SiteID == "" {
+		return fmt.Errorf("siteId query parameter is required")
+	}
+	return nil
+}
+
+// APIRackGetAllRequest captures query parameters for listing racks.
+type APIRackGetAllRequest struct {
+	SiteID            string   `query:"siteId"`
+	IncludeComponents bool     `query:"includeComponents"`
+	Name              []string `query:"name"`
+	Manufacturer      []string `query:"manufacturer"`
+	PageNumber        string   `query:"pageNumber"`
+	PageSize          string   `query:"pageSize"`
+	OrderBy           string   `query:"orderBy"`
+}
+
+func (r *APIRackGetAllRequest) Validate() error {
+	if r.SiteID == "" {
+		return fmt.Errorf("siteId query parameter is required")
+	}
+	return nil
+}
+
+// ToFilters converts the request's filter fields to RLA protobuf filters.
+func (r *APIRackGetAllRequest) ToFilters() []*rlav1.Filter {
+	var filters []*rlav1.Filter
+	if f := GetProtoRackFilter("name", r.Name); f != nil {
+		filters = append(filters, f)
+	}
+	if f := GetProtoRackFilter("manufacturer", r.Manufacturer); f != nil {
+		filters = append(filters, f)
+	}
+	return filters
+}
+
+// QueryValues returns only the known query parameters as url.Values,
+// suitable for deterministic workflow ID hashing without unknown param interference.
+func (r *APIRackGetAllRequest) QueryValues() url.Values {
+	v := url.Values{}
+	v.Set("siteId", r.SiteID)
+	if r.IncludeComponents {
+		v.Set("includeComponents", "true")
+	}
+	for _, n := range r.Name {
+		v.Add("name", n)
+	}
+	for _, m := range r.Manufacturer {
+		v.Add("manufacturer", m)
+	}
+	if r.PageNumber != "" {
+		v.Set("pageNumber", r.PageNumber)
+	}
+	if r.PageSize != "" {
+		v.Set("pageSize", r.PageSize)
+	}
+	if r.OrderBy != "" {
+		v.Set("orderBy", r.OrderBy)
+	}
+	return v
+}
+
+// APIRackValidateAllRequest captures query parameters for validating racks.
+type APIRackValidateAllRequest struct {
+	SiteID       string   `query:"siteId"`
+	Name         []string `query:"name"`
+	Manufacturer []string `query:"manufacturer"`
+}
+
+func (r *APIRackValidateAllRequest) Validate() error {
+	if r.SiteID == "" {
+		return fmt.Errorf("siteId query parameter is required")
+	}
+	return nil
+}
+
+// ToFilters converts the request's filter fields to RLA protobuf filters.
+func (r *APIRackValidateAllRequest) ToFilters() []*rlav1.Filter {
+	var filters []*rlav1.Filter
+	if f := GetProtoRackFilter("name", r.Name); f != nil {
+		filters = append(filters, f)
+	}
+	if f := GetProtoRackFilter("manufacturer", r.Manufacturer); f != nil {
+		filters = append(filters, f)
+	}
+	return filters
+}
+
+// QueryValues returns only the known query parameters as url.Values.
+func (r *APIRackValidateAllRequest) QueryValues() url.Values {
+	v := url.Values{}
+	v.Set("siteId", r.SiteID)
+	for _, n := range r.Name {
+		v.Add("name", n)
+	}
+	for _, m := range r.Manufacturer {
+		v.Add("manufacturer", m)
+	}
+	return v
 }
 
 // ========== Rack API Models ==========
@@ -152,16 +266,40 @@ func (arl *APIRackLocation) FromProto(protoLocation *rlav1.Location) {
 	arl.Position = protoLocation.GetPosition()
 }
 
+// APIBMC represents a BMC (Baseboard Management Controller) entry
+type APIBMC struct {
+	Type       string `json:"type"`
+	MacAddress string `json:"macAddress"`
+	IPAddress  string `json:"ipAddress"`
+}
+
+// FromProto converts a proto BMC to an APIBMC
+func (ab *APIBMC) FromProto(protoBMC *rlav1.BMCInfo) {
+	if protoBMC == nil {
+		return
+	}
+	ab.Type = protoBMC.GetType().String()
+	ab.MacAddress = protoBMC.GetMacAddress()
+	ab.IPAddress = protoBMC.GetIpAddress()
+}
+
 // APIRackComponent represents a component within a rack
 type APIRackComponent struct {
-	ID              string `json:"id"`
-	ComponentID     string `json:"componentId"`
-	Type            string `json:"type"`
-	Name            string `json:"name"`
-	SerialNumber    string `json:"serialNumber"`
-	Manufacturer    string `json:"manufacturer"`
-	FirmwareVersion string `json:"firmwareVersion"`
-	Position        int32  `json:"position"`
+	ID              string    `json:"id"`
+	ComponentID     string    `json:"componentId"`
+	RackID          string    `json:"rackId"`
+	Type            string    `json:"type"`
+	Name            string    `json:"name"`
+	SerialNumber    string    `json:"serialNumber"`
+	Manufacturer    string    `json:"manufacturer"`
+	Model           string    `json:"model"`
+	Description     string    `json:"description"`
+	FirmwareVersion string    `json:"firmwareVersion"`
+	SlotID          int32     `json:"slotId"`
+	TrayIdx         int32     `json:"trayIdx"`
+	HostID          int32     `json:"hostId"`
+	BMCs            []*APIBMC `json:"bmcs"`
+	PowerState      string    `json:"powerState"`
 }
 
 // FromProto converts a proto Component to an APIRackComponent
@@ -172,6 +310,12 @@ func (arc *APIRackComponent) FromProto(protoComponent *rlav1.Component) {
 	arc.Type = protoComponent.GetType().String()
 	arc.FirmwareVersion = protoComponent.GetFirmwareVersion()
 	arc.ComponentID = protoComponent.GetComponentId()
+	arc.PowerState = protoComponent.GetPowerState()
+
+	// Get rack ID
+	if protoComponent.GetRackId() != nil {
+		arc.RackID = protoComponent.GetRackId().GetId()
+	}
 
 	// Get component info
 	if protoComponent.GetInfo() != nil {
@@ -182,10 +326,121 @@ func (arc *APIRackComponent) FromProto(protoComponent *rlav1.Component) {
 		arc.Name = compInfo.GetName()
 		arc.SerialNumber = compInfo.GetSerialNumber()
 		arc.Manufacturer = compInfo.GetManufacturer()
+		arc.Model = compInfo.GetModel()
+		arc.Description = compInfo.GetDescription()
 	}
 
 	// Get position
 	if protoComponent.GetPosition() != nil {
-		arc.Position = protoComponent.GetPosition().GetSlotId()
+		arc.SlotID = protoComponent.GetPosition().GetSlotId()
+		arc.TrayIdx = protoComponent.GetPosition().GetTrayIdx()
+		arc.HostID = protoComponent.GetPosition().GetHostId()
 	}
+
+	// Get BMCs
+	if len(protoComponent.GetBmcs()) > 0 {
+		arc.BMCs = make([]*APIBMC, 0, len(protoComponent.GetBmcs()))
+		for _, bmc := range protoComponent.GetBmcs() {
+			apiBMC := &APIBMC{}
+			apiBMC.FromProto(bmc)
+			arc.BMCs = append(arc.BMCs, apiBMC)
+		}
+	}
+}
+
+// ========== Rack Validation API Models ==========
+
+// APIFieldDiff represents a single field difference
+type APIFieldDiff struct {
+	FieldName     string `json:"fieldName"`
+	ExpectedValue string `json:"expectedValue"`
+	ActualValue   string `json:"actualValue"`
+}
+
+// FromProto converts an RLA protobuf FieldDiff to an APIFieldDiff
+func (f *APIFieldDiff) FromProto(protoFieldDiff *rlav1.FieldDiff) {
+	if protoFieldDiff == nil {
+		return
+	}
+	f.FieldName = protoFieldDiff.GetFieldName()
+	f.ExpectedValue = protoFieldDiff.GetExpectedValue()
+	f.ActualValue = protoFieldDiff.GetActualValue()
+}
+
+// APIComponentDiff represents a single component difference found during validation
+type APIComponentDiff struct {
+	Type        string            `json:"type"`
+	ComponentID string            `json:"componentId"`
+	Expected    *APIRackComponent `json:"expected,omitempty"`
+	Actual      *APIRackComponent `json:"actual,omitempty"`
+	FieldDiffs  []*APIFieldDiff   `json:"fieldDiffs,omitempty"`
+}
+
+// FromProto converts an RLA protobuf ComponentDiff to an APIComponentDiff
+func (d *APIComponentDiff) FromProto(protoDiff *rlav1.ComponentDiff) {
+	if protoDiff == nil {
+		return
+	}
+
+	d.Type = protoDiff.GetType().String()
+	d.ComponentID = protoDiff.GetComponentId()
+
+	if protoDiff.GetExpected() != nil {
+		d.Expected = &APIRackComponent{}
+		d.Expected.FromProto(protoDiff.GetExpected())
+	}
+
+	if protoDiff.GetActual() != nil {
+		d.Actual = &APIRackComponent{}
+		d.Actual.FromProto(protoDiff.GetActual())
+	}
+
+	if len(protoDiff.GetFieldDiffs()) > 0 {
+		d.FieldDiffs = make([]*APIFieldDiff, 0, len(protoDiff.GetFieldDiffs()))
+		for _, fd := range protoDiff.GetFieldDiffs() {
+			apiFieldDiff := &APIFieldDiff{}
+			apiFieldDiff.FromProto(fd)
+			d.FieldDiffs = append(d.FieldDiffs, apiFieldDiff)
+		}
+	}
+}
+
+// APIRackValidationResult is the API representation of a rack validation result
+type APIRackValidationResult struct {
+	Diffs               []*APIComponentDiff `json:"diffs"`
+	TotalDiffs          int32               `json:"totalDiffs"`
+	OnlyInExpectedCount int32               `json:"onlyInExpectedCount"`
+	OnlyInActualCount   int32               `json:"onlyInActualCount"`
+	DriftCount          int32               `json:"driftCount"`
+	MatchCount          int32               `json:"matchCount"`
+}
+
+// FromProto converts an RLA protobuf ValidateComponentsResponse to an APIRackValidationResult
+func (r *APIRackValidationResult) FromProto(protoResp *rlav1.ValidateComponentsResponse) {
+	if protoResp == nil {
+		return
+	}
+
+	r.TotalDiffs = protoResp.GetTotalDiffs()
+	r.OnlyInExpectedCount = protoResp.GetOnlyInExpectedCount()
+	r.OnlyInActualCount = protoResp.GetOnlyInActualCount()
+	r.DriftCount = protoResp.GetDriftCount()
+	r.MatchCount = protoResp.GetMatchCount()
+
+	r.Diffs = make([]*APIComponentDiff, 0, len(protoResp.GetDiffs()))
+	for _, diff := range protoResp.GetDiffs() {
+		apiDiff := &APIComponentDiff{}
+		apiDiff.FromProto(diff)
+		r.Diffs = append(r.Diffs, apiDiff)
+	}
+}
+
+// NewAPIRackValidationResult creates an APIRackValidationResult from the RLA protobuf response
+func NewAPIRackValidationResult(protoResp *rlav1.ValidateComponentsResponse) *APIRackValidationResult {
+	if protoResp == nil {
+		return nil
+	}
+	result := &APIRackValidationResult{}
+	result.FromProto(protoResp)
+	return result
 }

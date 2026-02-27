@@ -1,9 +1,9 @@
 /*
-Carbide REST API
+NVIDIA Bare Metal Manager REST API
 
-Carbide REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all Carbide Sites.
+NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to as Sites.
 
-API version: 1.0.2
+API version: 1.0.4
 Contact: carbide-dev@exchange.nvidia.com
 */
 
@@ -559,7 +559,7 @@ func (r ApiGetAllInstanceTypeRequest) Status(status string) ApiGetAllInstanceTyp
 	return r
 }
 
-// Search for matches across all Sites. Input will be matched against name, display name, description and status fields
+// Search for matches across all Sites. Input will be matched against name, display name, description, labels and status fields
 func (r ApiGetAllInstanceTypeRequest) Query(query string) ApiGetAllInstanceTypeRequest {
 	r.query = &query
 	return r
@@ -689,7 +689,6 @@ func (a *InstanceTypeAPIService) GetAllInstanceTypeExecute(r ApiGetAllInstanceTy
 		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", r.pageNumber, "form", "")
 	} else {
 		var defaultValue int32 = 1
-		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", defaultValue, "form", "")
 		r.pageNumber = &defaultValue
 	}
 	if r.pageSize != nil {
@@ -993,7 +992,6 @@ func (a *InstanceTypeAPIService) GetInstanceTypeMachineAssociationExecute(r ApiG
 		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", r.pageNumber, "form", "")
 	} else {
 		var defaultValue int32 = 1
-		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", defaultValue, "form", "")
 		r.pageNumber = &defaultValue
 	}
 	if r.pageSize != nil {

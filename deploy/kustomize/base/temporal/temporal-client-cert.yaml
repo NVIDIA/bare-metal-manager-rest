@@ -13,12 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Client certificate for workflow services (API, cloud-worker, site-worker) in carbide namespace
+# Client certificate for workflow services (API, cloud-worker, site-worker) in carbide-rest namespace
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: temporal-client-cert
-  namespace: carbide
+  namespace: carbide-rest
 spec:
   secretName: temporal-client-certs
   duration: 2160h # 90 days

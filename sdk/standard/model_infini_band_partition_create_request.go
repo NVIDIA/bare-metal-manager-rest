@@ -1,9 +1,9 @@
 /*
-Carbide REST API
+NVIDIA Bare Metal Manager REST API
 
-Carbide REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all Carbide Sites.
+NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to as Sites.
 
-API version: 1.0.2
+API version: 1.0.4
 Contact: carbide-dev@exchange.nvidia.com
 */
 
@@ -22,7 +22,7 @@ var _ MappedNullable = &InfiniBandPartitionCreateRequest{}
 
 // InfiniBandPartitionCreateRequest Request data to create an InfiniBand Partition
 type InfiniBandPartitionCreateRequest struct {
-	// Name of the Parition to create
+	// Name of the Partition to create
 	Name string `json:"name"`
 	// Optional description of the Partition
 	Description *string `json:"description,omitempty"`

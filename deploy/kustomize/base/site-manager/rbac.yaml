@@ -81,7 +81,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: carbide-rest-site-manager
-    namespace: carbide
+    namespace: carbide-rest
 roleRef:
   kind: ClusterRole
   name: carbide-rest-site-manager

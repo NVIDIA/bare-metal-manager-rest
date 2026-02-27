@@ -1,9 +1,9 @@
 /*
-Carbide REST API
+NVIDIA Bare Metal Manager REST API
 
-Carbide REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all Carbide Sites.
+NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to as Sites.
 
-API version: 1.0.2
+API version: 1.0.4
 Contact: carbide-dev@exchange.nvidia.com
 */
 
@@ -19,7 +19,7 @@ import (
 // checks if the OperatingSystem type satisfies the MappedNullable interface at compile time
 var _ MappedNullable = &OperatingSystem{}
 
-// OperatingSystem Describe the attributes of the operating system/bootloader that can be used on instances
+// OperatingSystem Describes the attributes of the operating system/bootloader that can be used on instances
 type OperatingSystem struct {
 	// ID of the Operating System
 	Id *string `json:"id,omitempty"`
@@ -33,7 +33,7 @@ type OperatingSystem struct {
 	TenantId NullableString `json:"tenantId,omitempty"`
 	// Type of the Operating System
 	Type *string `json:"type,omitempty"`
-	// Original URL from where the Operating System image can be retreived from
+	// Original URL from where the Operating System image can be retrieved
 	ImageUrl NullableString `json:"imageUrl,omitempty"`
 	// SHA hash of the image file, only present for image based OS
 	ImageSha NullableString `json:"imageSha,omitempty"`

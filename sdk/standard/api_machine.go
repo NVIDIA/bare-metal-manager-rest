@@ -1,9 +1,9 @@
 /*
-Carbide REST API
+NVIDIA Bare Metal Manager REST API
 
-Carbide REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all Carbide Sites.
+NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to as Sites.
 
-API version: 1.0.2
+API version: 1.0.4
 Contact: carbide-dev@exchange.nvidia.com
 */
 
@@ -361,7 +361,6 @@ func (a *MachineAPIService) GetAllMachineExecute(r ApiGetAllMachineRequest) ([]M
 		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", r.pageNumber, "form", "")
 	} else {
 		var defaultValue int32 = 1
-		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", defaultValue, "form", "")
 		r.pageNumber = &defaultValue
 	}
 	if r.pageSize != nil {
@@ -602,7 +601,6 @@ func (a *MachineAPIService) GetAllMachineCapabilitiesExecute(r ApiGetAllMachineC
 		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", r.pageNumber, "form", "")
 	} else {
 		var defaultValue int32 = 1
-		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", defaultValue, "form", "")
 		r.pageNumber = &defaultValue
 	}
 	if r.pageSize != nil {
@@ -753,6 +751,384 @@ func (a *MachineAPIService) GetMachineExecute(r ApiGetMachineRequest) (*Machine,
 	if r.includeMetadata != nil {
 		parameterAddToHeaderOrQuery(localVarQueryParams, "includeMetadata", r.includeMetadata, "form", "")
 	}
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		if localVarHTTPResponse.StatusCode == 403 {
+			var v CarbideAPIError
+			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+			if err != nil {
+				newErr.error = err.Error()
+				return localVarReturnValue, localVarHTTPResponse, newErr
+			}
+					newErr.error = formatErrorMessage(localVarHTTPResponse.Status, &v)
+					newErr.model = v
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
+type ApiGetMachineGpuStatsRequest struct {
+	ctx context.Context
+	ApiService *MachineAPIService
+	siteId *string
+	org string
+}
+
+// ID of the Site
+func (r ApiGetMachineGpuStatsRequest) SiteId(siteId string) ApiGetMachineGpuStatsRequest {
+	r.siteId = &siteId
+	return r
+}
+
+func (r ApiGetMachineGpuStatsRequest) Execute() ([]MachineGPUStats, *http.Response, error) {
+	return r.ApiService.GetMachineGpuStatsExecute(r)
+}
+
+/*
+GetMachineGpuStats Retrieve GPU stats for machines at a site
+
+Returns GPU summary stats grouped by GPU name for machines at the specified site.
+
+User must have `FORGE_PROVIDER_ADMIN` authorization role. The specified site must belong to the Provider.
+
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @param org Name of the Org
+ @return ApiGetMachineGpuStatsRequest
+*/
+func (a *MachineAPIService) GetMachineGpuStats(ctx context.Context, org string) ApiGetMachineGpuStatsRequest {
+	return ApiGetMachineGpuStatsRequest{
+		ApiService: a,
+		ctx: ctx,
+		org: org,
+	}
+}
+
+// Execute executes the request
+//  @return []MachineGPUStats
+func (a *MachineAPIService) GetMachineGpuStatsExecute(r ApiGetMachineGpuStatsRequest) ([]MachineGPUStats, *http.Response, error) {
+	var (
+		localVarHTTPMethod   = http.MethodGet
+		localVarPostBody     interface{}
+		formFiles            []formFile
+		localVarReturnValue  []MachineGPUStats
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "MachineAPIService.GetMachineGpuStats")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/v2/org/{org}/carbide/machine/gpu/stats"
+	localVarPath = strings.Replace(localVarPath, "{"+"org"+"}", url.PathEscape(parameterValueToString(r.org, "org")), -1)
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+	if r.siteId == nil {
+		return localVarReturnValue, nil, reportError("siteId is required and must be specified")
+	}
+
+	parameterAddToHeaderOrQuery(localVarQueryParams, "siteId", r.siteId, "form", "")
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		if localVarHTTPResponse.StatusCode == 403 {
+			var v CarbideAPIError
+			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+			if err != nil {
+				newErr.error = err.Error()
+				return localVarReturnValue, localVarHTTPResponse, newErr
+			}
+					newErr.error = formatErrorMessage(localVarHTTPResponse.Status, &v)
+					newErr.model = v
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
+type ApiGetMachineInstanceTypeStatsRequest struct {
+	ctx context.Context
+	ApiService *MachineAPIService
+	siteId *string
+	org string
+}
+
+// ID of the Site
+func (r ApiGetMachineInstanceTypeStatsRequest) SiteId(siteId string) ApiGetMachineInstanceTypeStatsRequest {
+	r.siteId = &siteId
+	return r
+}
+
+func (r ApiGetMachineInstanceTypeStatsRequest) Execute() ([]MachineInstanceTypeStats, *http.Response, error) {
+	return r.ApiService.GetMachineInstanceTypeStatsExecute(r)
+}
+
+/*
+GetMachineInstanceTypeStats Retrieve detailed per-instance-type machine stats for a site
+
+Returns machine stats for each instance type including allocation details and tenant breakdown.
+
+User must have `FORGE_PROVIDER_ADMIN` authorization role. The specified site must belong to the Provider.
+
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @param org Name of the Org
+ @return ApiGetMachineInstanceTypeStatsRequest
+*/
+func (a *MachineAPIService) GetMachineInstanceTypeStats(ctx context.Context, org string) ApiGetMachineInstanceTypeStatsRequest {
+	return ApiGetMachineInstanceTypeStatsRequest{
+		ApiService: a,
+		ctx: ctx,
+		org: org,
+	}
+}
+
+// Execute executes the request
+//  @return []MachineInstanceTypeStats
+func (a *MachineAPIService) GetMachineInstanceTypeStatsExecute(r ApiGetMachineInstanceTypeStatsRequest) ([]MachineInstanceTypeStats, *http.Response, error) {
+	var (
+		localVarHTTPMethod   = http.MethodGet
+		localVarPostBody     interface{}
+		formFiles            []formFile
+		localVarReturnValue  []MachineInstanceTypeStats
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "MachineAPIService.GetMachineInstanceTypeStats")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/v2/org/{org}/carbide/machine/instance-type/stats"
+	localVarPath = strings.Replace(localVarPath, "{"+"org"+"}", url.PathEscape(parameterValueToString(r.org, "org")), -1)
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+	if r.siteId == nil {
+		return localVarReturnValue, nil, reportError("siteId is required and must be specified")
+	}
+
+	parameterAddToHeaderOrQuery(localVarQueryParams, "siteId", r.siteId, "form", "")
+	// to determine the Content-Type header
+	localVarHTTPContentTypes := []string{}
+
+	// set Content-Type header
+	localVarHTTPContentType := selectHeaderContentType(localVarHTTPContentTypes)
+	if localVarHTTPContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHTTPContentType
+	}
+
+	// to determine the Accept header
+	localVarHTTPHeaderAccepts := []string{"application/json"}
+
+	// set Accept header
+	localVarHTTPHeaderAccept := selectHeaderAccept(localVarHTTPHeaderAccepts)
+	if localVarHTTPHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
+	}
+	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
+	if err != nil {
+		return localVarReturnValue, nil, err
+	}
+
+	localVarHTTPResponse, err := a.client.callAPI(req)
+	if err != nil || localVarHTTPResponse == nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	localVarBody, err := io.ReadAll(localVarHTTPResponse.Body)
+	localVarHTTPResponse.Body.Close()
+	localVarHTTPResponse.Body = io.NopCloser(bytes.NewBuffer(localVarBody))
+	if err != nil {
+		return localVarReturnValue, localVarHTTPResponse, err
+	}
+
+	if localVarHTTPResponse.StatusCode >= 300 {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: localVarHTTPResponse.Status,
+		}
+		if localVarHTTPResponse.StatusCode == 403 {
+			var v CarbideAPIError
+			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+			if err != nil {
+				newErr.error = err.Error()
+				return localVarReturnValue, localVarHTTPResponse, newErr
+			}
+					newErr.error = formatErrorMessage(localVarHTTPResponse.Status, &v)
+					newErr.model = v
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	err = a.client.decode(&localVarReturnValue, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
+	if err != nil {
+		newErr := &GenericOpenAPIError{
+			body:  localVarBody,
+			error: err.Error(),
+		}
+		return localVarReturnValue, localVarHTTPResponse, newErr
+	}
+
+	return localVarReturnValue, localVarHTTPResponse, nil
+}
+
+type ApiGetMachineInstanceTypeStatsSummaryRequest struct {
+	ctx context.Context
+	ApiService *MachineAPIService
+	siteId *string
+	org string
+}
+
+// ID of the Site
+func (r ApiGetMachineInstanceTypeStatsSummaryRequest) SiteId(siteId string) ApiGetMachineInstanceTypeStatsSummaryRequest {
+	r.siteId = &siteId
+	return r
+}
+
+func (r ApiGetMachineInstanceTypeStatsSummaryRequest) Execute() (*MachineInstanceTypeSummary, *http.Response, error) {
+	return r.ApiService.GetMachineInstanceTypeStatsSummaryExecute(r)
+}
+
+/*
+GetMachineInstanceTypeStatsSummary Retrieve machine instance type assignment summary for a site
+
+Returns machine counts grouped by assigned (has instance type) vs unassigned, broken down by status.
+
+User must have `FORGE_PROVIDER_ADMIN` authorization role. The specified site must belong to the Provider.
+
+ @param ctx context.Context - for authentication, logging, cancellation, deadlines, tracing, etc. Passed from http.Request or context.Background().
+ @param org Name of the Org
+ @return ApiGetMachineInstanceTypeStatsSummaryRequest
+*/
+func (a *MachineAPIService) GetMachineInstanceTypeStatsSummary(ctx context.Context, org string) ApiGetMachineInstanceTypeStatsSummaryRequest {
+	return ApiGetMachineInstanceTypeStatsSummaryRequest{
+		ApiService: a,
+		ctx: ctx,
+		org: org,
+	}
+}
+
+// Execute executes the request
+//  @return MachineInstanceTypeSummary
+func (a *MachineAPIService) GetMachineInstanceTypeStatsSummaryExecute(r ApiGetMachineInstanceTypeStatsSummaryRequest) (*MachineInstanceTypeSummary, *http.Response, error) {
+	var (
+		localVarHTTPMethod   = http.MethodGet
+		localVarPostBody     interface{}
+		formFiles            []formFile
+		localVarReturnValue  *MachineInstanceTypeSummary
+	)
+
+	localBasePath, err := a.client.cfg.ServerURLWithContext(r.ctx, "MachineAPIService.GetMachineInstanceTypeStatsSummary")
+	if err != nil {
+		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
+	}
+
+	localVarPath := localBasePath + "/v2/org/{org}/carbide/machine/instance-type/stats/summary"
+	localVarPath = strings.Replace(localVarPath, "{"+"org"+"}", url.PathEscape(parameterValueToString(r.org, "org")), -1)
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+	if r.siteId == nil {
+		return localVarReturnValue, nil, reportError("siteId is required and must be specified")
+	}
+
+	parameterAddToHeaderOrQuery(localVarQueryParams, "siteId", r.siteId, "form", "")
 	// to determine the Content-Type header
 	localVarHTTPContentTypes := []string{}
 
@@ -991,7 +1367,7 @@ UpdateMachine Update Machine
 
 Update a Machine
 
-Instance Type attribute updates, maintenance attribute updates and labels updates must be specified in separate requests. They cannot be proceessed at the same time.
+Instance Type attribute updates, maintenance attribute updates and labels updates must be specified in separate requests. They cannot be processed at the same time.
 
 Some attributes can only be updated by Provider, while others can be updated by Provider or a Privileged Tenant.
 

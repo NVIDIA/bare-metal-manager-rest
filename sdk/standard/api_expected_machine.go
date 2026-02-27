@@ -1,9 +1,9 @@
 /*
-Carbide REST API
+NVIDIA Bare Metal Manager REST API
 
-Carbide REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all Carbide Sites.
+NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to as Sites.
 
-API version: 1.0.2
+API version: 1.0.4
 Contact: carbide-dev@exchange.nvidia.com
 */
 
@@ -79,7 +79,7 @@ func (a *ExpectedMachineAPIService) BatchCreateExpectedMachinesExecute(r ApiBatc
 		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
 	}
 
-	localVarPath := localBasePath + "/v2/org/{org}/forge/expected-machine/batch"
+	localVarPath := localBasePath + "/v2/org/{org}/carbide/expected-machine/batch"
 	localVarPath = strings.Replace(localVarPath, "{"+"org"+"}", url.PathEscape(parameterValueToString(r.org, "org")), -1)
 
 	localVarHeaderParams := make(map[string]string)
@@ -176,12 +176,12 @@ type ApiBatchUpdateExpectedMachinesRequest struct {
 	ctx context.Context
 	ApiService *ExpectedMachineAPIService
 	org string
-	batchUpdateExpectedMachinesRequestInner *[]BatchUpdateExpectedMachinesRequestInner
+	expectedMachineUpdateRequest *[]ExpectedMachineUpdateRequest
 }
 
 // Array of Expected Machine update requests
-func (r ApiBatchUpdateExpectedMachinesRequest) BatchUpdateExpectedMachinesRequestInner(batchUpdateExpectedMachinesRequestInner []BatchUpdateExpectedMachinesRequestInner) ApiBatchUpdateExpectedMachinesRequest {
-	r.batchUpdateExpectedMachinesRequestInner = &batchUpdateExpectedMachinesRequestInner
+func (r ApiBatchUpdateExpectedMachinesRequest) ExpectedMachineUpdateRequest(expectedMachineUpdateRequest []ExpectedMachineUpdateRequest) ApiBatchUpdateExpectedMachinesRequest {
+	r.expectedMachineUpdateRequest = &expectedMachineUpdateRequest
 	return r
 }
 
@@ -229,20 +229,20 @@ func (a *ExpectedMachineAPIService) BatchUpdateExpectedMachinesExecute(r ApiBatc
 		return localVarReturnValue, nil, &GenericOpenAPIError{error: err.Error()}
 	}
 
-	localVarPath := localBasePath + "/v2/org/{org}/forge/expected-machine/batch"
+	localVarPath := localBasePath + "/v2/org/{org}/carbide/expected-machine/batch"
 	localVarPath = strings.Replace(localVarPath, "{"+"org"+"}", url.PathEscape(parameterValueToString(r.org, "org")), -1)
 
 	localVarHeaderParams := make(map[string]string)
 	localVarQueryParams := url.Values{}
 	localVarFormParams := url.Values{}
-	if r.batchUpdateExpectedMachinesRequestInner == nil {
-		return localVarReturnValue, nil, reportError("batchUpdateExpectedMachinesRequestInner is required and must be specified")
+	if r.expectedMachineUpdateRequest == nil {
+		return localVarReturnValue, nil, reportError("expectedMachineUpdateRequest is required and must be specified")
 	}
-	if len(*r.batchUpdateExpectedMachinesRequestInner) < 1 {
-		return localVarReturnValue, nil, reportError("batchUpdateExpectedMachinesRequestInner must have at least 1 elements")
+	if len(*r.expectedMachineUpdateRequest) < 1 {
+		return localVarReturnValue, nil, reportError("expectedMachineUpdateRequest must have at least 1 elements")
 	}
-	if len(*r.batchUpdateExpectedMachinesRequestInner) > 100 {
-		return localVarReturnValue, nil, reportError("batchUpdateExpectedMachinesRequestInner must have less than 100 elements")
+	if len(*r.expectedMachineUpdateRequest) > 100 {
+		return localVarReturnValue, nil, reportError("expectedMachineUpdateRequest must have less than 100 elements")
 	}
 
 	// to determine the Content-Type header
@@ -263,7 +263,7 @@ func (a *ExpectedMachineAPIService) BatchUpdateExpectedMachinesExecute(r ApiBatc
 		localVarHeaderParams["Accept"] = localVarHTTPHeaderAccept
 	}
 	// body params
-	localVarPostBody = r.batchUpdateExpectedMachinesRequestInner
+	localVarPostBody = r.expectedMachineUpdateRequest
 	req, err := a.client.prepareRequest(r.ctx, localVarPath, localVarHTTPMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, formFiles)
 	if err != nil {
 		return localVarReturnValue, nil, err
@@ -657,7 +657,7 @@ GetAllExpectedMachine Retrieve all Expected Machines
 
 Retrieve all Expected Machines.
 
-Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` or `CARBIDE_PROVIDER_VIEWER` role.
+Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` or `FORGE_PROVIDER_VIEWER` role.
 
 Alternatively, Tenant Admins with `TargetedInstanceCreation` capability can also retrieve Expected Machines if they have an account with the Site's Infrastructure Provider (siteId query parameter is required for Tenants).
 
@@ -705,7 +705,6 @@ func (a *ExpectedMachineAPIService) GetAllExpectedMachineExecute(r ApiGetAllExpe
 		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", r.pageNumber, "form", "")
 	} else {
 		var defaultValue int32 = 1
-		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", defaultValue, "form", "")
 		r.pageNumber = &defaultValue
 	}
 	if r.pageSize != nil {
@@ -812,7 +811,7 @@ GetExpectedMachine Retrieve Expected Machine
 
 Retrieve a specific Expected Machine by ID.
 
-Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` or `CARBIDE_PROVIDER_VIEWER` role.
+Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` or `FORGE_PROVIDER_VIEWER` role.
 
 Alternatively, Tenant Admins with `TargetedInstanceCreation` capability can also retrieve Expected Machines if they have an account with the Site's Infrastructure Provider.
 
