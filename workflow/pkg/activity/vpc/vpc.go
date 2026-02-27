@@ -267,8 +267,14 @@ func (mv ManageVpc) UpdateVpcInDB(ctx context.Context, transactionID *cwssaws.Tr
 					networkVirtualizationType = cdb.GetStrPtr(cdbm.VpcEthernetVirtualizer)
 				}
 
+				var activeVni *int
+				if vpcInfo.Vpc.Status != nil {
+					activeVni = util.GetUint32PtrToIntPtr(vpcInfo.Vpc.Status.Vni)
+				}
+				vni := util.GetUint32PtrToIntPtr(vpcInfo.Vpc.Vni)
+
 				// Save controller VPC ID
-				_, serr = vpcDAO.Update(ctx, nil, cdbm.VpcUpdateInput{VpcID: vpcID, NetworkVirtualizationType: networkVirtualizationType, ControllerVpcID: &controllerVpcID})
+				_, serr = vpcDAO.Update(ctx, nil, cdbm.VpcUpdateInput{VpcID: vpcID, NetworkVirtualizationType: networkVirtualizationType, ControllerVpcID: &controllerVpcID, ActiveVni: activeVni, Vni: vni})
 				if serr != nil {
 					logger.Error().Err(serr).Msg("failed to update Controller VPC ID in DB")
 					terr := tx.Rollback()

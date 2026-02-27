@@ -36,6 +36,28 @@ func GetStrPtr(s string) *string {
 	return &sp
 }
 
+// GetUint16PtrToIntPtr converts a uint16 pointer
+// to an int pointer.  If nil is passed in, nil is returned.
+func GetUint16PtrToIntPtr(v *uint16) *int {
+	if v == nil {
+		return nil
+	}
+
+	i := int(*v)
+	return &i
+}
+
+// GetUint16PtrToUint32Ptr converts a uint16 pointer
+// to a uint32 pointer.  If nil is passed in, nil is returned.
+func GetUint16PtrToUint32Ptr(v *uint16) *uint32 {
+	if v == nil {
+		return nil
+	}
+
+	i := uint32(*v)
+	return &i
+}
+
 // GetBoolPtr returns a pointer for the provided bool
 func GetBoolPtr(b bool) *bool {
 	bp := b
@@ -46,6 +68,12 @@ func GetBoolPtr(b bool) *bool {
 func GetUUIDPtr(u uuid.UUID) *uuid.UUID {
 	up := u
 	return &up
+}
+
+// GetInt16Ptr returns a pointer for the provided uint16
+func GetUint16Ptr(i uint16) *uint16 {
+	ip := i
+	return &ip
 }
 
 // GetIntPtr returns a pointer for the provided int
