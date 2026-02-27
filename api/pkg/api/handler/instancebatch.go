@@ -47,6 +47,8 @@ import (
 	cdbp "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
 	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
+
+	wpkgutil "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/util"
 )
 
 const (
@@ -1613,12 +1615,12 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 	workflowOptions := temporalClient.StartWorkflowOptions{
 		ID: workflowID,
 		// TODO: temporary config, to be tuned
-		WorkflowExecutionTimeout: common.WorkflowExecutionTimeout,
+		WorkflowExecutionTimeout: wpkgutil.WorkflowExecutionTimeout,
 		TaskQueue:                queue.SiteTaskQueue,
 	}
 
 	// Add context timeout
-	workflowCtx, cancel := context.WithTimeout(ctx, common.WorkflowContextTimeout)
+	workflowCtx, cancel := context.WithTimeout(ctx, wpkgutil.WorkflowContextTimeout)
 	defer cancel()
 
 	// Execute batch workflow with full request
@@ -1642,7 +1644,7 @@ func (bcih BatchCreateInstanceHandler) Handle(c echo.Context) error {
 				Msg("failed to create batch Instances, timeout occurred executing workflow on Site.")
 
 			// Create a new context for termination
-			newctx, newcancel := context.WithTimeout(context.Background(), common.WorkflowContextNewAfterTimeout)
+			newctx, newcancel := context.WithTimeout(context.Background(), wpkgutil.WorkflowContextNewAfterTimeout)
 			defer newcancel()
 
 			// Initiate termination workflow
