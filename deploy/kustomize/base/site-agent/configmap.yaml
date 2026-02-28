@@ -30,12 +30,12 @@ data:
   ENABLE_TLS: "true"
   # Carbide Core configuration
   CARBIDE_ADDRESS: "carbide-rest-mock-core:11079"
-  CARBIDE_SEC_OPT: "2"
+  CARBIDE_SEC_OPT: "0"
   # Placeholder UUID - updated by setup-local.sh site_agent with real site ID from API
   CLUSTER_ID: "00000000-0000-4000-8000-000000000001"
   TEMPORAL_HOST: "temporal-frontend.temporal"
   TEMPORAL_PORT: "7233"
-  TEMPORAL_SERVER: "server.temporal.local"
+  TEMPORAL_SERVER: "interservice.server.temporal.local"
   TEMPORAL_PUBLISH_NAMESPACE: "site"
   TEMPORAL_PUBLISH_QUEUE: "site"
   # These are updated by setup-local.sh site_agent to match the site ID
