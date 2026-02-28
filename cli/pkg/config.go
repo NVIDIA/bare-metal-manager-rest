@@ -60,8 +60,22 @@ type ConfigAPIKey struct {
 	Token    string `yaml:"token,omitempty"`
 }
 
-// ConfigPath returns the default config file path.
+var configOverridePath string
+
+// SetConfigPath overrides the default config file path for the process lifetime.
+func SetConfigPath(path string) {
+	configOverridePath = path
+}
+
+// ConfigPath returns the active config file path.
 func ConfigPath() string {
+	if configOverridePath != "" {
+		return configOverridePath
+	}
+	return defaultConfigPath()
+}
+
+func defaultConfigPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		fmt.Fprintln(os.Stderr, "Warning: could not determine home directory, using current directory for config")
@@ -70,16 +84,12 @@ func ConfigPath() string {
 	return filepath.Join(home, ".bmm", "config.yaml")
 }
 
-// ConfigDir returns the ~/.bmm directory.
+// ConfigDir returns the directory containing the active config file.
 func ConfigDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return ".bmm"
-	}
-	return filepath.Join(home, ".bmm")
+	return filepath.Dir(ConfigPath())
 }
 
-// LoadConfig reads the default config file.
+// LoadConfig reads config from the active path (override or default).
 func LoadConfig() (*ConfigFile, error) {
 	return LoadConfigFromPath(ConfigPath())
 }
@@ -197,6 +207,6 @@ auth:
 
   # Option 3: NGC API key
   # api_key:
-  #   authn_url: https://authn.nvidia.com/token
+  #   authn_url: https://your-authn-server/token
   #   key: nvapi-xxxx
 `

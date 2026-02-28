@@ -47,6 +47,11 @@ func NewApp(specData []byte) (*cli.App, error) {
 		EnableBashCompletion: true,
 		Flags: []cli.Flag{
 			&cli.StringFlag{
+				Name:    "config",
+				Usage:   "Path to config file",
+				EnvVars: []string{"BMM_CONFIG"},
+			},
+			&cli.StringFlag{
 				Name:    "base-url",
 				Usage:   "API base URL",
 				EnvVars: []string{"BMM_BASE_URL"},
@@ -94,6 +99,12 @@ func NewApp(specData []byte) (*cli.App, error) {
 			},
 		},
 		Commands: commands,
+		Before: func(c *cli.Context) error {
+			if cfg := c.String("config"); cfg != "" {
+				SetConfigPath(cfg)
+			}
+			return nil
+		},
 	}
 
 	return app, nil

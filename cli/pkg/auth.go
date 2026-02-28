@@ -67,7 +67,6 @@ func LoginCommand() *cli.Command {
 				Name:    "authn-url",
 				Usage:   "NGC authentication URL for API key exchange",
 				EnvVars: []string{"BMM_AUTHN_URL"},
-				Value:   "https://authn.nvidia.com/token",
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -78,10 +77,10 @@ func LoginCommand() *cli.Command {
 				apiKey = cfg.Auth.APIKey.Key
 			}
 			if apiKey != "" {
-				authnURL := c.String("authn-url")
-				if authnURL == "https://authn.nvidia.com/token" && cfg.Auth.APIKey != nil && cfg.Auth.APIKey.AuthnURL != "" {
-					authnURL = cfg.Auth.APIKey.AuthnURL
-				}
+			authnURL := c.String("authn-url")
+			if authnURL == "" && cfg.Auth.APIKey != nil && cfg.Auth.APIKey.AuthnURL != "" {
+				authnURL = cfg.Auth.APIKey.AuthnURL
+			}
 				return loginWithAPIKey(cfg, authnURL, apiKey)
 			}
 			return loginWithOIDCCmd(c, cfg)
@@ -109,6 +108,49 @@ func InitCommand() *cli.Command {
 			return nil
 		},
 	}
+}
+
+// ExchangeAPIKey exchanges an NGC API key for a bearer token, updates the config,
+// and saves it. Returns the new token.
+func ExchangeAPIKey(cfg *ConfigFile, configPath string) (string, error) {
+	if cfg.Auth.APIKey == nil || cfg.Auth.APIKey.Key == "" {
+		return "", fmt.Errorf("no NGC API key configured")
+	}
+	authnURL := cfg.Auth.APIKey.AuthnURL
+	if authnURL == "" {
+		return "", fmt.Errorf("auth.api_key.authn_url is required in config")
+	}
+	req, err := http.NewRequest("GET", authnURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("building request: %w", err)
+	}
+	req.Header.Set("Authorization", "ApiKey "+cfg.Auth.APIKey.Key)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("requesting token from NGC: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("reading response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("NGC token exchange failed (HTTP %d): %s", resp.StatusCode, string(body))
+	}
+
+	token := extractNGCToken(body)
+	if token == "" {
+		return "", fmt.Errorf("NGC response did not contain a token")
+	}
+
+	cfg.Auth.APIKey.Token = token
+	if saveErr := SaveConfigToPath(cfg, configPath); saveErr != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not save token: %v\n", saveErr)
+	}
+	return token, nil
 }
 
 func loginWithAPIKey(cfg *ConfigFile, authnURL, apiKey string) error {

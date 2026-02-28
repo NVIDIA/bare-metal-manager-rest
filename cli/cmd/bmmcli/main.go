@@ -21,8 +21,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nvidia/bare-metal-manager-rest/cli/pkg"
+	bmmcli "github.com/nvidia/bare-metal-manager-rest/cli/pkg"
+	"github.com/nvidia/bare-metal-manager-rest/cli/tui"
 	"github.com/nvidia/bare-metal-manager-rest/openapi"
+	cli "github.com/urfave/cli/v2"
 )
 
 func main() {
@@ -31,6 +33,14 @@ func main() {
 		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 		os.Exit(1)
 	}
+	app.Commands = append(app.Commands, &cli.Command{
+		Name:    "tui",
+		Aliases: []string{"i"},
+		Usage:   "Start interactive TUI mode with config selector",
+		Action: func(c *cli.Context) error {
+			return tui.RunTUI(c.String("config"))
+		},
+	})
 	if err := app.Run(os.Args); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

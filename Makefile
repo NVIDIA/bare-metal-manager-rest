@@ -180,7 +180,7 @@ build:
 INSTALL_DIR ?= $(shell go env GOPATH)/bin
 
 install-bmmcli:
-	cd cli && go build -o $(INSTALL_DIR)/bmmcli ./cmd/bmmcli
+	go build -o $(INSTALL_DIR)/bmmcli ./cli/cmd/bmmcli
 	@echo "Installed bmmcli to $(INSTALL_DIR)/bmmcli"
 
 docker-build:
