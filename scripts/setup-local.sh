@@ -243,7 +243,7 @@ configure_site_agent() {
     kubectl -n $NAMESPACE get configmap carbide-rest-site-agent-config -o yaml | \
         sed "s/CLUSTER_ID: .*/CLUSTER_ID: \"$site_id\"/" | \
         sed "s/TEMPORAL_SUBSCRIBE_NAMESPACE: .*/TEMPORAL_SUBSCRIBE_NAMESPACE: \"$site_id\"/" | \
-        sed "s/TEMPORAL_SUBSCRIBE_QUEUE: .*/TEMPORAL_SUBSCRIBE_QUEUE: \"$site_id\"/" | \
+        sed "s/TEMPORAL_SUBSCRIBE_QUEUE: .*/TEMPORAL_SUBSCRIBE_QUEUE: \"site\"/" | \
         kubectl apply -f -
 
     kubectl -n $NAMESPACE get secret site-registration -o yaml 2>/dev/null | \
