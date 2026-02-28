@@ -226,6 +226,8 @@ func NewGetAllMachineHandler(dbSession *cdb.Session, tc temporalClient.Client, c
 // @Param siteId query string true "ID of Site"
 // @Param id query string true "ID of Machine"
 // @Param hasInstanceType query boolean false "Filter by assigned an InstanceType to include in response"
+// @Param instanceTypeId query string true "Filter by InstanceType ID"
+// @Param tenantId query string false "Filter by Tenant ID"
 // @Param capabilityType query string true "Filter by CapabilityType" e.g "'InfiniBand', 'CPU'"
 // @Param capabilityName query string true "Filter by CapabilityName" e.g. "'MT2910 Family [ConnectX-7]', 'Dell Ent NVMe CM6 RI 1.92TB'"
 // @Param status query string false "Filter by status" e.g. 'Pending', 'Error'"
@@ -415,6 +417,60 @@ func (gamh GetAllMachineHandler) Handle(c echo.Context) error {
 	if len(idQuery) > 0 {
 		gamh.tracerSpan.SetAttribute(handlerSpan, attribute.StringSlice("id", idQuery), logger)
 		filterInput.MachineIDs = append(filterInput.MachineIDs, idQuery...)
+	}
+
+	qTenantIDStrs := qParams["tenantId"]
+	if len(qTenantIDStrs) > 0 {
+		gamh.tracerSpan.SetAttribute(handlerSpan, attribute.StringSlice("tenantId", qTenantIDStrs), logger)
+		if infrastructureProvider == nil {
+			if !tenant.Config.TargetedInstanceCreation && !(len(qTenantIDStrs) == 1 && qTenantIDStrs[0] == tenant.ID.String()) {
+				logger.Warn().Msg("`tenantId` filter for Machines is only available to Provider or privileged Tenants")
+				return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "`tenantId` filter for Machines is only available to Provider or privileged Tenants", nil)
+			}
+		}
+		tenantAccountDAO := cdbm.NewTenantAccountDAO(gamh.dbSession)
+		tenantIDs := make([]uuid.UUID, 0, len(qTenantIDStrs))
+		for _, tenantIDStr := range qTenantIDStrs {
+			tenantID, err := uuid.Parse(tenantIDStr)
+			if err != nil {
+				return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid tenant ID specified in query", nil)
+			}
+			tenantIDs = append(tenantIDs, tenantID)
+		}
+
+		tenantAccounts, _, err := tenantAccountDAO.GetAll(ctx, nil, cdbm.TenantAccountFilterInput{
+			TenantIDs:                tenantIDs,
+			InfrastructureProviderID: &infrastructureProvider.ID,
+		}, cdbp.PageInput{}, nil)
+		if err != nil {
+			logger.Error().Err(err).Msg("error retrieving Tenant Accounts for tenant IDs specified in query")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Error retrieving Tenant Accounts for Tenants specified in query", nil)
+		}
+		tenantIDsMap := make(map[uuid.UUID]bool)
+		for _, tenantAccount := range tenantAccounts {
+			tenantIDsMap[*tenantAccount.TenantID] = true
+		}
+		for _, tenantID := range tenantIDs {
+			if !tenantIDsMap[tenantID] {
+				return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Tenant ID %s specified in query param does not have an account with current org's Provider", tenantID.String()), nil)
+			}
+		}
+
+		// Get all instances matching the specified tenant ID(s)
+		instanceDAO := cdbm.NewInstanceDAO(gamh.dbSession)
+		matchingInstances, _, err := instanceDAO.GetAll(ctx, nil, cdbm.InstanceFilterInput{TenantIDs: tenantIDs}, cdbp.PageInput{Limit: cdb.GetIntPtr(cdbp.TotalLimit)}, nil)
+		if err != nil {
+			logger.Error().Err(err).Msg("error retrieving instances for machine ID filtering")
+			return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve instances for machine ID filtering", nil)
+		}
+		for _, ins := range matchingInstances {
+			if ins.MachineID != nil {
+				filterInput.MachineIDs = append(filterInput.MachineIDs, *ins.MachineID)
+			}
+		}
+		if len(matchingInstances) == 0 {
+			filterInput.MachineIDs = []string{}
+		}
 	}
 
 	// Validate capability type from query param if it is provided
