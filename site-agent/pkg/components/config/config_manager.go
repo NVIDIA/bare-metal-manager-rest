@@ -145,7 +145,7 @@ func NewElektraConfig(utMode bool) *conftypes.Config {
 	}
 	rlaSecOpt, err := strconv.Atoi(os.Getenv("RLA_SEC_OPT"))
 	if err != nil {
-		log.Info().Msg(err.Error())
+		log.Info().Msg("Invalid RLA security option, using default")
 		rlaSecOpt = int(client.RlaServerTLS)
 	}
 	if rlaSecOpt < int(client.RlaInsecureGrpc) || rlaSecOpt > int(client.RlaMutualTLS) {

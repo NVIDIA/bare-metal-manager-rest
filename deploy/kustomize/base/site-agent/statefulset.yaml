@@ -15,7 +15,7 @@
 
 # carbide-rest-site-agent (elektra) Deployment
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: carbide-rest-site-agent
   labels:
@@ -30,9 +30,12 @@ spec:
       labels:
         app: carbide-rest-site-agent
     spec:
+      imagePullSecrets:
+        - name: image-pull-secret
       containers:
         - name: site-agent
-          image: localhost:5000/carbide-rest-site-agent:latest
+          image: carbide-rest-site-agent
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
               name: http
@@ -42,11 +45,19 @@ spec:
             - configMapRef:
                 name: carbide-rest-site-agent-config
           env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: carbide-secrets
-                  key: db-password
+                  name: db-creds
+                  key: password
           volumeMounts:
             - name: site-registration
               mountPath: /etc/sitereg
@@ -70,11 +81,11 @@ spec:
             secretName: site-registration
         - name: carbide-certs
           secret:
-            secretName: carbide-tls-certs
+            secretName: core-grpc-client-site-agent-certs
             optional: true
         - name: temporal-certs
           secret:
-            secretName: temporal-client-certs
+            secretName: temporal-client-site-agent-certs
             optional: true
             items:
               - key: ca.crt

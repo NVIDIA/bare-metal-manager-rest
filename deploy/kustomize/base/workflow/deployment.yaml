@@ -17,14 +17,14 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: cloud-worker
+  name: carbide-rest-cloud-worker
   labels:
-    app: cloud-worker
+    app: carbide-rest-workflow
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: cloud-worker
+      app: carbide-rest-workflow
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -33,11 +33,14 @@ spec:
   template:
     metadata:
       labels:
-        app: cloud-worker
+        app: carbide-rest-workflow
     spec:
+      imagePullSecrets:
+        - name: image-pull-secret
       containers:
         - name: cloud-worker
-          image: localhost:5000/carbide-rest-workflow:latest
+          image: carbide-rest-workflow
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 9360
               name: metrics
@@ -90,26 +93,26 @@ spec:
             name: carbide-rest-workflow-config
         - name: temporal-encryption-key
           secret:
-            secretName: carbide-secrets
+            secretName: temporal-encryption-key
             items:
               - key: temporal-encryption-key
                 path: encryption-key
         - name: temporal-tls-certs
           secret:
-            secretName: temporal-client-certs
+            secretName: temporal-client-cloud-certs
 ---
 # Site Worker Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: site-worker
+  name: carbide-rest-site-worker
   labels:
-    app: site-worker
+    app: carbide-rest-workflow
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: site-worker
+      app: carbide-rest-workflow
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -118,11 +121,14 @@ spec:
   template:
     metadata:
       labels:
-        app: site-worker
+        app: carbide-rest-workflow
     spec:
+      imagePullSecrets:
+        - name: image-pull-secret
       containers:
         - name: site-worker
-          image: localhost:5000/carbide-rest-workflow:latest
+          image: carbide-rest-workflow
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 9360
               name: metrics
@@ -175,10 +181,10 @@ spec:
             name: carbide-rest-workflow-config
         - name: temporal-encryption-key
           secret:
-            secretName: carbide-secrets
+            secretName: temporal-encryption-key
             items:
               - key: temporal-encryption-key
                 path: encryption-key
         - name: temporal-tls-certs
           secret:
-            secretName: temporal-client-certs
+            secretName: temporal-client-cloud-certs

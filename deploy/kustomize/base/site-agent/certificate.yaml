@@ -14,13 +14,13 @@
 # limitations under the License.
 
 # SPIFFE certificate for site-agent gRPC client connections to Carbide/Forge API
-# Issued by carbide-ca-issuer (native Go PKI CA)
+# Issued by carbide-rest-ca-issuer (native Go PKI CA)
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: site-agent-grpc-client-cert
+  name: core-grpc-client-site-agent-certs
 spec:
-  secretName: carbide-tls-certs
+  secretName: core-grpc-client-site-agent-certs
 
   duration: 720h # 30d
   renewBefore: 360h # 15d
@@ -40,6 +40,6 @@ spec:
   uris:
     - spiffe://carbide.local/carbide-rest/sa/carbide-rest-site-agent
   issuerRef:
-    name: carbide-ca-issuer
+    name: carbide-rest-ca-issuer
     kind: ClusterIssuer
     group: cert-manager.io

@@ -13,23 +13,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Secrets for Carbide REST services
-# NOTE: In production, use proper secret management (e.g., Vault, sealed-secrets)
-apiVersion: v1
-kind: Secret
+# Client certificate for workflow services (API, cloud-worker, site-worker) in carbide-rest namespace
+apiVersion: cert-manager.io/v1
+kind: Certificate
 metadata:
-  name: carbide-secrets
-  labels:
-    app.kubernetes.io/part-of: carbide-rest
-type: Opaque
-stringData:
-  # PostgreSQL passwords
-  postgres-password: "postgres"
-  db-password: "forge"
-  
-  # Keycloak client secret for API
-  keycloak-client-secret: "carbide-local-secret"
-  
-  # Temporal encryption key (must match between API and Workflow)
-  temporal-encryption-key: "local-dev"
-
+  name: temporal-client-cloud-certs
+  namespace: carbide-rest
+spec:
+  secretName: temporal-client-cloud-certs
+  duration: 2160h # 90 days
+  renewBefore: 360h # 15 days
+  subject:
+    organizations:
+      - NVIDIA
+  commonName: temporal-client
+  isCA: false
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  usages:
+    - client auth
+  dnsNames:
+    - temporal-client
+    - carbide-rest-api
+    - cloud-worker
+    - site-worker
+  issuerRef:
+    name: carbide-rest-ca-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io

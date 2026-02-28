@@ -13,33 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Site registration secret for site-agent bootstrap
+# Temporal client TLS certs for site-agent
+# Placeholder values
 apiVersion: v1
 kind: Secret
 metadata:
-  name: site-registration
+  name: temporal-client-site-agent-certs
   labels:
     app: carbide-rest-site-agent
 type: Opaque
 stringData:
-  site-uuid: "e3ad6ade-2525-49ab-9aad-7345872c462c"
-  otp: "local-dev-otp-token"
-  creds-url: "http://carbide-rest-site-manager:8100/v1/site/credentials"
-  # Base64 encoded placeholder CA cert - will be updated by setup-local.sh pki
-  cacert: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCnBsYWNlaG9sZGVyCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K"
-
----
-# Placeholder secret for Temporal client TLS certs
-# These will be populated by the PKI system with real certs
-apiVersion: v1
-kind: Secret
-metadata:
-  name: temporal-client-certs
-  labels:
-    app: carbide-rest-site-agent
-type: Opaque
-stringData:
-  ca.crt: "placeholder"
-  tls.crt: "placeholder"
-  tls.key: "placeholder"
-
+  ca.crt: ""
+  tls.crt: ""
+  tls.key: ""
