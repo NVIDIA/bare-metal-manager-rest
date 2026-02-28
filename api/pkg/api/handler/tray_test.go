@@ -84,13 +84,14 @@ func testTraySetupTestData(t *testing.T, dbSession *cdb.Session, org string) (*c
 	_, err := dbSession.DB.NewInsert().Model(ip).Exec(ctx)
 	assert.Nil(t, err)
 
-	// Create site
+	// Create site with RLA enabled
 	site := &cdbm.Site{
 		ID:                       uuid.New(),
 		Name:                     "test-site",
 		Org:                      org,
 		InfrastructureProviderID: ip.ID,
 		Status:                   cdbm.SiteStatusRegistered,
+		Config:                   &cdbm.SiteConfig{RackLevelAdministration: true},
 	}
 	_, err = dbSession.DB.NewInsert().Model(site).Exec(ctx)
 	assert.Nil(t, err)
@@ -178,6 +179,18 @@ func TestGetTrayHandler_Handle(t *testing.T) {
 	org := "test-org"
 	_, site, _ := testTraySetupTestData(t, dbSession, org)
 
+	// Create a site without RLA enabled
+	siteNoRLA := &cdbm.Site{
+		ID:                       uuid.New(),
+		Name:                     "test-site-no-rla",
+		Org:                      org,
+		InfrastructureProviderID: site.InfrastructureProviderID,
+		Status:                   cdbm.SiteStatusRegistered,
+		Config:                   &cdbm.SiteConfig{},
+	}
+	_, err := dbSession.DB.NewInsert().Model(siteNoRLA).Exec(context.Background())
+	assert.Nil(t, err)
+
 	// Create provider user
 	providerUser := testTrayBuildUser(t, dbSession, "provider-user-tray-get", org, []string{"FORGE_PROVIDER_ADMIN"})
 
@@ -218,6 +231,17 @@ func TestGetTrayHandler_Handle(t *testing.T) {
 			mockComponent:  mockComponent,
 			expectedStatus: http.StatusOK,
 			wantErr:        false,
+		},
+		{
+			name:   "failure - RLA not enabled on site",
+			reqOrg: org,
+			user:   providerUser,
+			trayID: trayID,
+			queryParams: map[string]string{
+				"siteId": siteNoRLA.ID.String(),
+			},
+			expectedStatus: http.StatusPreconditionFailed,
+			wantErr:        true,
 		},
 		{
 			name:   "failure - missing siteId",
@@ -338,6 +362,18 @@ func TestGetAllTrayHandler_Handle(t *testing.T) {
 
 	org := "test-org"
 	_, site, _ := testTraySetupTestData(t, dbSession, org)
+
+	// Create a site without RLA enabled
+	siteNoRLA := &cdbm.Site{
+		ID:                       uuid.New(),
+		Name:                     "test-site-no-rla",
+		Org:                      org,
+		InfrastructureProviderID: site.InfrastructureProviderID,
+		Status:                   cdbm.SiteStatusRegistered,
+		Config:                   &cdbm.SiteConfig{},
+	}
+	_, err := dbSession.DB.NewInsert().Model(siteNoRLA).Exec(context.Background())
+	assert.Nil(t, err)
 
 	// Create provider user
 	providerUser := testTrayBuildUser(t, dbSession, "provider-user-tray", org, []string{"FORGE_PROVIDER_ADMIN"})
@@ -477,6 +513,17 @@ func TestGetAllTrayHandler_Handle(t *testing.T) {
 			expectedCount:  len(testComponents),
 			expectedTotal:  cdb.GetIntPtr(len(testComponents)),
 			wantErr:        false,
+		},
+		{
+			name:   "failure - RLA not enabled on site",
+			reqOrg: org,
+			user:   providerUser,
+			queryParams: map[string]string{
+				"siteId": siteNoRLA.ID.String(),
+			},
+			mockResponse:   nil,
+			expectedStatus: http.StatusPreconditionFailed,
+			wantErr:        true,
 		},
 		{
 			name:   "failure - missing siteId",
@@ -675,6 +722,18 @@ func TestValidateTrayHandler_Handle(t *testing.T) {
 	org := "test-org"
 	_, site, _ := testTraySetupTestData(t, dbSession, org)
 
+	// Create a site without RLA enabled
+	siteNoRLA := &cdbm.Site{
+		ID:                       uuid.New(),
+		Name:                     "test-site-no-rla",
+		Org:                      org,
+		InfrastructureProviderID: site.InfrastructureProviderID,
+		Status:                   cdbm.SiteStatusRegistered,
+		Config:                   &cdbm.SiteConfig{},
+	}
+	_, err := dbSession.DB.NewInsert().Model(siteNoRLA).Exec(context.Background())
+	assert.Nil(t, err)
+
 	providerUser := testTrayBuildUser(t, dbSession, "provider-user-validate-tray", org, []string{"FORGE_PROVIDER_ADMIN"})
 	tenantUser := testTrayBuildUser(t, dbSession, "tenant-user-validate-tray", org, []string{"FORGE_TENANT_ADMIN"})
 
@@ -741,6 +800,16 @@ func TestValidateTrayHandler_Handle(t *testing.T) {
 				MatchCount:          0,
 			},
 			expectedStatus: http.StatusOK,
+		},
+		{
+			name:   "failure - RLA not enabled on site",
+			reqOrg: org,
+			user:   providerUser,
+			trayID: trayID,
+			queryParams: map[string]string{
+				"siteId": siteNoRLA.ID.String(),
+			},
+			expectedStatus: http.StatusPreconditionFailed,
 		},
 		{
 			name:   "failure - tenant user forbidden",
@@ -856,6 +925,18 @@ func TestValidateTraysHandler_Handle(t *testing.T) {
 
 	org := "test-org"
 	_, site, _ := testTraySetupTestData(t, dbSession, org)
+
+	// Create a site without RLA enabled
+	siteNoRLA := &cdbm.Site{
+		ID:                       uuid.New(),
+		Name:                     "test-site-no-rla",
+		Org:                      org,
+		InfrastructureProviderID: site.InfrastructureProviderID,
+		Status:                   cdbm.SiteStatusRegistered,
+		Config:                   &cdbm.SiteConfig{},
+	}
+	_, err := dbSession.DB.NewInsert().Model(siteNoRLA).Exec(context.Background())
+	assert.Nil(t, err)
 
 	providerUser := testTrayBuildUser(t, dbSession, "provider-user-validate-trays", org, []string{"FORGE_PROVIDER_ADMIN"})
 	tenantUser := testTrayBuildUser(t, dbSession, "tenant-user-validate-trays", org, []string{"FORGE_TENANT_ADMIN"})
@@ -1026,6 +1107,15 @@ func TestValidateTraysHandler_Handle(t *testing.T) {
 				"rackId": "not-a-uuid",
 			},
 			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:   "failure - RLA not enabled on site",
+			reqOrg: org,
+			user:   providerUser,
+			queryParams: map[string]string{
+				"siteId": siteNoRLA.ID.String(),
+			},
+			expectedStatus: http.StatusPreconditionFailed,
 		},
 		{
 			name:   "failure - tenant user forbidden",

@@ -729,6 +729,11 @@ paths:
         - schema:
             type: boolean
           in: query
+          name: isRackLevelAdministrationEnabled
+          description: Filter Sites by Rack Level Administration enabled flag. Requires Provider Admin role.
+        - schema:
+            type: boolean
+          in: query
           name: includeMachineStats
           description: Include a breakdown of Machine counts by life-cycle status and health. Requires Provider Admin role.
         - schema:
@@ -6563,6 +6568,7 @@ paths:
                               nativeNetworking: false
                               networkSecurityGroup: true
                               nvLinkPartition: false
+                              rackLevelAdministration: false
                             status: Registered
                           status: Syncing
                           version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -6578,6 +6584,7 @@ paths:
                               nativeNetworking: false
                               networkSecurityGroup: false
                               nvLinkPartition: false
+                              rackLevelAdministration: false
                             status: Registered
                           status: Syncing
                           version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -6894,6 +6901,7 @@ paths:
                             nativeNetworking: false
                             networkSecurityGroup: true
                             nvLinkPartition: false
+                            rackLevelAdministration: false
                           status: Registered
                         status: Syncing
                         version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -6909,6 +6917,7 @@ paths:
                             nativeNetworking: false
                             networkSecurityGroup: false
                             nvLinkPartition: false
+                            rackLevelAdministration: false
                           status: Registered
                         status: Syncing
                         version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -9835,6 +9844,7 @@ paths:
                               nativeNetworking: false
                               networkSecurityGroup: true
                               nvLinkPartition: false
+                              rackLevelAdministration: false
                             status: Registered
                           status: Syncing
                           version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -10045,6 +10055,7 @@ paths:
                             nativeNetworking: true
                             networkSecurityGroup: true
                             nvLinkPartition: false
+                            rackLevelAdministration: false
                           status: Registered
                         status: Syncing
                         version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -11078,6 +11089,7 @@ components:
             nativeNetworking: true
             networkSecurityGroup: true
             nvLinkPartition: false
+            rackLevelAdministration: false
           isOnline: false
           status: Pending
           statusHistory:
@@ -11180,6 +11192,7 @@ components:
             nativeNetworking: false
             networkSecurityGroup: true
             nvLinkPartition: false
+            rackLevelAdministration: false
           status: Pending
       properties:
         id:
@@ -11223,6 +11236,8 @@ components:
         networkSecurityGroup:
           type: boolean
         nvLinkPartition:
+          type: boolean
+        rackLevelAdministration:
           type: boolean
     SiteCreateRequest:
       title: SiteCreateRequest
@@ -12448,6 +12463,7 @@ components:
                   nativeNetworking: false
                   networkSecurityGroup: true
                   nvLinkPartition: false
+                  rackLevelAdministration: false
                 status: Registered
               status: Syncing
               version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -12463,6 +12479,7 @@ components:
                   nativeNetworking: false
                   networkSecurityGroup: false
                   nvLinkPartition: false
+                  rackLevelAdministration: false
                 status: Registered
               status: Syncing
               version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -12665,6 +12682,7 @@ components:
               nativeNetworking: false
               networkSecurityGroup: false
               nvLinkPartition: false
+              rackLevelAdministration: false
             status: Pending
           status: Syncing
           version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -16696,6 +16714,7 @@ components:
                   nativeNetworking: false
                   networkSecurityGroup: true
                   nvLinkPartition: false
+                  rackLevelAdministration: false
                 status: Registered
               status: Syncing
               version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -16794,6 +16813,7 @@ components:
               nativeNetworking: false
               networkSecurityGroup: true
               nvLinkPartition: false
+              rackLevelAdministration: false
             status: Pending
           status: Syncing
           version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
