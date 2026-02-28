@@ -6627,9 +6627,7 @@ type IBPartitionConfig struct {
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// The ID of tenant that IBPartition belong to
 	TenantOrganizationId string `protobuf:"bytes,2,opt,name=tenantOrganizationId,proto3" json:"tenantOrganizationId,omitempty"` // protolint:disable:this FIELD_NAMES_LOWER_SNAKE_CASE
-	// Depricated Metadata field from here - use Metadata frm IBPartition
-	// Metadata metadata = 3;
-	// reserved 3;
+	// This was previously: Metadata metadata = 3 and moved to IBPartition in a backwards incompatible way
 	Pkey          *string `protobuf:"bytes,3,opt,name=pkey,proto3,oneof" json:"pkey,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

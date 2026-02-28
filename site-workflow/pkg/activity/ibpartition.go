@@ -122,17 +122,6 @@ func NewManageInfiniBandPartition(carbideClient *client.CarbideAtomicClient) Man
 	}
 }
 
-// ibpHasValidName returns true if the request has a non-empty name from Metadata or deprecated Config
-func ibpHasValidName(request *cwssaws.IBPartitionCreationRequest) bool {
-	if request.GetMetadata().GetName() != "" {
-		return true
-	}
-	if request.Config != nil && request.Config.Name != "" {
-		return true
-	}
-	return false
-}
-
 // Function to create InfiniBand Partition with Carbide
 func (mibp *ManageInfiniBandPartition) CreateInfiniBandPartitionOnSite(ctx context.Context, request *cwssaws.IBPartitionCreationRequest) error {
 	logger := log.With().Str("Activity", "CreateInfiniBandPartitionOnSite").Logger()
@@ -142,15 +131,17 @@ func (mibp *ManageInfiniBandPartition) CreateInfiniBandPartitionOnSite(ctx conte
 	var err error
 
 	// Validate request
-	// Backward compatibility: accept either deprecated Config or new Metadata for name/tenantOrganizationId
 	if request == nil {
 		err = errors.New("received empty create InfiniBand Partition request")
 	} else if request.Id == nil || request.GetId().GetValue() == "" {
-		err = errors.New("received create InfiniBand Partition request missing ID")
-	} else if !ibpHasValidName(request) {
-		err = errors.New("received create InfiniBand Partition request missing Name")
-	} else if request.Config != nil && request.Config.TenantOrganizationId == "" {
-		err = errors.New("received create InfiniBand Partition request missing TenantOrganizationId")
+		err = errors.New("received create InfiniBand Partition request without ID")
+	} else if request.GetConfig() == nil {
+		err = errors.New("received create InfiniBand Partition request without Config")
+	} else if request.GetMetadata().GetName() == "" && request.GetConfig().GetName() == "" {
+		// Backward compatibility: both Metadata.Name and Config.Name are accepted
+		err = errors.New("received create InfiniBand Partition request without Name")
+	} else if request.GetConfig().GetTenantOrganizationId() == "" {
+		err = errors.New("received create InfiniBand Partition request without TenantOrganizationId")
 	}
 
 	if err != nil {

@@ -1164,9 +1164,7 @@ message IBPartitionConfig {
   string name = 1;
   // The ID of tenant that IBPartition belong to
   string tenantOrganizationId = 2; // protolint:disable:this FIELD_NAMES_LOWER_SNAKE_CASE
-  // Depricated Metadata field from here - use Metadata frm IBPartition
-  // Metadata metadata = 3;
-  // reserved 3;
+  // This was previously: Metadata metadata = 3 and moved to IBPartition in a backwards incompatible way
   optional string pkey = 3;
 }
 
@@ -1215,7 +1213,7 @@ message IBPartitionCreationRequest {
   // a random ID.
   // The Partition ID must be unique within the Forge site.
   optional common.IBPartitionId id = 2;
-  
+
   Metadata metadata = 3;
 }
 
