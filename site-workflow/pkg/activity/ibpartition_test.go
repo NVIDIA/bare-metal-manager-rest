@@ -278,6 +278,9 @@ func TestManageIBPartition_CreateIBPartitionOnSite(t *testing.T) {
 				ctx: context.Background(),
 				request: &cwssaws.IBPartitionCreationRequest{
 					Id: &cwssaws.IBPartitionId{Value: "b410867c-655a-11ef-bc4a-0393098e5d09"},
+					Config: &cwssaws.IBPartitionConfig{
+						TenantOrganizationId: org,
+					},
 					Metadata: &cwssaws.Metadata{
 						Name: name,
 					},
