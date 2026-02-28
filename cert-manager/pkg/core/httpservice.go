@@ -19,6 +19,7 @@ package core
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -173,9 +174,21 @@ func (s *HTTPService) Start(ctx context.Context) (net.Listener, error) {
 	}
 
 	if s.isTLS {
+		// Use GetCertificate to reload certs from disk on each TLS
+		// handshake. This supports short-lived certificates rotated
+		// by spiffe-helper without requiring a server restart.
+		server.TLSConfig = &tls.Config{
+			GetCertificate: func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+				cert, err := tls.LoadX509KeyPair(s.CertFile, s.KeyFile)
+				if err != nil {
+					return nil, err
+				}
+				return &cert, nil
+			},
+		}
 		go func() {
 			log.Infof("Serving HTTPS at: %v", listener.Addr())
-			if err := server.ServeTLS(listener, s.CertFile, s.KeyFile); err != nil {
+			if err := server.ServeTLS(listener, "", ""); err != nil {
 				log.Error(err)
 			}
 		}()
