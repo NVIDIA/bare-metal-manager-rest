@@ -20,6 +20,7 @@ package common
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -49,12 +50,16 @@ import (
 
 	auth "github.com/nvidia/bare-metal-manager-rest/auth/pkg/authorization"
 
+	temporalEnums "go.temporal.io/api/enums/v1"
+
 	cam "github.com/nvidia/bare-metal-manager-rest/api/pkg/api/model"
 	cau "github.com/nvidia/bare-metal-manager-rest/common/pkg/util"
 	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
 	cdbm "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/model"
 	cdbp "github.com/nvidia/bare-metal-manager-rest/db/pkg/db/paginator"
 	swe "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/error"
+	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
+	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 )
 
 const (
@@ -1541,6 +1546,13 @@ func ValidateKnownQueryParams(rawParams url.Values, structs ...any) error {
 	return nil
 }
 
+// RequestHash builds a deterministic hash from any struct by JSON-marshaling it.
+// Used for workflow ID deduplication when request data comes from JSON body instead of query params.
+func RequestHash(v interface{}) string {
+	b, _ := json.Marshal(v)
+	return fmt.Sprintf("%x", sha256.Sum256(b))[:12]
+}
+
 // QueryParamHash builds a deterministic hash from the given query params for workflow ID dedup.
 // Accepts url.Values so callers can pass only the known/valid parameters,
 // preventing unknown query params from polluting the workflow ID.
@@ -1554,4 +1566,136 @@ func QueryParamHash(params url.Values) string {
 	}
 	slices.Sort(sortedParams)
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(sortedParams, "&"))))[:12]
+}
+
+// ExecutePowerControlWorkflow determines the appropriate power control workflow based on state,
+// executes it via Temporal, and returns the raw SubmitTaskResponse.
+func ExecutePowerControlWorkflow(
+	ctx context.Context,
+	c echo.Context,
+	logger zerolog.Logger,
+	stc tclient.Client,
+	targetSpec *rlav1.OperationTargetSpec,
+	state string,
+	workflowID string,
+	entityName string,
+) (*rlav1.SubmitTaskResponse, error) {
+	var workflowName string
+	var rlaRequest interface{}
+
+	switch state {
+	case cam.PowerControlStateOn:
+		workflowName = "PowerOnRack"
+		rlaRequest = &rlav1.PowerOnRackRequest{
+			TargetSpec:  targetSpec,
+			Description: fmt.Sprintf("API power on %s", entityName),
+		}
+	case cam.PowerControlStateOff:
+		workflowName = "PowerOffRack"
+		rlaRequest = &rlav1.PowerOffRackRequest{
+			TargetSpec:  targetSpec,
+			Description: fmt.Sprintf("API power off %s", entityName),
+		}
+	case cam.PowerControlStateCycle:
+		workflowName = "PowerResetRack"
+		rlaRequest = &rlav1.PowerResetRackRequest{
+			TargetSpec:  targetSpec,
+			Description: fmt.Sprintf("API power cycle %s", entityName),
+		}
+	case cam.PowerControlStateForceOff:
+		workflowName = "PowerOffRack"
+		rlaRequest = &rlav1.PowerOffRackRequest{
+			TargetSpec:  targetSpec,
+			Forced:      true,
+			Description: fmt.Sprintf("API force power off %s", entityName),
+		}
+	case cam.PowerControlStateForceCycle:
+		workflowName = "PowerResetRack"
+		rlaRequest = &rlav1.PowerResetRackRequest{
+			TargetSpec:  targetSpec,
+			Forced:      true,
+			Description: fmt.Sprintf("API force power cycle %s", entityName),
+		}
+	default:
+		return nil, cau.NewAPIErrorResponse(c, http.StatusBadRequest, fmt.Sprintf("Invalid power control state: %s", state), nil)
+	}
+
+	workflowOptions := tclient.StartWorkflowOptions{
+		ID:                       workflowID,
+		WorkflowIDReusePolicy:    temporalEnums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+		WorkflowIDConflictPolicy: temporalEnums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
+		WorkflowExecutionTimeout: WorkflowExecutionTimeout,
+		TaskQueue:                queue.SiteTaskQueue,
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, WorkflowContextTimeout)
+	defer cancel()
+
+	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, workflowName, rlaRequest)
+	if err != nil {
+		logger.Error().Err(err).Msg(fmt.Sprintf("failed to execute %s workflow", workflowName))
+		return nil, cau.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed to power control %s", entityName), nil)
+	}
+
+	var rlaResponse rlav1.SubmitTaskResponse
+	err = we.Get(ctx, &rlaResponse)
+	if err != nil {
+		var timeoutErr *tp.TimeoutError
+		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
+			return nil, TerminateWorkflowOnTimeOut(c, logger, stc, workflowID, err, entityName, workflowName)
+		}
+		logger.Error().Err(err).Msg(fmt.Sprintf("failed to get result from %s workflow", workflowName))
+		return nil, cau.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed to power control %s", entityName), nil)
+	}
+
+	return &rlaResponse, nil
+}
+
+// ExecuteFirmwareUpdateWorkflow builds an UpgradeFirmwareRequest, executes the UpgradeFirmware
+// workflow via Temporal, and returns the raw SubmitTaskResponse.
+func ExecuteFirmwareUpdateWorkflow(
+	ctx context.Context,
+	c echo.Context,
+	logger zerolog.Logger,
+	stc tclient.Client,
+	targetSpec *rlav1.OperationTargetSpec,
+	version *string,
+	workflowID string,
+	entityName string,
+) (*rlav1.SubmitTaskResponse, error) {
+	rlaRequest := &rlav1.UpgradeFirmwareRequest{
+		TargetSpec:    targetSpec,
+		TargetVersion: version,
+		Description:   fmt.Sprintf("API firmware update %s", entityName),
+	}
+
+	workflowOptions := tclient.StartWorkflowOptions{
+		ID:                       workflowID,
+		WorkflowIDReusePolicy:    temporalEnums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+		WorkflowIDConflictPolicy: temporalEnums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
+		WorkflowExecutionTimeout: WorkflowExecutionTimeout,
+		TaskQueue:                queue.SiteTaskQueue,
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, WorkflowContextTimeout)
+	defer cancel()
+
+	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "UpgradeFirmware", rlaRequest)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to execute UpgradeFirmware workflow")
+		return nil, cau.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed to upgrade firmware for %s", entityName), nil)
+	}
+
+	var rlaResponse rlav1.SubmitTaskResponse
+	err = we.Get(ctx, &rlaResponse)
+	if err != nil {
+		var timeoutErr *tp.TimeoutError
+		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
+			return nil, TerminateWorkflowOnTimeOut(c, logger, stc, workflowID, err, entityName, "UpgradeFirmware")
+		}
+		logger.Error().Err(err).Msg("failed to get result from UpgradeFirmware workflow")
+		return nil, cau.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed to upgrade firmware for %s", entityName), nil)
+	}
+
+	return &rlaResponse, nil
 }
