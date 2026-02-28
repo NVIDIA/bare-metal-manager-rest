@@ -51,6 +51,8 @@ import (
 
 	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
+
+	wfutil "github.com/nvidia/bare-metal-manager-rest/workflow/pkg/util"
 )
 
 // ~~~~~ Create Handler ~~~~~ //
@@ -309,7 +311,8 @@ func (cibph CreateNVLinkLogicalPartitionHandler) Handle(c echo.Context) error {
 	logger.Info().Str("Workflow ID", wid).Msg("scheduled NVLink Logical Partition creation workflow")
 
 	// Block until the workflow has completed and returned success/error.
-	err = we.Get(ctx, nil)
+	var workflowResult *cwssaws.NVLinkLogicalPartition
+	err = we.Get(ctx, &workflowResult)
 	if err != nil {
 		var timeoutErr *tp.TimeoutError
 		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
@@ -338,7 +341,9 @@ func (cibph CreateNVLinkLogicalPartitionHandler) Handle(c echo.Context) error {
 
 	logger.Info().Str("Workflow ID", wid).Msg("completed NVLink Logical Partition creation workflow")
 
-	// commit transaction
+	// commit transaction - must commit once NVLink Logical Partition has been created
+	// If we have an error while updating the status, we'll rollback REST layer cache
+	// but object will remain on Site
 	err = tx.Commit()
 	if err != nil {
 		logger.Error().Err(err).Msg("error committing NVLink Logical Partition transaction to DB")
@@ -348,8 +353,25 @@ func (cibph CreateNVLinkLogicalPartitionHandler) Handle(c echo.Context) error {
 	// set committed so, deferred cleanup functions will do nothing
 	txCommitted = true
 
+	// update the db record for NVLink Logical Partition with the status from the workflow
+	// If we run into an error, we'll log it but won't return error
+	unvllp := nvllp
+	ussd := ssd // Use original status detail by default
+	if workflowResult != nil {
+		logger.Info().Str("Workflow ID", wid).Msg("received NVLink Logical Partition info from workflow")
+
+		status, statusMessage := wfutil.GetNVLinkLogicalPartitionStatus(workflowResult.Status.State)
+		// if status is nil, then default is pending and inventory will be updating status from workflow
+		if status != nil {
+			unvllp, ussd, err = wfutil.UpdateNVLinkLogicalPartitionStatusInDB(ctx, nil, cibph.dbSession, nvllp.ID, status, statusMessage)
+			if err != nil {
+				logger.Error().Err(err).Msg("failed to update NVLink Logical Partition status in DB")
+			}
+		}
+	}
+
 	// create response
-	apiNVLinkLogicalPartition := model.NewAPINVLinkLogicalPartition(nvllp, nil, nil, []cdbm.StatusDetail{*ssd})
+	apiNVLinkLogicalPartition := model.NewAPINVLinkLogicalPartition(unvllp, nil, nil, []cdbm.StatusDetail{*ussd})
 	logger.Info().Msg("finishing API handler")
 	return c.JSON(http.StatusCreated, apiNVLinkLogicalPartition)
 }
