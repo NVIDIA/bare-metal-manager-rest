@@ -26,8 +26,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	inventorymanager "github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/manager"
-	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/component"
-	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/rack"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/inventoryobjects/component"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/inventoryobjects/rack"
 	inventorystore "github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/store"
 	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/deviceinfo"
 	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"

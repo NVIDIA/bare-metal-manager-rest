@@ -29,7 +29,7 @@ import (
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/testsuite"
 
-	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/component"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/inventoryobjects/component"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/executor/temporalworkflow/common"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/operationrules"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/operations"

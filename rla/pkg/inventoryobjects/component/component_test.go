@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/nvidia/bare-metal-manager-rest/rla/internal/inventory/objects/bmc"
+	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/inventoryobjects/bmc"
 	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/deviceinfo"
 	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/devicetypes"
 )
