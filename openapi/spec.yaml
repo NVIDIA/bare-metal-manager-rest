@@ -729,6 +729,11 @@ paths:
         - schema:
             type: boolean
           in: query
+          name: isRackLevelAdministrationEnabled
+          description: Filter Sites by Rack Level Administration enabled flag. Requires Provider Admin role.
+        - schema:
+            type: boolean
+          in: query
           name: includeMachineStats
           description: Include a breakdown of Machine counts by life-cycle status and health. Requires Provider Admin role.
         - schema:
@@ -6563,6 +6568,7 @@ paths:
                               nativeNetworking: false
                               networkSecurityGroup: true
                               nvLinkPartition: false
+                              rackLevelAdministration: false
                             status: Registered
                           status: Syncing
                           version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -6578,6 +6584,7 @@ paths:
                               nativeNetworking: false
                               networkSecurityGroup: false
                               nvLinkPartition: false
+                              rackLevelAdministration: false
                             status: Registered
                           status: Syncing
                           version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -6894,6 +6901,7 @@ paths:
                             nativeNetworking: false
                             networkSecurityGroup: true
                             nvLinkPartition: false
+                            rackLevelAdministration: false
                           status: Registered
                         status: Syncing
                         version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -6909,6 +6917,7 @@ paths:
                             nativeNetworking: false
                             networkSecurityGroup: false
                             nvLinkPartition: false
+                            rackLevelAdministration: false
                           status: Registered
                         status: Syncing
                         version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -8503,6 +8512,227 @@ paths:
           $ref: '#/components/responses/ForbiddenError'
       tags:
         - Rack
+  '/v2/org/{org}/carbide/rack/power':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+    patch:
+      summary: Power control Racks
+      operationId: power-control-racks
+      description: |-
+        Power control Racks with optional filters. If no filter is specified, targets all racks in the Site.
+
+        Supported power states: `on`, `off`, `cycle`, `forceoff`, `forcecycle`.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchUpdateRackPowerStateRequest'
+            examples:
+              power-off-all:
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+                  state: 'off'
+              power-on-filtered:
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+                  filter:
+                    names:
+                      - Rack-001
+                      - Rack-002
+                  state: 'on'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdatePowerStateResponse'
+              examples:
+                example-1:
+                  value:
+                    taskIds:
+                      - 550e8400-e29b-41d4-a716-446655440000
+                      - 660e8400-e29b-41d4-a716-446655440001
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Rack
+  '/v2/org/{org}/carbide/rack/{id}/power':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+          format: uuid
+        name: id
+        in: path
+        required: true
+        description: ID of the Rack
+    patch:
+      summary: Power control a Rack
+      operationId: power-control-rack
+      description: |-
+        Power control a Rack identified by Rack UUID.
+
+        Supported power states: `on`, `off`, `cycle`, `forceoff`, `forcecycle`.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePowerStateRequest'
+            examples:
+              power-on:
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+                  state: 'on'
+              power-cycle:
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+                  state: cycle
+              force-cycle:
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+                  state: forcecycle
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdatePowerStateResponse'
+              examples:
+                example-1:
+                  value:
+                    taskIds:
+                      - 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Rack
+  '/v2/org/{org}/carbide/rack/firmware':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+    patch:
+      summary: Firmware update Racks
+      operationId: firmware-update-racks
+      description: |-
+        Update firmware on Racks with optional name filter. If no filter is specified, targets all racks in the Site.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchRackFirmwareUpdateRequest'
+            examples:
+              all-racks-latest:
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+              filtered-with-version:
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+                  filter:
+                    names:
+                      - Rack-001
+                  version: '24.11.0'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirmwareUpdateResponse'
+              examples:
+                example-1:
+                  value:
+                    taskIds:
+                      - 550e8400-e29b-41d4-a716-446655440000
+                      - 660e8400-e29b-41d4-a716-446655440001
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Rack
+  '/v2/org/{org}/carbide/rack/{id}/firmware':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+          format: uuid
+        name: id
+        in: path
+        required: true
+        description: ID of the Rack
+    patch:
+      summary: Firmware update a Rack
+      operationId: firmware-update-rack
+      description: |-
+        Update firmware on a Rack identified by Rack UUID.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FirmwareUpdateRequest'
+            examples:
+              with-version:
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+                  version: '24.11.0'
+              without-version:
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirmwareUpdateResponse'
+              examples:
+                example-1:
+                  value:
+                    taskIds:
+                      - 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Rack
   '/v2/org/{org}/carbide/tray':
     parameters:
       - schema:
@@ -8828,6 +9058,232 @@ paths:
                     onlyInActualCount: 0
                     driftCount: 0
                     matchCount: 5
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Tray
+  '/v2/org/{org}/carbide/tray/power':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+    patch:
+      summary: Power control Trays
+      operationId: power-control-trays
+      description: |-
+        Power control Trays with optional filters. If no filter is specified, targets all trays in the Site.
+
+        Supported power states: `on`, `off`, `cycle`, `forceoff`, `forcecycle`.
+
+        **Filter constraints:**
+        - `rackId` and `rackName` are mutually exclusive
+        - `rackId`/`rackName` cannot be combined with `ids`/`componentIds` (rack-level vs component-level targeting)
+        - `componentIds` requires `type` to be specified
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchUpdateTrayPowerStateRequest'
+            examples:
+              power-on-all:
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+                  state: 'on'
+              power-off-by-rack:
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+                  filter:
+                    rackId: 660e8400-e29b-41d4-a716-446655440001
+                  state: 'off'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdatePowerStateResponse'
+              examples:
+                example-1:
+                  value:
+                    taskIds:
+                      - 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Tray
+  '/v2/org/{org}/carbide/tray/{id}/power':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+          format: uuid
+        name: id
+        in: path
+        required: true
+        description: ID of the Tray
+    patch:
+      summary: Power control a Tray
+      operationId: power-control-tray
+      description: |-
+        Power control a Tray identified by Tray UUID.
+
+        Supported power states: `on`, `off`, `cycle`, `forceoff`, `forcecycle`.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePowerStateRequest'
+            examples:
+              power-on:
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+                  state: 'on'
+              power-off:
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+                  state: 'off'
+              power-cycle:
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+                  state: cycle
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdatePowerStateResponse'
+              examples:
+                example-1:
+                  value:
+                    taskIds:
+                      - 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Tray
+  '/v2/org/{org}/carbide/tray/firmware':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+    patch:
+      summary: Firmware update Trays
+      operationId: firmware-update-trays
+      description: |-
+        Update firmware on Trays with optional filters. If no filter is specified, targets all trays in the Site.
+
+        **Filter constraints:**
+        - `rackId` and `rackName` are mutually exclusive
+        - `rackId`/`rackName` cannot be combined with `ids`/`componentIds` (rack-level vs component-level targeting)
+        - `componentIds` requires `type` to be specified
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchTrayFirmwareUpdateRequest'
+            examples:
+              all-trays-latest:
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+              filtered-with-version:
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+                  filter:
+                    rackId: 660e8400-e29b-41d4-a716-446655440001
+                  version: '24.11.0'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirmwareUpdateResponse'
+              examples:
+                example-1:
+                  value:
+                    taskIds:
+                      - 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+      tags:
+        - Tray
+  '/v2/org/{org}/carbide/tray/{id}/firmware':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+          format: uuid
+        name: id
+        in: path
+        required: true
+        description: ID of the Tray
+    patch:
+      summary: Firmware update a Tray
+      operationId: firmware-update-tray
+      description: |-
+        Update firmware on a Tray identified by Tray UUID.
+
+        Org must have an Infrastructure Provider entity. User must have `FORGE_PROVIDER_ADMIN` authorization role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FirmwareUpdateRequest'
+            examples:
+              with-version:
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+                  version: '24.11.0'
+              without-version:
+                value:
+                  siteId: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirmwareUpdateResponse'
+              examples:
+                example-1:
+                  value:
+                    taskIds:
+                      - 550e8400-e29b-41d4-a716-446655440000
         '400':
           $ref: '#/components/responses/ValidationError'
         '403':
@@ -9388,6 +9844,7 @@ paths:
                               nativeNetworking: false
                               networkSecurityGroup: true
                               nvLinkPartition: false
+                              rackLevelAdministration: false
                             status: Registered
                           status: Syncing
                           version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -9598,6 +10055,7 @@ paths:
                             nativeNetworking: true
                             networkSecurityGroup: true
                             nvLinkPartition: false
+                            rackLevelAdministration: false
                           status: Registered
                         status: Syncing
                         version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -10631,6 +11089,7 @@ components:
             nativeNetworking: true
             networkSecurityGroup: true
             nvLinkPartition: false
+            rackLevelAdministration: false
           isOnline: false
           status: Pending
           statusHistory:
@@ -10733,6 +11192,7 @@ components:
             nativeNetworking: false
             networkSecurityGroup: true
             nvLinkPartition: false
+            rackLevelAdministration: false
           status: Pending
       properties:
         id:
@@ -10776,6 +11236,8 @@ components:
         networkSecurityGroup:
           type: boolean
         nvLinkPartition:
+          type: boolean
+        rackLevelAdministration:
           type: boolean
     SiteCreateRequest:
       title: SiteCreateRequest
@@ -12001,6 +12463,7 @@ components:
                   nativeNetworking: false
                   networkSecurityGroup: true
                   nvLinkPartition: false
+                  rackLevelAdministration: false
                 status: Registered
               status: Syncing
               version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -12016,6 +12479,7 @@ components:
                   nativeNetworking: false
                   networkSecurityGroup: false
                   nvLinkPartition: false
+                  rackLevelAdministration: false
                 status: Registered
               status: Syncing
               version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -12218,6 +12682,7 @@ components:
               nativeNetworking: false
               networkSecurityGroup: false
               nvLinkPartition: false
+              rackLevelAdministration: false
             status: Pending
           status: Syncing
           version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -14383,6 +14848,207 @@ components:
         hostId:
           type: integer
           description: Host ID associated with the tray
+    RackFilter:
+      title: RackFilter
+      type: object
+      description: Filter criteria for selecting racks in batch operations. If omitted or empty, all racks in the site are targeted.
+      properties:
+        names:
+          type: array
+          items:
+            type: string
+          description: Filter racks by name
+    TrayFilter:
+      title: TrayFilter
+      type: object
+      description: |-
+        Filter criteria for selecting trays in batch operations. If omitted or empty, all trays in the site are targeted.
+
+        Constraints: `rackId` and `rackName` are mutually exclusive. `rackId`/`rackName` cannot be combined with `ids`/`componentIds`. `componentIds` requires `type`.
+      properties:
+        rackId:
+          type: string
+          format: uuid
+          description: Filter by Rack ID
+        rackName:
+          type: string
+          description: Filter by Rack name
+        type:
+          type: string
+          enum:
+            - compute
+            - switch
+            - powershelf
+          description: Filter by tray type
+        componentIds:
+          type: array
+          items:
+            type: string
+          description: Filter by component ID. Requires 'type'.
+        ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Filter by tray UUID
+    BatchUpdateRackPowerStateRequest:
+      title: BatchUpdateRackPowerStateRequest
+      type: object
+      description: Request body for batch rack power control operations
+      required:
+        - siteId
+        - state
+      properties:
+        siteId:
+          type: string
+          format: uuid
+          description: ID of the Site
+        filter:
+          $ref: '#/components/schemas/RackFilter'
+        state:
+          type: string
+          enum:
+            - 'on'
+            - 'off'
+            - cycle
+            - forceoff
+            - forcecycle
+          description: Target power state
+    BatchUpdateTrayPowerStateRequest:
+      title: BatchUpdateTrayPowerStateRequest
+      type: object
+      description: Request body for batch tray power control operations
+      required:
+        - siteId
+        - state
+      properties:
+        siteId:
+          type: string
+          format: uuid
+          description: ID of the Site
+        filter:
+          $ref: '#/components/schemas/TrayFilter'
+        state:
+          type: string
+          enum:
+            - 'on'
+            - 'off'
+            - cycle
+            - forceoff
+            - forcecycle
+          description: Target power state
+    BatchRackFirmwareUpdateRequest:
+      title: BatchRackFirmwareUpdateRequest
+      type: object
+      description: Request body for batch rack firmware update operations
+      required:
+        - siteId
+      properties:
+        siteId:
+          type: string
+          format: uuid
+          description: ID of the Site
+        filter:
+          $ref: '#/components/schemas/RackFilter'
+        version:
+          type: string
+          description: Target firmware version.
+    BatchTrayFirmwareUpdateRequest:
+      title: BatchTrayFirmwareUpdateRequest
+      type: object
+      description: Request body for batch tray firmware update operations
+      required:
+        - siteId
+      properties:
+        siteId:
+          type: string
+          format: uuid
+          description: ID of the Site
+        filter:
+          $ref: '#/components/schemas/TrayFilter'
+        version:
+          type: string
+          description: Target firmware version.
+    UpdatePowerStateRequest:
+      title: UpdatePowerStateRequest
+      type: object
+      description: Request body for single-resource power control operations
+      required:
+        - siteId
+        - state
+      properties:
+        siteId:
+          type: string
+          format: uuid
+          description: ID of the Site
+        state:
+          type: string
+          enum:
+            - 'on'
+            - 'off'
+            - cycle
+            - forceoff
+            - forcecycle
+          description: |-
+            Power control state to apply:
+            - `on`: Power on the target(s)
+            - `off`: Graceful power off
+            - `cycle`: Graceful power cycle (restart)
+            - `forceoff`: Forced power off (immediate)
+            - `forcecycle`: Forced power cycle (immediate restart)
+      examples:
+        - siteId: 550e8400-e29b-41d4-a716-446655440000
+          state: 'on'
+        - siteId: 550e8400-e29b-41d4-a716-446655440000
+          state: 'off'
+        - siteId: 550e8400-e29b-41d4-a716-446655440000
+          state: cycle
+    UpdatePowerStateResponse:
+      title: UpdatePowerStateResponse
+      type: object
+      description: Response for power control operations containing task IDs for tracking
+      properties:
+        taskIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: List of task IDs created for the power control operation (one per rack)
+      examples:
+        - taskIds:
+            - 550e8400-e29b-41d4-a716-446655440000
+    FirmwareUpdateRequest:
+      title: FirmwareUpdateRequest
+      type: object
+      description: Request body for firmware update operations.
+      required:
+        - siteId
+      properties:
+        siteId:
+          type: string
+          format: uuid
+          description: ID of the Site
+        version:
+          type: string
+          description: Target firmware version.
+      examples:
+        - siteId: 550e8400-e29b-41d4-a716-446655440000
+          version: '24.11.0'
+        - siteId: 550e8400-e29b-41d4-a716-446655440000
+    FirmwareUpdateResponse:
+      title: FirmwareUpdateResponse
+      type: object
+      description: Response for firmware update operations containing task IDs for tracking
+      properties:
+        taskIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: List of task IDs created for the firmware update operation
+      examples:
+        - taskIds:
+            - 550e8400-e29b-41d4-a716-446655440000
     Machine:
       title: Machine
       type: object
@@ -16048,6 +16714,7 @@ components:
                   nativeNetworking: false
                   networkSecurityGroup: true
                   nvLinkPartition: false
+                  rackLevelAdministration: false
                 status: Registered
               status: Syncing
               version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
@@ -16146,6 +16813,7 @@ components:
               nativeNetworking: false
               networkSecurityGroup: true
               nvLinkPartition: false
+              rackLevelAdministration: false
             status: Pending
           status: Syncing
           version: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3

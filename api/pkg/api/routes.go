@@ -761,6 +761,16 @@ func NewAPIRoutes(dbSession *cdb.Session, tc tClient.Client, tnc tClient.Namespa
 			Handler: apiHandler.NewValidateRacksHandler(dbSession, tc, scp, cfg),
 		},
 		{
+			Path:    apiPathPrefix + "/rack/power",
+			Method:  http.MethodPatch,
+			Handler: apiHandler.NewBatchUpdateRackPowerStateHandler(dbSession, tc, scp, cfg),
+		},
+		{
+			Path:    apiPathPrefix + "/rack/firmware",
+			Method:  http.MethodPatch,
+			Handler: apiHandler.NewBatchUpdateRackFirmwareHandler(dbSession, tc, scp, cfg),
+		},
+		{
 			Path:    apiPathPrefix + "/rack/:id",
 			Method:  http.MethodGet,
 			Handler: apiHandler.NewGetRackHandler(dbSession, tc, scp, cfg),
@@ -770,11 +780,31 @@ func NewAPIRoutes(dbSession *cdb.Session, tc tClient.Client, tnc tClient.Namespa
 			Method:  http.MethodGet,
 			Handler: apiHandler.NewValidateRackHandler(dbSession, tc, scp, cfg),
 		},
+		{
+			Path:    apiPathPrefix + "/rack/:id/power",
+			Method:  http.MethodPatch,
+			Handler: apiHandler.NewUpdateRackPowerStateHandler(dbSession, tc, scp, cfg),
+		},
+		{
+			Path:    apiPathPrefix + "/rack/:id/firmware",
+			Method:  http.MethodPatch,
+			Handler: apiHandler.NewUpdateRackFirmwareHandler(dbSession, tc, scp, cfg),
+		},
 		// Tray endpoints (RLA)
 		{
 			Path:    apiPathPrefix + "/tray",
 			Method:  http.MethodGet,
 			Handler: apiHandler.NewGetAllTrayHandler(dbSession, tc, scp, cfg),
+		},
+		{
+			Path:    apiPathPrefix + "/tray/power",
+			Method:  http.MethodPatch,
+			Handler: apiHandler.NewBatchUpdateTrayPowerStateHandler(dbSession, tc, scp, cfg),
+		},
+		{
+			Path:    apiPathPrefix + "/tray/firmware",
+			Method:  http.MethodPatch,
+			Handler: apiHandler.NewBatchUpdateTrayFirmwareHandler(dbSession, tc, scp, cfg),
 		},
 		{
 			Path:    apiPathPrefix + "/tray/validation",
@@ -785,6 +815,16 @@ func NewAPIRoutes(dbSession *cdb.Session, tc tClient.Client, tnc tClient.Namespa
 			Path:    apiPathPrefix + "/tray/:id",
 			Method:  http.MethodGet,
 			Handler: apiHandler.NewGetTrayHandler(dbSession, tc, scp, cfg),
+		},
+		{
+			Path:    apiPathPrefix + "/tray/:id/power",
+			Method:  http.MethodPatch,
+			Handler: apiHandler.NewUpdateTrayPowerStateHandler(dbSession, tc, scp, cfg),
+		},
+		{
+			Path:    apiPathPrefix + "/tray/:id/firmware",
+			Method:  http.MethodPatch,
+			Handler: apiHandler.NewUpdateTrayFirmwareHandler(dbSession, tc, scp, cfg),
 		},
 		{
 			Path:    apiPathPrefix + "/tray/:id/validation",
