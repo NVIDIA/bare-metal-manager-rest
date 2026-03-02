@@ -225,6 +225,7 @@ func NewGetAllMachineHandler(dbSession *cdb.Session, tc temporalClient.Client, c
 // @Param org path string true "Name of NGC organization"
 // @Param siteId query string true "ID of Site"
 // @Param id query string true "ID of Machine"
+// @Param hasInstance query boolean false "Filter Machines by whether machine is assigned to an Instance."
 // @Param hasInstanceType query boolean false "Filter by assigned an InstanceType to include in response"
 // @Param instanceTypeId query string true "Filter by InstanceType ID"
 // @Param tenantId query string false "Filter by Tenant ID"
@@ -471,6 +472,28 @@ func (gamh GetAllMachineHandler) Handle(c echo.Context) error {
 		if len(matchingInstances) == 0 {
 			filterInput.MachineIDs = []string{}
 		}
+	}
+
+	//	Check if `hasInstance` query params
+	qHasInstance := c.QueryParam("hasInstance")
+	if qHasInstance != "" {
+		hi, serr := strconv.ParseBool(qHasInstance)
+		if serr != nil {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid value specified for `hasInstance` in query", nil)
+		}
+		if infrastructureProvider == nil && !tenant.Config.TargetedInstanceCreation {
+			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "`hasInstance` filter for Machines is only available to Provider or privileged Tenants", nil)
+		}
+
+		if filterInput.SiteID == nil {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "`hasInstance` cannot be specified when `siteId` is not specified in query", nil)
+		}
+
+		if !hi && len(qTenantIDStrs) > 0 {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "`hasInstance` cannot be false when `tenantId` is specified in query", nil)
+		}
+
+		filterInput.IsAssigned = cdb.GetBoolPtr(hi)
 	}
 
 	// Validate capability type from query param if it is provided

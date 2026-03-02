@@ -47,6 +47,14 @@ func testMachineSetupSchema(t *testing.T, dbSession *db.Session) {
 	assert.Nil(t, err)
 }
 
+func testMachineInstanceSetupSchema(t *testing.T, dbSession *db.Session) {
+	testInstanceSetupSchema(t, dbSession)
+	err := dbSession.DB.ResetModel(context.Background(), (*MachineInterface)(nil))
+	assert.Nil(t, err)
+	err = dbSession.DB.ResetModel(context.Background(), (*MachineInstanceType)(nil))
+	assert.Nil(t, err)
+}
+
 func testMachineBuildMachine(t *testing.T, dbSession *db.Session, ip uuid.UUID, site uuid.UUID, instanceTypeID *uuid.UUID, controllerMachineType *string) *Machine {
 	return testMachineBuildMachineWithID(t, dbSession, ip, site, instanceTypeID, controllerMachineType, uuid.NewString())
 }
@@ -677,7 +685,7 @@ func TestMachineSQLDAO_GetAll(t *testing.T) {
 	ctx := context.Background()
 	dbSession := testInstanceTypeInitDB(t)
 	defer dbSession.Close()
-	testMachineSetupSchema(t, dbSession)
+	testMachineInstanceSetupSchema(t, dbSession)
 
 	msd := NewMachineDAO(dbSession)
 
@@ -688,6 +696,12 @@ func TestMachineSQLDAO_GetAll(t *testing.T) {
 	mist1 := []MachineInstanceType{}
 
 	ip, site, ins1 := testMachineInstanceTypeBuildInstanceType(t, dbSession, "sm.x86")
+	tenant := testInstanceBuildTenant(t, dbSession, "testTenant")
+	operatingSystem := testInstanceBuildOperatingSystem(t, dbSession, "testOS")
+	allocation := testInstanceBuildAllocation(t, dbSession, ip, tenant, site, "testAllocation")
+	allocationConstraint := testBuildAllocationConstraint(t, dbSession, allocation, AllocationResourceTypeInstanceType, ins1.ID, AllocationConstraintTypeReserved, 10, uuid.New())
+	vpc := testInstanceBuildVpc(t, dbSession, ip, site, tenant, "testVpc")
+
 	metai1 := &SiteControllerMachine{&cwssaws.Machine{Id: &cwssaws.MachineId{Id: "foo"}}}
 	for i := 0; i < totalCount/2; i++ {
 		macAddress := testGenerateMacAddress(t)
@@ -727,6 +741,9 @@ func TestMachineSQLDAO_GetAll(t *testing.T) {
 		})
 
 		ms1 = append(ms1, *m)
+		if (i % 3) == 0 {
+			TestBuildInstance(t, dbSession, fmt.Sprintf("testInstance-%d", i), allocation, allocationConstraint, tenant, ip, site, ins1, vpc, m, operatingSystem)
+		}
 
 		// Create Machine Instance Type
 		mist := testMachineBuildMachineInstanceType(t, dbSession, m.ID, ins1.ID)
