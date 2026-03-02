@@ -819,10 +819,14 @@ func TestMachineHandler_GetAll(t *testing.T) {
 	tnu5 := testMachineBuildUser(t, dbSession, uuid.NewString(), []string{tnOrg5}, tnRoles)
 
 	tnOrg6 := "test-tn-org-6"
+	tnu6 := testMachineBuildUser(t, dbSession, uuid.NewString(), []string{tnOrg6}, tnRoles)
 
 	tenant4 := testMachineBuildTenant(t, dbSession, tnOrg4, "test-tenant-4")
 	tenant5 := testMachineBuildTenant(t, dbSession, tnOrg5, "test-tenant-5")
 	tenant6 := testMachineBuildTenant(t, dbSession, tnOrg6, "test-tenant-6")
+	_ = common.TestBuildTenantAccount(t, dbSession, ip4, &tenant4.ID, tnOrg4, cdbm.TenantAccountStatusReady, tnu4)
+	_ = common.TestBuildTenantAccount(t, dbSession, ip4, &tenant5.ID, tnOrg5, cdbm.TenantAccountStatusReady, tnu5)
+	_ = common.TestBuildTenantAccount(t, dbSession, ip4, &tenant6.ID, tnOrg6, cdbm.TenantAccountStatusReady, tnu6)
 	vpc4 := testMachineBuildVpc(t, dbSession, ip, site, tenant4, tnOrg4, "test-vpc-4")
 
 	os4 := testMachineBuildOperatingSystem(t, dbSession, "test-os-4", tenant4.ID, tnu4)
