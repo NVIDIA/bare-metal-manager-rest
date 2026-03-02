@@ -60,8 +60,6 @@ import (
 	swe "github.com/nvidia/bare-metal-manager-rest/site-workflow/pkg/error"
 	rlav1 "github.com/nvidia/bare-metal-manager-rest/workflow-schema/rla/protobuf/v1"
 	"github.com/nvidia/bare-metal-manager-rest/workflow/pkg/queue"
-
-	cwssaws "github.com/nvidia/bare-metal-manager-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 const (
@@ -1697,20 +1695,4 @@ func ExecuteFirmwareUpdateWorkflow(
 	}
 
 	return &rlaResponse, nil
-}
-
-// Utility function to get NVLinkLogicalPartition status from Controller NVLinkLogicalPartition state
-func GetNVLinkLogicalPartitionStatus(controllerNVLinkLogicalPartitionTenantState cwssaws.TenantState) (*string, *string) {
-	switch controllerNVLinkLogicalPartitionTenantState {
-	case cwssaws.TenantState_PROVISIONING:
-		return cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusProvisioning), cdb.GetStrPtr("NVLink Logical Partition is being provisioned on Site")
-	case cwssaws.TenantState_CONFIGURING:
-		return cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusConfiguring), cdb.GetStrPtr("NVLink Logical Partition is being configured on Site")
-	case cwssaws.TenantState_READY:
-		return cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusReady), cdb.GetStrPtr("NVLink Logical Partition is ready for use")
-	case cwssaws.TenantState_FAILED:
-		return cdb.GetStrPtr(cdbm.NVLinkLogicalPartitionStatusError), cdb.GetStrPtr("NVLink Logical Partition is in error state")
-	default:
-		return nil, nil
-	}
 }
