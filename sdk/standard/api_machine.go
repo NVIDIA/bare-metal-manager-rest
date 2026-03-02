@@ -182,6 +182,7 @@ type ApiGetAllMachineRequest struct {
 	id *string
 	hasInstanceType *bool
 	instanceTypeId *string
+	tenantId *string
 	includeMetadata *bool
 	status *string
 	capabilityType *string
@@ -215,6 +216,12 @@ func (r ApiGetAllMachineRequest) HasInstanceType(hasInstanceType bool) ApiGetAll
 // Filter Machines by Instance Type ID.  Can be specified multiple times to filter on more than one Instance Type ID.
 func (r ApiGetAllMachineRequest) InstanceTypeId(instanceTypeId string) ApiGetAllMachineRequest {
 	r.instanceTypeId = &instanceTypeId
+	return r
+}
+
+// Filter Machines by ID of tenant of assigned instance. Can be specified multiple times to filter on more than one Tenant ID.
+func (r ApiGetAllMachineRequest) TenantId(tenantId string) ApiGetAllMachineRequest {
+	r.tenantId = &tenantId
 	return r
 }
 
@@ -335,6 +342,9 @@ func (a *MachineAPIService) GetAllMachineExecute(r ApiGetAllMachineRequest) ([]M
 	}
 	if r.instanceTypeId != nil {
 		parameterAddToHeaderOrQuery(localVarQueryParams, "instanceTypeId", r.instanceTypeId, "form", "")
+	}
+	if r.tenantId != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "tenantId", r.tenantId, "form", "")
 	}
 	if r.includeMetadata != nil {
 		parameterAddToHeaderOrQuery(localVarQueryParams, "includeMetadata", r.includeMetadata, "form", "")
