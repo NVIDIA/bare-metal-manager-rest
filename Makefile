@@ -290,15 +290,26 @@ kind-apply:
 	kubectl -n carbide-rest rollout restart statefulset/carbide-rest-site-agent || true
 	kubectl -n carbide-rest rollout status statefulset/carbide-rest-site-agent --timeout=120s || true
 
-# Rebuild and redeploy apps only (faster iteration)
+# Rebuild and redeploy apps only (faster iteration, preserves DB/certs/secrets)
 kind-redeploy: docker-build-local kind-load
 	kubectl -n carbide-rest rollout restart deployment/carbide-rest-api
-	kubectl -n carbide-rest rollout restart deployment/cloud-worker
-	kubectl -n carbide-rest rollout restart deployment/site-worker
-	kubectl -n carbide-rest rollout restart statefulset/carbide-rest-site-agent
+	kubectl -n carbide-rest rollout restart deployment/carbide-rest-cloud-worker
+	kubectl -n carbide-rest rollout restart deployment/carbide-rest-site-worker
 	kubectl -n carbide-rest rollout restart deployment/carbide-rest-mock-core
 	kubectl -n carbide-rest rollout restart deployment/carbide-rest-cert-manager
 	kubectl -n carbide-rest rollout restart deployment/carbide-rest-site-manager
+	kubectl -n carbide-rest rollout restart statefulset/carbide-rest-site-agent
+	@echo "Waiting for rollouts..."
+	kubectl -n carbide-rest rollout status deployment/carbide-rest-api --timeout=120s
+	kubectl -n carbide-rest rollout status deployment/carbide-rest-cloud-worker --timeout=120s
+	kubectl -n carbide-rest rollout status deployment/carbide-rest-site-worker --timeout=120s
+	kubectl -n carbide-rest rollout status deployment/carbide-rest-mock-core --timeout=120s
+	kubectl -n carbide-rest rollout status deployment/carbide-rest-cert-manager --timeout=120s
+	kubectl -n carbide-rest rollout status deployment/carbide-rest-site-manager --timeout=120s
+	kubectl -n carbide-rest rollout status statefulset/carbide-rest-site-agent --timeout=120s
+	@echo ""
+	@echo "Redeploy complete. All pods ready."
+	@kubectl -n carbide-rest get pods
 
 # Show status of all pods and services
 kind-status:

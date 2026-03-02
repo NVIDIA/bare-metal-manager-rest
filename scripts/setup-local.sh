@@ -191,10 +191,12 @@ create_site() {
         PROVIDER_ID=$(echo "$PROVIDER_RESP" | jq -r '.id')
     fi
 
-    EXISTING_SITE=$(curl -sf "$API_URL/v2/org/$ORG/carbide/site?infrastructureProviderId=$PROVIDER_ID" \
-        -H "Authorization: Bearer $token" | jq -r '.[] | select(.name == "local-dev-site") | .id' 2>/dev/null || echo "")
+    EXISTING_RESP=$(curl -sf "$API_URL/v2/org/$ORG/carbide/site?infrastructureProviderId=$PROVIDER_ID" \
+        -H "Authorization: Bearer $token" 2>/dev/null || echo "[]")
+    EXISTING_SITE=$(echo "$EXISTING_RESP" | jq -r '.[] | select(.name == "local-dev-site") | .id' 2>/dev/null || echo "")
 
     if [ -n "$EXISTING_SITE" ] && [ "$EXISTING_SITE" != "null" ]; then
+        SITE_REG_TOKEN=$(echo "$EXISTING_RESP" | jq -r '.[] | select(.name == "local-dev-site") | .registrationToken // empty' 2>/dev/null)
         echo "$EXISTING_SITE"
         return
     fi
@@ -214,6 +216,7 @@ create_site() {
 
         SITE_ID=$(echo "$SITE_RESP" | jq -r '.id // empty')
         if [ -n "$SITE_ID" ] && [ "$SITE_ID" != "null" ]; then
+            SITE_REG_TOKEN=$(echo "$SITE_RESP" | jq -r '.registrationToken // empty')
             echo "$SITE_ID"
             return
         fi
@@ -246,14 +249,16 @@ configure_site_agent() {
         sed "s/TEMPORAL_SUBSCRIBE_QUEUE: .*/TEMPORAL_SUBSCRIBE_QUEUE: \"site\"/" | \
         kubectl apply -f -
 
-    kubectl -n $NAMESPACE get secret site-registration -o yaml 2>/dev/null | \
-        sed "s/site-uuid: .*/site-uuid: $(echo -n $site_id | base64)/" | \
-        kubectl apply -f - 2>/dev/null || \
-        kubectl -n $NAMESPACE create secret generic site-registration \
-            --from-literal=site-uuid="$site_id" \
-            --from-literal=otp="local-dev-otp" \
-            --from-literal=creds-url="http://carbide-rest-site-manager:8100/v1/site/credentials" \
-            --from-literal=cacert=""
+    local reg_token="${SITE_REG_TOKEN:-local-dev-otp}"
+    local sm_cacert
+    sm_cacert=$(kubectl -n $NAMESPACE get secret site-manager-tls -o jsonpath='{.data.ca\.crt}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+
+    kubectl -n $NAMESPACE delete secret site-registration 2>/dev/null || true
+    kubectl -n $NAMESPACE create secret generic site-registration \
+        --from-literal=site-uuid="$site_id" \
+        --from-literal=otp="$reg_token" \
+        --from-literal=creds-url="https://carbide-rest-site-manager:8100/v1/sitecreds" \
+        --from-literal=cacert="$sm_cacert"
 
     kubectl -n $NAMESPACE rollout restart sts/carbide-rest-site-agent
     kubectl -n $NAMESPACE rollout status sts/carbide-rest-site-agent --timeout=240s
@@ -272,6 +277,16 @@ setup_site_agent() {
     echo "Creating site..."
     SITE_ID=$(create_site "$TOKEN")
     echo "Site ID: $SITE_ID"
+
+    SITE_REG_TOKEN=$(curl -sf "$API_URL/v2/org/$ORG/carbide/site/$SITE_ID?infrastructureProviderId=$(
+        curl -sf "$API_URL/v2/org/$ORG/carbide/infrastructure-provider/current" \
+            -H "Authorization: Bearer $TOKEN" | jq -r '.id'
+    )" -H "Authorization: Bearer $TOKEN" | jq -r '.registrationToken // empty' 2>/dev/null)
+    if [ -z "$SITE_REG_TOKEN" ] || [ "$SITE_REG_TOKEN" = "null" ]; then
+        echo "WARNING: Could not retrieve registration token from API, using fallback"
+    else
+        echo "Registration token acquired (${#SITE_REG_TOKEN} chars)"
+    fi
 
     echo "Configuring site-agent..."
     configure_site_agent "$SITE_ID"
