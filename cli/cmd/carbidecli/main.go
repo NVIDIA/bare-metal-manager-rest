@@ -21,14 +21,14 @@ import (
 	"fmt"
 	"os"
 
-	bmmcli "github.com/nvidia/bare-metal-manager-rest/cli/pkg"
+	carbidecli "github.com/nvidia/bare-metal-manager-rest/cli/pkg"
 	"github.com/nvidia/bare-metal-manager-rest/cli/tui"
 	"github.com/nvidia/bare-metal-manager-rest/openapi"
 	cli "github.com/urfave/cli/v2"
 )
 
 func main() {
-	app, err := bmmcli.NewApp(openapi.Spec)
+	app, err := carbidecli.NewApp(openapi.Spec)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 		os.Exit(1)

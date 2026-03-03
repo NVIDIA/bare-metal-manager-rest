@@ -70,6 +70,19 @@ make kind-verify    # Run health checks
 make kind-down      # Tear down cluster
 ```
 
+## CLI
+
+`carbidecli` is a command-line client that wraps the full REST API. Install it from the repo and point it at any BMM environment:
+
+```bash
+make carbide-cli              # build and install to $GOPATH/bin
+carbidecli init              # generate ~/.bmm/config.yaml
+carbidecli login             # authenticate
+carbidecli site list         # start using the API
+```
+
+See [cli/README.md](cli/README.md) for configuration, authentication, shell completion, TUI mode, and the full command reference.
+
 ## Using the API
 
 ### Get an Access Token
@@ -178,7 +191,7 @@ done
 | carbide-site-agent | `elektra` | On-site agent |
 | carbide-rest-db | `migrations` | Database migrations |
 | carbide-rest-cert-manager | `credsmgr` | Native PKI certificate manager |
-| carbide-cli | `bmmcli` | [CLI client](cli/README.md) for the REST API |
+| carbide-cli | `carbidecli` | [CLI client](cli/README.md) for the REST API |
 
 Supporting modules:
 - **common** - Shared utilities and configurations

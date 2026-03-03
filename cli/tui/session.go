@@ -24,7 +24,7 @@ import (
 	"strconv"
 	"strings"
 
-	bmmcli "github.com/nvidia/bare-metal-manager-rest/cli/pkg"
+	carbidecli "github.com/nvidia/bare-metal-manager-rest/cli/pkg"
 )
 
 // LoginFunc is a callback to perform login and return a new token.
@@ -40,7 +40,7 @@ type Scope struct {
 
 // Session holds the shared state for an interactive TUI session.
 type Session struct {
-	Client     *bmmcli.Client
+	Client     *carbidecli.Client
 	ConfigPath string
 	Org        string
 	Token      string
@@ -69,7 +69,7 @@ func (s *Session) RefreshClient(token string) {
 }
 
 // NewSession creates a new interactive session.
-func NewSession(client *bmmcli.Client, org, configPath string) *Session {
+func NewSession(client *carbidecli.Client, org, configPath string) *Session {
 	cache := NewCache()
 	resolver := NewResolver(cache)
 	s := &Session{

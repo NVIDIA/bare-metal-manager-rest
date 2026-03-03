@@ -26,7 +26,7 @@ import (
 
 	"golang.org/x/term"
 
-	bmmcli "github.com/nvidia/bare-metal-manager-rest/cli/pkg"
+	carbidecli "github.com/nvidia/bare-metal-manager-rest/cli/pkg"
 )
 
 // ChooseConfigFile scans ~/.bmm for config*.yaml files and shows an interactive
@@ -102,7 +102,7 @@ func ChooseConfigFile(explicitPath string) (string, error) {
 	return selected.ID, nil
 }
 
-// RunTUI is the entry point for bmmcli tui. It handles config selection,
+// RunTUI is the entry point for carbidecli tui. It handles config selection,
 // authentication, and starts the REPL.
 func RunTUI(explicitConfig string) error {
 	configPath, err := ChooseConfigFile(explicitConfig)
@@ -110,12 +110,12 @@ func RunTUI(explicitConfig string) error {
 		return fmt.Errorf("choosing config: %w", err)
 	}
 
-	var cfg *bmmcli.ConfigFile
+	var cfg *carbidecli.ConfigFile
 	if configPath != "" {
-		cfg, err = bmmcli.LoadConfigFromPath(configPath)
+		cfg, err = carbidecli.LoadConfigFromPath(configPath)
 	} else {
-		cfg, err = bmmcli.LoadConfig()
-		configPath = bmmcli.ConfigPath()
+		cfg, err = carbidecli.LoadConfig()
+		configPath = carbidecli.ConfigPath()
 	}
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
@@ -132,18 +132,18 @@ func RunTUI(explicitConfig string) error {
 		apiName = "carbide"
 	}
 
-	token, _ := bmmcli.AutoRefreshToken(cfg)
+	token, _ := carbidecli.AutoRefreshToken(cfg)
 	if token == "" {
-		token = bmmcli.GetAuthToken(cfg)
+		token = carbidecli.GetAuthToken(cfg)
 	}
 
-	client := bmmcli.NewClient(baseURL, org, token, nil, false)
+	client := carbidecli.NewClient(baseURL, org, token, nil, false)
 	client.APIName = apiName
 
 	session := NewSession(client, org, configPath)
 	session.Token = token
 
-	if bmmcli.HasOIDCConfig(cfg) || bmmcli.HasAPIKeyConfig(cfg) {
+	if carbidecli.HasOIDCConfig(cfg) || carbidecli.HasAPIKeyConfig(cfg) {
 		session.LoginFn = func() (string, error) {
 			return loginFromConfig(cfg, configPath)
 		}
@@ -158,19 +158,19 @@ func RunTUI(explicitConfig string) error {
 }
 
 // loginFromConfig performs a fresh login using the config's auth method.
-func loginFromConfig(cfg *bmmcli.ConfigFile, configPath string) (string, error) {
-	if bmmcli.HasOIDCConfig(cfg) {
-		newToken, err := bmmcli.AutoRefreshToken(cfg)
+func loginFromConfig(cfg *carbidecli.ConfigFile, configPath string) (string, error) {
+	if carbidecli.HasOIDCConfig(cfg) {
+		newToken, err := carbidecli.AutoRefreshToken(cfg)
 		if err != nil || newToken == "" {
 			return "", fmt.Errorf("OIDC token refresh failed: %w", err)
 		}
-		if saveErr := bmmcli.SaveConfigToPath(cfg, configPath); saveErr != nil {
+		if saveErr := carbidecli.SaveConfigToPath(cfg, configPath); saveErr != nil {
 			fmt.Fprintf(os.Stderr, "Warning: could not save refreshed token: %v\n", saveErr)
 		}
 		return newToken, nil
 	}
-	if bmmcli.HasAPIKeyConfig(cfg) {
-		return bmmcli.ExchangeAPIKey(cfg, configPath)
+	if carbidecli.HasAPIKeyConfig(cfg) {
+		return carbidecli.ExchangeAPIKey(cfg, configPath)
 	}
 	return "", fmt.Errorf("no auth method configured")
 }

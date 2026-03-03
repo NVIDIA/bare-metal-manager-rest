@@ -3,31 +3,58 @@ SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All 
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# BMM CLI
+# Carbide CLI
 
-Command-line client for the NVIDIA Bare Metal Manager REST API. Commands are dynamically generated from the embedded OpenAPI spec at startup — zero manual command code.
+Command-line client for the NVIDIA Bare Metal Manager REST API. Commands are dynamically generated from the embedded OpenAPI spec at startup, so every API endpoint is available with zero manual command code.
 
-## Install
+## Prerequisites
+
+- Go 1.25.4 or later
+- Access to a running Bare Metal Manager REST API instance (local via `make kind-reset` or remote)
+
+## Installation
+
+### From the repo (recommended)
 
 ```bash
-make install-bmmcli
+make carbide-cli
 ```
 
-Installs to `$(go env GOPATH)/bin/bmmcli`. Override with `make install-bmmcli INSTALL_DIR=/usr/local/bin`.
+This builds and installs `carbidecli` to `$(go env GOPATH)/bin/carbidecli`. Override the destination with:
+
+```bash
+make carbide-cli INSTALL_DIR=/usr/local/bin
+```
+
+### With go install
+
+```bash
+go install ./cli/cmd/carbidecli
+```
+
+### Manual go build
+
+```bash
+go build -o /usr/local/bin/carbidecli ./cli/cmd/carbidecli
+```
+
+### Verify
+
+```bash
+carbidecli --version
+```
 
 ## Quick Start
 
-Generate a config file:
-
 ```bash
-bmmcli init                    # writes ~/.bmm/config.yaml
+carbidecli init                    # writes ~/.bmm/config.yaml
 ```
 
 Edit `~/.bmm/config.yaml` with your server URL, org, and auth settings, then:
 
 ```bash
-bmmcli login                   # exchange credentials for a token
-bmmcli site list               # list all sites
+carbidecli login                   # exchange credentials for a token
+carbidecli site list               # list all sites
 ```
 
 ## Configuration
@@ -73,16 +100,16 @@ Flags and environment variables override config values:
 
 ```bash
 # OIDC (credentials from config, prompts for password if not stored)
-bmmcli login
+carbidecli login
 
 # OIDC with explicit flags
-bmmcli --token-url https://auth.example.com/token login --username admin@example.com
+carbidecli --token-url https://auth.example.com/token login --username admin@example.com
 
 # NGC API key
-bmmcli login --api-key nvapi-xxxx
+carbidecli login --api-key nvapi-xxxx
 
 # Keycloak shorthand
-bmmcli --keycloak-url http://localhost:8080 login --username admin@example.com
+carbidecli --keycloak-url http://localhost:8080 login --username admin@example.com
 ```
 
 Tokens are saved to `~/.bmm/config.yaml` with auto-refresh for OIDC.
@@ -90,22 +117,22 @@ Tokens are saved to `~/.bmm/config.yaml` with auto-refresh for OIDC.
 ## Usage
 
 ```bash
-bmmcli site list
-bmmcli site get <siteId>
-bmmcli site create --name "SJC4"
-bmmcli site create --data-file site.json
-cat site.json | bmmcli site create --data-file -
-bmmcli site delete <siteId>
-bmmcli instance list --status provisioned --page-size 20
-bmmcli instance list --all                # fetch all pages
-bmmcli allocation constraint create <allocationId> --constraint-type SITE
-bmmcli site list --output table
-bmmcli --debug site list
+carbidecli site list
+carbidecli site get <siteId>
+carbidecli site create --name "SJC4"
+carbidecli site create --data-file site.json
+cat site.json | carbidecli site create --data-file -
+carbidecli site delete <siteId>
+carbidecli instance list --status provisioned --page-size 20
+carbidecli instance list --all                # fetch all pages
+carbidecli allocation constraint create <allocationId> --constraint-type SITE
+carbidecli site list --output table
+carbidecli --debug site list
 ```
 
 ## Command Structure
 
-Commands follow `bmmcli <resource> [sub-resource] <action> [args] [flags]`.
+Commands follow `carbidecli <resource> [sub-resource] <action> [args] [flags]`.
 
 | Spec Pattern | CLI Action |
 |---|---|
@@ -121,22 +148,42 @@ Commands follow `bmmcli <resource> [sub-resource] <action> [args] [flags]`.
 Nested API paths appear as sub-resource groups:
 
 ```
-bmmcli allocation list
-bmmcli allocation constraint list
-bmmcli allocation constraint create <allocationId>
+carbidecli allocation list
+carbidecli allocation constraint list
+carbidecli allocation constraint create <allocationId>
 ```
 
 ## Shell Completion
 
 ```bash
 # Bash
-eval "$(bmmcli completion bash)"
+eval "$(carbidecli completion bash)"
 
 # Zsh
-eval "$(bmmcli completion zsh)"
+eval "$(carbidecli completion zsh)"
 
 # Fish
-bmmcli completion fish > ~/.config/fish/completions/bmmcli.fish
+carbidecli completion fish > ~/.config/fish/completions/carbidecli.fish
+```
+
+## Interactive TUI Mode
+
+Launch an interactive terminal UI with environment selector:
+
+```bash
+carbidecli tui
+```
+
+The TUI reads all config files from `~/.bmm/` and lets you pick the target environment before running commands. You can also launch it with the `i` alias:
+
+```bash
+carbidecli i
+```
+
+To start the TUI with a specific config pre-selected:
+
+```bash
+carbidecli --config ~/.bmm/config.staging.yaml tui
 ```
 
 ## Multi-Environment Configs
@@ -152,5 +199,19 @@ Place multiple configs in `~/.bmm/`:
 Select with `--config`:
 
 ```bash
-bmmcli --config ~/.bmm/config.staging.yaml site list
+carbidecli --config ~/.bmm/config.staging.yaml site list
+```
+
+## Troubleshooting
+
+If `carbidecli` is not found after install, make sure `$(go env GOPATH)/bin` is in your PATH:
+
+```bash
+export PATH="$(go env GOPATH)/bin:$PATH"
+```
+
+Use `--debug` on any command to see the full HTTP request and response for diagnosing issues:
+
+```bash
+carbidecli --debug site list
 ```

@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package bmmcli
+package carbidecli
 
 import (
 	"fmt"
@@ -41,7 +41,7 @@ func NewApp(specData []byte) (*cli.App, error) {
 	commands = append(commands, completionCommand())
 
 	app := &cli.App{
-		Name:                 "bmmcli",
+		Name:                 "carbidecli",
 		Usage:                spec.Info.Title,
 		Version:              spec.Info.Version,
 		EnableBashCompletion: true,
@@ -143,9 +143,9 @@ func completionCommand() *cli.Command {
 	}
 }
 
-const bashCompletion = `# bash completion for bmmcli
-# Add to ~/.bashrc:  eval "$(bmmcli completion bash)"
-_bmmcli_complete() {
+const bashCompletion = `# bash completion for carbidecli
+# Add to ~/.bashrc:  eval "$(carbidecli completion bash)"
+_carbidecli_complete() {
     local cur opts
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
@@ -153,21 +153,21 @@ _bmmcli_complete() {
     COMPREPLY=($(compgen -W "${opts}" -- "${cur}"))
     return 0
 }
-complete -o default -F _bmmcli_complete bmmcli
+complete -o default -F _carbidecli_complete carbidecli
 `
 
-const zshCompletion = `# zsh completion for bmmcli
-# Add to ~/.zshrc:  eval "$(bmmcli completion zsh)"
-_bmmcli_complete() {
+const zshCompletion = `# zsh completion for carbidecli
+# Add to ~/.zshrc:  eval "$(carbidecli completion zsh)"
+_carbidecli_complete() {
     local -a opts
     opts=(${(f)"$(${words[1]} --generate-bash-completion ${words:1:$CURRENT-1})"})
-    _describe 'bmmcli' opts
+    _describe 'carbidecli' opts
 }
-compdef _bmmcli_complete bmmcli
+compdef _carbidecli_complete carbidecli
 `
 
-const fishCompletion = `# fish completion for bmmcli
-# Add to ~/.config/fish/completions/bmmcli.fish or run:
-#   bmmcli completion fish > ~/.config/fish/completions/bmmcli.fish
-complete -c bmmcli -f -a '(bmmcli --generate-bash-completion (commandline -cop))'
+const fishCompletion = `# fish completion for carbidecli
+# Add to ~/.config/fish/completions/carbidecli.fish or run:
+#   carbidecli completion fish > ~/.config/fish/completions/carbidecli.fish
+complete -c carbidecli -f -a '(carbidecli --generate-bash-completion (commandline -cop))'
 `
