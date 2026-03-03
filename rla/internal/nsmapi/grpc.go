@@ -21,11 +21,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"sync"
-	"testing"
 	"time"
 
-	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -40,18 +37,9 @@ type grpcClient struct {
 	grpcTimeout time.Duration
 }
 
-var testingMsgOnce sync.Once
-
 // NewClient creates a gRPC connection pool to NV-Switch Manager. Returning success does not mean that we have yet
 // made an actual connection; that happens when making an actual request.
 func NewClient(grpcTimeout time.Duration) (Client, error) {
-	if testing.Testing() {
-		testingMsgOnce.Do(func() {
-			log.Info().Msg("Running unit tests, forcing mock gRPC client for NV-Switch Manager")
-		})
-		return NewMockClient(), nil
-	}
-
 	nsmURL := os.Getenv("NSM_API_URL")
 	if nsmURL == "" {
 		return nil, errors.New("NSM_API_URL not set, cannot make connections to NV-Switch Manager")

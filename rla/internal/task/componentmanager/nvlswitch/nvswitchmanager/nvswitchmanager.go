@@ -146,7 +146,7 @@ func (m *Manager) FirmwareControl(
 	case operations.FirmwareOperationUpgrade:
 		return m.firmwareUpgrade(ctx, target, info)
 	case operations.FirmwareOperationVersion:
-		return m.firmwareVersion(ctx, target)
+		return fmt.Errorf("firmware version not currently supported by NV-Switch Manager")
 	case operations.FirmwareOperationDowngrade:
 		return fmt.Errorf("firmware downgrade not supported by NV-Switch Manager; use upgrade with the desired target version")
 	case operations.FirmwareOperationRollback:
@@ -172,22 +172,6 @@ func (m *Manager) firmwareUpgrade(ctx context.Context, target common.Target, inf
 			Str("bundle_version", info.TargetVersion).
 			Int("updates_queued", len(updates)).
 			Msg("Firmware update queued via NV-Switch Manager")
-	}
-
-	return nil
-}
-
-func (m *Manager) firmwareVersion(ctx context.Context, target common.Target) error {
-	for _, componentID := range target.ComponentIDs {
-		bundles, err := m.nsmClient.ListBundles(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to list firmware bundles for switch %s: %w", componentID, err)
-		}
-
-		log.Info().
-			Str("switch_uuid", componentID).
-			Int("bundles_available", len(bundles)).
-			Msg("Firmware bundles retrieved via NV-Switch Manager")
 	}
 
 	return nil
