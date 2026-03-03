@@ -3,7 +3,7 @@ NVIDIA Bare Metal Manager REST API
 
 NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to as Sites.
 
-API version: 1.0.4
+API version: 1.0.5
 Contact: carbide-dev@exchange.nvidia.com
 */
 
@@ -183,6 +183,7 @@ type ApiGetAllMachineRequest struct {
 	hasInstanceType *bool
 	instanceTypeId *string
 	tenantId *string
+	hasInstance *bool
 	includeMetadata *bool
 	status *string
 	capabilityType *string
@@ -222,6 +223,12 @@ func (r ApiGetAllMachineRequest) InstanceTypeId(instanceTypeId string) ApiGetAll
 // Filter Machines by ID of tenant of assigned instance. Can be specified multiple times to filter on more than one Tenant ID.
 func (r ApiGetAllMachineRequest) TenantId(tenantId string) ApiGetAllMachineRequest {
 	r.tenantId = &tenantId
+	return r
+}
+
+// Filter Machines that are assigned to an Instance. siteId must be specified when using this param.
+func (r ApiGetAllMachineRequest) HasInstance(hasInstance bool) ApiGetAllMachineRequest {
+	r.hasInstance = &hasInstance
 	return r
 }
 
@@ -346,6 +353,9 @@ func (a *MachineAPIService) GetAllMachineExecute(r ApiGetAllMachineRequest) ([]M
 	if r.tenantId != nil {
 		parameterAddToHeaderOrQuery(localVarQueryParams, "tenantId", r.tenantId, "form", "")
 	}
+	if r.hasInstance != nil {
+		parameterAddToHeaderOrQuery(localVarQueryParams, "hasInstance", r.hasInstance, "form", "")
+	}
 	if r.includeMetadata != nil {
 		parameterAddToHeaderOrQuery(localVarQueryParams, "includeMetadata", r.includeMetadata, "form", "")
 	}
@@ -371,7 +381,6 @@ func (a *MachineAPIService) GetAllMachineExecute(r ApiGetAllMachineRequest) ([]M
 		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", r.pageNumber, "form", "")
 	} else {
 		var defaultValue int32 = 1
-		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", defaultValue, "form", "")
 		r.pageNumber = &defaultValue
 	}
 	if r.pageSize != nil {
@@ -612,7 +621,6 @@ func (a *MachineAPIService) GetAllMachineCapabilitiesExecute(r ApiGetAllMachineC
 		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", r.pageNumber, "form", "")
 	} else {
 		var defaultValue int32 = 1
-		parameterAddToHeaderOrQuery(localVarQueryParams, "pageNumber", defaultValue, "form", "")
 		r.pageNumber = &defaultValue
 	}
 	if r.pageSize != nil {
