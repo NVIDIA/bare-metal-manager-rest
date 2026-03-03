@@ -424,12 +424,6 @@ func (gamh GetAllMachineHandler) Handle(c echo.Context) error {
 	qTenantIDStrs := qParams["tenantId"]
 	if len(qTenantIDStrs) > 0 {
 		gamh.tracerSpan.SetAttribute(handlerSpan, attribute.StringSlice("tenantId", qTenantIDStrs), logger)
-		if infrastructureProvider == nil {
-			if !tenant.Config.TargetedInstanceCreation && !(len(qTenantIDStrs) == 1 && qTenantIDStrs[0] == tenant.ID.String()) {
-				logger.Warn().Msg("`tenantId` filter for Machines is only available to Provider or privileged Tenants")
-				return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "`tenantId` filter for Machines is only available to Provider or privileged Tenants", nil)
-			}
-		}
 		tenantAccountDAO := cdbm.NewTenantAccountDAO(gamh.dbSession)
 		tenantIDs := make([]uuid.UUID, 0, len(qTenantIDStrs))
 		for _, tenantIDStr := range qTenantIDStrs {
@@ -481,9 +475,6 @@ func (gamh GetAllMachineHandler) Handle(c echo.Context) error {
 		hi, serr := strconv.ParseBool(qHasInstance)
 		if serr != nil {
 			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Invalid value specified for `hasInstance` in query", nil)
-		}
-		if infrastructureProvider == nil && !tenant.Config.TargetedInstanceCreation {
-			return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "`hasInstance` filter for Machines is only available to Provider or privileged Tenants", nil)
 		}
 
 		if filterInput.SiteID == nil {
