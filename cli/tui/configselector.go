@@ -29,7 +29,7 @@ import (
 	carbidecli "github.com/nvidia/bare-metal-manager-rest/cli/pkg"
 )
 
-// ChooseConfigFile scans ~/.bmm for config*.yaml files and shows an interactive
+// ChooseConfigFile scans ~/.carbide for config*.yaml files and shows an interactive
 // selector if multiple configs exist. Returns the chosen path, or empty string
 // if only one config exists (use default) or no terminal is available.
 func ChooseConfigFile(explicitPath string) (string, error) {
@@ -45,7 +45,7 @@ func ChooseConfigFile(explicitPath string) (string, error) {
 		return "", nil
 	}
 
-	configDir := filepath.Join(home, ".bmm")
+	configDir := filepath.Join(home, ".carbide")
 	entries, err := os.ReadDir(configDir)
 	if err != nil {
 		if os.IsNotExist(err) {

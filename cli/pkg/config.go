@@ -25,7 +25,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ConfigFile mirrors the ~/.bmm/config.yaml structure.
+// ConfigFile mirrors the ~/.carbide/config.yaml structure.
 type ConfigFile struct {
 	API  ConfigAPI  `yaml:"api"`
 	Auth ConfigAuth `yaml:"auth"`
@@ -79,9 +79,9 @@ func defaultConfigPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		fmt.Fprintln(os.Stderr, "Warning: could not determine home directory, using current directory for config")
-		return filepath.Join(".bmm", "config.yaml")
+		return filepath.Join(".carbide", "config.yaml")
 	}
-	return filepath.Join(home, ".bmm", "config.yaml")
+	return filepath.Join(home, ".carbide", "config.yaml")
 }
 
 // ConfigDir returns the directory containing the active config file.

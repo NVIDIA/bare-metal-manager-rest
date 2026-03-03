@@ -56,17 +56,17 @@ func LoginCommand() *cli.Command {
 			&cli.StringFlag{
 				Name:    "client-secret",
 				Usage:   "Client secret (required for confidential OIDC clients)",
-				EnvVars: []string{"BMM_CLIENT_SECRET"},
+				EnvVars: []string{"CARBIDE_CLIENT_SECRET"},
 			},
 			&cli.StringFlag{
 				Name:    "api-key",
 				Usage:   "NGC API key for token exchange",
-				EnvVars: []string{"BMM_API_KEY"},
+				EnvVars: []string{"CARBIDE_API_KEY"},
 			},
 			&cli.StringFlag{
 				Name:    "authn-url",
 				Usage:   "NGC authentication URL for API key exchange",
-				EnvVars: []string{"BMM_AUTHN_URL"},
+				EnvVars: []string{"CARBIDE_AUTHN_URL"},
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -92,7 +92,7 @@ func LoginCommand() *cli.Command {
 func InitCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "init",
-		Usage: "Generate a sample config file at ~/.bmm/config.yaml",
+		Usage: "Generate a sample config file at ~/.carbide/config.yaml",
 		Action: func(c *cli.Context) error {
 			path := ConfigPath()
 			if _, err := os.Stat(path); err == nil {

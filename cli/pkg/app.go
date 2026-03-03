@@ -49,23 +49,23 @@ func NewApp(specData []byte) (*cli.App, error) {
 			&cli.StringFlag{
 				Name:    "config",
 				Usage:   "Path to config file",
-				EnvVars: []string{"BMM_CONFIG"},
+				EnvVars: []string{"CARBIDE_CONFIG"},
 			},
 			&cli.StringFlag{
 				Name:    "base-url",
 				Usage:   "API base URL",
-				EnvVars: []string{"BMM_BASE_URL"},
+				EnvVars: []string{"CARBIDE_BASE_URL"},
 				Value:   defaultBaseURL,
 			},
 			&cli.StringFlag{
 				Name:    "org",
 				Usage:   "Organization name",
-				EnvVars: []string{"BMM_ORG"},
+				EnvVars: []string{"CARBIDE_ORG"},
 			},
 			&cli.StringFlag{
 				Name:    "token",
 				Usage:   "API bearer token",
-				EnvVars: []string{"BMM_TOKEN"},
+				EnvVars: []string{"CARBIDE_TOKEN"},
 			},
 			&cli.StringFlag{
 				Name:  "token-command",
@@ -78,23 +78,23 @@ func NewApp(specData []byte) (*cli.App, error) {
 			&cli.StringFlag{
 				Name:    "token-url",
 				Usage:   "OIDC token endpoint URL for login and token refresh",
-				EnvVars: []string{"BMM_TOKEN_URL"},
+				EnvVars: []string{"CARBIDE_TOKEN_URL"},
 			},
 			&cli.StringFlag{
 				Name:    "keycloak-url",
 				Usage:   "Keycloak base URL (constructs token-url if --token-url is not set)",
-				EnvVars: []string{"BMM_KEYCLOAK_URL"},
+				EnvVars: []string{"CARBIDE_KEYCLOAK_URL"},
 			},
 			&cli.StringFlag{
 				Name:    "keycloak-realm",
 				Usage:   "Keycloak realm (used with --keycloak-url)",
-				EnvVars: []string{"BMM_KEYCLOAK_REALM"},
+				EnvVars: []string{"CARBIDE_KEYCLOAK_REALM"},
 				Value:   "carbide-dev",
 			},
 			&cli.StringFlag{
 				Name:    "client-id",
 				Usage:   "OAuth client ID",
-				EnvVars: []string{"BMM_CLIENT_ID"},
+				EnvVars: []string{"CARBIDE_CLIENT_ID"},
 				Value:   "carbide-api",
 			},
 		},

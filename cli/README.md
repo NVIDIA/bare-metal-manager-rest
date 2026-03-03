@@ -49,9 +49,9 @@ carbidecli --version
 Generate a default config and add configs for each environment you work with:
 
 ```bash
-carbidecli init                    # writes ~/.bmm/config.yaml
-cp ~/.bmm/config.yaml ~/.bmm/config.staging.yaml
-cp ~/.bmm/config.yaml ~/.bmm/config.prod.yaml
+carbidecli init                    # writes ~/.carbide/config.yaml
+cp ~/.carbide/config.yaml ~/.carbide/config.staging.yaml
+cp ~/.carbide/config.yaml ~/.carbide/config.prod.yaml
 ```
 
 Edit each file with the appropriate server URL, org, and auth settings for that environment (see Configuration below), then launch interactive mode:
@@ -71,7 +71,7 @@ carbidecli site list               # list all sites
 
 ## Configuration
 
-Config file: `~/.bmm/config.yaml`
+Config file: `~/.carbide/config.yaml`
 
 ```yaml
 api:
@@ -99,13 +99,13 @@ Flags and environment variables override config values:
 
 | Flag | Env Var | Description |
 |------|---------|-------------|
-| `--base-url` | `BMM_BASE_URL` | API base URL |
-| `--org` | `BMM_ORG` | Organization name |
-| `--token` | `BMM_TOKEN` | Bearer token |
-| `--token-url` | `BMM_TOKEN_URL` | OIDC token endpoint URL |
-| `--keycloak-url` | `BMM_KEYCLOAK_URL` | Keycloak base URL (constructs token-url) |
-| `--keycloak-realm` | `BMM_KEYCLOAK_REALM` | Keycloak realm (default: `carbide-dev`) |
-| `--client-id` | `BMM_CLIENT_ID` | OAuth client ID |
+| `--base-url` | `CARBIDE_BASE_URL` | API base URL |
+| `--org` | `CARBIDE_ORG` | Organization name |
+| `--token` | `CARBIDE_TOKEN` | Bearer token |
+| `--token-url` | `CARBIDE_TOKEN_URL` | OIDC token endpoint URL |
+| `--keycloak-url` | `CARBIDE_KEYCLOAK_URL` | Keycloak base URL (constructs token-url) |
+| `--keycloak-realm` | `CARBIDE_KEYCLOAK_REALM` | Keycloak realm (default: `carbide-dev`) |
+| `--client-id` | `CARBIDE_CLIENT_ID` | OAuth client ID |
 | `--output`, `-o` | | Output format: `json` (default), `yaml`, `table` |
 
 ## Authentication
@@ -124,7 +124,7 @@ carbidecli login --api-key nvapi-xxxx
 carbidecli --keycloak-url http://localhost:8080 login --username admin@example.com
 ```
 
-Tokens are saved to `~/.bmm/config.yaml` with auto-refresh for OIDC.
+Tokens are saved to `~/.carbide/config.yaml` with auto-refresh for OIDC.
 
 ## Usage
 
@@ -180,20 +180,20 @@ carbidecli completion fish > ~/.config/fish/completions/carbidecli.fish
 
 ## Multi-Environment Configs
 
-Each environment (local dev, staging, prod) gets its own config file in `~/.bmm/`:
+Each environment (local dev, staging, prod) gets its own config file in `~/.carbide/`:
 
 ```
-~/.bmm/config.yaml           # default (local dev)
-~/.bmm/config.staging.yaml   # staging
-~/.bmm/config.prod.yaml      # production
+~/.carbide/config.yaml           # default (local dev)
+~/.carbide/config.staging.yaml   # staging
+~/.carbide/config.prod.yaml      # production
 ```
 
-The TUI automatically discovers all `config*.yaml` files in `~/.bmm/` and presents them as a selection list at startup. This is the easiest way to switch between environments without remembering URLs or re-authenticating.
+The TUI automatically discovers all `config*.yaml` files in `~/.carbide/` and presents them as a selection list at startup. This is the easiest way to switch between environments without remembering URLs or re-authenticating.
 
 For direct commands, select an environment with `--config`:
 
 ```bash
-carbidecli --config ~/.bmm/config.staging.yaml site list
+carbidecli --config ~/.carbide/config.staging.yaml site list
 ```
 
 ## Interactive TUI Mode
@@ -213,7 +213,7 @@ carbidecli i
 To skip the config selector and connect to a specific environment directly:
 
 ```bash
-carbidecli --config ~/.bmm/config.prod.yaml tui
+carbidecli --config ~/.carbide/config.prod.yaml tui
 ```
 
 ## Troubleshooting

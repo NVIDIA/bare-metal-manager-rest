@@ -607,7 +607,7 @@ func clientFromContext(c *cli.Context) (*Client, error) {
 	}
 
 	if resolved == "" {
-		return nil, fmt.Errorf("no token available; run 'carbidecli login' or set --token / BMM_TOKEN")
+		return nil, fmt.Errorf("no token available; run 'carbidecli login' or set --token / CARBIDE_TOKEN")
 	}
 
 	// Explicit flag > config > flag default (spec server URL).
