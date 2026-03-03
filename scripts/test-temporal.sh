@@ -166,7 +166,7 @@ test_rotation() {
     kubectl -n "$NAMESPACE" wait --for=condition=Ready certificate/server-interservice-cert --timeout="${TIMEOUT}s"
     kubectl -n "$NAMESPACE" wait --for=condition=Ready certificate/server-cloud-cert --timeout="${TIMEOUT}s"
     kubectl -n "$NAMESPACE" wait --for=condition=Ready certificate/server-site-cert --timeout="${TIMEOUT}s"
-    kubectl -n "$CARBIDE_REST_NAMESPACE" wait --for=condition=Ready certificate/temporal-client-cloud-certs --timeout="${TIMEOUT}s"
+    kubectl -n "$CARBIDE_REST_NAMESPACE" wait --for=condition=Ready certificate/temporal-client-cloud-cert --timeout="${TIMEOUT}s"
     echo ""
 
     echo "Step 5: Verifying new certificate serial numbers..."

@@ -49,4 +49,4 @@ data:
   DB_ADDR: "postgres.postgres"
   DB_USER: "forge"
   DB_DATABASE: "elektratest"
-  DB_PORT: "5432"  # Temporal TLS - disabled for local dev
+  DB_PORT: "5432"

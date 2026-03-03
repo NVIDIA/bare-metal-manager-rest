@@ -378,7 +378,6 @@ kind-reset:
 	kubectl -n temporal wait --for=condition=Ready certificate/server-interservice-cert --timeout=240s || true
 	kubectl -n temporal wait --for=condition=Ready certificate/server-cloud-cert --timeout=240s || true
 	kubectl -n temporal wait --for=condition=Ready certificate/server-site-cert --timeout=240s || true
-	kubectl -n carbide-rest wait --for=condition=Ready certificate/temporal-client-cert --timeout=240s || true
 	@echo "Updating Helm chart dependencies..."
 	helm dependency update temporal-helm/temporal/
 	@echo "Installing Temporal via Helm chart..."
@@ -410,6 +409,7 @@ kind-reset:
 
 	@echo "Setting up Carbide REST services..."
 	kubectl apply -k deploy/kustomize/base/common
+	kubectl -n carbide-rest wait --for=condition=Ready certificate/temporal-client-cloud-cert --timeout=240s || true
 
 	@echo "Setting up Carbide REST Cert Manager..."
 	kubectl apply -k deploy/kustomize/overlays/cert-manager
