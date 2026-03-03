@@ -46,11 +46,23 @@ carbidecli --version
 
 ## Quick Start
 
+Generate a default config and add configs for each environment you work with:
+
 ```bash
 carbidecli init                    # writes ~/.bmm/config.yaml
+cp ~/.bmm/config.yaml ~/.bmm/config.staging.yaml
+cp ~/.bmm/config.yaml ~/.bmm/config.prod.yaml
 ```
 
-Edit `~/.bmm/config.yaml` with your server URL, org, and auth settings, then:
+Edit each file with the appropriate server URL, org, and auth settings for that environment (see Configuration below), then launch interactive mode:
+
+```bash
+carbidecli tui
+```
+
+The TUI will list your configs, let you pick an environment, authenticate, and start running commands. This is the recommended way to use `carbidecli` since it handles environment selection, login, and token refresh automatically.
+
+For direct one-off commands without the TUI:
 
 ```bash
 carbidecli login                   # exchange credentials for a token
@@ -166,29 +178,9 @@ eval "$(carbidecli completion zsh)"
 carbidecli completion fish > ~/.config/fish/completions/carbidecli.fish
 ```
 
-## Interactive TUI Mode
-
-Launch an interactive terminal UI with environment selector:
-
-```bash
-carbidecli tui
-```
-
-The TUI reads all config files from `~/.bmm/` and lets you pick the target environment before running commands. You can also launch it with the `i` alias:
-
-```bash
-carbidecli i
-```
-
-To start the TUI with a specific config pre-selected:
-
-```bash
-carbidecli --config ~/.bmm/config.staging.yaml tui
-```
-
 ## Multi-Environment Configs
 
-Place multiple configs in `~/.bmm/`:
+Each environment (local dev, staging, prod) gets its own config file in `~/.bmm/`:
 
 ```
 ~/.bmm/config.yaml           # default (local dev)
@@ -196,10 +188,32 @@ Place multiple configs in `~/.bmm/`:
 ~/.bmm/config.prod.yaml      # production
 ```
 
-Select with `--config`:
+The TUI automatically discovers all `config*.yaml` files in `~/.bmm/` and presents them as a selection list at startup. This is the easiest way to switch between environments without remembering URLs or re-authenticating.
+
+For direct commands, select an environment with `--config`:
 
 ```bash
 carbidecli --config ~/.bmm/config.staging.yaml site list
+```
+
+## Interactive TUI Mode
+
+The TUI is the recommended way to interact with the API. It handles config selection, authentication, and token refresh in one session:
+
+```bash
+carbidecli tui
+```
+
+You can also launch it with the `i` alias:
+
+```bash
+carbidecli i
+```
+
+To skip the config selector and connect to a specific environment directly:
+
+```bash
+carbidecli --config ~/.bmm/config.prod.yaml tui
 ```
 
 ## Troubleshooting

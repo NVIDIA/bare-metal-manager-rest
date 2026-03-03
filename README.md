@@ -72,16 +72,26 @@ make kind-down      # Tear down cluster
 
 ## CLI
 
-`carbidecli` is a command-line client that wraps the full REST API. Install it from the repo and point it at any BMM environment:
+`carbidecli` is a command-line client that wraps the full REST API. Install it and set up configs for each environment you work with:
 
 ```bash
-make carbide-cli              # build and install to $GOPATH/bin
+make carbide-cli             # build and install to $GOPATH/bin
 carbidecli init              # generate ~/.bmm/config.yaml
-carbidecli login             # authenticate
-carbidecli site list         # start using the API
 ```
 
-See [cli/README.md](cli/README.md) for configuration, authentication, shell completion, TUI mode, and the full command reference.
+Create a config per environment (`~/.bmm/config.yaml`, `~/.bmm/config.staging.yaml`, `~/.bmm/config.prod.yaml`), then launch the interactive TUI which handles environment selection, login, and token refresh automatically:
+
+```bash
+carbidecli tui
+```
+
+All commands are also available directly for scripting and one-off use:
+
+```bash
+carbidecli --config ~/.bmm/config.staging.yaml site list
+```
+
+See [cli/README.md](cli/README.md) for configuration, authentication, shell completion, and the full command reference.
 
 ## Using the API
 
