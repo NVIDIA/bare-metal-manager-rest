@@ -27,12 +27,12 @@ type Client interface {
 	// PowerControl performs a power action on the specified NV-Switch trays.
 	PowerControl(ctx context.Context, uuids []string, action PowerAction) ([]PowerControlResult, error)
 
-	// QueueUpdate queues firmware updates for one or more components on a single switch.
+	// QueueUpdates queues firmware updates for one or more components for multiple switches.
 	// If components is empty, all components in the bundle are updated in sequence.
-	QueueUpdate(ctx context.Context, switchUUID string, bundleVersion string, components []NVSwitchComponent) ([]FirmwareUpdateInfo, error)
+	QueueUpdates(ctx context.Context, switchUUIDs []string, bundleVersion string, components []NVSwitchComponent) ([]FirmwareUpdateInfo, error)
 
 	// GetUpdate returns the status of a specific firmware update by ID.
-	GetUpdate(ctx context.Context, updateID string) (*FirmwareUpdateInfo, error)
+	GetUpdates(ctx context.Context, switchUUID string) ([]FirmwareUpdateInfo, error)
 
 	// ListBundles returns all available firmware bundles.
 	ListBundles(ctx context.Context) ([]FirmwareBundle, error)

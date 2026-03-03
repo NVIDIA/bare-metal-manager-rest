@@ -105,6 +105,21 @@ func (c NVSwitchComponent) String() string {
 	}
 }
 
+func nvSwitchComponentFromPb(c pb.NVSwitchComponent) NVSwitchComponent {
+	switch c {
+	case pb.NVSwitchComponent_NVSWITCH_COMPONENT_BMC:
+		return NVSwitchComponentBMC
+	case pb.NVSwitchComponent_NVSWITCH_COMPONENT_CPLD:
+		return NVSwitchComponentCPLD
+	case pb.NVSwitchComponent_NVSWITCH_COMPONENT_BIOS:
+		return NVSwitchComponentBIOS
+	case pb.NVSwitchComponent_NVSWITCH_COMPONENT_NVOS:
+		return NVSwitchComponentNVOS
+	default:
+		return NVSwitchComponentUnknown
+	}
+}
+
 func nvSwitchComponentToPb(c NVSwitchComponent) pb.NVSwitchComponent {
 	switch c {
 	case NVSwitchComponentBMC:
@@ -181,7 +196,34 @@ func (s UpdateState) IsTerminal() bool {
 }
 
 func updateStateFromPb(s pb.UpdateState) UpdateState {
-	return UpdateState(s)
+	switch s {
+	case pb.UpdateState_UPDATE_STATE_QUEUED:
+		return UpdateStateQueued
+	case pb.UpdateState_UPDATE_STATE_POWER_CYCLE:
+		return UpdateStatePowerCycle
+	case pb.UpdateState_UPDATE_STATE_WAIT_REACHABLE:
+		return UpdateStateWaitReachable
+	case pb.UpdateState_UPDATE_STATE_COPY:
+		return UpdateStateCopy
+	case pb.UpdateState_UPDATE_STATE_UPLOAD:
+		return UpdateStateUpload
+	case pb.UpdateState_UPDATE_STATE_INSTALL:
+		return UpdateStateInstall
+	case pb.UpdateState_UPDATE_STATE_POLL_COMPLETION:
+		return UpdateStatePollCompletion
+	case pb.UpdateState_UPDATE_STATE_VERIFY:
+		return UpdateStateVerify
+	case pb.UpdateState_UPDATE_STATE_CLEANUP:
+		return UpdateStateCleanup
+	case pb.UpdateState_UPDATE_STATE_COMPLETED:
+		return UpdateStateCompleted
+	case pb.UpdateState_UPDATE_STATE_FAILED:
+		return UpdateStateFailed
+	case pb.UpdateState_UPDATE_STATE_CANCELLED:
+		return UpdateStateCancelled
+	default:
+		return UpdateStateUnknown
+	}
 }
 
 // FirmwareUpdateInfo contains full details of a firmware update operation.
@@ -206,7 +248,7 @@ func firmwareUpdateInfoFromPb(info *pb.FirmwareUpdateInfo) FirmwareUpdateInfo {
 	result := FirmwareUpdateInfo{
 		ID:             info.GetId(),
 		SwitchUUID:     info.GetSwitchUuid(),
-		Component:      NVSwitchComponent(info.GetComponent()),
+		Component:      nvSwitchComponentFromPb(info.GetComponent()),
 		BundleVersion:  info.GetBundleVersion(),
 		State:          updateStateFromPb(info.GetState()),
 		VersionFrom:    info.GetVersionFrom(),

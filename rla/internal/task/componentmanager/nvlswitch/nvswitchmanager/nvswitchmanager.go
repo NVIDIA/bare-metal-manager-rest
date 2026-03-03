@@ -19,6 +19,7 @@ package nvswitchmanager
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/rs/zerolog/log"
 
@@ -161,16 +162,19 @@ func (m *Manager) firmwareUpgrade(ctx context.Context, target common.Target, inf
 		return fmt.Errorf("target_version (bundle version) is required for firmware upgrade")
 	}
 
-	for _, componentID := range target.ComponentIDs {
-		updates, err := m.nsmClient.QueueUpdate(ctx, componentID, info.TargetVersion, nil)
-		if err != nil {
-			return fmt.Errorf("failed to queue firmware update for switch %s: %w", componentID, err)
-		}
+	updates, err := m.nsmClient.QueueUpdates(ctx, target.ComponentIDs, info.TargetVersion, nil)
+	if err != nil {
+		return fmt.Errorf("failed to queue firmware updates via NV-Switch Manager: %w", err)
+	}
 
+	for _, update := range updates {
+		if update.ErrorMessage != "" {
+			return fmt.Errorf("firmware update failed for switch %s: %s", update.SwitchUUID, update.ErrorMessage)
+		}
 		log.Info().
-			Str("switch_uuid", componentID).
+			Str("switch_uuid", update.SwitchUUID).
 			Str("bundle_version", info.TargetVersion).
-			Int("updates_queued", len(updates)).
+			Str("update_id", update.ID).
 			Msg("Firmware update queued via NV-Switch Manager")
 	}
 
@@ -200,5 +204,172 @@ func mapPowerOperation(op operations.PowerOperation) (nsmapi.PowerAction, error)
 		return nsmapi.PowerActionPowerCycle, nil
 	default:
 		return nsmapi.PowerActionUnknown, fmt.Errorf("unknown power operation: %v", op)
+	}
+}
+
+// StartFirmwareUpdate initiates firmware update without waiting for completion.
+// Returns immediately after the update request is accepted.
+func (m *Manager) StartFirmwareUpdate(ctx context.Context, target common.Target, info operations.FirmwareControlTaskInfo) error {
+	log.Debug().
+		Str("components", target.String()).
+		Str("operation", fmt.Sprintf("%v", info.Operation)).
+		Str("target_version", info.TargetVersion).
+		Msg("Starting firmware update")
+
+	if m.nsmClient == nil {
+		return fmt.Errorf("nsm client is not configured")
+	}
+
+	if err := target.Validate(); err != nil {
+		return fmt.Errorf("target is invalid: %w", err)
+	}
+
+	updates, err := m.nsmClient.QueueUpdates(ctx, target.ComponentIDs, info.TargetVersion, nil)
+	if err != nil {
+		return fmt.Errorf("firmware update request failed: %w", err)
+	}
+
+	for _, update := range updates {
+		if update.ErrorMessage != "" {
+			return fmt.Errorf("firmware update request failed for switch %s: %s", update.SwitchUUID, update.ErrorMessage)
+		}
+		log.Info().
+			Str("switch_uuid", update.SwitchUUID).
+			Str("update_id", update.ID).
+			Str("target_version", info.TargetVersion).
+			Msg("Firmware update initiated successfully")
+	}
+
+	return nil
+}
+
+// GetPowerStatus is not currently supported by NV-Switch Manager.
+func (m *Manager) GetPowerStatus(
+	_ context.Context,
+	_ common.Target,
+) (map[string]operations.PowerStatus, error) {
+	return nil, fmt.Errorf(
+		"GetPowerStatus not supported for NV-Switch Manager",
+	)
+}
+
+// AllowBringUpAndPowerOn is not applicable to NVLink switches.
+func (m *Manager) AllowBringUpAndPowerOn(
+	_ context.Context,
+	_ common.Target,
+) error {
+	return fmt.Errorf(
+		"AllowBringUpAndPowerOn not supported for NV-Switch Manager",
+	)
+}
+
+// GetBringUpState is not applicable to NVLink switches.
+func (m *Manager) GetBringUpState(
+	_ context.Context,
+	_ common.Target,
+) (map[string]operations.MachineBringUpState, error) {
+	return nil, fmt.Errorf(
+		"GetBringUpState not supported for NV-Switch Manager",
+	)
+}
+
+// GetFirmwareUpdateStatus returns the current status of firmware updates for the target components.
+// Returns a map of component ID (switch UUID) to FirmwareUpdateStatus.
+func (m *Manager) GetFirmwareUpdateStatus(ctx context.Context, target common.Target) (map[string]operations.FirmwareUpdateStatus, error) {
+	log.Debug().
+		Str("components", target.String()).
+		Msg("Getting firmware update status")
+
+	if m.nsmClient == nil {
+		return nil, fmt.Errorf("nsm client is not configured")
+	}
+
+	if err := target.Validate(); err != nil {
+		return nil, fmt.Errorf("target is invalid: %w", err)
+	}
+
+	result := make(map[string]operations.FirmwareUpdateStatus, len(target.ComponentIDs))
+	for _, switchUUID := range target.ComponentIDs {
+		updates, err := m.nsmClient.GetUpdates(ctx, switchUUID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get firmware update status for switch %s: %w", switchUUID, err)
+		}
+
+		aggregatedUpdateStatus := aggregateUpdateStatuses(switchUUID, updates)
+		result[switchUUID] = aggregatedUpdateStatus
+	}
+
+	log.Info().
+		Int("count", len(result)).
+		Msg("Retrieved firmware update statuses")
+
+	return result, nil
+}
+
+// aggregateUpdateStatuses examines all sub-component firmware updates for a switch
+// and produces a single FirmwareUpdateStatus. If any sub-component failed or was
+// cancelled the overall status is Failed with a message listing each one.
+func aggregateUpdateStatuses(switchUUID string, updates []nsmapi.FirmwareUpdateInfo) operations.FirmwareUpdateStatus {
+	if len(updates) == 0 {
+		return operations.FirmwareUpdateStatus{
+			ComponentID: switchUUID,
+			State:       operations.FirmwareUpdateStateUnknown,
+		}
+	}
+
+	allCompleted := true
+	var failures []string
+
+	for _, u := range updates {
+		mapped := mapUpdateState(u.State)
+		switch mapped {
+		case operations.FirmwareUpdateStateFailed:
+			if u.State == nsmapi.UpdateStateCancelled {
+				failures = append(failures, fmt.Sprintf("%s: cancelled", u.Component.String()))
+			} else {
+				failures = append(failures, fmt.Sprintf("%s: %s", u.Component.String(), u.ErrorMessage))
+			}
+		case operations.FirmwareUpdateStateCompleted:
+			// ok
+		default:
+			allCompleted = false
+		}
+	}
+
+	if len(failures) > 0 {
+		return operations.FirmwareUpdateStatus{
+			ComponentID: switchUUID,
+			State:       operations.FirmwareUpdateStateFailed,
+			Error:       fmt.Sprintf("firmware update failed for components: %s", strings.Join(failures, "; ")),
+		}
+	}
+
+	if allCompleted {
+		return operations.FirmwareUpdateStatus{
+			ComponentID: switchUUID,
+			State:       operations.FirmwareUpdateStateCompleted,
+		}
+	}
+
+	return operations.FirmwareUpdateStatus{
+		ComponentID: switchUUID,
+		State:       operations.FirmwareUpdateStateQueued,
+	}
+}
+
+func mapUpdateState(state nsmapi.UpdateState) operations.FirmwareUpdateState {
+	switch state {
+	case nsmapi.UpdateStateQueued, nsmapi.UpdateStatePowerCycle, nsmapi.UpdateStateWaitReachable,
+		nsmapi.UpdateStateCopy, nsmapi.UpdateStateUpload, nsmapi.UpdateStateInstall,
+		nsmapi.UpdateStatePollCompletion, nsmapi.UpdateStateCleanup:
+		return operations.FirmwareUpdateStateQueued
+	case nsmapi.UpdateStateVerify:
+		return operations.FirmwareUpdateStateVerifying
+	case nsmapi.UpdateStateCompleted:
+		return operations.FirmwareUpdateStateCompleted
+	case nsmapi.UpdateStateFailed, nsmapi.UpdateStateCancelled:
+		return operations.FirmwareUpdateStateFailed
+	default:
+		return operations.FirmwareUpdateStateUnknown
 	}
 }

@@ -93,8 +93,8 @@ func (c *grpcClient) PowerControl(ctx context.Context, uuids []string, action Po
 	return results, nil
 }
 
-// QueueUpdate queues firmware updates for one or more components on a single switch.
-func (c *grpcClient) QueueUpdate(ctx context.Context, switchUUID string, bundleVersion string, components []NVSwitchComponent) ([]FirmwareUpdateInfo, error) {
+// QueueUpdates queues firmware updates for one or more components for multiple switches.
+func (c *grpcClient) QueueUpdates(ctx context.Context, switchUUIDs []string, bundleVersion string, components []NVSwitchComponent) ([]FirmwareUpdateInfo, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.grpcTimeout)
 	defer cancel()
 
@@ -103,36 +103,51 @@ func (c *grpcClient) QueueUpdate(ctx context.Context, switchUUID string, bundleV
 		pbComponents = append(pbComponents, nvSwitchComponentToPb(comp))
 	}
 
-	resp, err := c.client.QueueUpdate(ctx, &pb.QueueUpdateRequest{
-		SwitchUuid:    switchUUID,
+	resp, err := c.client.QueueUpdates(ctx, &pb.QueueUpdatesRequest{
+		SwitchUuids:   switchUUIDs,
 		BundleVersion: bundleVersion,
 		Components:    pbComponents,
 	})
+
 	if err != nil {
 		return nil, err
 	}
 
 	var results []FirmwareUpdateInfo
-	for _, info := range resp.GetUpdates() {
-		results = append(results, firmwareUpdateInfoFromPb(info))
+	for _, info := range resp.GetResults() {
+		if info.Status != pb.StatusCode_SUCCESS {
+			results = append(results, FirmwareUpdateInfo{
+				ErrorMessage: fmt.Sprintf("failed to queue firmware update to %s for Switch %s with StatusCode %s", bundleVersion, info.GetSwitchUuid(), info.Status.String()),
+			})
+			continue
+		}
+
+		for _, update := range info.GetUpdates() {
+			results = append(results, firmwareUpdateInfoFromPb(update))
+		}
 	}
+
 	return results, nil
 }
 
-// GetUpdate returns the status of a specific firmware update by ID.
-func (c *grpcClient) GetUpdate(ctx context.Context, updateID string) (*FirmwareUpdateInfo, error) {
+// GetUpdates return the firmware status updates for a given switch.
+func (c *grpcClient) GetUpdates(ctx context.Context, switchUuid string) ([]FirmwareUpdateInfo, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.grpcTimeout)
 	defer cancel()
 
-	resp, err := c.client.GetUpdate(ctx, &pb.GetUpdateRequest{
-		UpdateId: updateID,
+	resp, err := c.client.GetUpdatesForSwitch(ctx, &pb.GetUpdatesForSwitchRequest{
+		SwitchUuid: switchUuid,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	info := firmwareUpdateInfoFromPb(resp.GetUpdate())
-	return &info, nil
+	var ret []FirmwareUpdateInfo
+	for _, update := range resp.Updates {
+		ret = append(ret, firmwareUpdateInfoFromPb(update))
+	}
+
+	return ret, nil
 }
 
 // ListBundles returns all available firmware bundles.

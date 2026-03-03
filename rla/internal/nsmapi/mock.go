@@ -45,7 +45,7 @@ func (c *mockClient) PowerControl(_ context.Context, uuids []string, _ PowerActi
 	return results, nil
 }
 
-func (c *mockClient) QueueUpdate(_ context.Context, switchUUID string, bundleVersion string, components []NVSwitchComponent) ([]FirmwareUpdateInfo, error) {
+func (c *mockClient) QueueUpdates(_ context.Context, switchUUIDs []string, bundleVersion string, components []NVSwitchComponent) ([]FirmwareUpdateInfo, error) {
 	if len(components) == 0 {
 		components = []NVSwitchComponent{
 			NVSwitchComponentBMC,
@@ -56,27 +56,32 @@ func (c *mockClient) QueueUpdate(_ context.Context, switchUUID string, bundleVer
 	}
 
 	var results []FirmwareUpdateInfo
-	for i, comp := range components {
-		results = append(results, FirmwareUpdateInfo{
-			ID:            uuid.New().String(),
-			SwitchUUID:    switchUUID,
-			Component:     comp,
-			BundleVersion: bundleVersion,
-			State:         UpdateStateQueued,
-			CreatedAt:     time.Now(),
-			UpdatedAt:     time.Now(),
-			SequenceOrder: int32(i + 1),
-		})
+	for _, switchUUID := range switchUUIDs {
+		for i, comp := range components {
+			results = append(results, FirmwareUpdateInfo{
+				ID:            uuid.New().String(),
+				SwitchUUID:    switchUUID,
+				Component:     comp,
+				BundleVersion: bundleVersion,
+				State:         UpdateStateQueued,
+				CreatedAt:     time.Now(),
+				UpdatedAt:     time.Now(),
+				SequenceOrder: int32(i + 1),
+			})
+		}
 	}
 	return results, nil
 }
 
-func (c *mockClient) GetUpdate(_ context.Context, updateID string) (*FirmwareUpdateInfo, error) {
-	return &FirmwareUpdateInfo{
-		ID:        updateID,
-		State:     UpdateStateCompleted,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+func (c *mockClient) GetUpdates(_ context.Context, switchUUID string) ([]FirmwareUpdateInfo, error) {
+	return []FirmwareUpdateInfo{
+		{
+			ID:         uuid.New().String(),
+			SwitchUUID: switchUUID,
+			State:      UpdateStateCompleted,
+			CreatedAt:  time.Now(),
+			UpdatedAt:  time.Now(),
+		},
 	}, nil
 }
 
