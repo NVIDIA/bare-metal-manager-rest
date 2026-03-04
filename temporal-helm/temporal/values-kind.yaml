@@ -106,11 +106,11 @@ server:
 
         sql:
           driver: "postgres12"
-          host: "postgres.carbide-rest.svc.cluster.local"
+          host: "postgres.postgres.svc.cluster.local"
           port: 5432
           database: "temporal"
           user: "temporal"
-          existingSecret: "postgres-auth"
+          existingSecret: "db-creds"
           maxConns: 20
           maxConnLifetime: "1h"
 
@@ -119,11 +119,11 @@ server:
 
         sql:
           driver: "postgres12"
-          host: "postgres.carbide-rest.svc.cluster.local"
+          host: "postgres.postgres.svc.cluster.local"
           port: 5432
           database: "temporal_visibility"
           user: "temporal"
-          existingSecret: "postgres-auth"
+          existingSecret: "db-creds"
           maxConns: 20
           maxConnLifetime: "1h"
 

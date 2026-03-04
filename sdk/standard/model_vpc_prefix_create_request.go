@@ -3,7 +3,7 @@ NVIDIA Bare Metal Manager REST API
 
 NVIDIA Bare Metal Manager REST API allows users to create and manage resources e.g. VPC, Subnets, Instances across all connected NVIDIA Bare Metal Manager datacenters, also referred to as Sites.
 
-API version: 1.0.4
+API version: 1.0.5
 Contact: carbide-dev@exchange.nvidia.com
 */
 
@@ -27,6 +27,7 @@ type VpcPrefixCreateRequest struct {
 	// ID of the VPC
 	VpcId string `json:"vpcId"`
 	IpBlockId *string `json:"ipBlockId,omitempty"`
+	// Prefix length for the VPC Prefix. Valid range is 8 to 31, and max usable value depends on prefix length of parent IP Block.
 	PrefixLength int32 `json:"prefixLength"`
 }
 
