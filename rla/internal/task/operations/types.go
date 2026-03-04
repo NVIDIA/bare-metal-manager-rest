@@ -82,6 +82,18 @@ func (o PowerOperation) CodeString() string {
 	return taskcommon.OpCodePowerControlPowerOn // Default fallback
 }
 
+// PowerOperationFromString returns the PowerOperation for a given operation
+// code string (e.g. "power_on", "force_power_off"). Returns
+// PowerOperationUnknown if the code is not recognized.
+func PowerOperationFromString(code string) PowerOperation {
+	for op, c := range powerOperationCodes {
+		if c == code {
+			return op
+		}
+	}
+	return PowerOperationUnknown
+}
+
 type PowerStatus string
 
 const (
