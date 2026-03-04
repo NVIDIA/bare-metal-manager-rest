@@ -19,11 +19,13 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"net/url"
 	"os"
 
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/stdlib"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/extra/bunotel"
@@ -31,37 +33,27 @@ import (
 
 // Session is a wrapper for an ORM DB object
 type Session struct {
-	DBName string
-	DB     *bun.DB
+	DBName       string
+	DB           *bun.DB
+	pool         *pgxpool.Pool
+	errorChecker ErrorChecker
 }
 
-// Close closes the session
-func (s *Session) Close() {
-	s.DB.Close()
-}
-
-// NewSession creates and returns a new session object
-func NewSession(host string, port int, dbName string, user string, password string, caCertPath string) (*Session, error) {
-	configDSN := fmt.Sprintf("postgres://%v:%v@%v:%v/%v", user, password, host, port, dbName)
+// NewSession creates and returns a new session object using pgx v5 + pgxpool.
+func NewSession(ctx context.Context, host string, port int, dbName string, user string, password string, caCertPath string) (*Session, error) {
+	configDSN := fmt.Sprintf("postgres://%v:%v@%v:%v/%v", url.PathEscape(user), url.PathEscape(password), host, port, dbName)
 
 	if caCertPath != "" {
 		configDSN = fmt.Sprintf("%v?sslmode=verify-full&sslrootcert=%v", configDSN, caCertPath)
 	}
 
-	config, err := pgx.ParseConfig(configDSN)
+	pool, err := pgxpool.New(ctx, configDSN)
 	if err != nil {
 		return nil, err
 	}
-	config.PreferSimpleProtocol = true
 
-	sqldb := stdlib.OpenDB(*config)
+	sqldb := stdlib.OpenDBFromPool(pool)
 	db := bun.NewDB(sqldb, pgdialect.New())
-
-	// Uncomment to see failing queries
-	// db.AddQueryHook(bundebug.NewQueryHook())
-
-	// Uncomment to see all queries
-	// bundebug.NewQueryHook(bundebug.WithVerbose(true))
 
 	// if tracing service name is configured, add otel hooks
 	if os.Getenv("TRACING_SERVICE_NAME") != "" {
@@ -72,9 +64,63 @@ func NewSession(host string, port int, dbName string, user string, password stri
 	}
 
 	return &Session{
-		DBName: dbName,
-		DB:     db,
+		DBName:       dbName,
+		DB:           db,
+		pool:         pool,
+		errorChecker: &PostgresErrorChecker{},
 	}, nil
+}
+
+// NewSessionFromConfig creates a Session from a Config.
+func NewSessionFromConfig(ctx context.Context, c Config) (*Session, error) {
+	pool, err := pgxpool.New(ctx, c.BuildDSN())
+	if err != nil {
+		return nil, err
+	}
+
+	db := bun.NewDB(stdlib.OpenDBFromPool(pool), pgdialect.New())
+
+	// if tracing service name is configured, add otel hooks
+	if os.Getenv("TRACING_SERVICE_NAME") != "" {
+		db.AddQueryHook(bunotel.NewQueryHook(
+			bunotel.WithDBName(c.DBName),
+			bunotel.WithFormattedQueries(true),
+		))
+	}
+
+	return &Session{
+		DBName:       c.DBName,
+		DB:           db,
+		pool:         pool,
+		errorChecker: &PostgresErrorChecker{},
+	}, nil
+}
+
+// Close closes the session and the underlying connection pool.
+func (s *Session) Close() {
+	s.DB.Close()
+
+	if s.pool != nil {
+		s.pool.Close()
+	}
+}
+
+// GetErrorChecker returns the error classifier for this session.
+func (s *Session) GetErrorChecker() ErrorChecker { //nolint:ireturn // interface by design
+	return s.errorChecker
+}
+
+// BeginTx begins a new transaction with default options.
+func (s *Session) BeginTx(ctx context.Context) (bun.Tx, error) {
+	return s.DB.BeginTx(ctx, &sql.TxOptions{}) //nolint:exhaustruct,wrapcheck // default options; thin wrapper
+}
+
+// RunInTx executes a function within a transaction.
+func (s *Session) RunInTx(
+	ctx context.Context,
+	fn func(ctx context.Context, tx bun.Tx) error,
+) error {
+	return s.DB.RunInTx(ctx, &sql.TxOptions{}, fn) //nolint:exhaustruct,wrapcheck // default options; thin wrapper
 }
 
 // acquireAdvisoryLock will "try" to take the specified advisory lock

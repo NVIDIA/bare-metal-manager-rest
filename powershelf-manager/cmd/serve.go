@@ -29,9 +29,9 @@ import (
 	"github.com/spf13/cobra"
 
 	svc "github.com/nvidia/bare-metal-manager-rest/powershelf-manager/internal/service"
-	"github.com/nvidia/bare-metal-manager-rest/powershelf-manager/pkg/common/credential"
+	"github.com/nvidia/bare-metal-manager-rest/common/pkg/credential"
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
 	"github.com/nvidia/bare-metal-manager-rest/powershelf-manager/pkg/credentials"
-	"github.com/nvidia/bare-metal-manager-rest/powershelf-manager/pkg/db"
 	"github.com/nvidia/bare-metal-manager-rest/powershelf-manager/pkg/powershelfmanager"
 )
 
@@ -130,11 +130,11 @@ func doServe() {
 				Address: vaultAddress,
 				Token:   vaultToken,
 			},
-			DBConf: db.Config{
+			DBConf: cdb.Config{
 				Host:              dbHostName,
 				Port:              dbPort,
 				DBName:            dbName,
-				Credential:        *credential.New(dbUser, dbPassword),
+				Credential:        credential.New(dbUser, dbPassword),
 				CACertificatePath: dbCertPath,
 			},
 		},

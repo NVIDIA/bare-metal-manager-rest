@@ -22,12 +22,12 @@ import (
 	"os"
 	"strconv"
 
+	cdb "github.com/nvidia/bare-metal-manager-rest/db/pkg/db"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/carbideapi"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/clients/temporal"
-	"github.com/nvidia/bare-metal-manager-rest/rla/internal/db"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/psmapi"
 	"github.com/nvidia/bare-metal-manager-rest/rla/internal/task/executor"
-	"github.com/nvidia/bare-metal-manager-rest/rla/pkg/common/endpoint"
+	"github.com/nvidia/bare-metal-manager-rest/common/pkg/endpoint"
 )
 
 const (
@@ -41,7 +41,7 @@ const (
 //   - PSMClient: abstracts the powershelf manager API client
 type Config struct {
 	Port          int
-	DBConf        db.Config
+	DBConf        cdb.Config
 	ExecutorConf  executor.ExecutorConfig
 	CarbideClient carbideapi.Client
 	PSMClient     psmapi.Client

@@ -14,15 +14,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package db
 
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 
-	"github.com/nvidia/bare-metal-manager-rest/powershelf-manager/pkg/common/credential"
+	"github.com/nvidia/bare-metal-manager-rest/common/pkg/credential"
 )
 
 // Config represents the configuration needed to connect to a database.
@@ -55,73 +57,56 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// ConfigFromEnv builds a Config from environment variables.
+// Reads: DB_ADDR or DB_HOST (host), DB_PORT (port), DB_USER, DB_PASSWORD,
+// DB_DATABASE or DB_NAME (database name), DB_CERT_PATH (optional CA certificate).
+func ConfigFromEnv() (Config, error) {
+	port, err := strconv.Atoi(os.Getenv("DB_PORT"))
+	if err != nil {
+		return Config{}, ErrInvalidPort
+	}
+
+	cred := credential.NewFromEnv("DB_USER", "DB_PASSWORD")
+	if !cred.IsValid() {
+		return Config{}, ErrInvalidCredential
+	}
+
+	host := os.Getenv("DB_ADDR")
+	if host == "" {
+		host = os.Getenv("DB_HOST")
+	}
+
+	dbName := os.Getenv("DB_DATABASE")
+	if dbName == "" {
+		dbName = os.Getenv("DB_NAME")
+	}
+
+	return Config{
+		Host:              host,
+		Port:              port,
+		Credential:        cred,
+		DBName:            dbName,
+		CACertificatePath: os.Getenv("DB_CERT_PATH"),
+	}, nil
+}
+
 // BuildDSN builds the Data Source Name (DSN) string for connecting to
 // the database.
 func (c *Config) BuildDSN() string {
 	dsn := fmt.Sprintf(
 		"postgres://%v:%v@%v:%v/%v?sslmode=",
-		c.Credential.User,
-		c.Credential.Password.Value,
+		url.PathEscape(c.Credential.User),
+		url.PathEscape(c.Credential.Password.Value),
 		c.Host,
 		c.Port,
 		c.DBName,
 	)
 
 	if len(c.CACertificatePath) > 0 {
-		// Use sslmode=prefer (like RLA) instead of verify-full to avoid issues with expired server certs
 		dsn += fmt.Sprintf("prefer&sslrootcert=%v", c.CACertificatePath)
 	} else {
 		dsn += "disable"
 	}
 
 	return dsn
-}
-
-// BuildDBConfigFromEnv builds a Config from environment variables.
-// Port is read from PGPORT, defaulting to 30432 (the CI host-mapped port).
-// Optional: DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, DB_CA_CERT_PATH
-func BuildDBConfigFromEnv() (Config, error) {
-	host := os.Getenv("DB_HOST")
-	if host == "" {
-		host = "localhost"
-	}
-
-	// Default to port 30432 to match the CI PostgreSQL service port mapping
-	// (see .github/workflows/lint-and-test.yml ports: 30432:5432).
-	// Same convention used in db/pkg/util/testing.go getTestDBParams().
-	portStr := os.Getenv("PGPORT")
-	if portStr == "" {
-		portStr = "30432"
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		return Config{}, fmt.Errorf("invalid PGPORT: %v", err)
-	}
-
-	dbName := os.Getenv("DB_NAME")
-	if dbName == "" {
-		dbName = "powershelf_manager"
-	}
-
-	user := os.Getenv("DB_USER")
-	if user == "" {
-		user = "postgres"
-	}
-
-	password := os.Getenv("DB_PASSWORD")
-	if password == "" {
-		password = "postgres"
-	}
-
-	caCertPath := os.Getenv("DB_CA_CERT_PATH")
-
-	config := Config{
-		Host:              host,
-		Port:              port,
-		DBName:            dbName,
-		CACertificatePath: caCertPath,
-	}
-	config.Credential.Update(&user, &password)
-
-	return config, nil
 }

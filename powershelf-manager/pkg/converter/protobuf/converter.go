@@ -19,7 +19,7 @@ package protobuf
 import (
 	"fmt"
 	pb "github.com/nvidia/bare-metal-manager-rest/powershelf-manager/internal/proto/v1"
-	"github.com/nvidia/bare-metal-manager-rest/powershelf-manager/pkg/common/credential"
+	"github.com/nvidia/bare-metal-manager-rest/common/pkg/credential"
 	"github.com/nvidia/bare-metal-manager-rest/powershelf-manager/pkg/common/vendor"
 	"github.com/nvidia/bare-metal-manager-rest/powershelf-manager/pkg/objects/pmc"
 	"github.com/nvidia/bare-metal-manager-rest/powershelf-manager/pkg/objects/powershelf"
@@ -223,7 +223,7 @@ func PMCFrom(protobufPmc *pb.PowerManagementController, protobufCreds *pb.Creden
 
 	if protobufPmc != nil {
 		creds := credential.New(protobufCreds.Username, protobufCreds.Password)
-		pmc.SetCredential(creds)
+		pmc.SetCredential(&creds)
 	}
 
 	return pmc, nil
