@@ -82,7 +82,7 @@ func NewCreateInstanceHandler(dbSession *cdb.Session, tc temporalClient.Client, 
 // apiRequest will be mutated for use in createFromParams.
 // osConfig will hold the struct/data for use with Temporal/Carbide calls.
 // Errors should be returned in the form of cerr.NewAPIErrorResponse
-func (cih CreateInstanceHandler) buildInstanceCreateRequestOsConfig(c echo.Context, logger *zerolog.Logger, apiRequest *model.APIInstanceCreateRequest, siteID uuid.UUID) (*cwssaws.OperatingSystem, *uuid.UUID, *cerr.APIError) {
+func (cih CreateInstanceHandler) buildInstanceCreateRequestOsConfig(c echo.Context, logger *zerolog.Logger, apiRequest *model.APIInstanceCreateRequest, site *cdbm.Site) (*cwssaws.OperatingSystem, *uuid.UUID, *cerr.APIError) {
 
 	ctx := c.Request().Context()
 
@@ -147,19 +147,8 @@ func (cih CreateInstanceHandler) buildInstanceCreateRequestOsConfig(c echo.Conte
 	}
 
 	if os.Type == cdbm.OperatingSystemTypeImage {
-		site, serr := common.GetSiteFromIDString(ctx, nil, siteID.String(), cih.dbSession)
-		if serr != nil {
-			if serr == common.ErrInvalidID {
-				return nil, nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Failed to create Instance, invalid Site ID: %s", siteID.String()), nil)
-			}
-			if serr == cdb.ErrDoesNotExist {
-				return nil, nil, cerr.NewAPIError(http.StatusNotFound, fmt.Sprintf("Failed to create Instance, could not find Site with ID: %s", siteID.String()), nil)
-			}
-			logger.Error().Err(serr).Str("Site ID", siteID.String()).Msg("error retrieving Site from DB")
-			return nil, nil, cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve Site, DB error", nil)
-		}
 		if site.Config == nil || !site.Config.ImageBasedOperatingSystem {
-			logger.Warn().Str("operatingSystemId", os.ID.String()).Str("siteId", siteID.String()).Msg("Creation of Instance with Image based Operating System is not supported for Site, ImageBasedOperatingSystem capability is not enabled")
+			logger.Warn().Str("operatingSystemId", os.ID.String()).Str("siteId", site.ID.String()).Msg("Creation of Instance with Image based Operating System is not supported for Site, ImageBasedOperatingSystem capability is not enabled")
 			return nil, nil, cerr.NewAPIError(http.StatusBadRequest, "Creation of Instance with Image based Operating System is not supported. Site must have ImageBasedOperatingSystem capability enabled.", nil)
 		}
 	}
@@ -172,7 +161,7 @@ func (cih CreateInstanceHandler) buildInstanceCreateRequestOsConfig(c echo.Conte
 			nil,
 			cdbm.OperatingSystemSiteAssociationFilterInput{
 				OperatingSystemIDs: []uuid.UUID{id},
-				SiteIDs:            []uuid.UUID{siteID},
+				SiteIDs:            []uuid.UUID{site.ID},
 			},
 			cdbp.PageInput{Limit: cdb.GetIntPtr(1)},
 			nil,
@@ -689,7 +678,7 @@ func (cih CreateInstanceHandler) Handle(c echo.Context) error {
 	// apiRequest will be mutated for use in CreateFromParams.
 	// osConfig will hold the struct/data for use with Temporal/Carbide calls.
 	// Errors will be returned already in the form of cerr.NewAPIErrorResponse
-	osConfig, osID, oserr := cih.buildInstanceCreateRequestOsConfig(c, &logger, &apiRequest, vpc.SiteID)
+	osConfig, osID, oserr := cih.buildInstanceCreateRequestOsConfig(c, &logger, &apiRequest, site)
 	if oserr != nil {
 		// buildInstanceCreateRequestOsConfig already handles logging,
 		// so this is a bit redundant, but this log brings you to the
@@ -1762,7 +1751,7 @@ func (uih UpdateInstanceHandler) handleReboot(c echo.Context, logger *zerolog.Lo
 // apiRequest will be mutated for use in UpdateFromParams.
 // osConfig will hold the struct/data for use with Temporal/Carbide calls.
 // Errors should be returned in the form of cerr.NewAPIErrorResponse
-func (uih UpdateInstanceHandler) buildInstanceUpdateRequestOsConfig(c echo.Context, logger *zerolog.Logger, apiRequest *model.APIInstanceUpdateRequest, instance *cdbm.Instance, siteID uuid.UUID) (*cwssaws.OperatingSystem, *uuid.UUID, *cerr.APIError) {
+func (uih UpdateInstanceHandler) buildInstanceUpdateRequestOsConfig(c echo.Context, logger *zerolog.Logger, apiRequest *model.APIInstanceUpdateRequest, instance *cdbm.Instance, site *cdbm.Site) (*cwssaws.OperatingSystem, *uuid.UUID, *cerr.APIError) {
 
 	var os *cdbm.OperatingSystem
 	var osID *uuid.UUID
@@ -1841,19 +1830,8 @@ func (uih UpdateInstanceHandler) buildInstanceUpdateRequestOsConfig(c echo.Conte
 
 		// Validate the Site has the ImageBasedOperatingSystem capability enabled for Image based Operating Systems
 		if os.Type == cdbm.OperatingSystemTypeImage {
-			site, serr := common.GetSiteFromIDString(ctx, nil, siteID.String(), uih.dbSession)
-			if serr != nil {
-				if serr == common.ErrInvalidID {
-					return nil, nil, cerr.NewAPIError(http.StatusBadRequest, fmt.Sprintf("Failed to update Instance, invalid Site ID: %s", siteID.String()), nil)
-				}
-				if serr == cdb.ErrDoesNotExist {
-					return nil, nil, cerr.NewAPIError(http.StatusNotFound, fmt.Sprintf("Failed to update Instance, could not find Site with ID: %s", siteID.String()), nil)
-				}
-				logger.Error().Err(serr).Str("Site ID", siteID.String()).Msg("error retrieving Site from DB")
-				return nil, nil, cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve Site, DB error", nil)
-			}
 			if site.Config == nil || !site.Config.ImageBasedOperatingSystem {
-				logger.Warn().Str("operatingSystemId", os.ID.String()).Str("siteId", siteID.String()).Msg("Instance update with Image based Operating System is not supported for Site, ImageBasedOperatingSystem capability is not enabled")
+				logger.Warn().Str("operatingSystemId", os.ID.String()).Str("siteId", site.ID.String()).Msg("Instance update with Image based Operating System is not supported for Site, ImageBasedOperatingSystem capability is not enabled")
 				return nil, nil, cerr.NewAPIError(http.StatusBadRequest, "Update of Instance with Image based Operating System is not supported. Site must have ImageBasedOperatingSystem capability enabled.", nil)
 			}
 		}
@@ -1866,7 +1844,7 @@ func (uih UpdateInstanceHandler) buildInstanceUpdateRequestOsConfig(c echo.Conte
 				nil,
 				cdbm.OperatingSystemSiteAssociationFilterInput{
 					OperatingSystemIDs: []uuid.UUID{*osID},
-					SiteIDs:            []uuid.UUID{siteID},
+					SiteIDs:            []uuid.UUID{site.ID},
 				},
 				cdbp.PageInput{Limit: cdb.GetIntPtr(1)},
 				nil,
@@ -2616,7 +2594,7 @@ func (uih UpdateInstanceHandler) Handle(c echo.Context) error {
 	// apiRequest will be mutated for use in UpdateFromParams.
 	// osConfig will hold the struct/data for use with Temporal/Carbide calls.
 	// Errors will be returned already in the form of cerr.NewAPIError
-	osConfig, osID, oserr := uih.buildInstanceUpdateRequestOsConfig(c, &logger, &apiRequest, instance, site.ID)
+	osConfig, osID, oserr := uih.buildInstanceUpdateRequestOsConfig(c, &logger, &apiRequest, instance, site)
 	if oserr != nil {
 		// buildInstanceUpdateRequestOsConfig already handles logging,
 		// so this is a bit redundant, but this log brings you to the
