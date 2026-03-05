@@ -156,9 +156,9 @@ func (bcih BatchCreateInstanceHandler) buildBatchInstanceCreateRequestOsConfig(c
 			logger.Error().Err(serr).Str("Site ID", siteID.String()).Msg("error retrieving Site from DB")
 			return nil, nil, cerr.NewAPIError(http.StatusInternalServerError, "Failed to retrieve Site, DB error", nil)
 		}
-		if site.Config == nil || !site.Config.ImageBaseOS {
-			logger.Warn().Str("operatingSystemId", os.ID.String()).Str("siteId", siteID.String()).Msg("Creation of Instance with Image based Operating System is not supported for Site, ImageBaseOS capability is not enabled")
-			return nil, nil, cerr.NewAPIError(http.StatusBadRequest, "Creation of Instance with Image based Operating System is not supported. Site must have ImageBaseOS capability enabled.", nil)
+		if site.Config == nil || !site.Config.ImageBasedOperatingSystem {
+			logger.Warn().Str("operatingSystemId", os.ID.String()).Str("siteId", siteID.String()).Msg("Creation of Instance with Image based Operating System is not supported for Site, ImageBasedOperatingSystem capability is not enabled")
+			return nil, nil, cerr.NewAPIError(http.StatusBadRequest, "Creation of Instance with Image based Operating System is not supported. Site must have ImageBasedOperatingSystem capability enabled.", nil)
 		}
 	}
 

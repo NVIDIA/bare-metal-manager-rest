@@ -273,11 +273,11 @@ func NewAPISite(dbs cdbm.Site, dbsds []cdbm.StatusDetail, ts *cdbm.TenantSite) A
 
 // APISiteCapabilities holds the model of site capabilities
 type APISiteCapabilities struct {
-	NativeNetworking        bool `json:"nativeNetworking"`
-	NetworkSecurityGroup    bool `json:"networkSecurityGroup"`
-	NVLinkPartition         bool `json:"nvLinkPartition"`
-	RackLevelAdministration bool `json:"rackLevelAdministration"`
-	ImageBaseOS             bool `json:"imageBaseOs"`
+	NativeNetworking          bool `json:"nativeNetworking"`
+	NetworkSecurityGroup      bool `json:"networkSecurityGroup"`
+	NVLinkPartition           bool `json:"nvLinkPartition"`
+	RackLevelAdministration   bool `json:"rackLevelAdministration"`
+	ImageBasedOperatingSystem bool `json:"imageBasedOperatingSystem"`
 }
 
 func siteConfigToAPISiteCapabilities(cfg *cdbm.SiteConfig) *APISiteCapabilities {
@@ -288,7 +288,7 @@ func siteConfigToAPISiteCapabilities(cfg *cdbm.SiteConfig) *APISiteCapabilities 
 		apiCaps.NetworkSecurityGroup = cfg.NetworkSecurityGroup
 		apiCaps.NVLinkPartition = cfg.NVLinkPartition
 		apiCaps.RackLevelAdministration = cfg.RackLevelAdministration
-		apiCaps.ImageBaseOS = cfg.ImageBaseOS
+		apiCaps.ImageBasedOperatingSystem = cfg.ImageBasedOperatingSystem
 	}
 
 	return apiCaps
