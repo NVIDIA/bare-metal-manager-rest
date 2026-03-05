@@ -241,6 +241,20 @@ KIND_CLUSTER_NAME := carbide-rest-local
 KUSTOMIZE_OVERLAY := deploy/kustomize/overlays/local
 LOCAL_DOCKERFILE_DIR := docker/local
 
+# Set LOCAL_CORE=true to connect the site-agent to a locally-running carbide-api
+# (started via dev/mac-local-dev/run-carbide-api.sh in bare-metal-manager-core) instead of mock-core.
+# LOCAL_CORE_HOST must be reachable from inside the kind cluster nodes.
+# On Docker Desktop and colima, host.docker.internal resolves to both IPv6 and
+# IPv4.  Go's dialer prefers IPv6, which is unreachable from Kind pods, so the
+# Makefile recipe resolves it to IPv4 before patching the ConfigMap.
+LOCAL_CORE ?=
+LOCAL_CORE_HOST ?= host.docker.internal
+LOCAL_CORE_PORT ?= 1079
+# Certs from the local carbide-api TLS setup; mounted into the site-agent at
+# /etc/carbide/{ca.crt, tls.crt, tls.key}.  The site-agent's GetInitialCertMD5()
+# reads all three regardless of CARBIDE_SEC_OPT, so they must all be present.
+LOCAL_CORE_CERTS_DIR ?= ../bare-metal-manager-core/dev/certs/localhost
+
 # Recommended colima configuration for full stack with Temporal:
 #   colima start --cpu 8 --memory 8 --disk 100
 
@@ -348,14 +362,18 @@ kind-reset:
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-workflow:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-workflow .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-site-manager:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-manager .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-site-agent:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-site-agent .
-	docker build -t $(IMAGE_REGISTRY)/carbide-rest-mock-core:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-mock-core .
+	@if [ "$(LOCAL_CORE)" != "true" ]; then \
+		docker build -t $(IMAGE_REGISTRY)/carbide-rest-mock-core:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-mock-core . ; \
+	fi
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-db .
 	docker build -t $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) -f $(LOCAL_DOCKERFILE_DIR)/Dockerfile.carbide-rest-cert-manager .
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-api:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-workflow:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-site-manager:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-site-agent:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
-	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-mock-core:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
+	@if [ "$(LOCAL_CORE)" != "true" ]; then \
+		kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-mock-core:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME) ; \
+	fi
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-db:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REGISTRY)/carbide-rest-cert-manager:$(IMAGE_TAG) --name $(KIND_CLUSTER_NAME)
 
@@ -441,9 +459,13 @@ kind-reset:
 	kubectl apply -k deploy/kustomize/overlays/api
 	kubectl -n carbide-rest rollout status deployment/carbide-rest-api --timeout=240s
 
-	@echo "Setting up Carbide Mock Core..."
-	kubectl apply -k deploy/kustomize/overlays/mock-core
-	kubectl -n carbide-rest rollout status deployment/carbide-rest-mock-core --timeout=240s
+	@if [ "$(LOCAL_CORE)" != "true" ]; then \
+		echo "Setting up Carbide Mock Core..." ; \
+		kubectl apply -k deploy/kustomize/overlays/mock-core ; \
+		kubectl -n carbide-rest rollout status deployment/carbide-rest-mock-core --timeout=240s ; \
+	else \
+		echo "Skipping mock-core (LOCAL_CORE=true): site-agent will use local carbide-api at $(LOCAL_CORE_HOST):$(LOCAL_CORE_PORT)" ; \
+	fi
 
 	@echo "Setting up Carbide REST Site Agent..."
 	kubectl apply -k deploy/kustomize/overlays/site-agent
@@ -451,6 +473,32 @@ kind-reset:
 
 	@echo "Setting up Site Agent secrets..."
 	./scripts/setup-local.sh site-agent
+
+	@if [ "$(LOCAL_CORE)" = "true" ]; then \
+		echo "Creating core-grpc-client-site-agent-certs secret from $(LOCAL_CORE_CERTS_DIR)..." ; \
+		for f in ca.crt client.crt client.key; do \
+			[ -f "$(LOCAL_CORE_CERTS_DIR)/$$f" ] || { echo "ERROR: $$f not found in $(LOCAL_CORE_CERTS_DIR). Run gen-certs.sh in bare-metal-manager-core first."; exit 1; } ; \
+		done ; \
+		kubectl -n carbide-rest create secret generic core-grpc-client-site-agent-certs \
+			--from-file=ca.crt="$(LOCAL_CORE_CERTS_DIR)/ca.crt" \
+			--from-file=tls.crt="$(LOCAL_CORE_CERTS_DIR)/client.crt" \
+			--from-file=tls.key="$(LOCAL_CORE_CERTS_DIR)/client.key" \
+			--dry-run=client -o yaml | kubectl apply -f - ; \
+		CORE_HOST="$(LOCAL_CORE_HOST)" ; \
+		IPV4=$$(docker exec $$(docker ps -qf name=carbide-rest-local-control-plane) \
+			getent ahosts "$$CORE_HOST" 2>/dev/null \
+			| awk '/STREAM/{print $$1}' | grep -v ':' | head -1) ; \
+		if [ -n "$$IPV4" ]; then \
+			echo "Resolved $$CORE_HOST → $$IPV4 (using IPv4 to avoid Go IPv6-first dialer issue)" ; \
+			CORE_HOST="$$IPV4" ; \
+		fi ; \
+		echo "Patching site-agent ConfigMap: CARBIDE_ADDRESS=$$CORE_HOST:$(LOCAL_CORE_PORT), CARBIDE_SEC_OPT=1 (ServerTLS)..." ; \
+		kubectl -n carbide-rest patch configmap carbide-rest-site-agent-config --type merge \
+			-p "{\"data\":{\"CARBIDE_ADDRESS\":\"$$CORE_HOST:$(LOCAL_CORE_PORT)\",\"CARBIDE_SEC_OPT\":\"1\"}}" ; \
+		echo "Restarting site-agent to pick up new CARBIDE_ADDRESS and certs..." ; \
+		kubectl -n carbide-rest rollout restart statefulset/carbide-rest-site-agent ; \
+		kubectl -n carbide-rest rollout status statefulset/carbide-rest-site-agent --timeout=120s ; \
+	fi
 
 	@echo ""
 	@echo "================================================================================"
@@ -461,6 +509,11 @@ kind-reset:
 	@echo ""
 	@echo "API: http://localhost:8388"
 	@echo "Keycloak: http://localhost:8082"
+	@if [ "$(LOCAL_CORE)" = "true" ]; then \
+		echo "Carbide Core: local carbide-api at $(LOCAL_CORE_HOST):$(LOCAL_CORE_PORT) (LOCAL_CORE=true)" ; \
+	else \
+		echo "Carbide Core: mock-core (in-cluster)" ; \
+	fi
 	@echo "================================================================================"
 	@echo ""
 	@echo "Example: Get a token and list all sites:"
