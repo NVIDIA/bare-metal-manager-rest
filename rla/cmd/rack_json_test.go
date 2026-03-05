@@ -302,14 +302,14 @@ func TestParseBMCTypeToTypes(t *testing.T) {
 		input    string
 		expected types.BMCType
 	}{
-		"host lowercase":    {input: "host", expected: types.BMCTypeHost},
-		"host uppercase":    {input: "HOST", expected: types.BMCTypeHost},
-		"host mixed case":   {input: "Host", expected: types.BMCTypeHost},
-		"empty string":      {input: "", expected: types.BMCTypeHost},
-		"dpu lowercase":     {input: "dpu", expected: types.BMCTypeDPU},
-		"dpu uppercase":     {input: "DPU", expected: types.BMCTypeDPU},
-		"invalid type":      {input: "bmc", expected: types.BMCTypeUnknown},
-		"unknown keyword":   {input: "unknown", expected: types.BMCTypeUnknown},
+		"host lowercase":  {input: "host", expected: types.BMCTypeHost},
+		"host uppercase":  {input: "HOST", expected: types.BMCTypeHost},
+		"host mixed case": {input: "Host", expected: types.BMCTypeHost},
+		"empty string":    {input: "", expected: types.BMCTypeHost},
+		"dpu lowercase":   {input: "dpu", expected: types.BMCTypeDPU},
+		"dpu uppercase":   {input: "DPU", expected: types.BMCTypeDPU},
+		"invalid type":    {input: "bmc", expected: types.BMCTypeUnknown},
+		"unknown keyword": {input: "unknown", expected: types.BMCTypeUnknown},
 	}
 
 	for name, tc := range testCases {
