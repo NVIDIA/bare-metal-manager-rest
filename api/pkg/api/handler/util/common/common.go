@@ -1648,6 +1648,54 @@ func ExecutePowerControlWorkflow(
 	return &rlaResponse, nil
 }
 
+// ExecuteBringUpWorkflow builds a BringUpRackRequest, executes the BringUpRack
+// workflow via Temporal, and returns the raw SubmitTaskResponse.
+func ExecuteBringUpWorkflow(
+	ctx context.Context,
+	c echo.Context,
+	logger zerolog.Logger,
+	stc tclient.Client,
+	targetSpec *rlav1.OperationTargetSpec,
+	description string,
+	workflowID string,
+	entityName string,
+) (*rlav1.SubmitTaskResponse, error) {
+	rlaRequest := &rlav1.BringUpRackRequest{
+		TargetSpec:  targetSpec,
+		Description: description,
+	}
+
+	workflowOptions := tclient.StartWorkflowOptions{
+		ID:                       workflowID,
+		WorkflowIDReusePolicy:    temporalEnums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
+		WorkflowIDConflictPolicy: temporalEnums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
+		WorkflowExecutionTimeout: cwutil.WorkflowExecutionTimeout,
+		TaskQueue:                queue.SiteTaskQueue,
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, cwutil.WorkflowContextTimeout)
+	defer cancel()
+
+	we, err := stc.ExecuteWorkflow(ctx, workflowOptions, "BringUpRack", rlaRequest)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to execute BringUpRack workflow")
+		return nil, cau.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed to bring up %s", entityName), nil)
+	}
+
+	var rlaResponse rlav1.SubmitTaskResponse
+	err = we.Get(ctx, &rlaResponse)
+	if err != nil {
+		var timeoutErr *tp.TimeoutError
+		if errors.As(err, &timeoutErr) || err == context.DeadlineExceeded || ctx.Err() != nil {
+			return nil, TerminateWorkflowOnTimeOut(c, logger, stc, workflowID, err, entityName, "BringUpRack")
+		}
+		logger.Error().Err(err).Msg("failed to get result from BringUpRack workflow")
+		return nil, cau.NewAPIErrorResponse(c, http.StatusInternalServerError, fmt.Sprintf("Failed to bring up %s", entityName), nil)
+	}
+
+	return &rlaResponse, nil
+}
+
 // ExecuteFirmwareUpdateWorkflow builds an UpgradeFirmwareRequest, executes the UpgradeFirmware
 // workflow via Temporal, and returns the raw SubmitTaskResponse.
 func ExecuteFirmwareUpdateWorkflow(

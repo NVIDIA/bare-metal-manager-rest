@@ -1246,3 +1246,260 @@ func (furbh BatchUpdateRackFirmwareHandler) Handle(c echo.Context) error {
 	logger.Info().Msg("finishing API handler")
 	return c.JSON(http.StatusOK, model.NewAPIUpdateFirmwareResponse(rlaResp))
 }
+
+// ~~~~~ Bring Up Rack Handler ~~~~~ //
+
+// BringUpRackHandler is the API Handler for bringing up a single Rack by ID
+type BringUpRackHandler struct {
+	dbSession  *cdb.Session
+	tc         tClient.Client
+	scp        *sc.ClientPool
+	cfg        *config.Config
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewBringUpRackHandler initializes and returns a new handler for bringing up a Rack
+func NewBringUpRackHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) BringUpRackHandler {
+	return BringUpRackHandler{
+		dbSession:  dbSession,
+		tc:         tc,
+		scp:        scp,
+		cfg:        cfg,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Bring up a Rack
+// @Description Bring up a Rack identified by Rack UUID
+// @Tags rack
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param org path string true "Name of NGC organization"
+// @Param id path string true "UUID of the Rack"
+// @Param body body model.APIBringUpRackRequest true "Bring up request"
+// @Success 200 {object} model.APIBringUpRackResponse
+// @Router /v2/org/{org}/carbide/rack/{id}/bringup [patch]
+func (burh BringUpRackHandler) Handle(c echo.Context) error {
+	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "BringUp", c, burh.tracerSpan)
+	if handlerSpan != nil {
+		defer handlerSpan.End()
+	}
+
+	// Is DB user missing?
+	if dbUser == nil {
+		logger.Error().Msg("invalid User object found in request context")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// Validate org membership
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Validate role, only Provider Admins are allowed to bring up Rack
+	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Provider Admin role, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Provider Admin role with org", nil)
+	}
+
+	// Get Infrastructure Provider for org
+	infrastructureProvider, err := common.GetInfrastructureProviderForOrg(ctx, nil, burh.dbSession, org)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error getting infrastructure provider for org")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
+	}
+
+	// Get rack ID from URL param
+	rackStrID := c.Param("id")
+	burh.tracerSpan.SetAttribute(handlerSpan, attribute.String("rack_id", rackStrID), logger)
+
+	// Parse and validate request body
+	apiRequest := model.APIBringUpRackRequest{}
+	if err := c.Bind(&apiRequest); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
+	}
+	if verr := apiRequest.Validate(); verr != nil {
+		logger.Warn().Err(verr).Msg("error validating bring up request data")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate bring up request data", verr)
+	}
+
+	// Validate the site
+	site, err := common.GetSiteFromIDString(ctx, nil, apiRequest.SiteID, burh.dbSession)
+	if err != nil {
+		if errors.Is(err, cdb.ErrDoesNotExist) {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
+		}
+		logger.Error().Err(err).Msg("error retrieving Site from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site specified in request due to DB error", nil)
+	}
+
+	// Verify site belongs to the org's Infrastructure Provider
+	if site.InfrastructureProviderID != infrastructureProvider.ID {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
+	}
+
+	// Get the temporal client for the site
+	stc, err := burh.scp.GetClientByID(site.ID)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Temporal client for Site")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
+	}
+
+	// Build TargetSpec for single rack by ID
+	targetSpec := &rlav1.OperationTargetSpec{
+		Targets: &rlav1.OperationTargetSpec_Racks{
+			Racks: &rlav1.RackTargets{
+				Targets: []*rlav1.RackTarget{
+					{
+						Identifier: &rlav1.RackTarget_Id{
+							Id: &rlav1.UUID{Id: rackStrID},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	description := apiRequest.Description
+	if description == "" {
+		description = fmt.Sprintf("API bring up Rack %s", rackStrID)
+	}
+
+	rlaResp, err := common.ExecuteBringUpWorkflow(ctx, c, logger, stc, targetSpec, description,
+		fmt.Sprintf("rack-bringup-%s", rackStrID), "Rack")
+	if err != nil {
+		return err
+	}
+
+	logger.Info().Msg("finishing API handler")
+	return c.JSON(http.StatusOK, model.NewAPIBringUpRackResponse(rlaResp))
+}
+
+// ~~~~~ Batch Bring Up Rack Handler ~~~~~ //
+
+// BatchBringUpRackHandler is the API Handler for bringing up Racks with optional filters
+type BatchBringUpRackHandler struct {
+	dbSession  *cdb.Session
+	tc         tClient.Client
+	scp        *sc.ClientPool
+	cfg        *config.Config
+	tracerSpan *sutil.TracerSpan
+}
+
+// NewBatchBringUpRackHandler initializes and returns a new handler for batch bringing up Racks
+func NewBatchBringUpRackHandler(dbSession *cdb.Session, tc tClient.Client, scp *sc.ClientPool, cfg *config.Config) BatchBringUpRackHandler {
+	return BatchBringUpRackHandler{
+		dbSession:  dbSession,
+		tc:         tc,
+		scp:        scp,
+		cfg:        cfg,
+		tracerSpan: sutil.NewTracerSpan(),
+	}
+}
+
+// Handle godoc
+// @Summary Bring up Racks
+// @Description Bring up Racks with optional filters. If no filter is specified, targets all racks in the Site.
+// @Tags rack
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param org path string true "Name of NGC organization"
+// @Param body body model.APIBatchBringUpRackRequest true "Batch rack bring up request"
+// @Success 200 {object} model.APIBringUpRackResponse
+// @Router /v2/org/{org}/carbide/rack/bringup [patch]
+func (bbuh BatchBringUpRackHandler) Handle(c echo.Context) error {
+	org, dbUser, ctx, logger, handlerSpan := common.SetupHandler("Rack", "BringUpBatch", c, bbuh.tracerSpan)
+	if handlerSpan != nil {
+		defer handlerSpan.End()
+	}
+
+	// Bind and validate the JSON body
+	var request model.APIBatchBringUpRackRequest
+	if err := c.Bind(&request); err != nil {
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to parse request data", nil)
+	}
+	if verr := request.Validate(); verr != nil {
+		logger.Warn().Err(verr).Msg("error validating batch rack bring up request")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to validate request data", verr)
+	}
+
+	// Is DB user missing?
+	if dbUser == nil {
+		logger.Error().Msg("invalid User object found in request context")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve current user", nil)
+	}
+
+	// Validate org membership
+	ok, err := auth.ValidateOrgMembership(dbUser, org)
+	if !ok {
+		if err != nil {
+			logger.Error().Err(err).Msg("error validating org membership for User in request")
+		} else {
+			logger.Warn().Msg("could not validate org membership for user, access denied")
+		}
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, fmt.Sprintf("Failed to validate membership for org: %s", org), nil)
+	}
+
+	// Validate role, only Provider Admins are allowed to bring up Rack
+	ok = auth.ValidateUserRoles(dbUser, org, nil, auth.ProviderAdminRole)
+	if !ok {
+		logger.Warn().Msg("user does not have Provider Admin role, access denied")
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "User does not have Provider Admin role with org", nil)
+	}
+
+	// Get Infrastructure Provider for org
+	infrastructureProvider, err := common.GetInfrastructureProviderForOrg(ctx, nil, bbuh.dbSession, org)
+	if err != nil {
+		logger.Warn().Err(err).Msg("error getting infrastructure provider for org")
+		return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Failed to retrieve Infrastructure Provider for org", nil)
+	}
+
+	// Validate the site
+	site, err := common.GetSiteFromIDString(ctx, nil, request.SiteID, bbuh.dbSession)
+	if err != nil {
+		if errors.Is(err, cdb.ErrDoesNotExist) {
+			return cerr.NewAPIErrorResponse(c, http.StatusBadRequest, "Site specified in request does not exist", nil)
+		}
+		logger.Error().Err(err).Msg("error retrieving Site from DB")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve Site specified in request due to DB error", nil)
+	}
+
+	// Verify site belongs to the org's Infrastructure Provider
+	if site.InfrastructureProviderID != infrastructureProvider.ID {
+		return cerr.NewAPIErrorResponse(c, http.StatusForbidden, "Site specified in request doesn't belong to current org's Provider", nil)
+	}
+
+	// Get the temporal client for the site
+	stc, err := bbuh.scp.GetClientByID(site.ID)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to retrieve Temporal client for Site")
+		return cerr.NewAPIErrorResponse(c, http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
+	}
+
+	// Build TargetSpec from filter (nil filter = all racks)
+	targetSpec := request.Filter.ToTargetSpec()
+
+	description := request.Description
+	if description == "" {
+		description = "API batch bring up Racks"
+	}
+
+	rlaResp, err := common.ExecuteBringUpWorkflow(ctx, c, logger, stc, targetSpec, description,
+		fmt.Sprintf("rack-bringup-batch-%s", common.RequestHash(request.Filter)), "Rack")
+	if err != nil {
+		return err
+	}
+
+	logger.Info().Msg("finishing API handler")
+	return c.JSON(http.StatusOK, model.NewAPIBringUpRackResponse(rlaResp))
+}
