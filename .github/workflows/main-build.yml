@@ -98,7 +98,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run Trivy Scan
-        uses: NVIDIA/dsx-github-actions/.github/actions/trivy-scan@f435aa6bf125fe6f9e5ac438f8cef75f90e29a2b
+        uses: NVIDIA/dsx-github-actions/.github/actions/trivy-scan@7394eca374d47d32906bdda2cf5ccbbfb7f72eaa
         with:
           scan-type: 'fs'
           scan-ref: '.'
