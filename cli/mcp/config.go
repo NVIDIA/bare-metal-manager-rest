@@ -96,16 +96,16 @@ type resolvedConfig struct {
 // instead of letting the call go out with an invalid URL.
 func resolveCallConfig(in map[string]any, req *mcp.CallToolRequest, opts Options) (resolvedConfig, error) {
 	cfg := resolvedConfig{
-		BaseURL: pickString(stringArg(in, "base_url"), opts.BaseURL),
+		BaseURL: normalizeBaseURL(pickString(stringArg(in, "base_url"), opts.BaseURL)),
 		Org:     pickString(stringArg(in, "org"), opts.Org),
 		APIName: pickString(stringArg(in, "api_name"), opts.APIName),
 	}
 
-	cfg.Token = pickString(
+	cfg.Token = normalizeToken(pickString(
 		stringArg(in, "token"),
 		bearerFromExtra(req),
 		opts.Token,
-	)
+	))
 
 	if opts.TokenCommand != "" {
 		tokenCommand := opts.TokenCommand
@@ -152,6 +152,18 @@ func stringArg(in map[string]any, key string) string {
 		return ""
 	}
 	return strings.TrimSpace(s)
+}
+
+func normalizeBaseURL(v string) string {
+	return strings.TrimRight(v, "/")
+}
+
+func normalizeToken(v string) string {
+	const prefix = "Bearer "
+	if len(v) > len(prefix) && strings.EqualFold(v[:len(prefix)], prefix) {
+		return strings.TrimSpace(v[len(prefix):])
+	}
+	return v
 }
 
 func pickString(values ...string) string {

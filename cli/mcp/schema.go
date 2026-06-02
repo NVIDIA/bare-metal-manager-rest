@@ -103,10 +103,15 @@ func buildInputSchema(item appcli.PathItem, op *appcli.Operation) *jsonschema.Sc
 
 	sort.Strings(required)
 	return &jsonschema.Schema{
-		Type:       "object",
-		Properties: props,
-		Required:   required,
+		Type:                 "object",
+		Properties:           props,
+		Required:             required,
+		AdditionalProperties: falseJSONSchema(),
 	}
+}
+
+func falseJSONSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{Not: &jsonschema.Schema{}}
 }
 
 // paramToJSONSchema converts a single OpenAPI parameter to a JSON

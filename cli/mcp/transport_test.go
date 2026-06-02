@@ -148,6 +148,32 @@ func TestHandler_ToolsCall_RejectsOutOfRangeParam(t *testing.T) {
 	require.Contains(t, env.Error.Message, "pageSize")
 }
 
+func TestHandler_ToolsCall_RejectsUnknownArg(t *testing.T) {
+	server, err := BuildServer([]byte(synthSpec), Options{BaseURL: "http://example.test", Org: "x"})
+	require.NoError(t, err)
+	ts := httptest.NewServer(NewHandler(server))
+	defer ts.Close()
+
+	resp := mcpPost(t, ts.URL, "", jsonrpcRequest(2, "tools/call", map[string]any{
+		"name":      "nico_get_all_foo",
+		"arguments": map[string]any{"page_size": 1},
+	}))
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	var env struct {
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(body, &env))
+	require.NotNil(t, env.Error)
+	require.Contains(t, env.Error.Message, "invalid params")
+	require.Contains(t, env.Error.Message, "page_size")
+}
+
 func TestHandler_ToolsCall_BearerPassthrough(t *testing.T) {
 	var (
 		recordedAuth atomic.Value

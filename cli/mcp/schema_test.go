@@ -71,6 +71,8 @@ func TestBuildInputSchema_PathAndQuery(t *testing.T) {
 	require.Equal(t, "integer", schema.Properties["pageSize"].Type)
 	require.Contains(t, schema.Properties, "status")
 	require.Equal(t, []any{"ACTIVE", "INACTIVE"}, schema.Properties["status"].Enum)
+	require.NotNil(t, schema.AdditionalProperties)
+	require.NotNil(t, schema.AdditionalProperties.Not)
 
 	// Path params + Required:true query params are required; pure
 	// query params are not.

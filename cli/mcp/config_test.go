@@ -43,10 +43,10 @@ func TestResolveCallConfig_PrecedenceChain(t *testing.T) {
 		{
 			name: "tool_args_win_every_field",
 			in: map[string]any{
-				"base_url": "https://from-arg.example.com",
+				"base_url": "https://from-arg.example.com/",
 				"org":      "arg-org",
 				"api_name": "arg-name",
-				"token":    "arg-token",
+				"token":    "Bearer arg-token",
 			},
 			req:  requestWithBearer("inbound-bearer"),
 			opts: Options{BaseURL: "https://opts.example.com", Org: "opts-org", APIName: "opts-name", Token: "opts-token"},
@@ -220,6 +220,20 @@ func TestPickString(t *testing.T) {
 	require.Equal(t, "c", pickString("", "", "c"))
 	require.Equal(t, "", pickString("", "", ""))
 	require.Equal(t, "", pickString())
+}
+
+func TestNormalizeBaseURL(t *testing.T) {
+	require.Equal(t, "https://api.example.com", normalizeBaseURL("https://api.example.com/"))
+	require.Equal(t, "https://api.example.com", normalizeBaseURL("https://api.example.com///"))
+	require.Equal(t, "https://api.example.com/v2", normalizeBaseURL("https://api.example.com/v2/"))
+	require.Equal(t, "", normalizeBaseURL(""))
+}
+
+func TestNormalizeToken(t *testing.T) {
+	require.Equal(t, "abc.def", normalizeToken("Bearer abc.def"))
+	require.Equal(t, "abc.def", normalizeToken("bearer abc.def"))
+	require.Equal(t, "abc.def", normalizeToken("Bearer   abc.def   "))
+	require.Equal(t, "abc.def", normalizeToken("abc.def"))
 }
 
 func TestBearerFromExtra(t *testing.T) {
