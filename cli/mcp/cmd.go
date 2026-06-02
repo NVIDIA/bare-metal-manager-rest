@@ -66,7 +66,7 @@ func serveCommand(specData []byte) *urfave.Command {
 			},
 			&urfave.StringFlag{
 				Name:    "path",
-				Usage:   "HTTP path prefix the MCP handler is mounted at",
+				Usage:   "HTTP path the MCP handler is mounted at",
 				EnvVars: []string{"NICO_MCP_PATH"},
 				Value:   "/mcp",
 			},
