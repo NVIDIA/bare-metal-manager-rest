@@ -18,6 +18,7 @@
 package mcp
 
 import (
+	"encoding/json"
 	"sort"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -32,8 +33,8 @@ var commonConfigDescriptions = []struct {
 	Name string
 	Desc string
 }{
-	{"org", "Override the server's default org (api.org) for this call. If unset, the inbound bearer's claims plus server-side config decide the org."},
-	{"base_url", "Override the server's default base URL (api.base) for this call. Useful when one MCP server fronts multiple NICo REST deployments."},
+	{"org", "Org used in /v2/org/<org>/... paths for this call. Overrides the server startup flag/env default when set."},
+	{"base_url", "NICo REST base URL for this call. Overrides the server startup flag/env default when set; useful when one MCP server fronts multiple NICo REST deployments."},
 	{"api_name", "Override the API path segment used in /v2/org/<org>/<name>/... (api.name; default \"nico\")."},
 	{"token", "Bearer token for this call. Overrides the inbound Authorization header. Omit in production behind agentgateway; the gateway-injected JWT is passed through automatically."},
 }
@@ -72,9 +73,8 @@ func buildInputSchema(item appcli.PathItem, op *appcli.Operation) *jsonschema.Sc
 
 	for _, p := range mergeParameters(item, op) {
 		if p.Name == "org" {
-			// Resolved from the config layer (org override or server
-			// default). The OpenAPI {org} segment is filled in by
-			// appcli.Client.Do.
+			// Resolved from per-call args or server startup defaults.
+			// The OpenAPI {org} segment is filled in by appcli.Client.Do.
 			continue
 		}
 		if p.In != "path" && p.In != "query" {
@@ -111,14 +111,17 @@ func buildInputSchema(item appcli.PathItem, op *appcli.Operation) *jsonschema.Sc
 
 // paramToJSONSchema converts a single OpenAPI parameter to a JSON
 // schema fragment. Types are normalised to integer/boolean/number/
-// string; everything else falls back to string. Enums are preserved
-// where present.
+// string; everything else falls back to string. Scalar validation hints
+// such as format, min/max, length bounds, defaults, and enums are
+// preserved where present so MCP clients get the same guardrails as the
+// generated CLI flags.
 func paramToJSONSchema(p appcli.Parameter) *jsonschema.Schema {
 	s := &jsonschema.Schema{Description: p.Description}
 	if p.Schema == nil {
 		s.Type = "string"
 		return s
 	}
+	openapiSchema := p.Schema
 	switch p.Schema.Type {
 	case "integer":
 		s.Type = "integer"
@@ -133,6 +136,22 @@ func paramToJSONSchema(p appcli.Parameter) *jsonschema.Schema {
 		s.Enum = make([]any, 0, len(p.Schema.Enum))
 		for _, e := range p.Schema.Enum {
 			s.Enum = append(s.Enum, e)
+		}
+	}
+	s.Format = openapiSchema.Format
+	s.MinLength = openapiSchema.MinLength
+	s.MaxLength = openapiSchema.MaxLength
+	if openapiSchema.Minimum != nil {
+		v := float64(*openapiSchema.Minimum)
+		s.Minimum = &v
+	}
+	if openapiSchema.Maximum != nil {
+		v := float64(*openapiSchema.Maximum)
+		s.Maximum = &v
+	}
+	if openapiSchema.Default != nil {
+		if b, err := json.Marshal(openapiSchema.Default); err == nil {
+			s.Default = b
 		}
 	}
 	return s

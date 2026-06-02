@@ -18,6 +18,7 @@
 package mcp
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -137,4 +138,36 @@ func TestParamToJSONSchema_NoSchemaDefaultsToString(t *testing.T) {
 	s := paramToJSONSchema(appcli.Parameter{Name: "x", Description: "no schema"})
 	require.Equal(t, "string", s.Type)
 	require.Equal(t, "no schema", s.Description)
+}
+
+func TestParamToJSONSchema_PreservesScalarValidationHints(t *testing.T) {
+	minLen := 3
+	maxLen := 64
+	min := 1
+	max := 100
+	s := paramToJSONSchema(appcli.Parameter{
+		Name: "pageSize",
+		Schema: &appcli.Schema{
+			Type:      "integer",
+			Format:    "int32",
+			MinLength: &minLen,
+			MaxLength: &maxLen,
+			Minimum:   &min,
+			Maximum:   &max,
+			Default:   20,
+		},
+	})
+
+	require.Equal(t, "integer", s.Type)
+	require.Equal(t, "int32", s.Format)
+	require.Equal(t, &minLen, s.MinLength)
+	require.Equal(t, &maxLen, s.MaxLength)
+	require.NotNil(t, s.Minimum)
+	require.Equal(t, float64(1), *s.Minimum)
+	require.NotNil(t, s.Maximum)
+	require.Equal(t, float64(100), *s.Maximum)
+
+	var defaultValue int
+	require.NoError(t, json.Unmarshal(s.Default, &defaultValue))
+	require.Equal(t, 20, defaultValue)
 }

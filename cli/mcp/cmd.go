@@ -102,7 +102,9 @@ func runServe(c *urfave.Context, specData []byte) error {
 	shutdownTimeout := c.Duration("shutdown-timeout")
 
 	mux := http.NewServeMux()
-	mux.Handle(path, NewHandler(server))
+	if err := registerHandler(mux, path, NewHandler(server)); err != nil {
+		return err
+	}
 
 	httpServer := &http.Server{
 		Addr:              listen,
@@ -136,6 +138,16 @@ func runServe(c *urfave.Context, specData []byte) error {
 		}
 		return nil
 	}
+}
+
+func registerHandler(mux *http.ServeMux, path string, handler http.Handler) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("invalid --path %q: %v", path, r)
+		}
+	}()
+	mux.Handle(path, handler)
+	return nil
 }
 
 // buildServeOptions resolves the MCP server's start-up defaults from the
