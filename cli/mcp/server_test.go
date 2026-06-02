@@ -19,6 +19,7 @@ package mcp
 
 import (
 	"encoding/json"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -135,6 +136,35 @@ func TestSortedPaths(t *testing.T) {
 		},
 	}
 	require.Equal(t, []string{"/a", "/m", "/z"}, sortedPaths(spec))
+}
+
+func TestPaginationMeta(t *testing.T) {
+	t.Run("absent header is nil", func(t *testing.T) {
+		require.Nil(t, paginationMeta(http.Header{}))
+		require.Nil(t, paginationMeta(nil))
+	})
+	t.Run("json header parsed into structured fields", func(t *testing.T) {
+		h := http.Header{"X-Pagination": []string{`{"pageNumber":1,"pageSize":50,"total":1234,"orderBy":null}`}}
+		m := paginationMeta(h)
+		require.NotNil(t, m)
+		p, ok := m["pagination"].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, float64(1234), p["total"])
+		require.Equal(t, float64(1), p["pageNumber"])
+	})
+	t.Run("non-json header falls back to raw string", func(t *testing.T) {
+		h := http.Header{"X-Pagination": []string{"weird-value"}}
+		require.Equal(t, "weird-value", paginationMeta(h)["pagination"])
+	})
+}
+
+func TestJSONResult_AttachesPagination(t *testing.T) {
+	res := jsonResult([]byte(`[{"id":"a"}]`), http.Header{"X-Pagination": []string{`{"total":7}`}})
+	require.Len(t, res.Content, 1)
+	require.Equal(t, float64(7), res.Meta["pagination"].(map[string]any)["total"])
+
+	// No pagination header -> no _meta attached.
+	require.Nil(t, jsonResult([]byte(`[]`), http.Header{}).Meta)
 }
 
 // TestBuildServer_SyntheticSpec exercises BuildServer end-to-end on a

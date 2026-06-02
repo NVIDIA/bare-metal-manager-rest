@@ -338,11 +338,14 @@ nicocli --config ~/.nico/config.prod.yaml tui
 `nicocli mcp serve` exposes the NICo REST read surface (every `GET` operation in the embedded OpenAPI spec) as Model Context Protocol tools over streamable-HTTP. It is intended to run behind an MCP-aware gateway such as the [Latinum Agent Gateway](https://agentgateway.dev), but works standalone for local development.
 
 ```bash
-nicocli mcp serve \
-  --listen :8080 \
-  --path /mcp \
+# --base-url/--org/--api-name/--token/--token-command are root-level flags
+# and must be passed BEFORE the `mcp serve` subcommand.
+nicocli \
   --base-url https://nico.example.com \
-  --org tester
+  --org tester \
+  mcp serve \
+  --listen :8080 \
+  --path /mcp
 ```
 
 ### Properties
@@ -360,7 +363,7 @@ nicocli mcp serve \
 | `--path` | `NICO_MCP_PATH` | HTTP path prefix the MCP handler is mounted at (default `/mcp`) |
 | `--shutdown-timeout` | `NICO_MCP_SHUTDOWN_TIMEOUT` | Graceful shutdown timeout (default `10s`) |
 
-`--base-url`, `--org`, `--api-name`, `--token`, and `--token-command` are inherited from the root command and provide optional server-side defaults; each also reads its `NICO_*` environment variable. Unlike the other `nicocli` commands, `mcp serve` does **not** read `~/.nico/config.yaml` -- the server is stateless and entirely parameter-driven, so `nicocli mcp serve` starts cleanly with no config file present and every connection detail is supplied per tool call (see below), falling back to these flags only when an argument is omitted.
+`--base-url`, `--org`, `--api-name`, `--token`, and `--token-command` are inherited from the root command and provide optional server-side defaults; each also reads its `NICO_*` environment variable. Because they are root-level flags, pass them **before** the `mcp serve` subcommand (e.g. `nicocli --org tester mcp serve --listen :8080`). Unlike the other `nicocli` commands, `mcp serve` does **not** read `~/.nico/config.yaml` -- the server is stateless and entirely parameter-driven, so `nicocli mcp serve` starts cleanly with no config file present and every connection detail is supplied per tool call (see below), falling back to these flags only when an argument is omitted.
 
 ### Per-call config overrides
 

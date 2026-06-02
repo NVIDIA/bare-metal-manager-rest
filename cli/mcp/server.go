@@ -132,11 +132,11 @@ func registerGET(server *mcp.Server, spec *appcli.Spec, path string, item appcli
 		if err != nil {
 			return errorResult(err), nil, nil
 		}
-		body, _, err := client.Do(http.MethodGet, path, pathParams, queryParams, nil)
+		body, respHeader, err := client.Do(http.MethodGet, path, pathParams, queryParams, nil)
 		if err != nil {
 			return errorResult(err), nil, nil
 		}
-		return jsonResult(body), nil, nil
+		return jsonResult(body, respHeader), nil, nil
 	})
 }
 
@@ -235,8 +235,34 @@ func errorResult(err error) *mcp.CallToolResult {
 	}
 }
 
-func jsonResult(body []byte) *mcp.CallToolResult {
-	return &mcp.CallToolResult{
+// jsonResult wraps a successful REST response body as a single JSON text
+// content block. When the upstream response carries pagination metadata
+// (the X-Pagination header NICo REST sets on list endpoints), it is
+// surfaced under the result's _meta.pagination so MCP clients can page
+// without the metadata polluting the tool's primary JSON payload.
+func jsonResult(body []byte, header http.Header) *mcp.CallToolResult {
+	res := &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: string(body)}},
 	}
+	if meta := paginationMeta(header); meta != nil {
+		res.Meta = meta
+	}
+	return res
+}
+
+// paginationMeta extracts NICo REST's X-Pagination response header into an
+// MCP _meta map. The header value is JSON (e.g.
+// {"pageNumber":1,"pageSize":50,"total":1234,"orderBy":null}); it is
+// parsed so clients get structured fields, falling back to the raw string
+// if it is not valid JSON. Returns nil when the header is absent.
+func paginationMeta(header http.Header) mcp.Meta {
+	raw := header.Get("X-Pagination")
+	if raw == "" {
+		return nil
+	}
+	var parsed any
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		parsed = raw
+	}
+	return mcp.Meta{"pagination": parsed}
 }
