@@ -125,7 +125,7 @@ func resolveCallConfig(in map[string]any, req *mcp.CallToolRequest, opts Options
 // 401 and the response surfaces to the caller as an MCP error result;
 // that path is exercised by the bearer-passthrough integration test.
 func (c resolvedConfig) requireNonEmpty() error {
-	missing := []string{}
+	var missing []string
 	if c.Org == "" {
 		missing = append(missing, "org")
 	}

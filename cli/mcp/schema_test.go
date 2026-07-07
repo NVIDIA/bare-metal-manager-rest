@@ -101,6 +101,24 @@ func TestBuildInputSchema_OperationOverridesPathItemParam(t *testing.T) {
 	require.NotContains(t, schema.Required, "filter")
 }
 
+func TestBuildInputSchema_OperationOverrideKeepsRequiredUnique(t *testing.T) {
+	item := appcli.PathItem{
+		Parameters: []appcli.Parameter{
+			{Name: "filter", In: "query", Required: true, Description: "path item", Schema: &appcli.Schema{Type: "string"}},
+		},
+	}
+	op := &appcli.Operation{
+		OperationID: "get-foo",
+		Parameters: []appcli.Parameter{
+			{Name: "filter", In: "query", Required: true, Description: "operation", Schema: &appcli.Schema{Type: "string"}},
+		},
+	}
+
+	schema := buildInputSchema(item, op)
+	require.Equal(t, "operation", schema.Properties["filter"].Description)
+	require.Equal(t, []string{"filter"}, schema.Required)
+}
+
 func TestBuildInputSchema_ConfigArgDoesNotOverrideOpenAPIParam(t *testing.T) {
 	// If an OpenAPI spec accidentally declares a query param named
 	// "token", the OpenAPI definition wins -- we never overwrite a

@@ -340,12 +340,17 @@ func TestHandler_TokenCommandRefreshIsPerCall(t *testing.T) {
 	ts := httptest.NewServer(NewHandler(server))
 	defer ts.Close()
 
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		resp := mcpPost(t, ts.URL, "", jsonrpcRequest(i+1, "tools/call", map[string]any{
 			"name":      "nico_get_foo",
 			"arguments": map[string]any{"fooId": "foo-" + itoa(i)},
 		}))
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
 		_ = resp.Body.Close()
+		result := decodeToolCallResult(t, body)
+		require.False(t, result.IsError, "tool call should succeed: %s", body)
 	}
 
 	count := countLines(t, counterPath)
