@@ -8,4 +8,8 @@ build/
 ref/
 .debug/
 .cursor
+.kolo
+.agents/
+.trash/
+.secrets
 .claude/
